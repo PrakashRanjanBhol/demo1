@@ -1,59 +1,38 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useContext, useEffect, useRef, useState } from "react";
 import { InputTextarea } from "primereact/inputtextarea";
 import { Button } from "primereact/button";
-import styles from "./ChatWindow.module.css";
+import { Dialog } from "primereact/dialog";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
+import { ChatContext } from "../../context/ChatContext";
+import styles from "./ChatWindow.module.css";
+import SourceDropdown from "./SourceDropdown";
 
-const ChatWindow = ({ chat, sidebarOpen, setSidebarOpen }) => {
-    const [messages, setMessages] = useState([]);
-    const [input, setInput] = useState("");
+const ChatWindow = () => {
+    const {
+        chatDetails,
+        setChatDetails,
+        prompt,
+        setPrompt,
+        isNewChat,
+        setIsNewChat
+    } = useContext(ChatContext);
+
+    const chatEndRef = useRef(null);
+    const fileInputRef = useRef(null);
+    const [uploadedImages, setUploadedImages] = useState([]);
+    const [showAllImages, setShowAllImages] = useState(false);
+    const [modalImages, setModalImages] = useState([]);
+
     const [typingText, setTypingText] = useState("");
-    const [streamingResponse, setStreamingResponse] = useState("");
-    const chatContentRef = useRef(null);
 
-    // Consider chat "new" if chat is null/undefined or has isNew=true
-    const isNewChat = !chat || chat.isNew;
-
-    // Scroll to bottom on messages change
-    useEffect(() => {
-        if (chatContentRef.current) {
-            chatContentRef.current.scrollTop = chatContentRef.current.scrollHeight;
-        }
-    }, [messages]);
-
-    // Load dummy messages on chat change
-    useEffect(() => {
-        setInput("");
-        if (!chat) {
-            setMessages([]);
-            return;
-        }
-        const dummyHistories = {
-            1: [
-                { text: "Hi there!", sender: "user" },
-                { text: "Hello! How can I assist you today?", sender: "ai" },
-            ],
-            2: [
-                { text: "How to use React Router?", sender: "user" },
-                { text: "You can use <Routes> and <Route> to define paths.", sender: "ai" },
-            ],
-            3: [
-                { text: "Let's plan the sprint.", sender: "user" },
-                { text: "Sure, what are the goals for this sprint?", sender: "ai" },
-            ],
-        };
-        setMessages(dummyHistories[chat.id] || []);
-    }, [chat]);
-
-    // Typing effect for "What Can I Help You With?"
     useEffect(() => {
         if (isNewChat) {
             const fullText = "What Can I Help With?";
             let currentText = "";
             let index = 0;
 
-            setTypingText(""); // reset
+            setTypingText("");
 
             const interval = setInterval(() => {
                 if (index < fullText.length) {
@@ -69,134 +48,184 @@ const ChatWindow = ({ chat, sidebarOpen, setSidebarOpen }) => {
         } else {
             setTypingText("");
         }
-    }, [chat, isNewChat]);
+    }, [isNewChat]); // ✅ no need for [chat, isNewChat] unless `chat` affects it
 
-    // Check if there is at least one user message (to hide the typing text after first query)
-    const hasUserMessage = messages.some((msg) => msg.sender === "user");
 
-    const sendMessage = () => {
-    if (!input.trim()) return;
 
-    const userMessage = { text: input, sender: "user" };
-    setMessages((prev) => [...prev, userMessage]);
-    setInput("");
-    setStreamingResponse("");
 
-    const fullAIResponse =
-        "This is a **markdown** streaming response with `code`.\n\n```js\nconsole.log('Hello');\n```";
 
-    const chunks = fullAIResponse.match(/.{1,10}/g); // split into chunks
-    let i = 0;
 
-    const streamChunk = () => {
-        if (i < chunks.length) {
-            setStreamingResponse((prev) => prev + chunks[i]);
-            console.log("Chunk:", chunks[i]); // ← ✅ print each chunk
-            i++;
-            setTimeout(streamChunk, 80);
-        } else {
-            // Add final message and clear stream buffer
-            setMessages((prev) => [
-                ...prev,
-                { text: fullAIResponse, sender: "ai", markdown: true },
-            ]);
-            setStreamingResponse("");
+    const askQuery = (e) => {
+        if ((e.key === "Enter" && !e.shiftKey) || e.type === "click") {
+            e.preventDefault?.();
+
+            if (isNewChat)
+                setIsNewChat(false);
+
+            const newMessage = {
+                id: chatDetails.length + 1,
+                prompt: prompt,
+                response: "Hi this is the answer",
+                images: [...uploadedImages], // ✅ store image URLs
+            };
+
+            setChatDetails((prevDetails) => [...prevDetails, newMessage]);
+            setPrompt("");
+            setUploadedImages([]); // Clear uploaded images after sending
+
+            setTimeout(() => {
+                chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+            }, 0);
         }
     };
 
-    streamChunk();
-};
-
-
-
-    const handleKeyDown = (e) => {
-        if (e.key === "Enter") {
-            if (e.ctrlKey) {
-                e.preventDefault();
-                const cursor = e.target.selectionStart;
-                const newValue = input.substring(0, cursor) + "\n" + input.substring(cursor);
-                setInput(newValue);
-                setTimeout(() => {
-                    e.target.selectionStart = e.target.selectionEnd = cursor + 1;
-                }, 0);
-            } else {
-                e.preventDefault();
-                sendMessage();
-            }
-        }
+    const handleUpload = (e) => {
+        const files = Array.from(e.target.files);
+        const imagePreviews = files.map((file) => URL.createObjectURL(file));
+        setUploadedImages((prev) => [...prev, ...imagePreviews]);
     };
 
     return (
-        <div className={styles.chatContainer}>
-            {messages.length > 0 && (
-                <div className={styles.chatContent} ref={chatContentRef}>
-                    {messages.length > 0 && (
-                        <div className={styles.chatContent} ref={chatContentRef}>
-                            {messages.map((msg, index) => (
-                                <div
-                                    key={index}
-                                    className={
-                                        msg.sender === "user" ? styles.userMessage : styles.aiMessage
-                                    }
-                                >
-                                    {msg.markdown ? (
-                                        <div
-                                            dangerouslySetInnerHTML={{
-                                                __html: DOMPurify.sanitize(marked.parse(msg.text)),
-                                            }}
-                                        />
-                                    ) : (
-                                        msg.text
-                                    )}
-                                </div>
-                            ))}
+        <div
+            className={styles.chatContainer}
+            style={
+                isNewChat
+                    ? {
+                        display: "flex",
+                        justifyContent: "center",
+                        alignItems: "center",
+                        height: "100%",
+                    }
+                    : {}
+            }
+        >
+            {!isNewChat && (
+                <div className={styles.chatContent}>
+                    {chatDetails.map((msg) => (
+                        <React.Fragment key={msg.id}>
+                            <div className={styles.userMessage}>
+                                <div>{msg.prompt}</div>
 
-                            {streamingResponse && (
-                                <div className={styles.aiMessage}>
-                                    <div
-                                        dangerouslySetInnerHTML={{
-                                            __html: DOMPurify.sanitize(marked.parse(streamingResponse)),
-                                        }}
-                                    />
+                                {msg.images && msg.images.length > 0 && (
+                                    <div className={styles.imagePreviewContainer}>
+                                        {msg.images.slice(0, 5).map((img, idx) => (
+                                            <img key={idx} src={img} className={styles.previewImage} />
+                                        ))}
+                                        {msg.images.length > 5 && (
+                                            <div
+                                                className={styles.moreImages}
+                                                onClick={() => {
+                                                    setShowAllImages(true);
+                                                    setModalImages(msg.images);
+                                                }}
+                                            >
+                                                +{msg.images.length - 5} Images
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className={styles.aiMessage}>
+                                <div
+                                    dangerouslySetInnerHTML={{
+                                        __html: DOMPurify.sanitize(marked.parse(msg.response)),
+                                    }}
+                                />
+                            </div>
+                        </React.Fragment>
+                    ))}
+                    <div ref={chatEndRef} />
+                </div>
+            )}
+
+            {/* Input Section (Always Shown) */}
+            <div
+                className={styles.bottomInputWrapper}
+            >
+                {isNewChat && typingText && (
+                    <div className={styles.typingText}>{typingText}</div>
+                )}
+
+
+                <div className={styles.promptBox}>
+                    {uploadedImages.length > 0 && (
+                        <div className={styles.imagePreviewContainer}>
+                            {uploadedImages.slice(0, 3).map((img, index) => (
+                                <img key={index} src={img} className={styles.previewImage} />
+                            ))}
+                            {uploadedImages.length > 3 && (
+                                <div
+                                    className={styles.moreImages}
+                                    onClick={() => setShowAllImages(true)}
+                                >
+                                    +{uploadedImages.length - 3} Images
                                 </div>
                             )}
                         </div>
                     )}
 
-                </div>
-            )}
+                    <InputTextarea
+                        rows={1}
+                        autoResize
+                        placeholder="Type your message..."
+                        className={styles.textarea}
+                        value={prompt}
+                        onChange={(e) => setPrompt(e.target.value)}
+                        onKeyDown={askQuery}
+                    />
 
-            <div
-                className={
-                    messages.length === 0
-                        ? styles.centeredInputWrapper
-                        : styles.bottomInputWrapper
-                }
-            >
-                <div className={styles.inputSection}>
-                    <div className={styles.typingHeading}>
-                        {isNewChat && typingText && !hasUserMessage ? typingText : "\u00A0"}
-                    </div>
-
-                    <div className={styles.inputArea}>
-                        <InputTextarea
-                            value={input}
-                            onChange={(e) => setInput(e.target.value)}
-                            onKeyDown={handleKeyDown}
-                            rows={1}
-                            autoResize
-                            placeholder="Type your message..."
-                            className={styles.textarea}
+                    <div className={styles.buttonRow}>
+                        <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            ref={fileInputRef}
+                            style={{ display: "none" }}
+                            onChange={handleUpload}
                         />
+
                         <Button
-                            icon="pi pi-send"
-                            className={styles.sendButton}
-                            onClick={sendMessage}
+                            icon="pi pi-upload"
+                            className={styles.iconButton}
+                            text
+                            rounded
+                            severity="secondary"
+                            aria-label="Upload"
+                            onClick={() => fileInputRef.current.click()}
                         />
+
+                        <div className="d-flex gap-3 align-items-center justify-content-end">
+                            <SourceDropdown onSelect={(value) => console.log("Selected Source:", value)} />
+
+                            <Button
+                                icon="pi pi-send"
+                                className={styles.sendButton}
+                                text
+                                rounded
+                                severity="primary"
+                                aria-label="Send"
+                                onClick={askQuery}
+                            />
+                        </div>
                     </div>
                 </div>
-
             </div>
+
+            <Dialog
+                header="Uploaded Images"
+                visible={showAllImages}
+                style={{ width: "50vw" }}
+                onHide={() => setShowAllImages(false)}
+                draggable={false}
+                resizable={false}
+            >
+                <div className={styles.modalImagesContainer}>
+                    {uploadedImages.map((img, index) => (
+                        <img key={index} src={img} className={styles.modalImage} />
+                    ))}
+                </div>
+            </Dialog>
         </div>
     );
 };
