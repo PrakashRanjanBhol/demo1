@@ -14,20 +14,27 @@ const Dashboard = () => {
         return "Good Evening 🌙";
     };
 
-    const tiles = [
+    // Define tiles
+    const allTiles = [
         {
             title: "Manage Project",
             description: "Create, update, and monitor all your projects efficiently.",
             iconClass: "pi pi-cog",
             onClick: () => navigate("/myapp/project-management"),
+            rolesAllowed: ["Admin", "Super Admin", "Manager"],
         },
         {
             title: "Chat Panel",
             description: "Collaborate with team members using our chat interface.",
             iconClass: "pi pi-comments",
             onClick: () => navigate("/myapp/chat"),
+            rolesAllowed: ["Admin", "Super Admin", "Manager", "User"],
         },
     ];
+
+    const visibleTiles = allTiles.filter(
+        (tile) => !tile.rolesAllowed || tile.rolesAllowed.includes(role)
+    );
 
     return (
         <div className={styles.dashboard}>
@@ -37,7 +44,7 @@ const Dashboard = () => {
                     <p className={styles.welcome}>Welcome, <strong>{role || "Guest"}</strong></p>
                 </div>
                 <div className={styles.tileContainer}>
-                    {tiles.map((tile, idx) => {
+                    {visibleTiles.map((tile, idx) => {
                         const animationClass =
                             idx % 2 === 0 ? styles.slideFromLeft : styles.slideFromRight;
 

@@ -2,31 +2,34 @@ import React, { useEffect, useState } from "react";
 import styles from "./ThemeToggle.module.css";
 
 const ThemeToggle = () => {
-    const [theme, setTheme] = useState("light");
+    const [theme, setTheme] = useState(() => {
+        return localStorage.getItem("theme") || "light";
+    });
 
     useEffect(() => {
-        const saved = localStorage.getItem("theme") || "light";
-        setTheme(saved);
-        document.documentElement.setAttribute("data-theme", saved);
-    }, []);
+        document.documentElement.setAttribute("data-theme", theme);
+        localStorage.setItem("theme", theme);
+    }, [theme]);
 
     const toggleTheme = () => {
-        const newTheme = theme === "light" ? "dark" : "light";
-        setTheme(newTheme);
-        document.documentElement.setAttribute("data-theme", newTheme);
-        localStorage.setItem("theme", newTheme);
+        setTheme((prevTheme) => (prevTheme === "light" ? "dark" : "light"));
     };
 
     return (
-        <div className={styles.toggleWrapper} onClick={toggleTheme}>
+        <button
+            className={styles.toggleWrapper}
+            onClick={toggleTheme}
+            aria-label="Toggle theme"
+        >
             <div
-                className={`${styles.toggleTrack} ${theme === "dark" ? styles.dark : styles.light}`}
+                className={`${styles.toggleTrack} ${theme === "dark" ? styles.dark : styles.light
+                    }`}
             >
                 <span className={styles.icon}>☀️</span>
                 <span className={styles.icon}>🌙</span>
                 <div className={styles.toggleThumb} />
             </div>
-        </div>
+        </button>
     );
 };
 
