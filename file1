@@ -1,119 +1,338 @@
-import React, { useState, useRef, useEffect } from 'react';
-import styles from './SettingsDropdown.module.css';
+import React, { useState, useEffect } from 'react';
+import { Dialog } from 'primereact/dialog';
+import { Dropdown } from 'primereact/dropdown';
+import { Button } from 'primereact/button';
+import { ProgressSpinner } from 'primereact/progressspinner';
+import axios from 'axios';
+import styles from './SelectModel.module.css';
 
-const SettingsDropdown = ({ options = [] }) => {
-    const [visible, setVisible] = useState(false);
-    const dropdownRef = useRef();
+const SelectModel = ({ onHide }) => {
+    const languageOptions = ['English', 'Hindi'];
+    const modelOptions = ['Model A', 'Model B', 'Model C'];
+    const imageModelOptions = ['Auto', 'Custom Image Model'];
+    const pptModelOptions = ['Auto', 'PPT Model X'];
+
+    const [loading, setLoading] = useState(true);
+    const [isLoadingModel, setIsLoadingModel] = useState(false);
+    const [isLoadingImageModel, setIsLoadingImageModel] = useState(false);
+    const [isLoadingPptModel, setIsLoadingPptModel] = useState(false);
+
+    const [language, setLanguage] = useState(null);
+    const [model, setModel] = useState(null);
+    const [imageModel, setImageModel] = useState(null);
+    const [pptModel, setPptModel] = useState(null);
+
+    const [initialLanguage, setInitialLanguage] = useState(null);
+    const [initialModel, setInitialModel] = useState(null);
+    const [initialImageModel, setInitialImageModel] = useState(null);
+    const [initialPptModel, setInitialPptModel] = useState(null);
 
     useEffect(() => {
-        const handleClickOutside = (e) => {
-            if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
-                setVisible(false);
+        const fetchDefaults = async () => {
+            try {
+                const [languageRes, modelRes] = await Promise.all([
+                    axios.get('/api/language'),
+                    axios.get('/api/model'),
+                ]);
+
+                setLanguage(languageRes.data.language || null);
+                setModel(modelRes.data.model || null);
+                setImageModel(modelRes.data.imageModel || null);
+                setPptModel(modelRes.data.pptModel || null);
+
+                setInitialLanguage(languageRes.data.language || null);
+                setInitialModel(modelRes.data.model || null);
+                setInitialImageModel(modelRes.data.imageModel || null);
+                setInitialPptModel(modelRes.data.pptModel || null);
+            } catch (error) {
+                setLanguage(null);
+                setModel(null);
+                setImageModel(null);
+                setPptModel(null);
+
+                setInitialLanguage(null);
+                setInitialModel(null);
+                setInitialImageModel(null);
+                setInitialPptModel(null);
+            } finally {
+                setLoading(false);
             }
         };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
+
+        fetchDefaults();
     }, []);
 
-    const toggleDropdown = () => setVisible((prev) => !prev);
+    const isModelButtonEnabled =
+        language !== initialLanguage || model !== initialModel;
+
+    const isImageModelButtonEnabled = imageModel !== initialImageModel;
+
+    const isPptModelButtonEnabled = pptModel !== initialPptModel;
+
+    const handleLoadModel = () => {
+        setIsLoadingModel(true);
+        setTimeout(() => {
+            setIsLoadingModel(false);
+            setInitialLanguage(language);
+            setInitialModel(model);
+        }, 1000);
+    };
+
+    const handleClearModel = () => {
+        setModel(null);
+    };
+
+    const handleLoadImageModel = () => {
+        setIsLoadingImageModel(true);
+        setTimeout(() => {
+            setIsLoadingImageModel(false);
+            setInitialImageModel(imageModel);
+        }, 1000);
+    };
+
+    const handleLoadPptModel = () => {
+        setIsLoadingPptModel(true);
+        setTimeout(() => {
+            setIsLoadingPptModel(false);
+            setInitialPptModel(pptModel);
+        }, 1000);
+    };
+
+    if (loading) {
+        return (
+            <Dialog visible header="Model Selector" className={styles.dialog} onHide={onHide}>
+                <div className={styles.loadingWrapper}>
+                    <ProgressSpinner />
+                    <p>Loading models and settings...</p>
+                </div>
+            </Dialog>
+        );
+    }
 
     return (
-        <div className={styles.wrapper} ref={dropdownRef}>
-            <button className={styles.settingsButton} onClick={toggleDropdown}>
-                <i className={`pi pi-cog ${styles.icon}`}></i>
-                <span>Settings</span>
-            </button>
+        <Dialog
+            visible
+            onHide={onHide}
+            header="Model Selector"
+            className={styles.dialog}
+            style={{ width: '80vw', maxWidth: '1000px' }}
+        >
+            <div className={styles.modelSelectorContainer}>
+                {/* Left Section */}
+                <div className={styles.left}>
+                    <h3 className={styles.heading}>Vision Model</h3>
 
-            {visible && (
-                <div className={styles.dropdown}>
-                    {options.map((opt, index) => (
-                        <div
-                            key={index}
-                            className={styles.option}
-                            onClick={() => {
-                                opt.onClick?.();
-                                setVisible(false);
-                            }}
-                        >
-                            {opt.icon && <i className={`pi ${opt.icon} ${styles.optionIcon}`}></i>}
-                            {opt.label}
-                        </div>
-                    ))}
+                    <div className={styles.field}>
+                        <label>
+                            Select Language <span className={styles.desc}>Choose your preferred language</span>
+                        </label>
+                        <Dropdown
+                            value={language}
+                            options={languageOptions}
+                            onChange={(e) => setLanguage(e.value)}
+                            placeholder="Please Select"
+                            className={styles.dropdown}
+                        />
+                    </div>
+
+                    <div className={styles.field}>
+                        <label>
+                            Select Model <span className={styles.desc}>Pick a model to load</span>
+                        </label>
+                        <Dropdown
+                            value={model}
+                            options={modelOptions}
+                            onChange={(e) => setModel(e.value)}
+                            placeholder="Please Select"
+                            className={styles.dropdown}
+                        />
+                    </div>
+
+                    <div className={styles.buttons}>
+                        <Button
+                            icon="pi pi-play"
+                            label={
+                                isLoadingModel ? (
+                                    <span className={styles.spinnerWithLabel}>
+                                        <ProgressSpinner
+                                            style={{ width: '1rem', height: '1rem' }}
+                                            strokeWidth="8"
+                                            animationDuration=".5s"
+                                        />
+                                        <span className={styles.loadingText}>Loading...</span>
+                                    </span>
+                                ) : (
+                                    'Load Model'
+                                )
+                            }
+                            disabled={!isModelButtonEnabled || isLoadingModel}
+                            className={`p-button-rounded ${styles.actionButton} ${styles.customBlue}`}
+                            onClick={handleLoadModel}
+                        />
+                        <Button
+                            label="Clear Model"
+                            size="small"
+                            className={`p-button-rounded ${styles.actionButton} ${styles.customOrange}`}
+                            onClick={handleClearModel}
+                        />
+                    </div>
                 </div>
-            )}
-        </div>
+
+                {/* Right Section */}
+                <div className={styles.right}>
+                    <h3 className={styles.heading}>Vision Model</h3>
+
+                    <div className={styles.field}>
+                        <label>
+                            Select Image Model <span className={styles.desc}>Choose the image model to load</span>
+                        </label>
+                        <div className={styles.inlineInput}>
+                            <Dropdown
+                                value={imageModel}
+                                options={imageModelOptions}
+                                onChange={(e) => setImageModel(e.value)}
+                                placeholder="Please Select"
+                                className={styles.dropdown}
+                            />
+                            <Button
+                                icon="pi pi-play"
+                                label={
+                                    isLoadingImageModel ? (
+                                        <span className={styles.spinnerWithLabel}>
+                                            <ProgressSpinner
+                                                style={{ width: '0.75rem', height: '0.75rem' }}
+                                                strokeWidth="3"
+                                                animationDuration=".5s"
+                                            />
+                                            <span className={styles.loadingText}>Loading...</span>
+                                        </span>
+                                    ) : (
+                                        'Load'
+                                    )
+                                }
+                                disabled={!isImageModelButtonEnabled || isLoadingImageModel}
+                                className={`p-button-rounded ${styles.actionButton} ${styles.customBlue}`}
+                                size="small"
+                                onClick={handleLoadImageModel}
+                            />
+                        </div>
+                    </div>
+
+                    <div className={styles.field}>
+                        <label>
+                            PPT Vision Model <span className={styles.desc}>Choose the PPT model to load</span>
+                        </label>
+                        <div className={styles.inlineInput}>
+                            <Dropdown
+                                value={pptModel}
+                                options={pptModelOptions}
+                                onChange={(e) => setPptModel(e.value)}
+                                placeholder="Please Select"
+                                className={styles.dropdown}
+                            />
+                            <Button
+                                icon="pi pi-play"
+                                label={
+                                    isLoadingPptModel ? (
+                                        <span className={styles.spinnerWithLabel}>
+                                            <ProgressSpinner
+                                                style={{ width: '1rem', height: '1rem' }}
+                                                strokeWidth="8"
+                                                animationDuration=".5s"
+                                            />
+                                            <span className={styles.loadingText}>Loading...</span>
+                                        </span>
+                                    ) : (
+                                        'Load'
+                                    )
+                                }
+                                disabled={!isPptModelButtonEnabled || isLoadingPptModel}
+                                className={`p-button-rounded ${styles.actionButton} ${styles.customOrange}`}
+                                size="small"
+                                onClick={handleLoadPptModel}
+                            />
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </Dialog>
     );
 };
 
-export default SettingsDropdown;
+export default SelectModel;
 
 
 
 
 
-.wrapper {
-    position: relative;
-    display: inline-block;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+.dialog {
+    background-color: #181818 !important;
+    color: white;
 }
 
-.settingsButton {
-    background-color: #2c2c2c;
-    border: 1px solid #444;
-    color: #fff;
-    padding: 0.4rem 0.8rem;
-    border-radius: 999px;
-    /* round border */
+.modelSelectorContainer {
     display: flex;
+    gap: 2rem;
+    padding-top: 1rem;
+}
+
+.left,
+.right {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    animation: fadeIn 0.4s ease-in-out;
+}
+
+.field label {
+    font-weight: bold;
+    display: flex;
+    justify-content: space-between;
     align-items: center;
-    gap: 0.5rem;
-    font-size: 0.95rem;
-    cursor: pointer;
-    transition: background 0.3s;
 }
 
-.settingsButton:hover {
-    background-color: #3a3a3a;
-}
-
-.icon {
-    font-size: 1rem;
+.desc {
+    font-weight: normal;
+    font-size: 0.85rem;
+    color: #bbbbbb;
+    margin-left: 0.5rem;
 }
 
 .dropdown {
-    position: absolute;
-    top: 115%;
-    right: 0;
-    background-color: #1c1c1c;
-    border: 1px solid #333;
-    border-radius: 6px;
-    min-width: 180px;
-    z-index: 1000;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
-    animation: fadeIn 0.2s ease-in-out;
+    margin-top: 0.5rem;
+    width: 100%;
 }
 
-.option {
-    padding: 10px 14px;
-    color: #f1f1f1;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    transition: background 0.2s;
+.heading {
+    font-size: 1.2rem;
+    margin-bottom: 1rem;
+    /* border-bottom: 1px solid #333; */
+    padding-bottom: 0.5rem;
 }
 
-.option:hover {
-    background-color: #333;
-}
-
-.optionIcon {
-    font-size: 1rem;
-}
-
+/* Animation */
 @keyframes fadeIn {
     from {
         opacity: 0;
-        transform: translateY(-5px);
+        transform: translateY(8px);
     }
 
     to {
@@ -122,20 +341,119 @@ export default SettingsDropdown;
     }
 }
 
+.buttons {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    margin-top: 0.5rem;
+}
 
+.visionBlock {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+    align-items: center;
+    /* center align buttons in right section too */
+    text-align: left;
+}
 
+.visionBlock .p-button {
+    width: fit-content;
+    margin-top: 0.3rem;
+}
 
+.dialog {
+    background-color: #181818 !important;
+    color: white;
+    font-size: 0.9rem;
+    /* slightly smaller base font */
+}
 
+.field label {
+    font-size: 0.95rem;
+    /* slightly smaller label */
+}
 
+.desc {
+    font-size: 0.8rem;
+    /* subtle description */
+}
 
+.dropdown {
+    font-size: 0.9rem;
+    /* dropdown text */
+}
 
+.heading {
+    font-size: 1.1rem;
+    /* reduce heading size slightly */
+}
 
-import SettingsDropdown from '../SettingsDropdown/SettingsDropdown';
+.customBlue {
+    background-color: #007bff !important;
+    border-color: #007bff !important;
+    color: white;
+}
 
-  const settingsOptions = [
-    { label: 'Profile', icon: 'pi-user', onClick: () => alert('Profile clicked') },
-    { label: 'Preferences', icon: 'pi-sliders-h', onClick: () => alert('Preferences clicked') },
-    { label: 'Logout', icon: 'pi-sign-out', onClick: () => alert('Logout clicked') },
-];
+.customOrange {
+    background-color: #f39c12 !important;
+    border-color: #f39c12 !important;
+    color: white;
+}
 
-<SettingsDropdown options={settingsOptions} />
+.inlineInput {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.inlineInput .p-dropdown {
+    flex: 1;
+}
+
+.inlineInput .p-button {
+    white-space: nowrap;
+}
+
+.modelSelectorContainer :global(.p-dropdown) {
+    background: transparent;
+    border: 1px solid #232323;
+}
+
+.loadingWrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 300px;
+}
+
+.actionButton {
+    padding: 0.4rem 1rem;
+    font-size: 0.9rem;
+    border-radius: 6px;
+    min-width: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.spinnerWithLabel {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.loadingText {
+    font-size: 0.85rem;
+}
+
+.loadingWrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+}
