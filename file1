@@ -1,13 +1,42 @@
-useEffect(() => {
-    if (language && modelOptionsByLanguage[language]) {
-        setModelOptions(modelOptionsByLanguage[language]);
+const handleLoadModel = async () => {
+    setIsLoadingModel(true);
 
-        // ✅ If model is already defined, but not in new modelOptions, clear it
-        if (!modelOptionsByLanguage[language].includes(model)) {
-            setModel(null);
-        }
+    const languageModelSuccess = await loadLanguageModel();
+    const visionModelSuccess = await loadVisionModel();
+
+    if (languageModelSuccess && visionModelSuccess) {
+        setInitialLanguage(language);
+        setInitialModel(model);
+        console.log('✅ Both models loaded successfully');
     } else {
-        setModelOptions([]);
-        setModel(null);
+        if (!languageModelSuccess) {
+            console.warn('❌ Failed to load Language model');
+        }
+        if (!visionModelSuccess) {
+            console.warn('❌ Failed to load Vision model');
+        }
     }
-}, [language]);
+
+    setIsLoadingModel(false);
+};
+
+// Separate API loaders
+const loadLanguageModel = async () => {
+    try {
+        const res = await axios.post('/api/load-language-model', { language });
+        return res.status === 200;
+    } catch (err) {
+        console.error('Language model API error:', err);
+        return false;
+    }
+};
+
+const loadVisionModel = async () => {
+    try {
+        const res = await axios.post('/api/load-vision-model', { model });
+        return res.status === 200;
+    } catch (err) {
+        console.error('Vision model API error:', err);
+        return false;
+    }
+};
