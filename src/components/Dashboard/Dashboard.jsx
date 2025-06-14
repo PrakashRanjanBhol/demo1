@@ -2,8 +2,10 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import styles from "./Dashboard.module.css";
+import { useToast } from '../../context/Toast/ToastContext';
 
 const Dashboard = () => {
+    const { showToast } = useToast();
     const { role } = useAuth();
     const navigate = useNavigate();
 
@@ -36,8 +38,14 @@ const Dashboard = () => {
         (tile) => !tile.rolesAllowed || tile.rolesAllowed.includes(role)
     );
 
+    const handleToast = () => {
+        // Your login logic...
+        showToast('success', 'Operation Completed', 'Your data has been saved.');
+    };
+
     return (
         <div className={styles.dashboard}>
+            <button onClick={handleToast}>Toast</button>
             <div className={styles.mainContent}>
                 <div className={styles.greetingContainer}>
                     <h2 className={styles.greeting}>{getGreeting()}</h2>

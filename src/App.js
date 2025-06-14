@@ -6,33 +6,36 @@ import ProtectedRoute from "./routes/ProtectedRoute";
 import AppLayout from "./components/AppLayout/AppLayout";
 import InactivityHandler from "./components/InactivityHandler/InactivityHandler";
 import MyAppRoutes from "./components/MyAppRoutes";
+import { ToastProvider } from "./context/Toast/ToastContext";
 
 function App() {
   return (
-    <Router>
-      <Routes>
-        {/* Public */}
-        <Route path="/login" element={<Login />} />
-        <Route path="/signup" element={<Signup />} />
+    <ToastProvider>
+      <Router>
+        <Routes>
+          {/* Public */}
+          <Route path="/login" element={<Login />} />
+          <Route path="/signup" element={<Signup />} />
 
-        {/* Authenticated root /myapp */}
-        <Route
-          path="/myapp/*"
-          element={
-            <ProtectedRoute>
-              <InactivityHandler>
-                <AppLayout>
-                  <MyAppRoutes />
-                </AppLayout>
-              </InactivityHandler>
-            </ProtectedRoute>
-          }
-        />
+          {/* Authenticated root /myapp */}
+          <Route
+            path="/myapp/*"
+            element={
+              <ProtectedRoute>
+                <InactivityHandler>
+                  <AppLayout>
+                    <MyAppRoutes />
+                  </AppLayout>
+                </InactivityHandler>
+              </ProtectedRoute>
+            }
+          />
 
-        {/* Default fallback */}
-        <Route path="*" element={<Navigate to="/login" />} />
-      </Routes>
-    </Router>
+          {/* Default fallback */}
+          <Route path="*" element={<Navigate to="/login" />} />
+        </Routes>
+      </Router>
+    </ToastProvider>
   );
 }
 
