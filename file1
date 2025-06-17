@@ -1,28 +1,50 @@
 import React, { useEffect, useState } from 'react';
 import { Card } from 'primereact/card';
 import { classNames } from 'primereact/utils';
+import { Checkbox } from 'primereact/checkbox';
 import styles from './FileListPanel.module.css';
 
-const FileListPanel = () => {
+const FileListPanel = ({ mode = 'single' }) => {
   const [files, setFiles] = useState([]);
-  const [selectedFile, setSelectedFile] = useState(null);
+  const [selectedFiles, setSelectedFiles] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     // Simulate API call
     setTimeout(() => {
-      const apiResponse = [
-        { file_name: 'abc.pdf', file_path: '/abc/def/abc.pdf' },
-        { file_name: 'document.docx', file_path: '/files/document.docx' },
-        { file_name: 'report.xlsx', file_path: '/reports/report.xlsx' },
-      ];
-      setFiles(apiResponse);
+      const apiResponse = ["file1", "file2", "file3"];
+      const formatted = apiResponse.map(name => ({
+        file_name: name,
+        file_path: `/dummy/path/${name}`
+      }));
+      setFiles(formatted);
       setLoading(false);
-    }, 2000);
+    }, 1000);
   }, []);
 
-  const handleSelect = (file) => {
-    setSelectedFile(file);
+  const isSelected = (file) => {
+    if (mode === 'single') return selectedFiles[0]?.file_path === file.file_path;
+    return selectedFiles.some(f => f.file_path === file.file_path);
+  };
+
+  const toggleFile = (file) => {
+    if (mode === 'single') {
+      setSelectedFiles([file]);
+    } else {
+      if (isSelected(file)) {
+        setSelectedFiles(prev => prev.filter(f => f.file_path !== file.file_path));
+      } else {
+        setSelectedFiles(prev => [...prev, file]);
+      }
+    }
+  };
+
+  const handleSelectAll = () => {
+    if (selectedFiles.length === files.length) {
+      setSelectedFiles([]);
+    } else {
+      setSelectedFiles(files);
+    }
   };
 
   return (
@@ -37,24 +59,36 @@ const FileListPanel = () => {
           <p className={styles.loadingText}>Loading documents...</p>
         </div>
       ) : (
-        <div className={styles.fileList}>
-          {files.map((file) => {
-            const isSelected = selectedFile?.file_path === file.file_path;
-            return (
+        <>
+          {mode === 'multi' && (
+            <div className={styles.selectAllRow}>
+              <Checkbox
+                inputId="selectAll"
+                checked={selectedFiles.length === files.length}
+                onChange={handleSelectAll}
+              />
+              <label htmlFor="selectAll" className={styles.selectAllLabel}>Select All</label>
+            </div>
+          )}
+
+          <div className={styles.fileList}>
+            {files.map((file) => (
               <Card
                 key={file.file_path}
-                className={classNames(styles.fileCard, { [styles.selected]: isSelected })}
-                onClick={() => handleSelect(file)}
+                className={classNames(styles.fileCard, { [styles.selected]: isSelected(file) })}
+                onClick={() => toggleFile(file)}
               >
                 <div className={styles.fileIconWrapper}>
-                  {isSelected && <i className={`pi pi-check ${styles.tickIcon}`}></i>}
+                  {isSelected(file) && (
+                    <i className={`pi pi-check ${styles.tickIcon}`}></i>
+                  )}
                   <i className="pi pi-file" style={{ fontSize: '1.2rem', marginRight: '0.5rem' }}></i>
                   <span className={styles.fileName}>{file.file_name}</span>
                 </div>
               </Card>
-            );
-          })}
-        </div>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );
@@ -66,132 +100,20 @@ export default FileListPanel;
 
 
 
-.rightPanel {
-  width: 300px;
-  padding: 1rem;
-  background-color: #0c0c0c;
-  color: #f0f0f0;
-  border-left: 1px solid #222;
-  height: 100vh;
-  overflow-y: auto;
-  animation: fadeIn 0.5s ease-in;
-}
+<FileListPanel mode="single" />  // single selection
+<FileListPanel mode="multi" />   // multiple + select all
 
-.panelHeader {
-  margin-bottom: 1rem;
-  font-size: 1.2rem;
-  font-weight: bold;
-  border-bottom: 1px solid #333;
-  padding-bottom: 0.5rem;
-  color: #ffffff;
-}
 
-.loaderWrapper {
+
+
+.selectAllRow {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  margin-top: 3rem;
-  animation: fadeIn 0.5s ease-in;
-}
-
-.dotsLoader {
-  display: flex;
+  margin-bottom: 1rem;
   gap: 0.5rem;
 }
 
-.dotsLoader span {
-  width: 10px;
-  height: 10px;
-  background-color: #4fc3f7;
-  border-radius: 50%;
-  animation: dotBounce 1.2s infinite ease-in-out;
-}
-
-.dotsLoader span:nth-child(2) {
-  animation-delay: 0.2s;
-}
-
-.dotsLoader span:nth-child(3) {
-  animation-delay: 0.4s;
-}
-
-@keyframes dotBounce {
-  0%, 80%, 100% {
-    transform: scale(0.6);
-  }
-  40% {
-    transform: scale(1);
-  }
-}
-
-.loadingText {
-  margin-top: 1rem;
+.selectAllLabel {
+  color: #ccc;
   font-size: 0.95rem;
-  color: #aaa;
-}
-
-.fileList {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  animation: slideUpFade 0.5s ease-in;
-}
-
-.fileCard {
-  background-color: #141414;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  padding: 0.75rem;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-}
-
-.fileCard:hover {
-  background-color: #1d1d1d;
-}
-
-.selected {
-  border: 1px solid #4fc3f7;
-  background-color: #1a2b3a;
-}
-
-.fileIconWrapper {
-  display: flex;
-  align-items: center;
-}
-
-.fileName {
-  color: #e6e6e6;
-  font-size: 0.95rem;
-}
-
-.tickIcon {
-  color: #4fc3f7;
-  font-size: 1.2rem;
-  margin-right: 0.5rem;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes slideUpFade {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
