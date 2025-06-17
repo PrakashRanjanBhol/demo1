@@ -1,43 +1,167 @@
-/* Reduce row and cell padding */
-.dataTable :global(.p-datatable .p-datatable-tbody > tr > td),
-.dataTable :global(.p-datatable .p-datatable-thead > tr > th) {
-  padding: 0.5rem 0.75rem;
-  font-size: 0.78rem;
-  line-height: 1.2;
+import React, { useState, useMemo } from 'react';
+import styles from './CustomDataTable.module.css';
+import { FaSort, FaSortUp, FaSortDown, FaFilter, FaEyeSlash } from 'react-icons/fa';
+
+const CustomDataTable = ({ data }) => {
+  const [sortConfig, setSortConfig] = useState({ key: '', direction: '' });
+  const [filters, setFilters] = useState({});
+  const [hiddenCols, setHiddenCols] = useState([]);
+
+  const columns = data.length ? Object.keys(data[0]) : [];
+
+  const sortedData = useMemo(() => {
+    let sorted = [...data];
+    if (sortConfig.key) {
+      sorted.sort((a, b) => {
+        const aVal = a[sortConfig.key];
+        const bVal = b[sortConfig.key];
+        if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+        if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+    return sorted;
+  }, [data, sortConfig]);
+
+  const filteredData = useMemo(() => {
+    return sortedData.filter((row) =>
+      columns.every((col) =>
+        !filters[col] || String(row[col]).toLowerCase().includes(filters[col].toLowerCase())
+      )
+    );
+  }, [sortedData, filters]);
+
+  const handleSort = (key) => {
+    let direction = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'asc') direction = 'desc';
+    setSortConfig({ key, direction });
+  };
+
+  const toggleColumn = (col) => {
+    setHiddenCols((prev) =>
+      prev.includes(col) ? prev.filter((c) => c !== col) : [...prev, col]
+    );
+  };
+
+  return (
+    <div className={styles.tableWrapper}>
+      <div className={styles.columnToggle}>
+        <span>Hide/Show Columns:</span>
+        {columns.map((col) => (
+          <label key={col}>
+            <input
+              type="checkbox"
+              checked={!hiddenCols.includes(col)}
+              onChange={() => toggleColumn(col)}
+            />{' '}
+            {col}
+          </label>
+        ))}
+      </div>
+
+      <table className={styles.table}>
+        <thead>
+          <tr>
+            {columns.map((col) =>
+              hiddenCols.includes(col) ? null : (
+                <th key={col}>
+                  <div className={styles.thContent} onClick={() => handleSort(col)}>
+                    {col}
+                    {sortConfig.key === col ? (
+                      sortConfig.direction === 'asc' ? (
+                        <FaSortUp />
+                      ) : (
+                        <FaSortDown />
+                      )
+                    ) : (
+                      <FaSort />
+                    )}
+                  </div>
+                  <input
+                    className={styles.filterInput}
+                    placeholder="Filter..."
+                    value={filters[col] || ''}
+                    onChange={(e) =>
+                      setFilters({ ...filters, [col]: e.target.value })
+                    }
+                  />
+                </th>
+              )
+            )}
+          </tr>
+        </thead>
+        <tbody>
+          {filteredData.map((row, idx) => (
+            <tr key={idx}>
+              {columns.map((col) =>
+                hiddenCols.includes(col) ? null : <td key={col}>{row[col]}</td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+export default CustomDataTable;
+
+
+
+
+.tableWrapper {
+  background-color: #181818;
+  color: #f0f0f0;
+  padding: 1rem;
+  border-radius: 8px;
+  overflow-x: auto;
 }
 
-/* Compact paginator */
-.dataTable :global(.p-paginator) {
-  padding: 0.25rem 0.5rem;
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+th, td {
+  border: 1px solid #333;
+  padding: 0.75rem;
+  text-align: left;
+}
+
+th {
+  background-color: #222;
+  color: #fff;
+  position: relative;
+}
+
+tbody tr:hover {
+  background-color: #2a2a2a;
+  transition: background-color 0.2s ease;
+}
+
+.filterInput {
+  margin-top: 4px;
+  width: 100%;
+  padding: 4px;
+  background: #101010;
+  border: 1px solid #444;
+  color: #eee;
+  border-radius: 4px;
   font-size: 0.75rem;
 }
 
-/* Prevent unexpected margins */
-.dataTable {
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
+.thContent {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
 }
 
-/* Optional: restrict container height */
-.dataTableWrapper {
-  max-height: calc(100vh - 150px); /* adjust based on your layout */
-  overflow-y: auto;
+.columnToggle {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+  font-size: 0.8rem;
 }
-
-
-
-<div className={styles.dataTableWrapper}>
-  <DataTable
-    value={data}
-    scrollable
-    scrollHeight="flex"
-    className={styles.dataTable}
-    paginator
-    rows={10}
-    resizableColumns
-    columnResizeMode="fit"
-  >
-    {/* columns here */}
-  </DataTable>
-</div>
