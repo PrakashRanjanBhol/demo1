@@ -1,301 +1,131 @@
-import React, { useState, useMemo, useRef } from 'react';
-import styles from './CustomDataTable.module.css';
-import { FaSort, FaSortUp, FaSortDown } from 'react-icons/fa';
-import { Button } from 'primereact/button';
-import { OverlayPanel } from 'primereact/overlaypanel';
+import React, { useState } from 'react';
+import styles from './ChatImageStrip.module.css';
+import { Dialog } from 'primereact/dialog';
 
-const CustomDataTable = ({ data }) => {
-  const [sortConfig, setSortConfig] = useState({ key: '', direction: '' });
-  const [filters, setFilters] = useState({});
-  const [hiddenCols, setHiddenCols] = useState([]);
-  const [currentPage, setCurrentPage] = useState(1);
-  const rowsPerPage = 5;
-  const overlayRef = useRef(null);
+const ChatImageStrip = ({ images }) => {
+  const [showDialog, setShowDialog] = useState(false);
 
-  const columns = data.length ? Object.keys(data[0]) : [];
-
-  const sortedData = useMemo(() => {
-    let sorted = [...data];
-    if (sortConfig.key) {
-      sorted.sort((a, b) => {
-        const aVal = a[sortConfig.key];
-        const bVal = b[sortConfig.key];
-        if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
-        if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
-        return 0;
-      });
-    }
-    return sorted;
-  }, [data, sortConfig]);
-
-  const filteredData = useMemo(() => {
-    return sortedData.filter((row) =>
-      columns.every((col) =>
-        !filters[col] || String(row[col]).toLowerCase().includes(filters[col].toLowerCase())
-      )
-    );
-  }, [sortedData, filters]);
-
-  const paginatedData = useMemo(() => {
-    const start = (currentPage - 1) * rowsPerPage;
-    return filteredData.slice(start, start + rowsPerPage);
-  }, [filteredData, currentPage]);
-
-  const totalPages = Math.ceil(filteredData.length / rowsPerPage);
-
-  const handleSort = (key) => {
-    let direction = 'asc';
-    if (sortConfig.key === key && sortConfig.direction === 'asc') direction = 'desc';
-    setSortConfig({ key, direction });
-  };
-
-  const toggleColumn = (col) => {
-    setHiddenCols((prev) =>
-      prev.includes(col) ? prev.filter((c) => c !== col) : [...prev, col]
-    );
-  };
+  const previewLimit = 3;
+  const extraCount = images.length - previewLimit;
 
   return (
-    <div className={styles.tableWrapper}>
-      <div className={styles.headerActions}>
-        <span className={styles.itemsCount}>
-          Showing {filteredData.length} of {data.length} items
-        </span>
-        {columns.length > 1 && (
-          <div className={styles.columnStickyWrapper}>
-            <Button
-              icon="pi pi-sliders-h"
-              onClick={(e) => overlayRef.current.toggle(e)}
-              className={styles.toggleBtn}
-              tooltip="Manage Columns"
-            />
-            <OverlayPanel ref={overlayRef}>
-              <div className={styles.columnToggle}>
-                {columns.map((col) => (
-                  <label key={col}>
-                    <input
-                      type="checkbox"
-                      checked={!hiddenCols.includes(col)}
-                      onChange={() => toggleColumn(col)}
-                    />{' '}
-                    {col}
-                  </label>
-                ))}
-              </div>
-            </OverlayPanel>
+    <div className={styles.container}>
+      <div className={styles.imageRow}>
+        {images.slice(0, previewLimit).map((img, index) => (
+          <img
+            key={index}
+            src={`data:image/jpeg;base64,${img.base64Image}`}
+            alt={img.fileName || `img-${index}`}
+            className={styles.thumbnail}
+          />
+        ))}
+        {extraCount > 0 && (
+          <div className={styles.extraCount} onClick={() => setShowDialog(true)}>
+            +{extraCount} Images
           </div>
         )}
       </div>
 
-      <div className={styles.tableScrollWrapper}>
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              {columns.map((col) =>
-                hiddenCols.includes(col) ? null : (
-                  <th key={col}>
-                    <div className={styles.thContent} onClick={() => handleSort(col)}>
-                      {col}
-                      {sortConfig.key === col ? (
-                        sortConfig.direction === 'asc' ? <FaSortUp /> : <FaSortDown />
-                      ) : (
-                        <FaSort />
-                      )}
-                    </div>
-                    <input
-                      className={styles.filterInput}
-                      placeholder="Filter..."
-                      value={filters[col] || ''}
-                      onChange={(e) =>
-                        setFilters({ ...filters, [col]: e.target.value })
-                      }
-                    />
-                  </th>
-                )
-              )}
-            </tr>
-          </thead>
-          <tbody>
-            {paginatedData.length === 0 ? (
-              <tr>
-                <td colSpan={columns.length} style={{ textAlign: 'center', padding: '1rem' }}>
-                  No data found.
-                </td>
-              </tr>
-            ) : (
-              paginatedData.map((row, idx) => (
-                <tr key={idx}>
-                  {columns.map((col) =>
-                    hiddenCols.includes(col) ? null : <td key={col}>{row[col]}</td>
-                  )}
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {totalPages > 1 && (
-        <div className={styles.pagination}>
-          <button
-            className={styles.gradientButton}
-            disabled={currentPage === 1}
-            onClick={() => setCurrentPage((prev) => prev - 1)}
-          >
-            Prev
-          </button>
-          <span className={styles.pageInfo}>
-            Page {currentPage} of {totalPages}
-          </span>
-          <button
-            className={styles.gradientButton}
-            disabled={currentPage === totalPages}
-            onClick={() => setCurrentPage((prev) => prev + 1)}
-          >
-            Next
-          </button>
+      <Dialog
+        header="Uploaded Images"
+        visible={showDialog}
+        onHide={() => setShowDialog(false)}
+        className={styles.dialog}
+        breakpoints={{ '960px': '90vw' }}
+        style={{ width: '50vw' }}
+      >
+        <div className={styles.dialogContent}>
+          {images.map((img, index) => (
+            <img
+              key={index}
+              src={`data:image/jpeg;base64,${img.base64Image}`}
+              alt={img.fileName || `preview-${index}`}
+              className={styles.dialogImage}
+            />
+          ))}
         </div>
-      )}
+      </Dialog>
     </div>
   );
 };
 
-export default CustomDataTable;
+export default ChatImageStrip;
 
 
 
 
 
-
-
-.tableWrapper {
-  background-color: #1f1f1f;
-  color: #ddd;
-  padding: 1rem;
-  border-radius: 8px;
-  overflow-x: auto;
-}
-
-.tableScrollWrapper {
-  overflow-x: auto;
-}
-
-.headerActions {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 1rem;
-  margin-bottom: 1rem;
-  position: relative;
-}
-
-.columnStickyWrapper {
-  position: sticky;
-  right: 0;
-  background-color: #1f1f1f;
-  z-index: 10;
-  padding-left: 1rem;
-}
-
-.itemsCount {
-  font-size: 0.9rem;
-  color: #bbb;
-}
-
-.table {
-  width: 100%;
-  border-collapse: collapse;
-  min-width: 600px;
-}
-
-th, td {
-  padding: 0.75rem;
-  text-align: left;
-  border-bottom: 1px solid #333;
-  vertical-align: middle;
-}
-
-th {
-  background-color: #282828;
-  color: #f0f0f0;
-  position: relative;
-}
-
-td {
-  color: #ddd;
-}
-
-.thContent {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  cursor: pointer;
-}
-
-.filterInput {
-  width: 100%;
-  margin-top: 0.4rem;
-  padding: 0.3rem 0.5rem;
-  border: 1px solid #444;
-  background-color: #2a2a2a;
-  color: #eee;
-  border-radius: 4px;
-  font-size: 0.85rem;
-}
-
-.filterInput:focus {
-  outline: none;
-  border-color: #888;
-}
-
-.pagination {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 1rem;
-  margin-top: 1rem;
-  flex-wrap: wrap;
-}
-
-.pageInfo {
-  color: #aaa;
-  font-size: 0.9rem;
-}
-
-.gradientButton {
-  background: linear-gradient(to right, #2196f3, #00c6ff);
-  color: white;
-  border: none;
-  padding: 0.4rem 1rem;
-  border-radius: 20px;
-  cursor: pointer;
-  font-weight: 500;
-  transition: opacity 0.2s ease;
-}
-
-.gradientButton:hover {
-  opacity: 0.85;
-}
-
-.gradientButton:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.toggleBtn {
-  background-color: transparent;
-  border: none;
-  color: #ddd;
-}
-
-.columnToggle {
+.container {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
-  padding: 0.5rem;
-  font-size: 0.85rem;
-  background-color: #181818;
-  color: #eee;
-  border-radius: 4px;
 }
+
+.imageRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding: 0.5rem 0;
+}
+
+.thumbnail {
+  width: 60px;
+  height: 60px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid #333;
+}
+
+.extraCount {
+  background-color: #333;
+  color: #ffffffcc;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  font-size: 0.85rem;
+  transition: background 0.3s;
+}
+
+.extraCount:hover {
+  background-color: #444;
+}
+
+.dialog {
+  background-color: #181818;
+  color: #fff;
+}
+
+.dialogContent {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: center;
+  padding-top: 1rem;
+}
+
+.dialogImage {
+  max-width: 150px;
+  height: auto;
+  border-radius: 6px;
+  border: 1px solid #444;
+  object-fit: cover;
+}
+
+
+
+
+const imageResponse = [
+  {
+    fileName: 'cat.jpg',
+    base64Image: 'iVBORw0KGgoAAAANSUhEUgAA...' // (example base64)
+  },
+  {
+    fileName: 'dog.jpg',
+    base64Image: 'iVBORw0KGgoAAAANSUhEUgAA...'
+  },
+  // more...
+];
+
+<ChatImageStrip images={imageResponse} />
