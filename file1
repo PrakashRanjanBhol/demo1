@@ -1,47 +1,60 @@
 import React, { useState } from 'react';
-import styles from './ChatImageStrip.module.css';
+import styles from './ChatImageGrid.module.css';
 import { Dialog } from 'primereact/dialog';
+import { Image } from 'primereact/image';  // supports preview with zoom :contentReference[oaicite:1]{index=1}
 
-const ChatImageStrip = ({ images }) => {
-  const [showDialog, setShowDialog] = useState(false);
+const ChatImageGrid = ({ images }) => {
+  const [visible, setVisible] = useState(false);
+  const [current, setCurrent] = useState(null);
 
-  const previewLimit = 3;
+  const previewLimit = 4;
   const extraCount = images.length - previewLimit;
 
   return (
     <div className={styles.container}>
-      <div className={styles.imageRow}>
-        {images.slice(0, previewLimit).map((img, index) => (
-          <img
-            key={index}
+      <div className={styles.grid}>
+        {images.slice(0, previewLimit).map((img, idx) => (
+          <Image
+            key={idx}
             src={`data:image/jpeg;base64,${img.base64Image}`}
-            alt={img.fileName || `img-${index}`}
-            className={styles.thumbnail}
+            alt={img.fileName || `img-${idx}`}
+            preview
+            zoomSrc={`data:image/jpeg;base64,${img.base64Image}`}
+            className={styles.thumb}
+            onClick={() => {
+              setCurrent(idx);
+              setVisible(true);
+            }}
           />
         ))}
         {extraCount > 0 && (
-          <div className={styles.extraCount} onClick={() => setShowDialog(true)}>
-            +{extraCount} Images
-          </div>
+          <button className={styles.moreBtn} onClick={() => setVisible(true)}>
+            +{extraCount} more
+          </button>
         )}
       </div>
 
       <Dialog
-        header="Uploaded Images"
-        visible={showDialog}
-        onHide={() => setShowDialog(false)}
-        className={styles.dialog}
+        header={current !== null ? images[current].fileName : 'Images'}
+        visible={visible}
+        onHide={() => setVisible(false)}
+        style={{ width: '70vw', backgroundColor: '#181818', color: '#eee' }}
         breakpoints={{ '960px': '90vw' }}
-        style={{ width: '50vw' }}
       >
-        <div className={styles.dialogContent}>
-          {images.map((img, index) => (
-            <img
-              key={index}
-              src={`data:image/jpeg;base64,${img.base64Image}`}
-              alt={img.fileName || `preview-${index}`}
-              className={styles.dialogImage}
-            />
+        <div className={styles.dialogGrid}>
+          {images.map((img, idx) => (
+            <div key={idx} className={styles.dialogItem}>
+              <Image
+                src={`data:image/jpeg;base64,${img.base64Image}`}
+                alt={img.fileName}
+                preview
+                zoomSrc={`data:image/jpeg;base64,${img.base64Image}`}
+                className={styles.dialogImage}
+              />
+              <div className={styles.caption}>
+                <strong>{img.fileName}</strong>
+              </div>
+            </div>
           ))}
         </div>
       </Dialog>
@@ -49,9 +62,7 @@ const ChatImageStrip = ({ images }) => {
   );
 };
 
-export default ChatImageStrip;
-
-
+export default ChatImageGrid;
 
 
 
@@ -60,72 +71,63 @@ export default ChatImageStrip;
   flex-direction: column;
 }
 
-.imageRow {
-  display: flex;
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, 80px);
+  grid-template-rows: repeat(2, 80px);
   gap: 8px;
-  align-items: center;
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  padding: 0.5rem 0;
 }
 
-.thumbnail {
-  width: 60px;
-  height: 60px;
+.thumb {
+  width: 80px;
+  height: 80px;
   object-fit: cover;
   border-radius: 6px;
   border: 1px solid #333;
+  cursor: pointer;
 }
 
-.extraCount {
-  background-color: #333;
-  color: #ffffffcc;
-  padding: 0.5rem 0.75rem;
+.moreBtn {
+  background: #333;
+  color: #ddd;
+  border: none;
   border-radius: 6px;
   cursor: pointer;
-  white-space: nowrap;
   font-size: 0.85rem;
-  transition: background 0.3s;
-}
-
-.extraCount:hover {
-  background-color: #444;
-}
-
-.dialog {
-  background-color: #181818;
-  color: #fff;
-}
-
-.dialogContent {
   display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
+  align-items: center;
   justify-content: center;
-  padding-top: 1rem;
+  transition: background 0.2s;
+}
+
+.moreBtn:hover {
+  background: #444;
+}
+
+.dialogGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 1rem;
+  padding: 1rem;
+  background-color: #181818;
+}
+
+.dialogItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: #eee;
 }
 
 .dialogImage {
-  max-width: 150px;
-  height: auto;
-  border-radius: 6px;
-  border: 1px solid #444;
-  object-fit: cover;
+  width: 100%;
+  max-width: 200px;
+  object-fit: scale-down;
+  cursor: zoom-in;
 }
 
-
-
-
-const imageResponse = [
-  {
-    fileName: 'cat.jpg',
-    base64Image: 'iVBORw0KGgoAAAANSUhEUgAA...' // (example base64)
-  },
-  {
-    fileName: 'dog.jpg',
-    base64Image: 'iVBORw0KGgoAAAANSUhEUgAA...'
-  },
-  // more...
-];
-
-<ChatImageStrip images={imageResponse} />
+.caption {
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+  text-align: center;
+}
