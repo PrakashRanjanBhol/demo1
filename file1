@@ -1,105 +1,158 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import styles from './CustomDataTable.module.css';
-import { FaSort, FaSortUp, FaSortDown, FaFilter, FaEyeSlash } from 'react-icons/fa';
+import { OverlayPanel } from 'primereact/overlaypanel';
+import { Button } from 'primereact/button';
 
 const CustomDataTable = ({ data }) => {
-  const [sortConfig, setSortConfig] = useState({ key: '', direction: '' });
-  const [filters, setFilters] = useState({});
-  const [hiddenCols, setHiddenCols] = useState([]);
+  const [filterText, setFilterText] = useState('');
+  const [sortColumn, setSortColumn] = useState('');
+  const [sortDirection, setSortDirection] = useState('asc');
+  const [visibleColumns, setVisibleColumns] = useState(
+    data.length > 0 ? Object.keys(data[0]) : []
+  );
+  const [currentPage, setCurrentPage] = useState(1);
+  const rowsPerPage = 5;
+  const overlayRef = useRef(null);
 
-  const columns = data.length ? Object.keys(data[0]) : [];
+  const allColumns = useMemo(() => (data.length > 0 ? Object.keys(data[0]) : []), [data]);
+
+  const filteredData = useMemo(() => {
+    if (!filterText) return data;
+    return data.filter((item) =>
+      Object.values(item).some((val) =>
+        String(val).toLowerCase().includes(filterText.toLowerCase())
+      )
+    );
+  }, [filterText, data]);
 
   const sortedData = useMemo(() => {
-    let sorted = [...data];
-    if (sortConfig.key) {
+    const sorted = [...filteredData];
+    if (sortColumn) {
       sorted.sort((a, b) => {
-        const aVal = a[sortConfig.key];
-        const bVal = b[sortConfig.key];
-        if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
-        if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+        const valA = a[sortColumn];
+        const valB = b[sortColumn];
+        if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
+        if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
         return 0;
       });
     }
     return sorted;
-  }, [data, sortConfig]);
+  }, [filteredData, sortColumn, sortDirection]);
 
-  const filteredData = useMemo(() => {
-    return sortedData.filter((row) =>
-      columns.every((col) =>
-        !filters[col] || String(row[col]).toLowerCase().includes(filters[col].toLowerCase())
-      )
+  const paginatedData = useMemo(() => {
+    const start = (currentPage - 1) * rowsPerPage;
+    return sortedData.slice(start, start + rowsPerPage);
+  }, [sortedData, currentPage]);
+
+  const totalPages = Math.ceil(sortedData.length / rowsPerPage);
+
+  const toggleColumnVisibility = (column) => {
+    setVisibleColumns((prev) =>
+      prev.includes(column)
+        ? prev.filter((col) => col !== column)
+        : [...prev, column]
     );
-  }, [sortedData, filters]);
-
-  const handleSort = (key) => {
-    let direction = 'asc';
-    if (sortConfig.key === key && sortConfig.direction === 'asc') direction = 'desc';
-    setSortConfig({ key, direction });
   };
 
-  const toggleColumn = (col) => {
-    setHiddenCols((prev) =>
-      prev.includes(col) ? prev.filter((c) => c !== col) : [...prev, col]
-    );
+  const handleSort = (col) => {
+    if (sortColumn === col) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortColumn(col);
+      setSortDirection('asc');
+    }
   };
 
   return (
-    <div className={styles.tableWrapper}>
-      <div className={styles.columnToggle}>
-        <span>Hide/Show Columns:</span>
-        {columns.map((col) => (
-          <label key={col}>
-            <input
-              type="checkbox"
-              checked={!hiddenCols.includes(col)}
-              onChange={() => toggleColumn(col)}
-            />{' '}
-            {col}
-          </label>
-        ))}
+    <div className={styles.tableContainer}>
+      <div className={styles.toolbar}>
+        {data.length > 1 && (
+          <input
+            className={styles.searchInput}
+            type="text"
+            placeholder="Search..."
+            value={filterText}
+            onChange={(e) => {
+              setFilterText(e.target.value);
+              setCurrentPage(1);
+            }}
+          />
+        )}
+        {allColumns.length > 1 && (
+          <>
+            <Button
+              icon="pi pi-sliders-h"
+              rounded
+              text
+              className={styles.manageBtn}
+              onClick={(e) => overlayRef.current.toggle(e)}
+              tooltip="Manage Columns"
+            />
+            <OverlayPanel ref={overlayRef}>
+              {allColumns.map((col) => (
+                <div key={col} className={styles.columnToggle}>
+                  <input
+                    type="checkbox"
+                    checked={visibleColumns.includes(col)}
+                    onChange={() => toggleColumnVisibility(col)}
+                  />
+                  <label>{col}</label>
+                </div>
+              ))}
+            </OverlayPanel>
+          </>
+        )}
       </div>
 
-      <table className={styles.table}>
+      <table className={styles.customTable}>
         <thead>
           <tr>
-            {columns.map((col) =>
-              hiddenCols.includes(col) ? null : (
-                <th key={col}>
-                  <div className={styles.thContent} onClick={() => handleSort(col)}>
-                    {col}
-                    {sortConfig.key === col ? (
-                      sortConfig.direction === 'asc' ? (
-                        <FaSortUp />
-                      ) : (
-                        <FaSortDown />
-                      )
-                    ) : (
-                      <FaSort />
-                    )}
-                  </div>
-                  <input
-                    className={styles.filterInput}
-                    placeholder="Filter..."
-                    value={filters[col] || ''}
-                    onChange={(e) =>
-                      setFilters({ ...filters, [col]: e.target.value })
-                    }
-                  />
-                </th>
-              )
-            )}
+            {visibleColumns.map((col) => (
+              <th key={col} onClick={() => handleSort(col)}>
+                {col}
+                {sortColumn === col && (
+                  <span className={styles.sortIcon}>
+                    {sortDirection === 'asc' ? ' 🔼' : ' 🔽'}
+                  </span>
+                )}
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
-          {filteredData.map((row, idx) => (
-            <tr key={idx}>
-              {columns.map((col) =>
-                hiddenCols.includes(col) ? null : <td key={col}>{row[col]}</td>
-              )}
+          {paginatedData.length === 0 ? (
+            <tr>
+              <td colSpan={visibleColumns.length} style={{ textAlign: 'center', padding: '1rem' }}>
+                No data found
+              </td>
             </tr>
-          ))}
+          ) : (
+            paginatedData.map((item, rowIndex) => (
+              <tr key={rowIndex}>
+                {visibleColumns.map((col) => (
+                  <td key={col}>{item[col]}</td>
+                ))}
+              </tr>
+            ))
+          )}
         </tbody>
       </table>
+
+      <div className={styles.pagination}>
+        <Button
+          label="Prev"
+          disabled={currentPage === 1}
+          onClick={() => setCurrentPage((prev) => prev - 1)}
+        />
+        <span className={styles.pageIndicator}>
+          Page {currentPage} of {totalPages}
+        </span>
+        <Button
+          label="Next"
+          disabled={currentPage === totalPages}
+          onClick={() => setCurrentPage((prev) => prev + 1)}
+        />
+      </div>
     </div>
   );
 };
@@ -109,59 +162,105 @@ export default CustomDataTable;
 
 
 
-.tableWrapper {
+.tableContainer {
   background-color: #181818;
   color: #f0f0f0;
   padding: 1rem;
-  border-radius: 8px;
+  border-radius: 6px;
+  width: 100%;
   overflow-x: auto;
+  box-shadow: 0 0 8px #00000088;
 }
 
-.table {
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.searchInput {
+  padding: 0.5rem;
+  border-radius: 4px;
+  border: none;
+  font-size: 0.9rem;
+  background-color: #2a2a2a;
+  color: #fff;
+}
+
+.manageBtn {
+  background-color: transparent !important;
+  color: #ffffff !important;
+  border: none;
+}
+
+.customTable {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.85rem;
+  font-size: 0.9rem;
 }
 
-th, td {
-  border: 1px solid #333;
+.customTable th,
+.customTable td {
   padding: 0.75rem;
   text-align: left;
+  border-bottom: 1px solid #333;
 }
 
-th {
-  background-color: #222;
-  color: #fff;
-  position: relative;
-}
-
-tbody tr:hover {
-  background-color: #2a2a2a;
-  transition: background-color 0.2s ease;
-}
-
-.filterInput {
-  margin-top: 4px;
-  width: 100%;
-  padding: 4px;
-  background: #101010;
-  border: 1px solid #444;
-  color: #eee;
-  border-radius: 4px;
-  font-size: 0.75rem;
-}
-
-.thContent {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
+.customTable th {
   cursor: pointer;
+  background-color: #202020;
+}
+
+.sortIcon {
+  margin-left: 0.3rem;
+  font-size: 0.8rem;
+  opacity: 0.7;
 }
 
 .columnToggle {
   display: flex;
-  gap: 1rem;
-  flex-wrap: wrap;
-  margin-bottom: 1rem;
-  font-size: 0.8rem;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+  color: #000;
 }
+
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.pageIndicator {
+  font-size: 0.85rem;
+}
+
+
+
+
+
+
+import React from 'react';
+import CustomDataTable from './components/CustomDataTable';
+
+const sampleData = [
+  { id: 1, name: 'John', age: 28 },
+  { id: 2, name: 'Peter', age: 30 },
+  { id: 3, name: 'Alice', age: 25 },
+  { id: 4, name: 'Rachel', age: 22 },
+  { id: 5, name: 'Tom', age: 31 },
+  { id: 6, name: 'Nancy', age: 29 },
+];
+
+const App = () => {
+  return (
+    <div style={{ padding: '2rem', background: '#121212', minHeight: '100vh' }}>
+      <CustomDataTable data={sampleData} />
+    </div>
+  );
+};
+
+export default App;
