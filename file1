@@ -1,159 +1,100 @@
-/* StreamingMarkdown.module.css */
-.markdownContainer {
-  line-height: 1.5; /* adjust as needed */
-  font-size: 0.95rem;
-  color: #e0e0e0;
-  font-family: 'Segoe UI', sans-serif;
-}
-
-/* Remove extra margin between paragraphs and headings */
-.markdownContainer p,
-.markdownContainer pre,
-.markdownContainer code,
-.markdownContainer h1,
-.markdownContainer h2,
-.markdownContainer h3,
-.markdownContainer h4,
-.markdownContainer h5,
-.markdownContainer h6 {
-  margin: 0.5rem 0; /* tighten spacing */
-}
-
-/* Optional: Styling for pre/code blocks */
-.markdownContainer pre {
-  background: #1f1f1f;
-  padding: 0.75rem;
-  border-radius: 6px;
-  overflow-x: auto;
-  font-size: 0.9rem;
-  line-height: 1.4;
-}
-
-.markdownContainer code {
-  font-family: 'Fira Code', monospace;
-  background: #2a2a2a;
-  padding: 0.2rem 0.4rem;
-  border-radius: 4px;
-}
-
-/* Tighten ul/ol spacing */
-.markdownContainer ul,
-.markdownContainer ol {
-  margin: 0.5rem 0;
-  padding-left: 1.2rem;
-}
-
-
-
-import React, { useEffect, useRef } from 'react';
-import { marked } from 'marked';
-import DOMPurify from 'dompurify';
-import hljs from 'highlight.js';
-import 'highlight.js/styles/atom-one-dark.css';
-import styles from './StreamingMarkdown.module.css'; // Import your CSS
-
-marked.setOptions({
-  highlight: function (code, lang) {
-    if (lang && hljs.getLanguage(lang)) {
-      return hljs.highlight(code, { language: lang }).value;
-    }
-    return hljs.highlightAuto(code).value;
-  },
-  langPrefix: 'hljs language-',
-});
-
-const StreamingMarkdown = ({ content }) => {
-  const containerRef = useRef(null);
-
-  useEffect(() => {
-    if (containerRef.current && content) {
-      const html = DOMPurify.sanitize(marked.parse(content));
-      containerRef.current.innerHTML = html;
-    }
-  }, [content]);
-
-  return <div ref={containerRef} className={styles.markdownContainer} />;
-};
-
-export default StreamingMarkdown;
-
-
-
-
-
-
-
-
----------
-
-
-
-
-
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import ReactECharts from 'echarts-for-react';
 import { Dropdown } from 'primereact/dropdown';
 import { Dialog } from 'primereact/dialog';
-import { PrimeIcons } from 'primereact/api';
-import styles from './ScatterChart.module.css';
+import styles from './TrendChart.module.css';
 
-const ScatterChart = () => {
+const TrendChart = () => {
     const response = [
-        { d_type: 'Test', 'd-category': 'Line A', xcoord: 120, ycoord: 440 },
-        { d_type: 'Actual', 'd-category': 'Line A', xcoord: 130, ycoord: 430 },
-        { d_type: 'Test', 'd-category': 'Line B', xcoord: 140, ycoord: 420 },
-        { d_type: 'Actual', 'd-category': 'Line B', xcoord: 150, ycoord: 410 },
-        { d_type: 'Estimate', 'd-category': 'Line A', xcoord: 160, ycoord: 400 },
-        { d_type: 'Estimate', 'd-category': 'Line C', xcoord: 100, ycoord: 405 }
+        { weekwise: { week: 22, count: 78 } },
+        { weekwise: { week: 23, count: 90 } },
+        { daywise: { day: 1, count: 45 } },
+        { daywise: { day: 2, count: 78 } },
+        { daywise: { day: 3, count: 60 } },
+        { monthwise: { month: 4, count: 100 } },
+        { monthwise: { month: 5, count: 78 } }
     ];
 
-    const allTypes = Array.from(new Set(response.map(item => item.d_type)));
-    const [selectedType, setSelectedType] = useState(allTypes[0]);
+    const [selectedType, setSelectedType] = useState('daywise');
     const [visible, setVisible] = useState(false);
+    const [fullMaximized, setFullMaximized] = useState(false);
 
-    const filteredData = response.filter(item => item.d_type === selectedType);
+    useEffect(() => {
+        document.body.style.overflow = fullMaximized ? 'hidden' : 'auto';
+        return () => {
+            document.body.style.overflow = 'auto';
+        };
+    }, [fullMaximized]);
 
-    const grouped = {};
-    filteredData.forEach(item => {
-        const category = item['d-category'];
-        if (!grouped[category]) grouped[category] = [];
-        grouped[category].push([item.xcoord, item.ycoord]);
-    });
+    const getChartData = () => {
+        const data = response
+            .filter(item => item[selectedType])
+            .map(item => item[selectedType]);
 
-    const series = Object.entries(grouped).map(([category, data], index) => ({
-        name: category,
-        type: 'scatter',
-        data,
-        symbolSize: 12,
-        itemStyle: {
-            color: ['#91cc75', '#fac858', '#ee6666', '#73c0de'][index % 4]
-        }
-    }));
+        const xKey = selectedType === 'daywise' ? 'day'
+            : selectedType === 'weekwise' ? 'week'
+                : 'month';
 
-    const chartOption = {
+        const xData = data.map(d => d[xKey]);
+        const yData = data.map(d => d.count);
+
+        return { xData, yData, xKey };
+    };
+
+    const { xData, yData, xKey } = getChartData();
+
+    const options = {
         title: {
-            text: `Scatter Plot - ${selectedType}`,
+            text: `Trend - ${selectedType}`,
             left: 'center'
         },
-        legend: { top: 30 },
         tooltip: {
-            trigger: 'item',
-            formatter: params =>
-                `Category: ${params.seriesName}<br/>X: ${params.data[0]}<br/>Y: ${params.data[1]}`
+            trigger: 'axis'
         },
         xAxis: {
-            type: 'value',
-            name: 'X Coord',
-            splitLine: { lineStyle: { type: 'dashed' } }
+            type: 'category',
+            name: xKey,
+            data: xData
         },
         yAxis: {
             type: 'value',
-            name: 'Y Coord',
-            splitLine: { lineStyle: { type: 'dashed' } }
+            name: 'Count'
         },
-        series
+        series: [
+            {
+                data: yData,
+                type: 'line',
+                smooth: true,
+                lineStyle: {
+                    color: '#42A5F5'
+                },
+                itemStyle: {
+                    color: '#42A5F5'
+                }
+            }
+        ]
     };
+
+    const typeOptions = [
+        { label: 'Daywise', value: 'daywise' },
+        { label: 'Weekwise', value: 'weekwise' },
+        { label: 'Monthwise', value: 'monthwise' }
+    ];
+
+    const dialogStyle = fullMaximized
+        ? {
+            width: '100vw',
+            height: '100vh',
+            maxWidth: '100vw',
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            margin: 0,
+            padding: 0,
+            borderRadius: 0,
+            zIndex: 9999
+        }
+        : { width: '90vw', height: '90vh' };
 
     return (
         <>
@@ -164,33 +105,125 @@ const ScatterChart = () => {
                         onClick={() => setVisible(true)}
                         title="Expand"
                     />
-                    <ReactECharts option={chartOption} style={{ height: '100%' }} />
+                    <ReactECharts option={options} style={{ height: '100%' }} />
                 </div>
                 <div className={styles.dropdownWrapper}>
                     <Dropdown
                         value={selectedType}
-                        options={allTypes.map(type => ({ label: type, value: type }))}
+                        options={typeOptions}
                         onChange={(e) => setSelectedType(e.value)}
-                        placeholder="Select d_type"
+                        placeholder="Select Trend Type"
                         className={styles.dropdown}
                     />
                 </div>
             </div>
 
             <Dialog
-                header={`Full View - ${selectedType}`}
+                header={
+                    <div className={styles.dialogHeader}>
+                        <span>Full View - {selectedType}</span>
+                        <div className={styles.iconGroup}>
+                            <i
+                                className={`pi ${fullMaximized ? 'pi-window-minimize' : 'pi-window-maximize'} ${styles.dialogIcon}`}
+                                onClick={() => setFullMaximized(prev => !prev)}
+                                title={fullMaximized ? 'Minimize' : 'Maximize'}
+                            />
+                            <i
+                                className={`pi pi-times ${styles.dialogIcon}`}
+                                onClick={() => {
+                                    setVisible(false);
+                                    setFullMaximized(false);
+                                }}
+                                title="Close"
+                            />
+                        </div>
+                    </div>
+                }
                 visible={visible}
-                onHide={() => setVisible(false)}
+                onHide={() => {
+                    setVisible(false);
+                    setFullMaximized(false);
+                }}
                 modal
-                dismissableMask
-                maximizable
-                style={{ width: '90vw', height: '90vh' }}
-                contentStyle={{ height: 'calc(100% - 3rem)' }}
+                closable={false}
+                style={dialogStyle}
+                contentStyle={{
+                    height: 'calc(100% - 3rem)',
+                    padding: fullMaximized ? 0 : '1rem'
+                }}
             >
-                <ReactECharts option={chartOption} style={{ height: '100%' }} />
+                <ReactECharts option={options} style={{ height: '100%' }} />
             </Dialog>
         </>
     );
 };
 
-export default ScatterChart;
+export default TrendChart;
+
+
+
+
+
+
+.container {
+    width: 100%;
+    max-width: 800px;
+    margin: auto;
+    padding: 1rem;
+}
+
+.chartWrapper {
+    position: relative;
+    width: 100%;
+    height: 400px;
+}
+
+.expandIcon {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    font-size: 1.5rem;
+    color: #333;
+    cursor: pointer;
+    z-index: 10;
+    transition: color 0.2s;
+}
+
+.expandIcon:hover {
+    color: #007ad9;
+}
+
+.dropdownWrapper {
+    margin-top: 1rem;
+    text-align: center;
+}
+
+.dropdown {
+    width: 200px;
+}
+
+.dialogHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: bold;
+    font-size: 1.1rem;
+    padding-right: 1rem;
+}
+
+.iconGroup {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+}
+
+.dialogIcon {
+    font-size: 1.3rem;
+    color: #333;
+    cursor: pointer;
+    transition: color 0.2s;
+}
+
+.dialogIcon:hover {
+    color: #007ad9;
+}
