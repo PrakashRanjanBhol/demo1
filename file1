@@ -1,323 +1,55 @@
-import React, { useState } from 'react';
-import { Dialog } from 'primereact/dialog';
-import { Dropdown } from 'primereact/dropdown';
-import { Button } from 'primereact/button';
-import { ProgressSpinner } from 'primereact/progressspinner';
-import styles from './FileUploadModal.module.css';
+import axios from 'axios';
 
-const FileUploadModal = () => {
-  const [visible, setVisible] = useState(false);
-  const [tab, setTab] = useState('upload');
-  const [category, setCategory] = useState(null);
-  const [selectedFiles, setSelectedFiles] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [viewType, setViewType] = useState('db');
-  const [uploadedDBFiles, setUploadedDBFiles] = useState([]);
-  const [uploadedSFTPFiles, setUploadedSFTPFiles] = useState([]);
+// Create instance
+const api = axios.create({
+  baseURL: 'https://your-api-url.com', // change to your actual base URL
+});
 
-  const categories = [
-    { label: 'Word Document', value: 'word' },
-    { label: 'Excel Spreadsheet', value: 'excel' },
-    { label: 'PowerPoint Presentation', value: 'ppt' },
-  ];
-
-  const getAcceptedFileTypes = () => {
-    switch (category) {
-      case 'word': return '.doc,.docx';
-      case 'excel': return '.xls,.xlsx';
-      case 'ppt': return '.ppt,.pptx';
-      default: return '';
+// Request interceptor
+api.interceptors.request.use(
+  (config) => {
+    // Add auth token
+    const token = localStorage.getItem('authToken'); // or from Redux etc.
+    if (token) {
+      config.headers['Authorization'] = `Bearer ${token}`;
     }
-  };
 
-  const handleFileChange = (e) => {
-    const files = Array.from(e.target.files);
-    setSelectedFiles([...selectedFiles, ...files]);
-  };
+    // Add custom header
+    config.headers['X-App-Version'] = '1.0';
 
-  const handleUpload = () => {
-    if (!category || selectedFiles.length === 0) return;
-    if (category === 'excel') {
-      setUploadedDBFiles(prev => [...prev, ...selectedFiles]);
-    } else {
-      setUploadedSFTPFiles(prev => [...prev, ...selectedFiles]);
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+export default api;
+
+
+
+
+
+
+
+
+import api from './api';
+
+// Example GET call
+api.get('/users')
+  .then((res) => console.log(res.data))
+  .catch((err) => console.error(err));
+
+
+
+
+api.interceptors.response.use(
+  response => response,
+  error => {
+    if (error.response && error.response.status === 401) {
+      // Handle unauthorized (e.g. logout, refresh token)
+      console.warn("Unauthorized! Logging out...");
     }
-    setSelectedFiles([]);
-    alert('Files uploaded!');
-  };
-
-  const openViewTab = () => {
-    setTab('view');
-    setLoading(true);
-    setTimeout(() => setLoading(false), 1500); // Simulated delay
-  };
-
-  return (
-    <div>
-      <Button label="Upload File" icon="pi pi-upload" onClick={() => {
-        setVisible(true);
-        setTab('upload');
-        setSelectedFiles([]);
-        setCategory(null);
-      }} className={styles.primaryButton} />
-
-      <Dialog
-        visible={visible}
-        onHide={() => setVisible(false)}
-        header="Manage Files"
-        style={{ width: '40vw' }}
-        className={styles.darkDialog}
-      >
-        {/* Tab Navigation */}
-        <div className={styles.tabNav}>
-          <div
-            className={`${styles.tab} ${tab === 'upload' ? styles.activeTab : ''}`}
-            onClick={() => setTab('upload')}
-          >
-            Upload
-          </div>
-          <div
-            className={`${styles.tab} ${tab === 'view' ? styles.activeTab : ''}`}
-            onClick={openViewTab}
-          >
-            View Files
-          </div>
-        </div>
-
-        {/* Upload Section */}
-        {tab === 'upload' && (
-          <div className={styles.uploadSection}>
-            <Dropdown
-              value={category}
-              options={categories}
-              onChange={(e) => setCategory(e.value)}
-              placeholder="Select File Category"
-              className={styles.dropdown}
-            />
-            {category && (
-              <div className={styles.dropArea}>
-                <input
-                  type="file"
-                  accept={getAcceptedFileTypes()}
-                  multiple
-                  onChange={handleFileChange}
-                />
-                <p>Click to Browse Files</p>
-              </div>
-            )}
-            {selectedFiles.length > 0 && (
-              <ul className={styles.fileList}>
-                {selectedFiles.map((file, idx) => (
-                  <li key={idx}>{file.name}</li>
-                ))}
-              </ul>
-            )}
-            <Button
-              label="Upload Files"
-              icon="pi pi-cloud-upload"
-              className={styles.uploadButtonSmall}
-              onClick={handleUpload}
-              disabled={!category || selectedFiles.length === 0}
-            />
-          </div>
-        )}
-
-        {/* View Section */}
-        {tab === 'view' && (
-          <div className={styles.viewSection}>
-            {loading ? (
-              <div className={styles.loading}>
-                <ProgressSpinner style={{ width: '50px', height: '50px' }} strokeWidth="4" />
-                <p>Loading files...</p>
-              </div>
-            ) : (
-              <>
-                <div className={styles.toggleView}>
-                  <Button
-                    label="Database Files"
-                    className={`${styles.toggleBtn} ${viewType === 'db' ? styles.activeToggle : ''}`}
-                    onClick={() => setViewType('db')}
-                  />
-                  <Button
-                    label="SFTP Files"
-                    className={`${styles.toggleBtn} ${viewType === 'sftp' ? styles.activeToggle : ''}`}
-                    onClick={() => setViewType('sftp')}
-                  />
-                </div>
-                <ul className={styles.fileList}>
-                  {(viewType === 'db' ? uploadedDBFiles : uploadedSFTPFiles).map((file, idx) => (
-                    <li key={idx} className={styles.fileItem}>
-                      <span>{file.name}</span>
-                      <i className="pi pi-link" title="Embed" />
-                    </li>
-                  ))}
-                  {(viewType === 'db' ? uploadedDBFiles : uploadedSFTPFiles).length === 0 && (
-                    <p>No files found.</p>
-                  )}
-                </ul>
-              </>
-            )}
-          </div>
-        )}
-      </Dialog>
-    </div>
-  );
-};
-
-export default FileUploadModal;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-.darkDialog .p-dialog-content {
-  background-color: #181818;
-  color: #fff;
-}
-
-.darkDialog .p-dialog-header {
-  background-color: #1e1e1e;
-  color: #fff;
-  border-bottom: 1px solid #333;
-}
-
-/* Tab Nav */
-.tabNav {
-  display: flex;
-  border-bottom: 1px solid #333;
-  margin-bottom: 1.5rem;
-}
-
-.tab {
-  flex: 1;
-  text-align: center;
-  padding: 0.75rem;
-  cursor: pointer;
-  color: #aaa;
-  font-weight: 500;
-  transition: all 0.3s ease;
-}
-
-.activeTab {
-  color: #fff;
-  border-bottom: 3px solid #148fcb;
-}
-
-/* Upload Section */
-.uploadSection {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.dropdown {
-  background-color: #2a2a2a;
-  border: 1px solid #444;
-  color: #fff;
-}
-
-.dropArea {
-  padding: 1rem;
-  border: 2px dashed #444;
-  border-radius: 10px;
-  text-align: center;
-  color: #aaa;
-  cursor: pointer;
-  transition: 0.3s ease;
-}
-
-.dropArea:hover {
-  border-color: #148fcb;
-  background-color: #1e1e1e;
-}
-
-/* Upload Button - Small & Centered */
-.uploadButtonSmall {
-  background: linear-gradient(to right, #148fcb, #0d3b7e);
-  color: #fff;
-  border: none;
-  border-radius: 20px;
-  padding: 0.4rem 1rem;
-  font-size: 0.9rem;
-  font-weight: 500;
-  cursor: pointer;
-  align-self: center;
-  margin-top: 1rem;
-}
-
-/* File List */
-.fileList {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  color: #fff;
-}
-
-.fileItem {
-  display: flex;
-  justify-content: space-between;
-  padding: 0.5rem 0;
-  border-bottom: 1px solid #333;
-}
-
-.fileItem i {
-  color: #148fcb;
-  cursor: pointer;
-}
-
-/* View Section */
-.viewSection {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-}
-
-.toggleView {
-  display: flex;
-  gap: 1rem;
-}
-
-.toggleBtn {
-  flex: 1;
-  background-color: #1e1e1e;
-  border: 1px solid #333;
-  color: #aaa;
-  border-radius: 10px;
-  padding: 0.5rem;
-  font-weight: 500;
-}
-
-.activeToggle {
-  background: linear-gradient(to right, #148fcb, #0d3b7e);
-  color: #fff;
-}
-
-.loading {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1rem;
-  color: #ccc;
-}
-
-/* Primary Button Outside Dialog */
-.primaryButton {
-  background: linear-gradient(to right, #148fcb, #0d3b7e);
-  color: #fff;
-  border: none;
-  border-radius: 25px;
-  padding: 0.6rem 1.5rem;
-  font-weight: 500;
-  font-size: 1rem;
-  cursor: pointer;
-}
+    return Promise.reject(error);
+  }
+);
