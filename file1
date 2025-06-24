@@ -1,10 +1,14 @@
 import React, { useState } from 'react';
+import { Dropdown } from 'primereact/dropdown';
 import styles from './ConfigDetail.module.css';
 
 const ConfigDetail = ({ row, onBack }) => {
-  const [rows, setRows] = useState([
-    { question: '', groundTruth: '', answer: '', accuracy: '' }
-  ]);
+  const [rows, setRows] = useState([{ question: '', groundTruth: '', answer: '', accuracy: '' }]);
+  const [params, setParams] = useState({
+    source: null,
+    embeddingModel: null,
+    llmModel: null,
+  });
 
   const addRow = () => {
     setRows([...rows, { question: '', groundTruth: '', answer: '', accuracy: '' }]);
@@ -23,8 +27,36 @@ const ConfigDetail = ({ row, onBack }) => {
   };
 
   const handleSubmit = () => {
-    console.log('Submitted rows:', rows);
-    // Add your submission logic here
+    // Validation
+    const incompleteRow = rows.some(row => !row.question || !row.groundTruth);
+    const incompleteParams = !params.source || !params.embeddingModel || !params.llmModel;
+
+    if (incompleteParams) {
+      alert('Please select all 3 parameter configurations.');
+      return;
+    }
+
+    if (incompleteRow) {
+      alert('Please fill in Question and Ground Truth for all rows.');
+      return;
+    }
+
+    // Simulated API call
+    const payload = {
+      ground_truth: rows.map(row => row.groundTruth),
+      question: rows.map(row => row.question),
+    };
+
+    console.log('Sending request to API:', payload);
+
+    // Simulate response: update each row's answer and accuracy
+    const updated = rows.map(row => ({
+      ...row,
+      answer: `Answer for "${row.question}"`,
+      accuracy: (Math.random() * 100).toFixed(2),
+    }));
+
+    setRows(updated);
   };
 
   return (
@@ -34,8 +66,33 @@ const ConfigDetail = ({ row, onBack }) => {
         Back to Table
       </button>
 
+      {/* Parameters Section */}
+      <div className={styles.parameters}>
+        <Dropdown
+          value={params.source}
+          options={['Database', 'Excel', 'Logs', 'Document']}
+          onChange={(e) => setParams({ ...params, source: e.value })}
+          placeholder="Select Source"
+          className={styles.dropdown}
+        />
+        <Dropdown
+          value={params.embeddingModel}
+          options={['miniLM']}
+          onChange={(e) => setParams({ ...params, embeddingModel: e.value })}
+          placeholder="Select Embedding Model"
+          className={styles.dropdown}
+        />
+        <Dropdown
+          value={params.llmModel}
+          options={['llama3', 'llama4', 'llama5']}
+          onChange={(e) => setParams({ ...params, llmModel: e.value })}
+          placeholder="Select LLM Model"
+          className={styles.dropdown}
+        />
+      </div>
+
       <div className={styles.tableContainer}>
-        {/* Table header */}
+        {/* Table Header */}
         <div className={styles.headerRow}>
           <div>Question</div>
           <div>Ground Truth</div>
@@ -44,7 +101,7 @@ const ConfigDetail = ({ row, onBack }) => {
           <div>Actions</div>
         </div>
 
-        {/* Scrollable input rows */}
+        {/* Scrollable Rows */}
         <div className={styles.scrollArea}>
           {rows.map((rowData, index) => (
             <div key={index} className={styles.inputRow}>
@@ -60,13 +117,13 @@ const ConfigDetail = ({ row, onBack }) => {
               />
               <input
                 value={rowData.answer}
-                onChange={(e) => updateRow(index, 'answer', e.target.value)}
                 placeholder="Answer"
+                readOnly
               />
               <input
                 value={rowData.accuracy}
-                onChange={(e) => updateRow(index, 'accuracy', e.target.value)}
-                placeholder="Accuracy Score"
+                placeholder="Accuracy"
+                readOnly
               />
               <button onClick={() => deleteRow(index)} className={styles.deleteButton}>
                 <i className="pi pi-trash"></i>
@@ -75,7 +132,7 @@ const ConfigDetail = ({ row, onBack }) => {
           ))}
         </div>
 
-        {/* Bottom Buttons */}
+        {/* Footer */}
         <div className={styles.footer}>
           <button className={styles.addButton} onClick={addRow}>
             + New Row
@@ -101,111 +158,14 @@ export default ConfigDetail;
 
 
 
-
-
-
-
-
-
-
-
-.container {
-  color: white;
+.parameters {
   display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-
-.backButton {
-  background: none;
-  border: none;
-  color: #90caf9;
-  font-weight: 500;
-  margin-bottom: 1rem;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-}
-
-.tableContainer {
-  background-color: #1e1e1e;
-  border-radius: 8px;
-  padding: 1rem;
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  overflow: hidden;
-}
-
-.headerRow {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  font-weight: bold;
-  border-bottom: 1px solid #444;
-  padding-bottom: 0.5rem;
-  position: sticky;
-  top: 0;
-  background-color: #1e1e1e;
-  z-index: 2;
-}
-
-.scrollArea {
-  overflow-y: auto;
-  flex-grow: 1;
-  max-height: 300px;
-  margin-top: 0.5rem;
-}
-
-.inputRow {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 0.5rem;
-  padding: 0.5rem 0;
-  align-items: center;
-}
-
-.inputRow input {
-  padding: 0.5rem;
-  border-radius: 4px;
-  border: 1px solid #555;
-  background-color: #2c2c2c;
-  color: white;
-}
-
-.deleteButton {
-  background: none;
-  border: none;
-  color: #f44336;
-  cursor: pointer;
-}
-
-.footer {
-  display: flex;
-  justify-content: flex-start;
   gap: 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid #444;
-  position: sticky;
-  bottom: 0;
-  background-color: #1e1e1e;
-  padding-bottom: 0.5rem;
-  margin-top: auto;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
 }
 
-.addButton,
-.submitButton {
-  padding: 0.6rem 1.2rem;
-  border-radius: 20px;
-  border: none;
-  font-weight: 500;
-  cursor: pointer;
-  color: white;
+.dropdown {
+  min-width: 200px;
 }
 
-.addButton {
-  background: linear-gradient(to right, #1976d2, #0d47a1);
-}
-
-.submitButton {
-  background: linear-gradient(to right, #388e3c, #1b5e20);
-}
