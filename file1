@@ -1,55 +1,348 @@
-import axios from 'axios';
+import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
+import styles from "./Dashboard.module.css";
+import { useToast } from '../../context/Toast/ToastContext';
+import ScatterChart from "../Chart/ScatterChart";
+import TrendChart from "../Chat/TrendChart";
+import ConfluencePanel from "../Confluence/ConfluencePanel";
+import FileUploadModal from "../FileUploadModal/FileUploadModal";
+import ConfigTable from "../ConfigTable/ConfigTable";
+import { Dialog } from 'primereact/dialog';
+import ConfigDetail from "../ConfigTable/ConfigDetail";
 
-// Create instance
-const api = axios.create({
-  baseURL: 'https://your-api-url.com', // change to your actual base URL
-});
+const Dashboard = () => {
+    const { showToast } = useToast();
+    const { role } = useAuth();
+    const navigate = useNavigate();
 
-// Request interceptor
-api.interceptors.request.use(
-  (config) => {
-    // Add auth token
-    const token = localStorage.getItem('authToken'); // or from Redux etc.
-    if (token) {
-      config.headers['Authorization'] = `Bearer ${token}`;
-    }
+    const [showModal, setShowModal] = useState(false);
+    const [selectedRow, setSelectedRow] = useState(null);
 
-    // Add custom header
-    config.headers['X-App-Version'] = '1.0';
+    const closeModal = () => {
+        setShowModal(false);
+        setSelectedRow(null);
+    };
 
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
-);
-
-export default api;
-
-
-
-
-
-
-
-
-import api from './api';
-
-// Example GET call
-api.get('/users')
-  .then((res) => console.log(res.data))
-  .catch((err) => console.error(err));
+    const getGreeting = () => {
+        const hour = new Date().getHours();
+        if (hour < 12) return "Good Morning ☀️";
+        if (hour < 18) return "Good Afternoon 🌤️";
+        return "Good Evening 🌙";
+    };
 
 
+    const mockData = [
+        {
+            id: 1,
+            configId: 'CFG-001',
+            source: 'API',
+            embeddingModel: 'EM1',
+            llmModel: 'GPT-4',
+            modifiedDate: '2025-06-20',
+            currentVersion: 'v1.0',
+            numPrompts: 12,
+            isDeployed: true,
+        },
+        {
+            id: 2,
+            configId: 'CFG-002',
+            source: 'UI',
+            embeddingModel: 'EM2',
+            llmModel: 'LLaMA-2',
+            modifiedDate: '2025-06-22',
+            currentVersion: 'v1.1',
+            numPrompts: 8,
+            isDeployed: false,
+        }
+    ];
+
+    // Define tiles
+    const allTiles = [
+        {
+            title: "Manage Project",
+            description: "Create, update, and monitor all your projects efficiently.",
+            iconClass: "pi pi-cog",
+            onClick: () => navigate("/myapp/project-management"),
+            rolesAllowed: ["Admin", "Super Admin", "Manager"],
+        },
+        {
+            title: "Chat Panel",
+            description: "Collaborate with team members using our chat interface.",
+            iconClass: "pi pi-comments",
+            onClick: () => navigate("/myapp/chat"),
+            rolesAllowed: ["Admin", "Super Admin", "Manager", "User"],
+        },
+    ];
+
+    const visibleTiles = allTiles.filter(
+        (tile) => !tile.rolesAllowed || tile.rolesAllowed.includes(role)
+    );
+
+    const handleToast = () => {
+        // Your login logic...
+        showToast('success', 'Operation Completed', 'Your data has been saved.');
+    };
+
+    return (
+        // <div className={styles.dashboard}>
+        //     <FileUploadModal />
+        //     <button onClick={handleToast}>Toast</button>
+        //     <div className={styles.mainContent}>
+        //         <div className={styles.greetingContainer}>
+        //             <h2 className={styles.greeting}>{getGreeting()}</h2>
+        //             <p className={styles.welcome}>Welcome, <strong>{role || "Guest"}</strong></p>
+        //         </div>
+        //         <div className={styles.tileContainer}>
+        //             {visibleTiles.map((tile, idx) => {
+        //                 const animationClass =
+        //                     idx % 2 === 0 ? styles.slideFromLeft : styles.slideFromRight;
+
+        //                 return (
+        //                     <div
+        //                         key={idx}
+        //                         className={`${styles.tile} ${animationClass}`}
+        //                         onClick={tile.onClick}
+        //                         tabIndex={0}
+        //                         role="button"
+        //                         onKeyPress={(e) => {
+        //                             if (e.key === "Enter" || e.key === " ") tile.onClick();
+        //                         }}
+        //                     >
+        //                         <i className={`${styles.icon} ${tile.iconClass}`} />
+        //                         <div className={styles.content}>
+        //                             <h3 className={styles.title}>{tile.title}</h3>
+        //                             <p className={styles.description}>{tile.description}</p>
+        //                         </div>
+        //                     </div>
+        //                 );
+        //             })}
+        //         </div>
+        //     </div>
+        // </div>
+
+        <>
+            {/* <ScatterChart /> */}
+            {/* <TrendChart /> */}
+            {/* <ConfluencePanel /> */}
+            <div style={{ backgroundColor: '#121212', minHeight: '100vh', padding: '2rem', color: '#fff' }}>
+                <button
+                    onClick={() => setShowModal(true)}
+                    style={{
+                        background: '#1e88e5',
+                        color: '#fff',
+                        border: 'none',
+                        padding: '0.75rem 1.5rem',
+                        borderRadius: '5px',
+                        cursor: 'pointer',
+                    }}
+                >
+                    View Configurations
+                </button>
+
+                <Dialog
+                    header={selectedRow ? 'Configuration Details' : 'Configuration List'}
+                    visible={showModal}
+                    onHide={closeModal}
+                    style={{ width: '90vw' }}
+                    className="custom-modal"
+                    modal
+                >
+                    {selectedRow ? (
+                        <ConfigDetail
+                            row={selectedRow}
+                            onBack={() => setSelectedRow(null)}
+                        />
+                    ) : (
+                        <ConfigTable data={mockData} onRowClick={setSelectedRow} />
+                    )}
+                </Dialog>
+            </div>
+        </>
+    );
+};
+
+export default Dashboard;
 
 
-api.interceptors.response.use(
-  response => response,
-  error => {
-    if (error.response && error.response.status === 401) {
-      // Handle unauthorized (e.g. logout, refresh token)
-      console.warn("Unauthorized! Logging out...");
-    }
-    return Promise.reject(error);
-  }
-);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import React from 'react';
+import { PiArrowLeftLight } from 'react-icons/pi'; // or any icon lib you use
+
+const ConfigDetail = ({ row, onBack }) => {
+    return (
+        <div style={{ color: '#fff' }}>
+            <button
+                onClick={onBack}
+                style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#90caf9',
+                    display: 'flex',
+                    alignItems: 'center',
+                    marginBottom: '1rem',
+                    cursor: 'pointer',
+                }}
+            >
+                <i className="pi pi-arrow-left" style={{ marginRight: '0.5rem' }}></i>
+                Back to Table
+            </button>
+
+            <h3 style={{ marginBottom: '1rem' }}>Configuration Details</h3>
+            <p><strong>Configuration ID:</strong> {row.configId}</p>
+            <p><strong>Source:</strong> {row.source}</p>
+            <p><strong>Embedding Model:</strong> {row.embeddingModel}</p>
+            <p><strong>LLM Model:</strong> {row.llmModel}</p>
+            <p><strong>Modified Date:</strong> {row.modifiedDate}</p>
+            <p><strong>Current Version:</strong> {row.currentVersion}</p>
+            <p><strong>No. of Prompts:</strong> {row.numPrompts}</p>
+            <p><strong>Deployment Status:</strong> {row.isDeployed ? 'Deployed' : 'Not Deployed'}</p>
+        </div>
+    );
+};
+
+export default ConfigDetail;
+
+
+
+
+
+
+
+
+
+
+
+
+import React, { useState, useMemo } from 'react';
+import { DataTable } from 'primereact/datatable';
+import { Column } from 'primereact/column';
+import { Dropdown } from 'primereact/dropdown';
+import styles from './ConfigTable.module.css';
+
+const ConfigTable = ({ data, onRowClick }) => {
+    const [filters, setFilters] = useState({
+        source: null,
+        llmModel: null,
+        deploymentStatus: 'All',
+    });
+
+    const uniqueValues = (key) => [...new Set(data.map(item => item[key]))];
+
+    const filteredData = useMemo(() => {
+        return data.filter(row => {
+            const matchSource = !filters.source || row.source === filters.source;
+            const matchLLM = !filters.llmModel || row.llmModel === filters.llmModel;
+            const matchDeployment =
+                filters.deploymentStatus === 'All' || (filters.deploymentStatus === 'Deployed' && row.isDeployed);
+            return matchSource && matchLLM && matchDeployment;
+        });
+    }, [data, filters]);
+
+    return (
+        <div>
+            <div className={styles.filters}>
+                <Dropdown
+                    value={filters.source}
+                    options={uniqueValues('source')}
+                    onChange={(e) => setFilters({ ...filters, source: e.value })}
+                    placeholder="Select Source"
+                    className={styles.dropdown}
+                />
+                <Dropdown
+                    value={filters.llmModel}
+                    options={uniqueValues('llmModel')}
+                    onChange={(e) => setFilters({ ...filters, llmModel: e.value })}
+                    placeholder="Select LLM Model"
+                    className={styles.dropdown}
+                />
+                <Dropdown
+                    value={filters.deploymentStatus}
+                    options={['All', 'Deployed']}
+                    onChange={(e) => setFilters({ ...filters, deploymentStatus: e.value })}
+                    className={styles.dropdown}
+                />
+            </div>
+
+            <DataTable
+                value={filteredData}
+                paginator
+                rows={10}
+                rowsPerPageOptions={[5, 10, 20]}
+                onRowClick={(e) => onRowClick(e.data)}
+                selectionMode="single"
+                dataKey="id"
+                stripedRows
+                className={styles.table}
+            >
+                <Column field="configId" header="Configuration ID" sortable />
+                <Column field="source" header="Source" sortable />
+                <Column field="embeddingModel" header="Embedding Model" sortable />
+                <Column field="llmModel" header="LLM Model" sortable />
+                <Column field="modifiedDate" header="Modified Date" sortable />
+                <Column field="currentVersion" header="Current Version" sortable />
+                <Column field="numPrompts" header="No. of Prompts" sortable />
+            </DataTable>
+        </div>
+    );
+};
+
+export default ConfigTable;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+.filters {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.dropdown :global(.p-dropdown) {
+    min-width: 200px;
+    background-color: #1e1e1e;
+    border-color: #333;
+    color: #fff;
+}
+
+.table :global(.p-datatable) {
+    background-color: #1e1e1e;
+    border: 1px solid #333;
+}
+
+.table :global(.p-datatable-thead > tr > th),
+.table :global(.p-datatable-tbody > tr > td) {
+    background-color: #1e1e1e;
+    color: #e0e0e0;
+    border-color: #333;
+}
+
+.table :global(.p-paginator) {
+    background-color: #1e1e1e;
+    color: #fff;
+}
