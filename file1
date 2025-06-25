@@ -1,153 +1,28 @@
-import React, { useEffect, useState } from 'react';
-import { Button } from 'primereact/button';
-import { Image } from 'primereact/image';
-import { fetchBulkImages } from '../api/imageService';
-import FullImageScrollModal from './FullImageScrollModal';
-import styles from '../styles/ImagePreviewGrid.module.css';
+.moreButton {
+  height: 80px;
+  min-width: 140px;
+  border-radius: 40px;
+  padding: 0 16px;
+  background: linear-gradient(to right, #148fcb, #0d3b7e);
+  color: white;
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s ease, box-shadow 0.3s ease;
+}
 
-const ImagePreviewGrid = ({ imageList }) => {
-  const [imagesToShow, setImagesToShow] = useState([]);
-  const [showAll, setShowAll] = useState(false);
-
-  const loadFirstTenImages = async () => {
-    const firstTenPaths = imageList.slice(0, 10).map(img => img.img_path);
-    const result = await fetchBulkImages(firstTenPaths);
-    // Append img_path to result
-    const enriched = result.map((img, i) => ({
-      ...img,
-      img_path: firstTenPaths[i],
-    }));
-    setImagesToShow(enriched);
-  };
-
-  useEffect(() => {
-    loadFirstTenImages();
-  }, [imageList]);
-
-  const remainingCount = imageList.length - 10;
-
-  return (
-    <div>
-      <div className={styles.grid}>
-        {imagesToShow.map((img, idx) => (
-          <Image
-            key={idx}
-            src={img.base64Image}
-            alt={img.imageName}
-            imageClassName={styles.thumb}
-            tooltip={img.img_path}
-            zoomSrc={img.base64Image}
-            preview
-          />
-        ))}
-
-        {remainingCount > 0 && (
-          <Button
-            label={`+${remainingCount} More Images`}
-            className={`p-button-sm p-button-secondary ${styles.moreButton}`}
-            onClick={() => setShowAll(true)}
-          />
-        )}
-      </div>
-
-      <FullImageScrollModal
-        visible={showAll}
-        onHide={() => setShowAll(false)}
-        imageList={imageList}
-      />
-    </div>
-  );
-};
-
-export default ImagePreviewGrid;
+.moreButton:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(20, 143, 203, 0.4);
+}
 
 
 
-
-
-
-
-
-
-
-
-
-import React, { useEffect, useState } from 'react';
-import { Dialog } from 'primereact/dialog';
-import { Image } from 'primereact/image';
-import { fetchBulkImages } from '../api/imageService';
-import styles from '../styles/FullImageScrollModal.module.css';
-
-const FullImageScrollModal = ({ visible, onHide, imageList }) => {
-  const chunkSize = 20;
-  const [displayedImages, setDisplayedImages] = useState([]);
-  const [nextIndex, setNextIndex] = useState(10); // skip first 10
-
-  const loadNextChunk = async () => {
-    const nextPaths = imageList
-      .slice(nextIndex, nextIndex + chunkSize)
-      .map(img => img.img_path);
-
-    if (nextPaths.length === 0) return;
-
-    const result = await fetchBulkImages(nextPaths);
-    const enriched = result.map((img, i) => ({
-      ...img,
-      img_path: nextPaths[i],
-    }));
-
-    setDisplayedImages(prev => [...prev, ...enriched]);
-    setNextIndex(prev => prev + chunkSize);
-  };
-
-  useEffect(() => {
-    if (visible) {
-      setDisplayedImages([]);
-      setNextIndex(10);
-    }
-  }, [visible]);
-
-  useEffect(() => {
-    if (visible && displayedImages.length === 0) {
-      loadNextChunk();
-    }
-  }, [visible, displayedImages]);
-
-  const handleScroll = (e) => {
-    const { scrollTop, scrollHeight, clientHeight } = e.target;
-    if (scrollTop + clientHeight >= scrollHeight - 20) {
-      loadNextChunk();
-    }
-  };
-
-  return (
-    <Dialog
-      header="All Images"
-      visible={visible}
-      onHide={onHide}
-      modal
-      style={{ width: '70vw', maxHeight: '80vh' }}
-    >
-      <div className={styles.scrollContainer} onScroll={handleScroll}>
-        <div className={styles.grid}>
-          {displayedImages.map((img, idx) => (
-            <Image
-              key={idx}
-              src={img.base64Image}
-              alt={img.imageName}
-              imageClassName={styles.thumb}
-              tooltip={img.img_path}
-              zoomSrc={img.base64Image}
-              preview
-            />
-          ))}
-        </div>
-        {nextIndex < imageList.length && (
-          <p className={styles.loading}>Loading more images...</p>
-        )}
-      </div>
-    </Dialog>
-  );
-};
-
-export default FullImageScrollModal;
+<Button
+  label={`+${remainingCount} More Images`}
+  className={styles.moreButton}
+  onClick={() => setShowAll(true)}
+/>
