@@ -1,48 +1,24 @@
-/components
+components/
   ImagePreviewGrid.jsx
   FullImageScrollModal.jsx
-/api
-  imageService.js
-/styles
+styles/
   ImagePreviewGrid.module.css
   FullImageScrollModal.module.css
 
 
 
-// /api/imageService.js
-export const fetchImages = async (start = 0, limit = 20) => {
-  await new Promise((res) => setTimeout(res, 500)); // simulate delay
-  return Array.from({ length: limit }, (_, i) => ({
-    img_path: `https://picsum.photos/seed/${start + i}/300/200`,
-  }));
-};
-
-
-
-
-// /components/ImagePreviewGrid.jsx
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Dialog } from 'primereact/dialog';
 import { Button } from 'primereact/button';
-import { fetchImages } from '../api/imageService';
 import FullImageScrollModal from './FullImageScrollModal';
 import styles from '../styles/ImagePreviewGrid.module.css';
 
-const ImagePreviewGrid = () => {
-  const [images, setImages] = useState([]);
+const ImagePreviewGrid = ({ imageList }) => {
   const [previewImage, setPreviewImage] = useState(null);
   const [showAll, setShowAll] = useState(false);
 
-  useEffect(() => {
-    const loadInitialImages = async () => {
-      const result = await fetchImages(0, 30); // preload first 30
-      setImages(result);
-    };
-    loadInitialImages();
-  }, []);
-
-  const firstTen = images.slice(0, 10);
-  const remainingCount = images.length - 10;
+  const firstTen = imageList.slice(0, 10);
+  const remainingCount = imageList.length - 10;
 
   return (
     <div>
@@ -78,6 +54,7 @@ const ImagePreviewGrid = () => {
       <FullImageScrollModal
         visible={showAll}
         onHide={() => setShowAll(false)}
+        fullList={imageList}
       />
     </div>
   );
@@ -89,42 +66,42 @@ export default ImagePreviewGrid;
 
 
 
-// /components/FullImageScrollModal.jsx
+
+
 import React, { useEffect, useState } from 'react';
 import { Dialog } from 'primereact/dialog';
-import { fetchImages } from '../api/imageService';
 import styles from '../styles/FullImageScrollModal.module.css';
 
-const FullImageScrollModal = ({ visible, onHide }) => {
-  const [images, setImages] = useState([]);
-  const [pagination, setPagination] = useState({ first: 0, rows: 20 });
-  const [loading, setLoading] = useState(false);
-
-  const loadImages = async () => {
-    setLoading(true);
-    const result = await fetchImages(pagination.first, pagination.rows);
-    setImages((prev) => [...prev, ...result]);
-    setLoading(false);
-  };
+const FullImageScrollModal = ({ visible, onHide, fullList }) => {
+  const chunkSize = 20;
+  const [displayedImages, setDisplayedImages] = useState([]);
+  const [nextIndex, setNextIndex] = useState(0);
 
   useEffect(() => {
     if (visible) {
-      setImages([]);
-      setPagination({ first: 0, rows: 20 });
+      setDisplayedImages([]);
+      setNextIndex(0);
     }
   }, [visible]);
 
   useEffect(() => {
-    if (visible) loadImages();
-  }, [pagination, visible]);
+    if (visible && nextIndex === 0) {
+      loadMoreImages(); // Load initial 20 on open
+    }
+  }, [nextIndex, visible]);
+
+  const loadMoreImages = () => {
+    const nextChunk = fullList.slice(nextIndex, nextIndex + chunkSize);
+    setDisplayedImages((prev) => [...prev, ...nextChunk]);
+    setNextIndex((prev) => prev + chunkSize);
+  };
 
   const handleScroll = (e) => {
-    const el = e.target;
-    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 20 && !loading) {
-      setPagination((prev) => ({
-        first: prev.first + prev.rows,
-        rows: prev.rows,
-      }));
+    const { scrollTop, scrollHeight, clientHeight } = e.target;
+    if (scrollTop + clientHeight >= scrollHeight - 20) {
+      if (nextIndex < fullList.length) {
+        loadMoreImages();
+      }
     }
   };
 
@@ -138,20 +115,19 @@ const FullImageScrollModal = ({ visible, onHide }) => {
     >
       <div className={styles.scrollContainer} onScroll={handleScroll}>
         <div className={styles.grid}>
-          {images.map((img, idx) => (
+          {displayedImages.map((img, idx) => (
             <img key={idx} src={img.img_path} alt="img" className={styles.thumb} />
           ))}
         </div>
-        {loading && <p className={styles.loading}>Loading more images...</p>}
+        {nextIndex < fullList.length && (
+          <p className={styles.loading}>Loading more images...</p>
+        )}
       </div>
     </Dialog>
   );
 };
 
 export default FullImageScrollModal;
-
-
-
 
 
 
@@ -190,6 +166,11 @@ export default FullImageScrollModal;
 
 
 
+
+
+
+
+
 .scrollContainer {
   height: 60vh;
   overflow-y: auto;
@@ -222,5 +203,20 @@ export default FullImageScrollModal;
 
 
 
+import React from 'react';
+import ImagePreviewGrid from './components/ImagePreviewGrid';
 
+const imageList = Array.from({ length: 55 }, (_, i) => ({
+  img_path: `https://picsum.photos/seed/${i}/300/200`,
+}));
+
+const App = () => {
+  return (
+    <div className="App">
+      <ImagePreviewGrid imageList={imageList} />
+    </div>
+  );
+};
+
+export default App;
 
