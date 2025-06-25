@@ -1,35 +1,52 @@
-components/
-  ImagePreviewGrid.jsx
-  FullImageScrollModal.jsx
-styles/
-  ImagePreviewGrid.module.css
-  FullImageScrollModal.module.css
+// /api/imageService.js
+export const fetchBulkImages = async (imagePaths = []) => {
+  // Simulate actual API call
+  await new Promise((res) => setTimeout(res, 500));
+
+  return imagePaths.map((path, index) => ({
+    imageName: `Image ${index + 1}`,
+    base64Image: `https://picsum.photos/seed/${encodeURIComponent(path)}/300/200`,
+  }));
+};
 
 
 
-import React, { useState } from 'react';
+
+
+import React, { useEffect, useState } from 'react';
 import { Dialog } from 'primereact/dialog';
 import { Button } from 'primereact/button';
+import { fetchBulkImages } from '../api/imageService';
 import FullImageScrollModal from './FullImageScrollModal';
 import styles from '../styles/ImagePreviewGrid.module.css';
 
 const ImagePreviewGrid = ({ imageList }) => {
+  const [imagesToShow, setImagesToShow] = useState([]);
   const [previewImage, setPreviewImage] = useState(null);
   const [showAll, setShowAll] = useState(false);
 
-  const firstTen = imageList.slice(0, 10);
+  const loadFirstTenImages = async () => {
+    const firstTenPaths = imageList.slice(0, 10).map(img => img.img_path);
+    const result = await fetchBulkImages(firstTenPaths);
+    setImagesToShow(result);
+  };
+
+  useEffect(() => {
+    loadFirstTenImages();
+  }, [imageList]);
+
   const remainingCount = imageList.length - 10;
 
   return (
     <div>
       <div className={styles.grid}>
-        {firstTen.map((img, idx) => (
+        {imagesToShow.map((img, idx) => (
           <img
             key={idx}
-            src={img.img_path}
-            alt="img"
+            src={img.base64Image}
+            alt={img.imageName}
             className={styles.thumb}
-            onClick={() => setPreviewImage(img.img_path)}
+            onClick={() => setPreviewImage(img.base64Image)}
           />
         ))}
         {remainingCount > 0 && (
@@ -54,7 +71,7 @@ const ImagePreviewGrid = ({ imageList }) => {
       <FullImageScrollModal
         visible={showAll}
         onHide={() => setShowAll(false)}
-        fullList={imageList}
+        imageList={imageList}
       />
     </div>
   );
@@ -66,42 +83,45 @@ export default ImagePreviewGrid;
 
 
 
-
-
 import React, { useEffect, useState } from 'react';
 import { Dialog } from 'primereact/dialog';
+import { fetchBulkImages } from '../api/imageService';
 import styles from '../styles/FullImageScrollModal.module.css';
 
-const FullImageScrollModal = ({ visible, onHide, fullList }) => {
+const FullImageScrollModal = ({ visible, onHide, imageList }) => {
   const chunkSize = 20;
   const [displayedImages, setDisplayedImages] = useState([]);
-  const [nextIndex, setNextIndex] = useState(0);
+  const [nextIndex, setNextIndex] = useState(10); // start from 10 (already shown)
+
+  const loadNextChunk = async () => {
+    const nextPaths = imageList
+      .slice(nextIndex, nextIndex + chunkSize)
+      .map(img => img.img_path);
+
+    if (nextPaths.length === 0) return;
+
+    const result = await fetchBulkImages(nextPaths);
+    setDisplayedImages(prev => [...prev, ...result]);
+    setNextIndex(prev => prev + chunkSize);
+  };
 
   useEffect(() => {
     if (visible) {
       setDisplayedImages([]);
-      setNextIndex(0);
+      setNextIndex(10); // reset to 10 (skip first 10)
     }
   }, [visible]);
 
   useEffect(() => {
-    if (visible && nextIndex === 0) {
-      loadMoreImages(); // Load initial 20 on open
+    if (visible && displayedImages.length === 0) {
+      loadNextChunk(); // load first chunk inside modal
     }
-  }, [nextIndex, visible]);
-
-  const loadMoreImages = () => {
-    const nextChunk = fullList.slice(nextIndex, nextIndex + chunkSize);
-    setDisplayedImages((prev) => [...prev, ...nextChunk]);
-    setNextIndex((prev) => prev + chunkSize);
-  };
+  }, [visible, displayedImages]);
 
   const handleScroll = (e) => {
     const { scrollTop, scrollHeight, clientHeight } = e.target;
     if (scrollTop + clientHeight >= scrollHeight - 20) {
-      if (nextIndex < fullList.length) {
-        loadMoreImages();
-      }
+      loadNextChunk();
     }
   };
 
@@ -116,10 +136,15 @@ const FullImageScrollModal = ({ visible, onHide, fullList }) => {
       <div className={styles.scrollContainer} onScroll={handleScroll}>
         <div className={styles.grid}>
           {displayedImages.map((img, idx) => (
-            <img key={idx} src={img.img_path} alt="img" className={styles.thumb} />
+            <img
+              key={idx}
+              src={img.base64Image}
+              alt={img.imageName}
+              className={styles.thumb}
+            />
           ))}
         </div>
-        {nextIndex < fullList.length && (
+        {nextIndex < imageList.length && (
           <p className={styles.loading}>Loading more images...</p>
         )}
       </div>
@@ -128,7 +153,6 @@ const FullImageScrollModal = ({ visible, onHide, fullList }) => {
 };
 
 export default FullImageScrollModal;
-
 
 
 
@@ -170,7 +194,6 @@ export default FullImageScrollModal;
 
 
 
-
 .scrollContainer {
   height: 60vh;
   overflow-y: auto;
@@ -202,21 +225,4 @@ export default FullImageScrollModal;
 
 
 
-
-import React from 'react';
-import ImagePreviewGrid from './components/ImagePreviewGrid';
-
-const imageList = Array.from({ length: 55 }, (_, i) => ({
-  img_path: `https://picsum.photos/seed/${i}/300/200`,
-}));
-
-const App = () => {
-  return (
-    <div className="App">
-      <ImagePreviewGrid imageList={imageList} />
-    </div>
-  );
-};
-
-export default App;
 
