@@ -1,22 +1,118 @@
-<div
-    className={`${styles.nestedWrapper} ${
-        hasChildren ? (isExpanded ? styles.expanded : styles.collapsed) : ''
-    }`}
->
-    {hasChildren && renderPages(page.children, level + 1)}
-</div>
+import React, { useEffect, useState } from 'react';
+import axios from 'axios';
+import styles from './ConfluenceExplorer.module.css';
+
+const ConfluenceExplorer = () => {
+    const [spaces, setSpaces] = useState([]);
+    const [pageData, setPageData] = useState({});
+    const [expandedSpace, setExpandedSpace] = useState(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchSpacesAndPages = async () => {
+            try {
+                setLoading(true);
+                const { data: spaceList } = await axios.get('/api/spaces');
+
+                const pagesPromises = spaceList.map(space =>
+                    axios.get(`/api/spaces/${space.key}/pages`)
+                );
+
+                const pageResponses = await Promise.all(pagesPromises);
+
+                const pagesBySpace = {};
+                spaceList.forEach((space, idx) => {
+                    pagesBySpace[space.key] = pageResponses[idx].data;
+                });
+
+                setSpaces(spaceList);
+                setPageData(pagesBySpace);
+            } catch (err) {
+                console.error('Error fetching data:', err);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchSpacesAndPages();
+    }, []);
+
+    if (loading) {
+        return (
+            <div className={styles.loader}>
+                <div className={styles.emoji}>😊</div>
+                <div className={styles.message}>Hang tight! Loading your Confluence data...</div>
+            </div>
+        );
+    }
+
+    return (
+        <div className={styles.container}>
+            <h3 className={styles.heading}>Confluence Explorer</h3>
+            <div className={styles.spaceList}>
+                {spaces.map(space => (
+                    <div key={space.key} className={styles.spaceItem}>
+                        <div className={styles.spaceLabel}>{space.name}</div>
+                        <button
+                            className={styles.expandButton}
+                            onClick={() => setExpandedSpace(expandedSpace === space.key ? null : space.key)}
+                        >
+                            {expandedSpace === space.key ? '−' : '+'}
+                        </button>
+                        {expandedSpace === space.key && (
+                            <div className={styles.pageTree}>
+                                {JSON.stringify(pageData[space.key], null, 2)}
+                                {/* You would render your page tree here like earlier */}
+                            </div>
+                        )}
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+export default ConfluenceExplorer;
 
 
 
-.nestedWrapper {
-    overflow: hidden;
-    transition: max-height 0.3s ease-in-out;
+
+
+
+
+
+
+
+
+
+.loader {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 300px;
+    background-color: #0c0c0c;
+    color: #ffffff;
+    font-family: 'Segoe UI', sans-serif;
+    text-align: center;
 }
 
-.expanded {
-    max-height: 500px;
+.emoji {
+    font-size: 3rem;
+    animation: bounce 1.2s infinite;
 }
 
-.collapsed {
-    max-height: 0;
+.message {
+    margin-top: 0.8rem;
+    font-size: 1rem;
+    color: #bbbbbb;
+}
+
+@keyframes bounce {
+    0%, 100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-8px);
+    }
 }
