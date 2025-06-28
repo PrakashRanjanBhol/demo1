@@ -40,9 +40,7 @@ const ConfluenceExplorer = () => {
     const [expandedSpace, setExpandedSpace] = useState(null);
 
     const toggleSpaceSelection = (spaceKey) => {
-        if (selectedPageIds.length > 0) {
-            setSelectedPageIds([]); // Clear pages if space is selected
-        }
+        setSelectedPageIds([]); // Deselect pages
         setSelectedSpaces((prev) => {
             if (prev.includes(spaceKey)) {
                 return prev.filter(k => k !== spaceKey);
@@ -61,29 +59,37 @@ const ConfluenceExplorer = () => {
         return ids;
     };
 
-    const handlePageClick = (page, isLeaf) => {
-        const ids = isLeaf ? [page.page_id] : getAllNestedPageIds(page);
-        setSelectedSpaces([]); // Deselect all spaces
-        setSelectedPageIds(ids);
+    const handlePageClick = (page) => {
+        const nestedIds = getAllNestedPageIds(page);
+
+        // If already selected, deselect
+        const alreadySelected = nestedIds.every(id => selectedPageIds.includes(id));
+        if (alreadySelected) {
+            setSelectedPageIds([]);
+        } else {
+            setSelectedSpaces([]); // Deselect all spaces
+            setSelectedPageIds(nestedIds);
+        }
     };
+
+    const isChecked = (page) => selectedPageIds.includes(page.page_id);
 
     const renderPages = (pages) => {
         return (
             <ul className={styles.pageList}>
                 {pages.map(page => {
-                    const isLeaf = !page.children || page.children.length === 0;
-                    const isChecked = selectedPageIds.includes(page.page_id);
+                    const hasChildren = page.children && page.children.length > 0;
                     return (
                         <li key={page.page_id}>
                             <label className={styles.pageItem}>
                                 <input
                                     type="checkbox"
-                                    checked={isChecked}
-                                    onChange={() => handlePageClick(page, isLeaf)}
+                                    checked={isChecked(page)}
+                                    onChange={() => handlePageClick(page)}
                                 />
                                 {page.title}
                             </label>
-                            {!isLeaf && (
+                            {hasChildren && (
                                 <div className={styles.nested}>
                                     {renderPages(page.children)}
                                 </div>
@@ -101,7 +107,7 @@ const ConfluenceExplorer = () => {
             <div className={styles.spaceList}>
                 {mockSpaces.map(space => (
                     <div key={space.key} className={styles.spaceItem}>
-                        <label>
+                        <label className={styles.spaceLabel}>
                             <input
                                 type="checkbox"
                                 checked={selectedSpaces.includes(space.key)}
@@ -150,18 +156,25 @@ export default ConfluenceExplorer;
 
 
 
+
+
+
+
 .container {
     padding: 1rem;
-    background-color: #f9f9f9;
+    background-color: #1e1e2f;
     width: 100%;
-    max-width: 400px;
-    border: 1px solid #ccc;
+    max-width: 420px;
+    border: 1px solid #333;
     border-radius: 8px;
-    font-family: "Segoe UI", sans-serif;
+    color: #f0f0f0;
+    font-family: 'Segoe UI', sans-serif;
 }
 
 .heading {
     margin-bottom: 1rem;
+    font-size: 1.2rem;
+    color: #93c5fd;
 }
 
 .spaceList {
@@ -171,11 +184,15 @@ export default ConfluenceExplorer;
 }
 
 .spaceItem {
-    background-color: #fff;
-    border: 1px solid #ddd;
-    padding: 0.5rem;
+    background-color: #2a2a40;
+    border: 1px solid #444;
+    padding: 0.6rem;
     border-radius: 6px;
     position: relative;
+}
+
+.spaceLabel {
+    font-weight: 500;
 }
 
 .expandButton {
@@ -183,11 +200,17 @@ export default ConfluenceExplorer;
     right: 10px;
     top: 10px;
     border: none;
-    background: #eee;
+    background: #3b3b52;
+    color: #fff;
     border-radius: 4px;
     padding: 0 8px;
     cursor: pointer;
     font-size: 1rem;
+    transition: background 0.2s ease;
+}
+
+.expandButton:hover {
+    background: #52527a;
 }
 
 .pageTree {
@@ -204,16 +227,23 @@ export default ConfluenceExplorer;
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    margin: 0.25rem 0;
+    margin: 0.3rem 0;
+    font-size: 0.95rem;
 }
 
 .nested {
     margin-left: 1rem;
+    border-left: 1px dashed #555;
+    padding-left: 0.7rem;
+    margin-top: 0.3rem;
 }
 
 .result {
     margin-top: 1.5rem;
-    background-color: #f0f0f0;
-    padding: 0.5rem;
+    background-color: #29293d;
+    padding: 0.7rem;
     border-radius: 6px;
+    font-size: 0.9rem;
+    color: #c2c2c2;
+    white-space: pre-wrap;
 }
