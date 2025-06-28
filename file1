@@ -1,28 +1,136 @@
-.moreButton {
-  height: 80px;
-  min-width: 140px;
-  border-radius: 40px;
-  padding: 0 16px;
-  background: linear-gradient(to right, #148fcb, #0d3b7e);
-  color: white;
-  font-weight: 500;
-  border: none;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: transform 0.2s ease, box-shadow 0.3s ease;
-}
+import React, { useState } from 'react';
+import { Tree } from 'primereact/tree';
+import { ProgressSpinner } from 'primereact/progressspinner';
+import { Button } from 'primereact/button';
 
-.moreButton:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(20, 143, 203, 0.4);
-}
+const ConfluenceExplorer = () => {
+    const [spaces, setSpaces] = useState([
+        { key: 'Space1', name: 'Space1' },
+        { key: 'Space2', name: 'Space2' }
+    ]);
+    const [pagesBySpace, setPagesBySpace] = useState({});
+    const [selectedSpaceKeys, setSelectedSpaceKeys] = useState([]);
+    const [selectedPageIds, setSelectedPageIds] = useState([]);
+    const [loadingSpaceKey, setLoadingSpaceKey] = useState(null);
+
+    const fetchPages = async (spaceKey) => {
+        setLoadingSpaceKey(spaceKey);
+        // Mock delay for loading
+        const response = await new Promise(resolve => setTimeout(() => resolve(mockPageList), 1500));
+        setPagesBySpace(prev => ({ ...prev, [spaceKey]: response }));
+        setLoadingSpaceKey(null);
+    };
+
+    const handleSpaceClick = (spaceKey) => {
+        if (!pagesBySpace[spaceKey]) {
+            fetchPages(spaceKey);
+        }
+        if (selectedPageIds.length > 0) {
+            setSelectedPageIds([]);
+        }
+        setSelectedSpaceKeys(prev => {
+            if (prev.includes(spaceKey)) {
+                return prev.filter(k => k !== spaceKey);
+            }
+            return [...prev, spaceKey];
+        });
+    };
+
+    const getAllChildPageIds = (page) => {
+        let ids = [page.page_id];
+        if (page.children && page.children.length > 0) {
+            page.children.forEach(child => {
+                ids = [...ids, ...getAllChildPageIds(child)];
+            });
+        }
+        return ids;
+    };
+
+    const handlePageSelection = (page) => {
+        const allIds = getAllChildPageIds(page);
+        setSelectedPageIds(allIds);
+        setSelectedSpaceKeys([]);
+    };
+
+    const renderTreeNodes = (nodes) =>
+        nodes.map(page => ({
+            key: page.page_id,
+            label: page.title,
+            children: page.children ? renderTreeNodes(page.children) : [],
+            data: page
+        }));
+
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', padding: '1rem', maxWidth: 400 }}>
+            <h3>Spaces</h3>
+            {spaces.map(space => (
+                <div key={space.key} style={{ marginBottom: '1rem' }}>
+                    <Button
+                        label={space.name}
+                        onClick={() => handleSpaceClick(space.key)}
+                        className={selectedSpaceKeys.includes(space.key) ? 'p-button-success' : 'p-button-outlined'}
+                    />
+                    {loadingSpaceKey === space.key && (
+                        <div style={{ marginTop: 10 }}>
+                            <ProgressSpinner style={{ width: '30px', height: '30px' }} />
+                        </div>
+                    )}
+                    {pagesBySpace[space.key] && selectedSpaceKeys.includes(space.key) && (
+                        <Tree
+                            value={renderTreeNodes(pagesBySpace[space.key])}
+                            selectionMode="single"
+                            onNodeSelect={(e) => handlePageSelection(e.node.data)}
+                        />
+                    )}
+                </div>
+            ))}
+
+            <div style={{ marginTop: '2rem' }}>
+                <h4>Selected Result:</h4>
+                <pre>
+                    {selectedSpaceKeys.length > 0
+                        ? JSON.stringify(selectedSpaceKeys, null, 2)
+                        : JSON.stringify(selectedPageIds, null, 2)}
+                </pre>
+            </div>
+        </div>
+    );
+};
+
+export default ConfluenceExplorer;
 
 
 
-<Button
-  label={`+${remainingCount} More Images`}
-  className={styles.moreButton}
-  onClick={() => setShowAll(true)}
-/>
+
+const mockPageList = [
+    {
+        page_id: 1,
+        title: 'Main Page',
+        url: '',
+        last_modified: '',
+        children: [
+            {
+                page_id: 2,
+                title: 'Sub Main Page',
+                url: '',
+                last_modified: '',
+                children: []
+            },
+            {
+                page_id: 3,
+                title: 'Sub Main Page1',
+                url: '',
+                last_modified: '',
+                children: [
+                    {
+                        page_id: 4,
+                        title: 'Inner Sub Main Page1',
+                        url: '',
+                        last_modified: '',
+                        children: []
+                    }
+                ]
+            }
+        ]
+    }
+];
