@@ -1,3 +1,224 @@
+import React, { useState } from 'react';
+import styles from './ConfluenceExplorer.module.css';
+
+const mockSpaces = [
+    { key: 'Space1', name: 'Space1' },
+    { key: 'Space2', name: 'Space2' }
+];
+
+const mockPageData = {
+    Space1: [
+        {
+            page_id: 1,
+            title: 'Main Page',
+            children: [
+                {
+                    page_id: 2,
+                    title: 'Sub Main Page',
+                    children: []
+                },
+                {
+                    page_id: 3,
+                    title: 'Sub Main Page1',
+                    children: [
+                        {
+                            page_id: 4,
+                            title: 'Inner Sub Main Page1',
+                            children: [
+                                {
+                                    page_id: 5,
+                                    title: 'Final Level',
+                                    children: []
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+    ],
+    Space2: []
+};
+
+const ConfluenceExplorer = () => {
+    const [selectedSpaces, setSelectedSpaces] = useState([]);
+    const [selectedPageIds, setSelectedPageIds] = useState([]);
+    const [expandedSpace, setExpandedSpace] = useState(null);
+    const [expandedPages, setExpandedPages] = useState({}); // page_id: boolean
+
+    const toggleSpaceSelection = (spaceKey) => {
+        setSelectedPageIds([]);
+        setSelectedSpaces(prev =>
+            prev.includes(spaceKey) ? prev.filter(k => k !== spaceKey) : [...prev, spaceKey]
+        );
+    };
+
+    const getAllNestedPageIds = (page) => {
+        let ids = [page.page_id];
+        if (page.children && page.children.length > 0) {
+            for (const child of page.children) {
+                ids = [...ids, ...getAllNestedPageIds(child)];
+            }
+        }
+        return ids;
+    };
+
+    const handlePageClick = (page) => {
+        const nestedIds = getAllNestedPageIds(page);
+        const alreadySelected = nestedIds.every(id => selectedPageIds.includes(id));
+
+        setExpandedPages(prev => ({
+            ...prev,
+            [page.page_id]: !prev[page.page_id],
+        }));
+
+        if (alreadySelected) {
+            setSelectedPageIds([]);
+        } else {
+            setSelectedSpaces([]);
+            setSelectedPageIds(nestedIds);
+        }
+    };
+
+    const isChecked = (page) => selectedPageIds.includes(page.page_id);
+
+    const renderPages = (pages, level = 0, parentLast = true) => (
+        <ul className={styles.pageList}>
+            {pages.map((page, idx) => {
+                const hasChildren = page.children?.length > 0;
+                const isExpanded = expandedPages[page.page_id] ?? true;
+                const isLastChild = idx === pages.length - 1;
+
+                return (
+                    <li key={page.page_id}>
+                        <div
+                            className={`${styles.pageItem} ${!isLastChild ? styles.hasLine : ''}`}
+                            style={{ paddingLeft: `${level * 20}px` }}
+                            onClick={() => handlePageClick(page)}
+                        >
+                            <label onClick={(e) => e.stopPropagation()}>
+                                <input
+                                    type="checkbox"
+                                    checked={isChecked(page)}
+                                    onChange={() => handlePageClick(page)}
+                                />
+                                <span className={styles.pageTitle}>{page.title}</span>
+                            </label>
+                        </div>
+                        {hasChildren && isExpanded && (
+                            <div className={styles.nested}>
+                                {renderPages(page.children, level + 1, isLastChild)}
+                            </div>
+                        )}
+                    </li>
+                );
+            })}
+        </ul>
+    );
+
+    return (
+        <div className={styles.container}>
+            <h3 className={styles.heading}>Confluence Explorer</h3>
+            <div className={styles.spaceList}>
+                {mockSpaces.map(space => (
+                    <div key={space.key} className={styles.spaceItem}>
+                        <label className={styles.spaceLabel}>
+                            <input
+                                type="checkbox"
+                                checked={selectedSpaces.includes(space.key)}
+                                onChange={() => toggleSpaceSelection(space.key)}
+                            />
+                            {space.name}
+                        </label>
+                        <button
+                            className={styles.expandButton}
+                            onClick={() => setExpandedSpace(expandedSpace === space.key ? null : space.key)}
+                        >
+                            {expandedSpace === space.key ? '−' : '+'}
+                        </button>
+
+                        {expandedSpace === space.key && mockPageData[space.key] && (
+                            <div className={styles.pageTree}>
+                                {renderPages(mockPageData[space.key])}
+                            </div>
+                        )}
+                    </div>
+                ))}
+            </div>
+
+            <div className={styles.result}>
+                <h4>Selected:</h4>
+                <pre>
+                    {selectedSpaces.length > 0
+                        ? JSON.stringify(selectedSpaces, null, 2)
+                        : JSON.stringify(selectedPageIds, null, 2)}
+                </pre>
+            </div>
+        </div>
+    );
+};
+
+export default ConfluenceExplorer;
+
+
+
+
+
+
+
+.container {
+    padding: 1rem;
+    background-color: #1e1e2f;
+    width: 100%;
+    max-width: 420px;
+    border: 1px solid #333;
+    border-radius: 8px;
+    color: #f0f0f0;
+    font-family: 'Segoe UI', sans-serif;
+}
+
+.heading {
+    margin-bottom: 1rem;
+    font-size: 1.2rem;
+    color: #93c5fd;
+}
+
+.spaceList {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.spaceItem {
+    background-color: #2a2a40;
+    border: 1px solid #444;
+    padding: 0.6rem;
+    border-radius: 6px;
+    position: relative;
+}
+
+.spaceLabel {
+    font-weight: 500;
+}
+
+.expandButton {
+    position: absolute;
+    right: 10px;
+    top: 10px;
+    border: none;
+    background: #3b3b52;
+    color: #fff;
+    border-radius: 4px;
+    padding: 0 8px;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: background 0.2s ease;
+}
+
+.expandButton:hover {
+    background: #52527a;
+}
+
 .pageTree {
     margin-top: 0.5rem;
     margin-left: 0.3rem;
@@ -9,22 +230,57 @@
     list-style: none;
     padding-left: 0;
     margin: 0;
-    min-width: max-content; /* ensures child width drives container */
+    min-width: max-content;
 }
 
 .pageItem {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    margin: 0.2rem 0;
     font-size: 0.95rem;
     line-height: 1.6;
-    white-space: nowrap;        /* prevent text wrapping */
+    position: relative;
+    cursor: pointer;
+    white-space: nowrap;
 }
 
 .pageItem label {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    display: inline-block;
-    max-width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    cursor: pointer;
 }
+
+.pageTitle {
+    color: #f0f0f0;
+}
+
+.pageItem:hover .pageTitle {
+    text-decoration: underline;
+}
+
+.nested {
+    margin-left: 0;
+}
+
+.hasLine::before {
+    content: "";
+    position: absolute;
+    left: 9px;
+    top: 1.3rem;
+    height: 100%;
+    width: 1px;
+    border-left: 1px dotted #777;
+    z-index: 0;
+}
+
+.result {
+    margin-top: 1.5rem;
+    background-color: #29293d;
+    padding: 0.7rem;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    color: #c2c2c2;
+    white-space: pre-wrap;
+}
+
