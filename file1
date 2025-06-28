@@ -1,17 +1,351 @@
-.scrollWrapper {
-    max-height: 400px; /* Adjust as needed */
-    overflow-y: auto;
-    border: 1px solid #2a2a2a;
-    padding-right: 4px; /* for scrollbar space */
+import React, { useEffect, useState } from 'react';
+import axios from 'axios';
+import styles from './ConfluenceExplorer.module.css';
+
+const ConfluenceExplorer = () => {
+    const [spaces, setSpaces] = useState([]);
+    const [pageData, setPageData] = useState({});
+    const [expandedSpace, setExpandedSpace] = useState(null);
+    const [expandedPages, setExpandedPages] = useState({});
+    const [selectedSpaces, setSelectedSpaces] = useState([]);
+    const [selectedPageIds, setSelectedPageIds] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchData = async () => {
+            setLoading(true);
+            try {
+                const { data: spaceList } = await axios.get('/api/spaces');
+                const pagesPromises = spaceList.map(space =>
+                    axios.get(`/api/spaces/${space.key}/pages`)
+                );
+                const pageResponses = await Promise.all(pagesPromises);
+
+                const pagesBySpace = {};
+                spaceList.forEach((space, idx) => {
+                    pagesBySpace[space.key] = pageResponses[idx].data;
+                });
+
+                setSpaces(spaceList);
+                setPageData(pagesBySpace);
+            } catch (error) {
+                console.error('Failed to load:', error);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchData();
+    }, []);
+
+    const toggleSpaceSelection = (spaceKey) => {
+        setSelectedPageIds([]);
+        setSelectedSpaces(prev =>
+            prev.includes(spaceKey) ? prev.filter(k => k !== spaceKey) : [...prev, spaceKey]
+        );
+    };
+
+    const getAllNestedPageIds = (page) => {
+        let ids = [page.page_id];
+        if (page.children) {
+            for (const child of page.children) {
+                ids = [...ids, ...getAllNestedPageIds(child)];
+            }
+        }
+        return ids;
+    };
+
+    const handleCheckboxClick = (e, page) => {
+        e.stopPropagation();
+        const nestedIds = getAllNestedPageIds(page);
+        const alreadySelected = nestedIds.every(id => selectedPageIds.includes(id));
+        if (alreadySelected) {
+            setSelectedPageIds([]);
+        } else {
+            setSelectedSpaces([]);
+            setSelectedPageIds(nestedIds);
+        }
+    };
+
+    const handlePageClick = (page) => {
+        setExpandedPages(prev => ({
+            ...prev,
+            [page.page_id]: !prev[page.page_id],
+        }));
+    };
+
+    const isChecked = (page) => selectedPageIds.includes(page.page_id);
+
+    const renderPages = (pages, level = 0) => (
+        <ul className={styles.pageList}>
+            {pages.map((page, idx) => {
+                const hasChildren = page.children?.length > 0;
+                const isExpanded = expandedPages[page.page_id] ?? false;
+                const isLastChild = idx === pages.length - 1;
+
+                return (
+                    <li key={page.page_id}>
+                        <div
+                            className={`${styles.pageItem} ${!isLastChild ? styles.hasLine : ''}`}
+                            style={{ paddingLeft: `${level * 20}px` }}
+                            onClick={() => handlePageClick(page)}
+                        >
+                            <div className={styles.pageLabel}>
+                                <input
+                                    type="checkbox"
+                                    checked={isChecked(page)}
+                                    onChange={(e) => handleCheckboxClick(e, page)}
+                                    onClick={(e) => e.stopPropagation()}
+                                />
+                                <span className={styles.pageTitle}>{page.title}</span>
+                            </div>
+                        </div>
+                        {hasChildren && isExpanded && (
+                            <div className={styles.nestedWrapper}>
+                                {renderPages(page.children, level + 1)}
+                            </div>
+                        )}
+                    </li>
+                );
+            })}
+        </ul>
+    );
+
+    if (loading) {
+        return (
+            <div className={styles.loader}>
+                <div className={styles.emoji}>😊</div>
+                <div className={styles.message}>Hang tight! Loading your Confluence data...</div>
+            </div>
+        );
+    }
+
+    return (
+        <div className={styles.container}>
+            <h3 className={styles.heading}>Confluence Explorer</h3>
+
+            <div className={styles.scrollWrapper}>
+                <div className={styles.spaceList}>
+                    {spaces.map(space => (
+                        <div key={space.key} className={styles.spaceItem}>
+                            <div className={styles.spaceLabel} title={space.name}>
+                                <input
+                                    type="checkbox"
+                                    checked={selectedSpaces.includes(space.key)}
+                                    onChange={() => toggleSpaceSelection(space.key)}
+                                />
+                                <span className={styles.spaceName}>{space.name}</span>
+                            </div>
+                            <button
+                                className={styles.expandButton}
+                                onClick={() => setExpandedSpace(expandedSpace === space.key ? null : space.key)}
+                            >
+                                {expandedSpace === space.key ? '−' : '+'}
+                            </button>
+
+                            {expandedSpace === space.key && (
+                                <div className={styles.pageTree}>
+                                    {renderPages(pageData[space.key] || [])}
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            <div className={styles.result}>
+                <h4>Selected:</h4>
+                <pre>
+                    {selectedSpaces.length > 0
+                        ? JSON.stringify(selectedSpaces, null, 2)
+                        : JSON.stringify(selectedPageIds, null, 2)}
+                </pre>
+            </div>
+        </div>
+    );
+};
+
+export default ConfluenceExplorer;
+
+
+
+
+.container {
+    padding: 1rem;
+    background-color: #0c0c0c;
+    color: #f5f5f5;
+    max-width: 450px;
+    border-radius: 8px;
+    font-family: 'Segoe UI', sans-serif;
+    height: 600px;
+    display: flex;
+    flex-direction: column;
+}
+
+.heading {
+    font-size: 1.2rem;
+    color: #60a5fa;
     margin-bottom: 1rem;
+}
+
+.scrollWrapper {
+    flex: 1;
+    overflow-y: auto;
+    padding-right: 6px;
+    border: 1px solid #2a2a2a;
     border-radius: 6px;
 }
 
+.spaceList {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    min-height: 0;
+}
 
-<div className={styles.scrollWrapper}>
-  <div className={styles.spaceList}>
-    {spaces.map(space => (
-      // existing space render logic here...
-    ))}
-  </div>
-</div>
+.spaceItem {
+    background-color: #1a1a1a;
+    border: 1px solid #2b2b2b;
+    padding: 0.7rem;
+    border-radius: 6px;
+    position: relative;
+}
+
+.spaceLabel {
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    cursor: pointer;
+    color: #f5f5f5;
+}
+
+.spaceLabel input {
+    cursor: pointer;
+    accent-color: #3b82f6;
+}
+
+.spaceName {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 180px;
+    display: inline-block;
+}
+
+.expandButton {
+    position: absolute;
+    right: 10px;
+    top: 10px;
+    border: none;
+    background: #2a2a2a;
+    color: #ccc;
+    border-radius: 4px;
+    padding: 0 8px;
+    cursor: pointer;
+}
+
+.expandButton:hover {
+    background: #3b3b3b;
+}
+
+.pageTree {
+    margin-top: 0.5rem;
+    overflow-x: auto;
+    padding-bottom: 0.5rem;
+}
+
+.pageList {
+    list-style: none;
+    padding-left: 0;
+    margin: 0;
+    min-width: max-content;
+}
+
+.pageItem {
+    display: flex;
+    align-items: center;
+    font-size: 0.95rem;
+    line-height: 1.6;
+    position: relative;
+    white-space: nowrap;
+    cursor: pointer;
+    padding: 0.3rem 0;
+}
+
+.pageLabel {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    user-select: none;
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+}
+
+.pageLabel input {
+    cursor: pointer;
+    accent-color: #3b82f6;
+}
+
+.pageTitle {
+    color: #f5f5f5;
+}
+
+.pageItem:hover .pageTitle {
+    text-decoration: underline;
+}
+
+.hasLine::before {
+    content: "";
+    position: absolute;
+    left: 9px;
+    top: 1.3rem;
+    height: 100%;
+    width: 1px;
+    border-left: 1px dotted #555;
+    z-index: 0;
+}
+
+.nestedWrapper {
+    padding-left: 0;
+    margin-left: 0;
+}
+
+.result {
+    margin-top: 1rem;
+    background-color: #131313;
+    padding: 0.7rem;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    color: #bbbbbb;
+    white-space: pre-wrap;
+}
+
+.loader {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 300px;
+    color: #ffffff;
+    text-align: center;
+}
+
+.emoji {
+    font-size: 3rem;
+    animation: bounce 1.2s infinite;
+}
+
+.message {
+    margin-top: 0.8rem;
+    font-size: 1rem;
+    color: #bbbbbb;
+}
+
+@keyframes bounce {
+    0%, 100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-8px);
+    }
+}
