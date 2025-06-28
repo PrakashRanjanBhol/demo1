@@ -1,34 +1,49 @@
 import React, { useState } from 'react';
-import { Tree } from 'primereact/tree';
-import { ProgressSpinner } from 'primereact/progressspinner';
-import { Button } from 'primereact/button';
+import styles from './ConfluenceExplorer.module.css';
+
+const mockSpaces = [
+    { key: 'Space1', name: 'Space1' },
+    { key: 'Space2', name: 'Space2' }
+];
+
+const mockPageData = {
+    Space1: [
+        {
+            page_id: 1,
+            title: 'Main Page',
+            children: [
+                {
+                    page_id: 2,
+                    title: 'Sub Main Page',
+                    children: []
+                },
+                {
+                    page_id: 3,
+                    title: 'Sub Main Page1',
+                    children: [
+                        {
+                            page_id: 4,
+                            title: 'Inner Sub Main Page1',
+                            children: []
+                        }
+                    ]
+                }
+            ]
+        }
+    ],
+    Space2: []
+};
 
 const ConfluenceExplorer = () => {
-    const [spaces, setSpaces] = useState([
-        { key: 'Space1', name: 'Space1' },
-        { key: 'Space2', name: 'Space2' }
-    ]);
-    const [pagesBySpace, setPagesBySpace] = useState({});
-    const [selectedSpaceKeys, setSelectedSpaceKeys] = useState([]);
+    const [selectedSpaces, setSelectedSpaces] = useState([]);
     const [selectedPageIds, setSelectedPageIds] = useState([]);
-    const [loadingSpaceKey, setLoadingSpaceKey] = useState(null);
+    const [expandedSpace, setExpandedSpace] = useState(null);
 
-    const fetchPages = async (spaceKey) => {
-        setLoadingSpaceKey(spaceKey);
-        // Mock delay for loading
-        const response = await new Promise(resolve => setTimeout(() => resolve(mockPageList), 1500));
-        setPagesBySpace(prev => ({ ...prev, [spaceKey]: response }));
-        setLoadingSpaceKey(null);
-    };
-
-    const handleSpaceClick = (spaceKey) => {
-        if (!pagesBySpace[spaceKey]) {
-            fetchPages(spaceKey);
-        }
+    const toggleSpaceSelection = (spaceKey) => {
         if (selectedPageIds.length > 0) {
-            setSelectedPageIds([]);
+            setSelectedPageIds([]); // Clear pages if space is selected
         }
-        setSelectedSpaceKeys(prev => {
+        setSelectedSpaces((prev) => {
             if (prev.includes(spaceKey)) {
                 return prev.filter(k => k !== spaceKey);
             }
@@ -36,60 +51,85 @@ const ConfluenceExplorer = () => {
         });
     };
 
-    const getAllChildPageIds = (page) => {
+    const getAllNestedPageIds = (page) => {
         let ids = [page.page_id];
         if (page.children && page.children.length > 0) {
-            page.children.forEach(child => {
-                ids = [...ids, ...getAllChildPageIds(child)];
-            });
+            for (const child of page.children) {
+                ids = [...ids, ...getAllNestedPageIds(child)];
+            }
         }
         return ids;
     };
 
-    const handlePageSelection = (page) => {
-        const allIds = getAllChildPageIds(page);
-        setSelectedPageIds(allIds);
-        setSelectedSpaceKeys([]);
+    const handlePageClick = (page, isLeaf) => {
+        const ids = isLeaf ? [page.page_id] : getAllNestedPageIds(page);
+        setSelectedSpaces([]); // Deselect all spaces
+        setSelectedPageIds(ids);
     };
 
-    const renderTreeNodes = (nodes) =>
-        nodes.map(page => ({
-            key: page.page_id,
-            label: page.title,
-            children: page.children ? renderTreeNodes(page.children) : [],
-            data: page
-        }));
+    const renderPages = (pages) => {
+        return (
+            <ul className={styles.pageList}>
+                {pages.map(page => {
+                    const isLeaf = !page.children || page.children.length === 0;
+                    const isChecked = selectedPageIds.includes(page.page_id);
+                    return (
+                        <li key={page.page_id}>
+                            <label className={styles.pageItem}>
+                                <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={() => handlePageClick(page, isLeaf)}
+                                />
+                                {page.title}
+                            </label>
+                            {!isLeaf && (
+                                <div className={styles.nested}>
+                                    {renderPages(page.children)}
+                                </div>
+                            )}
+                        </li>
+                    );
+                })}
+            </ul>
+        );
+    };
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', padding: '1rem', maxWidth: 400 }}>
-            <h3>Spaces</h3>
-            {spaces.map(space => (
-                <div key={space.key} style={{ marginBottom: '1rem' }}>
-                    <Button
-                        label={space.name}
-                        onClick={() => handleSpaceClick(space.key)}
-                        className={selectedSpaceKeys.includes(space.key) ? 'p-button-success' : 'p-button-outlined'}
-                    />
-                    {loadingSpaceKey === space.key && (
-                        <div style={{ marginTop: 10 }}>
-                            <ProgressSpinner style={{ width: '30px', height: '30px' }} />
-                        </div>
-                    )}
-                    {pagesBySpace[space.key] && selectedSpaceKeys.includes(space.key) && (
-                        <Tree
-                            value={renderTreeNodes(pagesBySpace[space.key])}
-                            selectionMode="single"
-                            onNodeSelect={(e) => handlePageSelection(e.node.data)}
-                        />
-                    )}
-                </div>
-            ))}
+        <div className={styles.container}>
+            <h3 className={styles.heading}>Confluence Explorer</h3>
+            <div className={styles.spaceList}>
+                {mockSpaces.map(space => (
+                    <div key={space.key} className={styles.spaceItem}>
+                        <label>
+                            <input
+                                type="checkbox"
+                                checked={selectedSpaces.includes(space.key)}
+                                onChange={() => toggleSpaceSelection(space.key)}
+                            />
+                            {space.name}
+                        </label>
+                        <button
+                            className={styles.expandButton}
+                            onClick={() => setExpandedSpace(expandedSpace === space.key ? null : space.key)}
+                        >
+                            {expandedSpace === space.key ? '−' : '+'}
+                        </button>
 
-            <div style={{ marginTop: '2rem' }}>
-                <h4>Selected Result:</h4>
+                        {expandedSpace === space.key && mockPageData[space.key] && (
+                            <div className={styles.pageTree}>
+                                {renderPages(mockPageData[space.key])}
+                            </div>
+                        )}
+                    </div>
+                ))}
+            </div>
+
+            <div className={styles.result}>
+                <h4>Selected:</h4>
                 <pre>
-                    {selectedSpaceKeys.length > 0
-                        ? JSON.stringify(selectedSpaceKeys, null, 2)
+                    {selectedSpaces.length > 0
+                        ? JSON.stringify(selectedSpaces, null, 2)
                         : JSON.stringify(selectedPageIds, null, 2)}
                 </pre>
             </div>
@@ -102,35 +142,78 @@ export default ConfluenceExplorer;
 
 
 
-const mockPageList = [
-    {
-        page_id: 1,
-        title: 'Main Page',
-        url: '',
-        last_modified: '',
-        children: [
-            {
-                page_id: 2,
-                title: 'Sub Main Page',
-                url: '',
-                last_modified: '',
-                children: []
-            },
-            {
-                page_id: 3,
-                title: 'Sub Main Page1',
-                url: '',
-                last_modified: '',
-                children: [
-                    {
-                        page_id: 4,
-                        title: 'Inner Sub Main Page1',
-                        url: '',
-                        last_modified: '',
-                        children: []
-                    }
-                ]
-            }
-        ]
-    }
-];
+
+
+
+
+
+
+
+
+.container {
+    padding: 1rem;
+    background-color: #f9f9f9;
+    width: 100%;
+    max-width: 400px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    font-family: "Segoe UI", sans-serif;
+}
+
+.heading {
+    margin-bottom: 1rem;
+}
+
+.spaceList {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.spaceItem {
+    background-color: #fff;
+    border: 1px solid #ddd;
+    padding: 0.5rem;
+    border-radius: 6px;
+    position: relative;
+}
+
+.expandButton {
+    position: absolute;
+    right: 10px;
+    top: 10px;
+    border: none;
+    background: #eee;
+    border-radius: 4px;
+    padding: 0 8px;
+    cursor: pointer;
+    font-size: 1rem;
+}
+
+.pageTree {
+    margin-top: 0.5rem;
+    margin-left: 1rem;
+}
+
+.pageList {
+    list-style: none;
+    padding-left: 0.5rem;
+}
+
+.pageItem {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0.25rem 0;
+}
+
+.nested {
+    margin-left: 1rem;
+}
+
+.result {
+    margin-top: 1.5rem;
+    background-color: #f0f0f0;
+    padding: 0.5rem;
+    border-radius: 6px;
+}
