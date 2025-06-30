@@ -3,42 +3,56 @@ import React from 'react';
 const JsonViewer = ({ jsonString }) => {
   let parsedData;
 
+  // Try to correct single quotes to double quotes
+  const safeJson = jsonString
+    .replace(/([{,]\s*)'([^']+)'(?=\s*:)/g, '$1"$2"') // keys
+    .replace(/:\s*'([^']*)'/g, ': "$1"');              // string values
+
   try {
-    parsedData = JSON.parse(jsonString);
+    parsedData = JSON.parse(safeJson);
   } catch (error) {
     return (
       <div style={{ color: 'red', whiteSpace: 'pre-wrap' }}>
-        Invalid JSON: {jsonString}
+        <strong>Invalid JSON:</strong>
+        <br />
+        {jsonString}
       </div>
     );
   }
 
-  if (typeof parsedData !== 'object' || parsedData === null) {
-    return <div>Not a valid JSON object</div>;
+  // Render as table if it's an object
+  if (typeof parsedData === 'object' && parsedData !== null) {
+    const entries = Array.isArray(parsedData)
+      ? parsedData
+      : [parsedData];
+
+    return (
+      <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+        <thead>
+          <tr>
+            {Object.keys(entries[0]).map((key) => (
+              <th key={key} style={{ border: '1px solid #ccc', padding: '8px' }}>
+                {key}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {entries.map((item, idx) => (
+            <tr key={idx}>
+              {Object.values(item).map((val, i) => (
+                <td key={i} style={{ border: '1px solid #ccc', padding: '8px' }}>
+                  {typeof val === 'object' ? JSON.stringify(val) : String(val)}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    );
   }
 
-  return (
-    <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-      <thead>
-        <tr>
-          <th style={{ border: '1px solid #ccc', padding: '8px' }}>Key</th>
-          <th style={{ border: '1px solid #ccc', padding: '8px' }}>Value</th>
-        </tr>
-      </thead>
-      <tbody>
-        {Object.entries(parsedData).map(([key, value]) => (
-          <tr key={key}>
-            <td style={{ border: '1px solid #ccc', padding: '8px' }}>{key}</td>
-            <td style={{ border: '1px solid #ccc', padding: '8px' }}>
-              {typeof value === 'object'
-                ? JSON.stringify(value, null, 2)
-                : String(value)}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
+  return <pre>{String(parsedData)}</pre>;
 };
 
 export default JsonViewer;
