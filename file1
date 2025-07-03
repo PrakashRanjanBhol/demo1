@@ -11,13 +11,6 @@ interface FileNode {
   queries?: string[];
 }
 
-interface Project {
-  id: number;
-  name: string;
-  isFavourite: boolean;
-  structure: FileNode[];
-}
-
 interface RawProjectMap {
   [key: string]: {
     key: string;
@@ -27,6 +20,13 @@ interface RawProjectMap {
   };
 }
 
+interface Project {
+  id: number;
+  name: string;
+  isFavourite: boolean;
+  structure: FileNode[];
+}
+
 @Component({
   selector: 'project-sidebar',
   templateUrl: './project-sidebar.component.html',
@@ -34,28 +34,32 @@ interface RawProjectMap {
 })
 export class ProjectSidebarComponent implements OnInit {
   @ViewChild('op') overlayPanel!: OverlayPanel;
+
   queryList: string[] = [];
   selectedFiles: FileNode[] = [];
+  loadingProjectIds: number[] = [];
 
   rawAllProjects: RawProjectMap = {
     "1": { key: "Project Alpha", id: "1", type: "project", icon: "" },
     "2": { key: "Project Beta", id: "2", type: "project", icon: "" },
-    "3": { key: "Project Gamma", id: "3", type: "project", icon: "" }
+    "3": { key: "Project Gamma", id: "3", type: "project", icon: "" },
+    "4": { key: "Project Delta", id: "4", type: "project", icon: "" },
+    "5": { key: "Project Epsilon", id: "5", type: "project", icon: "" }
   };
 
-  rawFavouriteProjectIds: string[] = ['2'];
+  rawFavouriteProjects: RawProjectMap = {
+    "1": { key: "Project Alpha", id: "1", type: "project", icon: "" },
+    "2": { key: "Project Beta", id: "2", type: "project", icon: "" }
+  };
 
   allProjects: Project[] = [];
   favouriteProjects: Project[] = [];
 
   ngOnInit() {
     this.allProjects = this.normalizeProjects(this.rawAllProjects);
-    this.favouriteProjects = this.allProjects.filter(p =>
-      this.rawFavouriteProjectIds.includes(p.id.toString())
-    );
-    this.allProjects.forEach(p =>
-      p.isFavourite = this.rawFavouriteProjectIds.includes(p.id.toString())
-    );
+    const favIds = Object.keys(this.rawFavouriteProjects);
+    this.favouriteProjects = this.allProjects.filter(p => favIds.includes(p.id.toString()));
+    this.allProjects.forEach(p => p.isFavourite = favIds.includes(p.id.toString()));
   }
 
   normalizeProjects(data: RawProjectMap): Project[] {
@@ -78,12 +82,26 @@ export class ProjectSidebarComponent implements OnInit {
 
   async toggleExpand(project: Project) {
     const root = project.structure[0];
-    if (!root.isExpanded && (!root.children || root.children.length === 0)) {
-      root.children = undefined; // show loading
+
+    // collapse if already expanded
+    if (root.isExpanded) {
+      root.isExpanded = false;
+      return;
+    }
+
+    root.isExpanded = true;
+
+    if (!root.children || root.children.length === 0) {
+      this.loadingProjectIds.push(project.id);
+      root.children = undefined; // triggers loading UI
       const data = await this.fetchJiraInfo(project.id);
       root.children = this.transformJiraToNodes(data);
+      this.loadingProjectIds = this.loadingProjectIds.filter(id => id !== project.id);
     }
-    root.isExpanded = !root.isExpanded;
+  }
+
+  isLoading(projectId: number): boolean {
+    return this.loadingProjectIds.includes(projectId);
   }
 
   transformJiraToNodes(data: any): FileNode[] {
@@ -122,7 +140,7 @@ export class ProjectSidebarComponent implements OnInit {
             queries: ['What is your birth place?', 'What is your hobby?']
           }
         });
-      }, 1000);
+      }, 1500);
     });
   }
 
