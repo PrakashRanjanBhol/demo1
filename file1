@@ -1,4 +1,4 @@
-import { Component, ViewChild, OnInit } from '@angular/core';
+import { Component, OnInit, ViewChild } from '@angular/core';
 import { OverlayPanel } from 'primeng/overlaypanel';
 
 interface FileNode {
@@ -11,20 +11,20 @@ interface FileNode {
   queries?: string[];
 }
 
-interface RawProject {
+interface Project {
+  id: number;
+  name: string;
+  isFavourite: boolean;
+  structure: FileNode[];
+}
+
+interface RawProjectMap {
   [key: string]: {
     key: string;
     id: string;
     type: string;
     icon: string;
   };
-}
-
-interface Project {
-  id: number;
-  name: string;
-  isFavourite: boolean;
-  structure: FileNode[];
 }
 
 @Component({
@@ -35,41 +35,36 @@ interface Project {
 export class ProjectSidebarComponent implements OnInit {
   @ViewChild('op') overlayPanel!: OverlayPanel;
   queryList: string[] = [];
+  selectedFiles: FileNode[] = [];
+
+  rawAllProjects: RawProjectMap = {
+    "1": { key: "Project Alpha", id: "1", type: "project", icon: "" },
+    "2": { key: "Project Beta", id: "2", type: "project", icon: "" },
+    "3": { key: "Project Gamma", id: "3", type: "project", icon: "" }
+  };
+
+  rawFavouriteProjectIds: string[] = ['2'];
 
   allProjects: Project[] = [];
   favouriteProjects: Project[] = [];
-  loadingProjectIds: number[] = [];
-
-  rawAllProjects: RawProject[] = [
-    { "1": { key: "Project Alpha", id: "1", type: "project", icon: "" } },
-    { "2": { key: "Project Beta", id: "2", type: "project", icon: "" } },
-    { "3": { key: "Project Gamma", id: "3", type: "project", icon: "" } },
-    { "4": { key: "Project Delta", id: "4", type: "project", icon: "" } },
-    { "5": { key: "Project Epsilon", id: "5", type: "project", icon: "" } }
-  ];
-
-  rawFavouriteProjects: RawProject[] = [
-    { "2": { key: "Project Beta", id: "2", type: "project", icon: "" } },
-    { "4": { key: "Project Delta", id: "4", type: "project", icon: "" } }
-  ];
 
   ngOnInit() {
     this.allProjects = this.normalizeProjects(this.rawAllProjects);
-    const favIds = this.rawFavouriteProjects.map(p => Object.keys(p)[0]);
-    this.favouriteProjects = this.allProjects.filter(p => favIds.includes(p.id.toString()));
-    this.allProjects.forEach(p => p.isFavourite = favIds.includes(p.id.toString()));
+    this.favouriteProjects = this.allProjects.filter(p =>
+      this.rawFavouriteProjectIds.includes(p.id.toString())
+    );
+    this.allProjects.forEach(p =>
+      p.isFavourite = this.rawFavouriteProjectIds.includes(p.id.toString())
+    );
   }
 
-  normalizeProjects(data: RawProject[]): Project[] {
-    return data.map(obj => {
-      const id = Object.keys(obj)[0];
-      return {
-        id: Number(id),
-        name: obj[id].key,
-        isFavourite: false,
-        structure: [{ name: 'JIRA', type: 'folder', children: [], isExpanded: false }]
-      };
-    });
+  normalizeProjects(data: RawProjectMap): Project[] {
+    return Object.entries(data).map(([id, value]) => ({
+      id: Number(id),
+      name: value.key,
+      isFavourite: false,
+      structure: [{ name: 'JIRA', type: 'folder', children: [], isExpanded: false }]
+    }));
   }
 
   toggleFavourite(project: Project) {
@@ -84,16 +79,11 @@ export class ProjectSidebarComponent implements OnInit {
   async toggleExpand(project: Project) {
     const root = project.structure[0];
     if (!root.isExpanded && (!root.children || root.children.length === 0)) {
-      this.loadingProjectIds.push(project.id);
+      root.children = undefined; // show loading
       const data = await this.fetchJiraInfo(project.id);
       root.children = this.transformJiraToNodes(data);
-      this.loadingProjectIds = this.loadingProjectIds.filter(id => id !== project.id);
     }
     root.isExpanded = !root.isExpanded;
-  }
-
-  isLoading(projectId: number): boolean {
-    return this.loadingProjectIds.includes(projectId);
   }
 
   transformJiraToNodes(data: any): FileNode[] {
@@ -132,26 +122,23 @@ export class ProjectSidebarComponent implements OnInit {
             queries: ['What is your birth place?', 'What is your hobby?']
           }
         });
-      }, 1500);
+      }, 1000);
     });
   }
 
-  selectedFiles: FileNode[] = [];
-
-onFileToggle(file: FileNode) {
-  if (!file.selected) {
-    if (this.selectedFiles.length >= 5) {
-      // Optional: use a toast here
-      alert('You can select a maximum of 5 tickets.');
-      return;
+  onFileToggle(file: FileNode) {
+    if (!file.selected) {
+      if (this.selectedFiles.length >= 5) {
+        alert('You can select a maximum of 5 tickets.');
+        return;
+      }
+      file.selected = true;
+      this.selectedFiles.push(file);
+    } else {
+      file.selected = false;
+      this.selectedFiles = this.selectedFiles.filter(f => f !== file);
     }
-    file.selected = true;
-    this.selectedFiles.push(file);
-  } else {
-    file.selected = false;
-    this.selectedFiles = this.selectedFiles.filter(f => f !== file);
   }
-}
 
   showOverlay(event: MouseEvent, node: FileNode) {
     event.preventDefault();
@@ -164,304 +151,3 @@ onFileToggle(file: FileNode) {
     this.overlayPanel.hide();
   }
 }
-
-
-
-
-
-
-
-
-
-
-<p-overlayPanel #op [dismissable]="true">
-    <div *ngIf="queryList.length">
-        <div class="query-title">Suggested Queries:</div>
-        <ul>
-            <li *ngFor="let query of queryList">
-                <button (click)="askQuery(query)" class="query-button">{{ query }}</button>
-            </li>
-        </ul>
-    </div>
-</p-overlayPanel>
-
-<div class="sidebar">
-    <div class="sidebar-scroll">
-        <p-accordion [multiple]="true" styleClass="custom-accordion">
-            <p-accordionTab header="All Projects">
-                <ul class="project-list">
-                    <li *ngFor="let project of allProjects" class="project-item">
-                        <span class="project-name">{{ project.name }}</span>
-                        <i class="pi" [ngClass]="project.isFavourite ? 'pi-star-fill' : 'pi-star'"
-                            (click)="toggleFavourite(project)" [ngStyle]="{
-                 color: project.isFavourite ? '#f5b700' : '#aaa',
-                 cursor: 'pointer',
-                 fontSize: '1.2rem'
-               }" pTooltip="{{ project.isFavourite ? 'Unfavourite' : 'Mark as favourite' }}" tooltipPosition="left">
-                        </i>
-                    </li>
-                </ul>
-            </p-accordionTab>
-
-            <p-accordionTab header="Favourite Projects">
-                <div class="favourite-projects">
-                    <div *ngFor="let fav of favouriteProjects" class="fav-card">
-                        <div class="card-header" (click)="toggleExpand(fav)">
-                            {{ fav.name }}
-                        </div>
-                        <div class="folder-structure">
-                            <div class="loading-placeholder" *ngIf="isLoading(fav.id)">
-                                <div class="emoji">🤖 Please wait</div>
-                                <div class="dot-blink">
-                                    <span>.</span><span>.</span><span>.</span>
-                                </div>
-                            </div>
-
-                            <ng-container *ngIf="fav.structure[0].isExpanded && !isLoading(fav.id)">
-                                <ng-container
-                                    *ngTemplateOutlet="recursiveList; context: { $implicit: fav.structure[0].children }">
-                                </ng-container>
-                            </ng-container>
-                        </div>
-                    </div>
-                </div>
-            </p-accordionTab>
-        </p-accordion>
-    </div>
-
-    <ng-template #recursiveList let-nodes>
-        <ul class="tree-list">
-            <li *ngFor="let node of nodes">
-                <div class="node" [style.paddingLeft.px]="node.type === 'file' ? 20 : 8">
-                    <span *ngIf="node.type === 'folder'" (click)="node.isExpanded = !node.isExpanded">
-                        📁 {{ node.name }} <small>({{ node.isExpanded ? '-' : '+' }})</small>
-                    </span>
-
-                    <label *ngIf="node.type === 'file'" class="ticket-node" (contextmenu)="showOverlay($event, node)">
-                        <input type="checkbox" [checked]="node.selected"
-                            [disabled]="!node.selected && selectedFiles.length >= 5" (change)="onFileToggle(node)" />
-
-                        📄 {{ node.name }}
-                    </label>
-                </div>
-
-                <ng-container *ngIf="node.children && node.isExpanded">
-                    <ng-container *ngTemplateOutlet="recursiveList; context: { $implicit: node.children }">
-                    </ng-container>
-                </ng-container>
-            </li>
-        </ul>
-    </ng-template>
-</div>
-
-
-
-
-
-
-
-
-
-
-.sidebar {
-    width: 380px;
-    height: 100vh;
-    background-color: #171717;
-    border-right: 1px solid #2a2a2a;
-    font-family: 'Segoe UI', sans-serif;
-    font-size: 15px;
-    color: #f1f1f1;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-}
-
-.sidebar-scroll {
-    flex: 1;
-    overflow-y: auto;
-}
-
-.project-list {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-}
-
-.project-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 12px;
-    margin-bottom: 6px;
-    border-radius: 6px;
-    background-color: #1e1e1e;
-    border: 1px solid #2a2a2a;
-    transition: all 0.2s ease-in-out;
-
-    &:hover {
-        background-color: #2a2a2a;
-        box-shadow: 0 2px 8px rgba(255, 255, 255, 0.05);
-    }
-}
-
-.project-name {
-    font-weight: 500;
-    color: #f1f1f1;
-}
-
-.fav-card {
-    margin-bottom: 12px;
-    border: 1px solid #2a2a2a;
-    border-radius: 6px;
-    background: #1e1e1e;
-    overflow: hidden;
-    box-shadow: 0 2px 5px rgba(255, 255, 255, 0.03);
-}
-
-.card-header {
-    background: #222;
-    padding: 10px 12px;
-    cursor: pointer;
-    font-weight: bold;
-    border-bottom: 1px solid #2a2a2a;
-    color: #eee;
-}
-
-.folder-structure {
-    padding: 10px 14px;
-}
-
-.tree-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-}
-
-.node {
-    margin-bottom: 8px;
-    color: #ddd;
-}
-
-.node>span {
-    display: inline-block;
-    padding: 4px 8px;
-    border-radius: 5px;
-    transition: background 0.2s ease;
-    cursor: pointer;
-
-    &:hover {
-        background: #2e2e2e;
-    }
-}
-
-.ticket-node {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 10px;
-    cursor: pointer;
-    border-radius: 4px;
-    margin-left: 8px;
-    transition: background 0.2s, transform 0.2s;
-    color: #e0e0e0;
-
-    &:hover {
-        background: #333;
-        transform: translateX(2px);
-    }
-
-    input[type="checkbox"] {
-        accent-color: #007bff;
-    }
-}
-
-.query-title {
-    font-weight: bold;
-    margin-bottom: 6px;
-    font-size: 14px;
-    color: #fff;
-}
-
-.query-button {
-    background: #007bff;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    padding: 4px 10px;
-    margin: 4px 0;
-    font-size: 13px;
-    cursor: pointer;
-    transition: background 0.2s ease;
-
-    &:hover {
-        background: #0056b3;
-    }
-}
-
-.loading-placeholder {
-    text-align: center;
-    margin: 15px 0;
-    font-size: 16px;
-    color: #ccc;
-
-    .emoji {
-        font-size: 18px;
-        margin-bottom: 8px;
-    }
-
-    .dot-blink {
-        display: flex;
-        justify-content: center;
-        gap: 6px;
-
-        span {
-            font-size: 24px;
-            animation: blink 1.4s infinite;
-        }
-
-        span:nth-child(2) {
-            animation-delay: 0.2s;
-        }
-
-        span:nth-child(3) {
-            animation-delay: 0.4s;
-        }
-    }
-
-    @keyframes blink {
-        0% {
-            opacity: 0.2;
-        }
-
-        20% {
-            opacity: 1;
-        }
-
-        100% {
-            opacity: 0.2;
-        }
-    }
-}
-
-:host ::ng-deep .p-overlaypanel {
-    background-color: #222;
-    color: #eee;
-    border: 1px solid #333;
-    box-shadow: 0 2px 8px rgba(255, 255, 255, 0.05);
-}
-
-:host ::ng-deep .custom-accordion .p-accordion-header {
-    background-color: #1f1f1f !important;
-    color: #f1f1f1 !important;
-    border: 1px solid #2a2a2a !important;
-    padding: 10px 15px;
-    font-weight: bold;
-}
-
-:host ::ng-deep .custom-accordion .p-accordion-content {
-    background-color: #1a1a1a !important;
-    border: 1px solid #2a2a2a;
-    padding: 0;
-    color: #ddd;
-}
-
