@@ -1,646 +1,303 @@
-import { Component, OnInit, ViewChild } from '@angular/core';
-import { OverlayPanel } from 'primeng/overlaypanel';
-
-interface FileNode {
-  name: string;
-  type: 'folder' | 'file';
-  children?: FileNode[];
-  isExpanded?: boolean;
-  selected?: boolean;
-  ticketKey?: string;
-  queries?: string[];
-}
-
-interface RawProjectMap {
-  [key: string]: {
-    key: string;
-    id: string;
-    type: string;
-    icon: string;
-  };
-}
-
-interface Project {
-  id: number;
-  name: string;
-  icon: string;
-  isFavourite: boolean;
-  structure: FileNode[];
-}
+import { Component } from '@angular/core';
+import { FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 
 @Component({
-  selector: 'project-sidebar',
-  templateUrl: './project-sidebar.component.html',
-  styleUrls: ['./project-sidebar.component.scss']
+  selector: 'app-sidebar',
+  templateUrl: './sidebar.component.html',
+  styleUrls: ['./sidebar.component.scss']
 })
-export class ProjectSidebarComponent implements OnInit {
-  @ViewChild('op') overlayPanel!: OverlayPanel;
+export class SidebarComponent {
+  jiraForm: FormGroup;
+  loading = false;
+  errorMessage = '';
+  successMessage = '';
+  showPassword = false;
 
-  queryList: string[] = [];
-  selectedFiles: FileNode[] = [];
-  loadingProjectIds: number[] = [];
-
-  favouriteLoadingIds: number[] = [];
-  animateMap: { [id: number]: boolean } = {};
-
-  rawAllProjects: RawProjectMap = {
-    "1": { key: "Project Alpha", id: "1", type: "project", icon: "" },
-    "2": { key: "Project Beta", id: "2", type: "project", icon: "" },
-    "3": { key: "Project Gamma", id: "3", type: "project", icon: "" },
-    "4": { key: "Project Delta", id: "4", type: "project", icon: "" },
-    "5": { key: "Project Epsilon", id: "5", type: "project", icon: "" }
-  };
-
-  rawFavouriteProjects: RawProjectMap = {
-    "1": { key: "Project Alpha", id: "1", type: "project", icon: "" },
-    "2": { key: "Project Beta", id: "2", type: "project", icon: "" }
-  };
-
-  allProjects: Project[] = [];
-  favouriteProjects: Project[] = [];
-
-  ngOnInit() {
-    this.allProjects = this.normalizeProjects(this.rawAllProjects);
-    const favIds = Object.keys(this.rawFavouriteProjects);
-    this.favouriteProjects = this.allProjects.filter(p => favIds.includes(p.id.toString()));
-    this.allProjects.forEach(p => p.isFavourite = favIds.includes(p.id.toString()));
-  }
-
-  normalizeProjects(data: RawProjectMap): Project[] {
-    return Object.entries(data).map(([id, value]) => ({
-      id: Number(id),
-      name: value.key,
-      icon: value.icon,
-      isFavourite: false,
-      structure: [{ name: 'JIRA', type: 'folder', children: [], isExpanded: false }]
-    }));
-  }
-
-  toggleExpand(project: Project) {
-  const root = project.structure[0];
-
-  if (root.isExpanded) {
-    root.isExpanded = false;
-    return;
-  }
-
-  root.isExpanded = true;
-
-  if (!root.children || root.children.length === 0) {
-    this.loadingProjectIds.push(project.id);
-    root.children = undefined;
-
-    // Trigger boom animation
-    this.animateMap[project.id] = true;
-    setTimeout(() => {
-      this.animateMap[project.id] = false;
-    }, 600);
-
-    this.fetchJiraInfo(project.id).then(data => {
-      root.children = this.transformJiraToNodes(data);
-      this.loadingProjectIds = this.loadingProjectIds.filter(id => id !== project.id);
-    });
-  }
-}
-
-  isLoading(projectId: number): boolean {
-    return this.loadingProjectIds.includes(projectId);
-  }
-
-  transformJiraToNodes(data: any): FileNode[] {
-    return Object.entries(data).map(([category, value]: any) => ({
-      name: category,
-      type: 'folder',
-      isExpanded: false,
-      queries: value.queries,
-      children: value.tickets.map((ticket: any) => ({
-        name: `${ticket.key}: ${ticket.summary}`,
-        type: 'file',
-        ticketKey: ticket.key,
-        queries: value.queries
-      }))
-    }));
-  }
-
-  fetchJiraInfo(projectId: number): Promise<any> {
-    return new Promise(resolve => {
-      setTimeout(() => {
-        resolve({
-          Task: {
-            tickets: [
-              { type: 'Task', summary: 'ABC', key: `T-${projectId}-1` },
-              { type: 'Task', summary: 'EFG', key: `T-${projectId}-2` }
-            ],
-            queries: ['What is your name?', 'What is your age?']
-          },
-          Epic: {
-            tickets: [
-              { type: 'Epic', summary: 'XYZ', key: `E-${projectId}-1` },
-              { type: 'Epic', summary: 'LMN', key: `E-${projectId}-2` }
-            ],
-            queries: ['What is your birth place?', 'What is your hobby?']
-          }
-        });
-      }, 1500);
+  constructor(private fb: FormBuilder, private http: HttpClient) {
+    this.jiraForm = this.fb.group({
+      username: ['', Validators.required],
+      password: ['', Validators.required],
     });
   }
 
-  onFileToggle(file: FileNode) {
-    if (!file.selected) {
-      if (this.selectedFiles.length >= 5) {
-        alert('You can select a maximum of 5 tickets.');
-        return;
-      }
-      file.selected = true;
-      this.selectedFiles.push(file);
-    } else {
-      file.selected = false;
-      this.selectedFiles = this.selectedFiles.filter(f => f !== file);
-    }
+  togglePassword() {
+    this.showPassword = !this.showPassword;
   }
 
-  showOverlay(event: MouseEvent, node: FileNode) {
-    event.preventDefault();
-    this.queryList = node.queries ?? [];
-    this.overlayPanel.toggle(event);
-  }
+  connectToJira() {
+    this.loading = true;
+    this.errorMessage = '';
+    this.successMessage = '';
 
-  askQuery(query: string) {
-    alert(`Ask: ${query}`);
-    this.overlayPanel.hide();
-  }
+    const { username, password } = this.jiraForm.value;
+    const authHeader = 'Basic ' + btoa(`${username}:${password}`);
 
-  isFavouriteLoading(projectId: number): boolean {
-    return this.favouriteLoadingIds.includes(projectId);
-  }
+    const headers = new HttpHeaders({
+      Authorization: authHeader,
+      'Content-Type': 'application/json',
+    });
 
-  onFavouriteClick(project: Project) {
-    if (this.isFavouriteLoading(project.id)) return;
-
-    this.favouriteLoadingIds.push(project.id);
-
-    // Simulate backend API call
-    setTimeout(() => {
-      project.isFavourite = !project.isFavourite;
-
-      if (project.isFavourite) {
-        this.favouriteProjects.push(project);
-      } else {
-        this.favouriteProjects = this.favouriteProjects.filter(p => p.id !== project.id);
-      }
-
-      // Trigger "boom" animation
-      this.animateMap[project.id] = true;
-      setTimeout(() => {
-        this.animateMap[project.id] = false;
-      }, 600);
-
-      this.favouriteLoadingIds = this.favouriteLoadingIds.filter(id => id !== project.id);
-    }, 1200);
+    this.http.get('https://your-jira-domain.atlassian.net/rest/api/2/myself', { headers })
+      .subscribe({
+        next: (res: any) => {
+          this.loading = false;
+          this.successMessage = `Connected as ${res.displayName}`;
+        },
+        error: (err) => {
+          this.loading = false;
+          this.errorMessage = err.error?.errorMessages?.[0] || 'Connection failed. Check credentials or Jira domain.';
+        }
+      });
   }
 }
 
 
-
-
-
-
-
-
-
-
-
-<p-overlayPanel #op [dismissable]="true">
-    <div *ngIf="queryList.length">
-        <div class="query-title">Suggested Queries:</div>
-        <ul>
-            <li *ngFor="let query of queryList">
-                <button (click)="askQuery(query)" class="query-button">{{ query }}</button>
-            </li>
-        </ul>
-    </div>
-</p-overlayPanel>
 
 <div class="sidebar">
-    <div class="sidebar-scroll">
-        <p-accordion [multiple]="true" styleClass="custom-accordion">
+  <div class="jira-connect-wrapper animate-in">
+    <h1 class="main-heading">Jira</h1>
+    <h3 class="sub-heading">🔗 Connect to Jira</h3>
 
-            <!-- All Projects -->
-            <p-accordionTab header="All Projects">
-                <div class="all-projects-grid">
-                    <div *ngFor="let project of allProjects" class="project-card-container">
-                        <div class="project-card" [class.loading]="isFavouriteLoading(project.id)"
-                            [class.favourited]="project.isFavourite && !isFavouriteLoading(project.id) && animateMap[project.id]">
-                            <div class="project-card-left">
-                                <img [src]="project.icon" class="project-card-icon" alt="icon" />
-                                <div class="project-card-name">{{ project.name }}</div>
-                            </div>
-                            <div class="project-card-right">
-                                <i class="pi" [ngClass]="project.isFavourite ? 'pi-star-fill' : 'pi-star'"
-                                    (click)="onFavouriteClick(project)"
-                                    [ngStyle]="{ color: project.isFavourite ? '#ffc107' : '#888' }"
-                                    [class.disabled]="isFavouriteLoading(project.id)"
-                                    pTooltip="{{ project.isFavourite ? 'Unfavourite' : 'Mark as favourite' }}"
-                                    tooltipPosition="left"></i>
-                            </div>
-                            <div class="card-loader" *ngIf="isFavouriteLoading(project.id)">
-                                <div class="spinner"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </p-accordionTab>
+    <form [formGroup]="jiraForm" (ngSubmit)="connectToJira()" class="jira-form fade-in delay-1">
+      <div class="form-group">
+        <label for="username">Username</label>
+        <input
+          id="username"
+          type="text"
+          pInputText
+          formControlName="username"
+          class="styled-input"
+        />
+      </div>
 
-            <!-- Favourite Projects -->
-            <p-accordionTab header="Favourite Projects">
-                <div class="favourite-projects">
-                    <div *ngFor="let fav of favouriteProjects" class="fav-card" [class.loading]="isLoading(fav.id)"
-                        [class.favourited]="animateMap[fav.id]">
+      <div class="form-group password-group">
+        <label for="password">API Token / Password</label>
+        <div class="password-wrapper">
+          <input
+            id="password"
+            [type]="showPassword ? 'text' : 'password'"
+            pInputText
+            formControlName="password"
+            class="styled-input"
+          />
+          <i
+            class="pi"
+            [ngClass]="showPassword ? 'pi-eye-slash' : 'pi-eye'"
+            (click)="togglePassword()"
+            title="Toggle visibility"
+          ></i>
+        </div>
+      </div>
 
-                        <div class="card-header" (click)="toggleExpand(fav)">
-                            {{ fav.name }}
-                        </div>
-                        <div class="folder-structure">
-                            <ng-container *ngIf="fav.structure[0].isExpanded && !isLoading(fav.id)">
-                                <ng-container
-                                    *ngTemplateOutlet="recursiveList; context: { $implicit: fav.structure[0].children }">
-                                </ng-container>
-                            </ng-container>
-                        </div>
-                        <div class="card-loader" *ngIf="isLoading(fav.id)">
-                            <div class="spinner"></div>
-                        </div>
+      <div class="button-wrapper">
+        <button
+          pButton
+          type="submit"
+          [disabled]="jiraForm.invalid || loading"
+          class="connect-btn"
+        >
+          <i class="pi pi-link"></i>
+          <span *ngIf="!loading">Connect</span>
+          <span *ngIf="loading">Connecting...</span>
+          <p-progressSpinner
+            *ngIf="loading"
+            styleClass="btn-spinner"
+            strokeWidth="3"
+            [style]="{ width: '16px', height: '16px' }"
+          ></p-progressSpinner>
+        </button>
+      </div>
 
-                    </div>
-                </div>
-            </p-accordionTab>
+      <div *ngIf="errorMessage" class="error-message fade-in delay-2">
+        {{ errorMessage }}
+      </div>
 
-        </p-accordion>
-    </div>
-
-    <ng-template #recursiveList let-nodes>
-        <ul class="tree-list">
-            <li *ngFor="let node of nodes">
-                <div class="node" [style.paddingLeft.px]="node.type === 'file' ? 20 : 8">
-                    <span *ngIf="node.type === 'folder'" (click)="node.isExpanded = !node.isExpanded">
-                        📁 {{ node.name }} <small>({{ node.isExpanded ? '-' : '+' }})</small>
-                    </span>
-                    <label *ngIf="node.type === 'file'" class="ticket-node" (contextmenu)="showOverlay($event, node)">
-                        <input type="checkbox" [checked]="node.selected"
-                            [disabled]="!node.selected && selectedFiles.length >= 5" (change)="onFileToggle(node)" />
-                        📄 {{ node.name }}
-                    </label>
-                </div>
-                <ng-container *ngIf="node.children && node.isExpanded">
-                    <ng-container *ngTemplateOutlet="recursiveList; context: { $implicit: node.children }">
-                    </ng-container>
-                </ng-container>
-            </li>
-        </ul>
-    </ng-template>
+      <div *ngIf="successMessage" class="success-message fade-in delay-2">
+        {{ successMessage }}
+      </div>
+    </form>
+  </div>
 </div>
 
 
 
-
-
-
-
-
-
-
-
-
 .sidebar {
-    width: 380px;
-    height: 100vh;
-    background-color: #171717;
-    border-right: 1px solid #2a2a2a;
-    font-family: 'Segoe UI', sans-serif;
-    font-size: 0.85rem;
-    color: #f1f1f1;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
+  width: 380px;
+  height: 100vh;
+  background-color: #171717;
+  border-right: 1px solid #2a2a2a;
+  font-family: 'Segoe UI', sans-serif;
+  font-size: 0.9rem;
+  color: #f1f1f1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
 }
 
-.sidebar-scroll {
-    flex: 1;
-    overflow-y: auto;
+.jira-connect-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  gap: 16px;
+  animation: slideFadeIn 0.6s ease forwards;
 }
 
-.all-projects-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    padding: 12px;
+.main-heading {
+  font-size: 2rem;
+  font-weight: 600;
+  color: #ffffff;
+  margin: 0;
 }
 
-.project-card-container {
-    position: relative;
+.sub-heading {
+  font-size: 1rem;
+  font-weight: 400;
+  color: #a0a0a0;
+  margin: 0;
 }
 
-.project-card {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    background: #1e1e1e;
-    border: 1px solid #2a2a2a;
-    border-radius: 10px;
-    padding: 12px 16px;
-    transition: transform 0.2s ease, background 0.2s ease;
-    position: relative;
-    cursor: pointer;
+.jira-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  max-width: 320px;
 }
 
-.project-card:hover {
-    background-color: #2a2a2a;
-    transform: scale(1.01);
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.project-card.loading {
-    pointer-events: none;
-    opacity: 0.5;
-    filter: blur(1px);
+label {
+  font-weight: 500;
+  font-size: 0.85rem;
+  color: #c5c5c5;
 }
 
-.project-card.favourited {
-    animation: boom 0.4s ease;
+.styled-input {
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: 1px solid #2e2e2e;
+  background-color: #1f1f1f;
+  color: #fff;
+  font-size: 0.95rem;
+  transition: border-color 0.2s ease;
 }
 
-@keyframes boom {
-    0% {
-        transform: scale(1);
-        box-shadow: 0 0 0px transparent;
-    }
-
-    50% {
-        transform: scale(1.05);
-        box-shadow: 0 0 12px rgba(255, 193, 7, 0.4);
-    }
-
-    100% {
-        transform: scale(1);
-        box-shadow: none;
-    }
+.styled-input:focus {
+  border-color: #409eff;
+  outline: none;
 }
 
-.project-card-left {
-    display: flex;
-    align-items: center;
-    gap: 10px;
+.password-group {
+  position: relative;
 }
 
-.project-card-icon {
-    width: 28px;
-    height: 28px;
-    border-radius: 4px;
-    background: #333;
-    object-fit: cover;
-    transition: transform 0.3s ease;
+.password-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
 }
 
-.project-card-icon:hover {
-    transform: scale(1.1);
+.password-wrapper input {
+  width: 100%;
+  padding-right: 36px;
 }
 
-.project-card-name {
-    font-weight: 500;
-    font-size: 0.875rem;
-    color: #f1f1f1;
-    letter-spacing: 0.3px;
+.password-wrapper i {
+  position: absolute;
+  right: 10px;
+  color: #aaa;
+  cursor: pointer;
+  font-size: 1.1rem;
+  transition: color 0.2s ease;
 }
 
-.project-card-right {
-    display: flex;
-    align-items: center;
-    justify-content: center;
+.password-wrapper i:hover {
+  color: #fff;
 }
 
-.project-card-right i {
-    font-size: 18px;
-    cursor: pointer;
-    transition: transform 0.3s ease;
+.button-wrapper {
+  display: flex;
+  justify-content: center;
+  margin-top: 8px;
 }
 
-.project-card-right i:hover {
-    transform: scale(1.3) rotate(-10deg);
+.connect-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background-color: #2563eb !important;
+  border: none;
+  color: white;
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-weight: 500;
+  transition: background-color 0.2s ease;
 }
 
-.project-card-right i.disabled {
-    pointer-events: none;
-    opacity: 0.6;
+.connect-btn:disabled {
+  background-color: #3b82f6 !important;
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
-.project-card-right i.fav-active {
-    animation: fav-pulse 0.4s ease-in-out;
+.connect-btn:hover:not(:disabled) {
+  background-color: #1d4ed8 !important;
 }
 
-@keyframes fav-pulse {
-    0% {
-        transform: scale(1) rotate(0deg);
-    }
-
-    50% {
-        transform: scale(1.5) rotate(-20deg);
-    }
-
-    100% {
-        transform: scale(1) rotate(0deg);
-    }
+.btn-spinner {
+  margin-left: 4px;
 }
 
-.card-loader {
-    position: absolute;
-    inset: 0;
-    background-color: rgba(23, 23, 23, 0.5);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 2;
-    border-radius: 10px;
+.error-message,
+.success-message {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  text-align: center;
 }
 
-.spinner {
-    width: 20px;
-    height: 20px;
-    border: 2px solid #999;
-    border-top: 2px solid #ffc107;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
+.error-message {
+  background-color: #2a1c1c;
+  color: #f87171;
 }
 
-@keyframes spin {
-    to {
-        transform: rotate(360deg);
-    }
+.success-message {
+  background-color: #1c2a1c;
+  color: #4ade80;
 }
 
-.query-title {
-    font-weight: bold;
-    margin-bottom: 6px;
-    font-size: 0.8125rem;
-    color: #fff;
+/* === Animations === */
+@keyframes slideFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.query-button {
-    background: #007bff;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    padding: 4px 10px;
-    margin: 4px 0;
-    font-size: 0.75rem;
-    cursor: pointer;
-    transition: background 0.2s ease;
+.fade-in {
+  opacity: 0;
+  transform: translateY(10px);
+  animation: slideFadeIn 0.5s ease forwards;
 }
 
-.query-button:hover {
-    background: #0056b3;
+.delay-1 {
+  animation-delay: 0.2s;
 }
 
-.fav-card {
-    margin-bottom: 12px;
-    border: 1px solid #2a2a2a;
-    border-radius: 6px;
-    background: #1e1e1e;
-    overflow: hidden;
-    box-shadow: 0 2px 5px rgba(255, 255, 255, 0.03);
-}
-
-.card-header {
-    font-size: 0.85rem;
-    background: #222;
-    padding: 10px 12px;
-    cursor: pointer;
-    font-weight: bold;
-    border-bottom: 1px solid #2a2a2a;
-    color: #eee;
-}
-
-.folder-structure {
-    padding: 10px 14px;
-}
-
-.tree-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-}
-
-.node {
-    margin-bottom: 8px;
-    color: #ddd;
-}
-
-.node>span {
-    display: inline-block;
-    padding: 4px 8px;
-    border-radius: 5px;
-    transition: background 0.2s ease;
-    cursor: pointer;
-}
-
-.node>span:hover {
-    background: #2e2e2e;
-}
-
-.ticket-node {
-    font-size: 0.8125rem;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 10px;
-    cursor: pointer;
-    border-radius: 4px;
-    margin-left: 8px;
-    transition: background 0.2s, transform 0.2s;
-    color: #e0e0e0;
-}
-
-.ticket-node:hover {
-    background: #333;
-    transform: translateX(2px);
-}
-
-.ticket-node input[type='checkbox'] {
-    accent-color: #007bff;
-}
-
-.loading-placeholder {
-    text-align: center;
-    margin: 15px 0;
-    font-size: 16px;
-    color: #ccc;
-}
-
-.loading-placeholder .emoji {
-    font-size: 18px;
-    margin-bottom: 8px;
-}
-
-.loading-placeholder .dot-blink {
-    display: flex;
-    justify-content: center;
-    gap: 6px;
-}
-
-.loading-placeholder .dot-blink span {
-    font-size: 24px;
-    animation: blink 1.4s infinite;
-}
-
-.loading-placeholder .dot-blink span:nth-child(2) {
-    animation-delay: 0.2s;
-}
-
-.loading-placeholder .dot-blink span:nth-child(3) {
-    animation-delay: 0.4s;
-}
-
-@keyframes blink {
-    0% {
-        opacity: 0.2;
-    }
-
-    20% {
-        opacity: 1;
-    }
-
-    100% {
-        opacity: 0.2;
-    }
-}
-
-:host ::ng-deep .p-overlaypanel {
-    background-color: #222;
-    color: #eee;
-    border: 1px solid #333;
-    box-shadow: 0 2px 8px rgba(255, 255, 255, 0.05);
-}
-
-:host ::ng-deep .custom-accordion .p-accordion-header {
-    background-color: #1f1f1f !important;
-    color: #f1f1f1 !important;
-    border: 1px solid #2a2a2a !important;
-    padding: 10px 15px;
-    font-weight: bold;
-}
-
-:host ::ng-deep .custom-accordion .p-accordion-content {
-    background-color: #1a1a1a !important;
-    border: 1px solid #2a2a2a;
-    padding: 0;
-    color: #ddd;
-}
-
-
-.fav-card.loading {
-    pointer-events: none;
-    opacity: 0.5;
-    filter: blur(1px);
-}
-
-.fav-card.favourited {
-    animation: boom 0.4s ease;
+.delay-2 {
+  animation-delay: 0.4s;
 }
