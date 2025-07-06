@@ -88,7 +88,7 @@ export class ChartsComponent implements AfterViewInit {
       toDate: formatDateToDDMMYYYY(this.appliedToDate),
     };
 
-    this.http.post<any[]>('https://your-api.com/loc', payload).subscribe({
+    this.http.get<any[]>('assets/data/loc-sample.json').subscribe({
       next: (response) => {
         const languageSet = new Set<string>();
         const grouped: Record<string, any> = {};
@@ -170,12 +170,15 @@ export class ChartsComponent implements AfterViewInit {
       if (!map.has(key)) {
         const aggregated: any = { date: key };
         for (const lang of this.allLanguages) aggregated[lang] = 0;
+        aggregated['All Languages'] = 0;
         map.set(key, aggregated);
       }
 
       const aggregated = map.get(key);
       for (const lang of this.allLanguages) {
-        if (entry[lang]) aggregated[lang] += entry[lang];
+        const loc = entry[lang] || 0;
+        aggregated[lang] += loc;
+        aggregated['All Languages'] += loc;
       }
     }
 
@@ -230,7 +233,9 @@ export class ChartsComponent implements AfterViewInit {
   }
 
   updateChart() {
-    const series: BarSeriesOption[] = this.allLanguages.map((lang) => ({
+    const languagesWithAll = ['All Languages', ...this.allLanguages];
+
+    const series: BarSeriesOption[] = languagesWithAll.map((lang) => ({
       name: lang,
       type: 'bar',
       stack: 'total',
@@ -238,8 +243,31 @@ export class ChartsComponent implements AfterViewInit {
       data: this.aggregatedData.map((d) => d[lang] || 0),
     }));
 
+    const legendSelected: Record<string, boolean> = {
+      'All Languages': true,
+      ...this.allLanguages.reduce((acc, lang) => {
+        acc[lang] = false;
+        return acc;
+      }, {} as Record<string, boolean>)
+    };
+
     const option: EChartsOption = {
-      tooltip: { trigger: 'axis' },
+      tooltip: {
+        trigger: 'item',
+        formatter: function (param: any): string {
+          const dateLabel = param.name;
+          const lang = param.seriesName;
+          const value = param.value;
+
+          return `
+      <div style="padding:4px 8px">
+        <strong>${lang}</strong><br/>
+        📅 <em>${dateLabel}</em><br/>
+        🧾 LOC: <strong>${value}</strong>
+      </div>
+    `;
+        }
+      },
       legend: {
         type: 'scroll',
         orient: 'horizontal',
@@ -248,7 +276,8 @@ export class ChartsComponent implements AfterViewInit {
         right: '10%',
         pageButtonItemGap: 8,
         pageButtonGap: 5,
-        pageTextStyle: { color: '#444' }
+        pageTextStyle: { color: '#444' },
+        selected: legendSelected,
       },
       grid: {
         top: 80,
@@ -274,7 +303,6 @@ export class ChartsComponent implements AfterViewInit {
     this.chartInstance.setOption(option);
   }
 }
-
 
 
 
