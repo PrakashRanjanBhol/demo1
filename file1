@@ -1,435 +1,219 @@
-import {
-  Component,
-  ElementRef,
-  ViewChild,
-  AfterViewInit,
-} from '@angular/core';
-import * as echarts from 'echarts';
-import { EChartsOption, BarSeriesOption } from 'echarts';
-import { HttpClient } from '@angular/common/http';
+<div class="tree-section-label">
+                        <div class="tree-parent-node">
+                            <span class="node-dot"></span>
+                            <span class="node-label">{{ section.title }}</span>
+                        </div>
+                    </div>
 
-@Component({
-  selector: 'app-charts',
-  templateUrl: './charts.component.html',
-  styleUrls: ['./charts.component.scss'],
-})
-export class ChartsComponent implements AfterViewInit {
-  @ViewChild('chartContainer') chartContainer!: ElementRef;
-  chartInstance!: echarts.ECharts;
+                    <div class="project-list tree-style">
+                        <div *ngFor="let proj of section.list" class="project-item tree-node" [ngClass]="{
+    'fav-dot': proj.isFavourite,
+    'non-fav-dot': !proj.isFavourite && section.key === 'all',
+    'blink-dot': isFavouriteLoading(proj.id)
+  }" [class.loading]="isFavouriteLoading(proj.id) || isLoading(proj.id)" [class.favourited]="animateMap[proj.id]">
 
-  fromDateStr: string;
-  toDateStr: string;
+                            <div class="project-left"
+                                (click)="section.key === 'fav' ? onFavouriteProjectClick(proj) : null">
+                                <div class="animated-avatar" [ngClass]="'avatar-' + (proj.id % 6)">
+                                    {{ proj.name.charAt(0).toUpperCase() }}
+                                </div>
 
-  appliedFromDate!: Date;
-  appliedToDate!: Date;
-  appliedGranularity: any = null;
 
-  minDate: string = '2024-01-01';
-  maxDate: string = new Date().toISOString().split('T')[0];
 
-  allGranularities = [
-    { label: 'Year', value: 'year' },
-    { label: 'Month', value: 'month' },
-    { label: 'Week', value: 'week' },
-    { label: 'Day', value: 'day' },
-  ];
-  availableGranularities = [...this.allGranularities];
-  selectedGranularity = this.allGranularities[0];
 
-  allLanguages: string[] = [];
-  dailyData: any[] = [];
-  aggregatedData: any[] = [];
 
-  constructor(private http: HttpClient) {
-    const today = new Date();
-    const sevenDaysAgo = new Date(today);
-    sevenDaysAgo.setDate(today.getDate() - 7);
+/* ===== Tree-Style Project List ===== */
+.project-list.tree-style {
+  position: relative;
+  margin-left: 24px; /* spacing for vertical line */
+  padding-left: 12px;
+  border-left: 2px solid #555; /* vertical connector */
+}
 
-    this.toDateStr = today.toISOString().split('T')[0];
-    this.fromDateStr = sevenDaysAgo.toISOString().split('T')[0];
+/* Each node (project card) */
+.project-list.tree-style .tree-node {
+  position: relative;
+  margin-bottom: 14px;
+}
+
+/* Horizontal connector from vertical line */
+.project-list.tree-style .tree-node::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: -12px; /* connects from vertical line to card */
+  width: 12px;
+  height: 2px;
+  background-color: #777;
+  transform: translateY(-50%);
+}
+
+/* Connector Dot (default style) */
+.project-list.tree-style .tree-node::after {
+  content: '';
+  position: absolute;
+  left: -15px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  transform: translateY(-50%);
+  transition: background-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* Non-Favourite Projects in All Projects (Gray Dot) */
+.project-list.tree-style .tree-node.non-fav-dot::after {
+  background-color: #666;
+  box-shadow: none;
+}
+
+/* Favourite Projects in All or Favourite Section (Yellow Dot) */
+.project-list.tree-style .tree-node.fav-dot::after {
+  background-color: #ffc107;
+  box-shadow: 0 0 4px rgba(255, 193, 7, 0.5);
+}
+
+
+/* Pulse animation around the dot */
+@keyframes dotPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.5);
+    transform: scale(1);
   }
-
-  get fromDate(): Date {
-    return new Date(this.fromDateStr);
+  70% {
+    box-shadow: 0 0 0 8px rgba(255, 193, 7, 0);
+    transform: scale(1.2);
   }
-
-  get toDate(): Date {
-    return new Date(this.toDateStr);
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 193, 7, 0);
+    transform: scale(1);
   }
+}
 
-  ngAfterViewInit() {
-    this.chartInstance = echarts.init(this.chartContainer.nativeElement);
-    setTimeout(() => this.applyDateRange());
+/* Apply the pulse animation when loading */
+.project-list.tree-style .tree-node.blink-dot::after {
+  animation: dotPulse 1s ease-out infinite;
+  background-color: #ffc107 !important;
+  z-index: 2;
+}
+
+.tree-section-label {
+  margin-left: 24px;
+  padding-left: 12px;
+}
+
+.tree-parent-node {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  animation: parentNodeEnter 0.5s ease-out;
+  position: relative;
+}
+
+/* Glowing blinking dot */
+.tree-parent-node .node-dot {
+  width: 10px;
+  height: 10px;
+  background-color: #ffc107;
+  border-radius: 50%;
+  animation: glowPulse 1.4s ease-out infinite;
+  box-shadow: 0 0 0 rgba(255, 193, 7, 0.4);
+}
+
+/* Section label text */
+.tree-parent-node .node-label {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #ffc107;
+  text-shadow: 0 0 4px rgba(255, 193, 7, 0.25);
+  letter-spacing: 0.4px;
+  opacity: 0.95;
+}
+
+@keyframes glowPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.4);
+    transform: scale(1);
   }
-
-  applyDateRange() {
-    if (this.fromDate > this.toDate) {
-      alert('From date cannot be after To date.');
-      return;
-    }
-
-    this.appliedFromDate = this.fromDate;
-    this.appliedToDate = this.toDate;
-    this.appliedGranularity = this.selectedGranularity;
-
-    this.fetchDataFromApi();
+  70% {
+    box-shadow: 0 0 10px 5px rgba(255, 193, 7, 0.15);
+    transform: scale(1.15);
   }
-
-  fetchDataFromApi() {
-    const formatDateToDDMMYYYY = (date: Date): string => {
-      const dd = String(date.getDate()).padStart(2, '0');
-      const mm = String(date.getMonth() + 1).padStart(2, '0');
-      const yyyy = date.getFullYear();
-      return `${dd}-${mm}-${yyyy}`;
-    };
-
-    const payload = {
-      fromDate: formatDateToDDMMYYYY(this.appliedFromDate),
-      toDate: formatDateToDDMMYYYY(this.appliedToDate),
-    };
-
-    this.http.get<any[]>('assets/data/loc-sample.json').subscribe({
-      next: (response) => {
-        const languageSet = new Set<string>();
-        const grouped: Record<string, any> = {};
-
-        for (const entry of response) {
-          const dateKey = entry.date;
-          languageSet.add(entry.language);
-
-          if (!grouped[dateKey]) {
-            grouped[dateKey] = { date: new Date(dateKey) };
-          }
-
-          if (!(entry.language in grouped[dateKey])) {
-            grouped[dateKey][entry.language] = 0;
-          }
-
-          grouped[dateKey][entry.language] += entry.loc;
-        }
-
-        this.allLanguages = Array.from(languageSet);
-        this.dailyData = Object.values(grouped);
-
-        this.filterGranularities(); // Triggers aggregate + chart update
-      },
-      error: (err) => {
-        console.error('API error:', err);
-        alert('Failed to fetch data.');
-      }
-    });
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 193, 7, 0);
+    transform: scale(1);
   }
+}
 
-  onGranularityChanged(event: Event) {
-    const selectElement = event.target as HTMLSelectElement;
-    const selectedIndex = selectElement.selectedIndex;
-    this.selectedGranularity = this.availableGranularities[selectedIndex];
-
-    this.appliedGranularity = this.selectedGranularity;
-    this.aggregateData();
-    this.updateChart();
+@keyframes parentNodeEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.95);
   }
-
-  filterGranularities() {
-    const diff = this.appliedToDate.getTime() - this.appliedFromDate.getTime();
-    const days = diff / (1000 * 3600 * 24);
-
-    let filtered = [];
-
-    if (days >= 365) {
-      filtered = this.allGranularities;
-    } else if (days >= 30) {
-      filtered = this.allGranularities.filter(g =>
-        ['month', 'week', 'day'].includes(g.value)
-      );
-    } else if (days > 7) {
-      filtered = this.allGranularities.filter(g =>
-        ['week', 'day'].includes(g.value)
-      );
-    } else {
-      filtered = this.allGranularities.filter(g =>
-        g.value === 'day'
-      );
-    }
-
-    this.availableGranularities = filtered;
-    this.selectedGranularity = filtered[0];
-    this.appliedGranularity = this.selectedGranularity;
-
-    this.aggregateData();
-    this.updateChart();
-  }
-
-  aggregateData() {
-    const map = new Map<string, any>();
-
-    for (const entry of this.dailyData) {
-      const dateObj = new Date(entry.date);
-      const key = this.getAggregationKey(dateObj);
-
-      if (!map.has(key)) {
-        const aggregated: any = { date: key };
-        for (const lang of this.allLanguages) aggregated[lang] = 0;
-        aggregated['All Languages'] = 0;
-        map.set(key, aggregated);
-      }
-
-      const aggregated = map.get(key);
-      for (const lang of this.allLanguages) {
-        const loc = entry[lang] || 0;
-        aggregated[lang] += loc;
-        aggregated['All Languages'] += loc;
-      }
-    }
-
-    this.aggregatedData = Array.from(map.values());
-  }
-
-  getAggregationKey(date: Date): string {
-    const y = date.getFullYear();
-    const mShort = date.toLocaleString('default', { month: 'short' });
-
-    switch (this.appliedGranularity.value) {
-      case 'year':
-        return `${y}`;
-      case 'month':
-        return `${mShort} ${y}`;
-      case 'week': {
-        const start = this.getWeekStart(date);
-        const end = this.getWeekEnd(start);
-        return `${this.mmdd(start)} - ${this.mmdd(end)}`;
-      }
-      case 'day':
-      default:
-        return this.mmdd(date);
-    }
-  }
-
-  getWeekStart(date: Date): Date {
-    const d = new Date(date);
-    const day = d.getDay();
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-    return new Date(d.setDate(diff));
-  }
-
-  getWeekEnd(startDate: Date): Date {
-    return new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate() + 6);
-  }
-
-  mmdd(date: Date): string {
-    const mm = (date.getMonth() + 1).toString().padStart(2, '0');
-    const dd = date.getDate().toString().padStart(2, '0');
-    return `${mm}/${dd}`;
-  }
-
-  formatDateRange(start: Date, end: Date): string {
-    if (!start || !end) return '';
-    const options: Intl.DateTimeFormatOptions = {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    };
-    return `${start.toLocaleDateString('en-US', options)} - ${end.toLocaleDateString('en-US', options)}`;
-  }
-
-  updateChart() {
-    const languagesWithAll = ['All Languages', ...this.allLanguages];
-
-    const series: BarSeriesOption[] = languagesWithAll.map((lang) => ({
-      name: lang,
-      type: 'bar',
-      stack: 'total',
-      emphasis: { focus: 'series' },
-      data: this.aggregatedData.map((d) => d[lang] || 0),
-    }));
-
-    const legendSelected: Record<string, boolean> = {
-      'All Languages': true,
-      ...this.allLanguages.reduce((acc, lang) => {
-        acc[lang] = false;
-        return acc;
-      }, {} as Record<string, boolean>)
-    };
-
-    const option: EChartsOption = {
-      tooltip: {
-        trigger: 'item',
-        formatter: function (param: any): string {
-          const dateLabel = param.name;
-          const lang = param.seriesName;
-          const value = param.value;
-
-          return `
-      <div style="padding:4px 8px">
-        <strong>${lang}</strong><br/>
-        📅 <em>${dateLabel}</em><br/>
-        🧾 LOC: <strong>${value}</strong>
-      </div>
-    `;
-        }
-      },
-      legend: {
-        type: 'scroll',
-        orient: 'horizontal',
-        top: 10,
-        left: '10%',
-        right: '10%',
-        pageButtonItemGap: 8,
-        pageButtonGap: 5,
-        pageTextStyle: { color: '#444' },
-        selected: legendSelected,
-      },
-      grid: {
-        top: 80,
-        left: '3%',
-        right: '4%',
-        bottom: '3%',
-        containLabel: true
-      },
-      dataZoom: [{ type: 'slider', xAxisIndex: 0 }],
-      textStyle: { fontSize: 14 },
-      xAxis: {
-        type: 'category',
-        data: this.aggregatedData.map((d) => d.date),
-        axisLabel: { rotate: 45 },
-      },
-      yAxis: {
-        type: 'value',
-        name: 'Lines of Code',
-      },
-      series: series as echarts.SeriesOption[],
-    };
-
-    this.chartInstance.setOption(option);
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
 }
 
 
-
-
-
-
-
-
-
-
-
-
-<div class="controls-container">
-    <div class="controls">
-        <div class="left-group">
-            <input type="date" [(ngModel)]="fromDateStr" class="date-input styled-input" [attr.min]="minDate"
-                [attr.max]="maxDate" />
-            <input type="date" [(ngModel)]="toDateStr" class="date-input styled-input" [attr.min]="minDate"
-                [attr.max]="maxDate" />
-
-            <button pButton type="button" label="Apply" (click)="applyDateRange()"
-                class="p-button-sm apply-button"></button>
-        </div>
-
-        <div class="right-group">
-            <select [(ngModel)]="selectedGranularity" (change)="onGranularityChanged($event)" class="styled-dropdown">
-                <option *ngFor="let g of availableGranularities" [ngValue]="g">{{ g.label }}</option>
-            </select>
-        </div>
-    </div>
-
-    <div class="selected-period">
-        <span class="period-label">📅 Selected Period:</span>
-        <strong>{{ formatDateRange(appliedFromDate, appliedToDate) }}</strong>
-    </div>
-</div>
-
-<div #chartContainer class="chart-container"></div>
-
-
-
-
-
-
-
-
-
-
-
-.controls-container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    margin-bottom: 1rem;
+.animated-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  font-size: 0.75rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #111;
+  animation: floatY 4s ease-in-out infinite, pulseSoft 3s ease-in-out infinite;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 
-.controls {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 2rem;
+/* Floating animation */
+@keyframes floatY {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-1.5px);
+  }
 }
 
-.left-group,
-.right-group {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
+/* Soft pulse glow */
+@keyframes pulseSoft {
+  0%, 100% {
+    box-shadow: 0 0 6px rgba(255, 255, 255, 0.08);
+  }
+  50% {
+    box-shadow: 0 0 12px rgba(255, 255, 255, 0.15);
+  }
 }
 
-.styled-input {
-    width: 130px;
-    padding: 6px 10px;
-    font-size: 14px;
-    border: 1px solid #ced4da;
-    border-radius: 4px;
-    outline: none;
-    transition: border-color 0.2s ease;
+/* ==== Color Variants (Dark Theme Friendly) ==== */
+.avatar-0 {
+  background-color: #ffc107;
+  color: #111;
 }
-
-.styled-input:focus {
-    border-color: #007ad9;
+.avatar-1 {
+  background-color: #42a5f5; /* soft blue */
+  color: #fff;
 }
-
-.styled-dropdown {
-    width: 130px;
-    height: 34px;
-    font-size: 14px;
-    padding: 6px 10px;
-    border-radius: 4px;
-    border: 1px solid #ced4da;
-    appearance: none;
-    background-color: white;
-    background-image: url("data:image/svg+xml,%3Csvg fill='gray' height='16' viewBox='0 0 24 24' width='16' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 10px center;
-    background-size: 12px;
-    cursor: pointer;
+.avatar-2 {
+  background-color: #66bb6a; /* soft green */
+  color: #fff;
 }
-
-.styled-dropdown:focus {
-    border-color: #007ad9;
+.avatar-3 {
+  background-color: #ef5350; /* soft red */
+  color: #fff;
 }
-
-.apply-button {
-    height: 34px;
+.avatar-4 {
+  background-color: #ab47bc; /* soft purple */
+  color: #fff;
 }
-
-.selected-period {
-    margin-top: 0.5rem;
-    font-size: 15px;
-    color: #444;
-    background-color: #f7f7f7;
-    padding: 8px 16px;
-    border-radius: 8px;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
-    display: flex;
-    align-items: center;
-    gap: 5px;
-}
-
-.period-label {
-    color: #555;
-}
-
-.chart-container {
-    width: 100%;
-    height: 600px;
-    font-size: 14px;
+.avatar-5 {
+  background-color: #ffa726; /* orange */
+  color: #111;
 }
