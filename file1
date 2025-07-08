@@ -1,39 +1,30 @@
-.info-dismiss {
-  position: absolute;
-  top: 10px;
-  right: 12px;
-  font-size: 1rem;
-  cursor: pointer;
-  color: #999;
-  transition: color 0.3s ease;
-}
+<p-overlayPanel #op [dismissable]="true">
+    <div *ngIf="queryList.length">
+        <div class="query-title">Suggested Queries:</div>
+        <ul>
+            <li *ngFor="let query of queryList">
+                <button (click)="askQuery(query)" class="query-button">{{ query }}</button>
+            </li>
+        </ul>
+    </div>
+</p-overlayPanel>
 
-.info-dismiss:hover {
-  color: #f44336;
-}
+<div class="sidebar">
+    <!-- Sidebar Header -->
+    <div class="sidebar-header enhanced">
+        <div class="jira-icon">🤖</div>
+        <div class="jira-heading">
+            <div class="jira-heading-title">Jira Assistant</div>
+            <div class="jira-heading-sub">Ask anything related to Jira</div>
+        </div>
 
-.info-box-toggle {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: #888;
-  font-size: 0.78rem;
-  cursor: pointer;
-  margin: 0.5rem 0 1rem 0.5rem;
-  transition: color 0.3s ease;
-}
-
-.info-box-toggle:hover {
-  color: #ffc107;
-}
-
-.info-box {
-  position: relative; /* so .info-dismiss can position absolute inside */
-}
+        <span class="logout-icon" pTooltip="Logout" tooltipPosition="left" (click)="logout()">
+            <i class="pi pi-sign-out"></i>
+        </span>
+    </div>
 
 
-
-<!-- Tab Switcher -->
+    <!-- Tab Switcher -->
     <div class="project-tabs">
         <div class="tab-button" [class.active]="currentSection === 'all'" (click)="currentSection = 'all'">
             🗂️ All Projects
@@ -94,3 +85,1299 @@
 
 
 
+    <div class="sidebar-scroll">
+        <!-- Expanded Favourite Project View -->
+        <div *ngIf="expandedFavProject" class="favourite-project-panel">
+            <div class="favourite-header">
+                <span class="modern-back-icon" (click)="expandedFavProject = null" title="Back to Projects">
+                    <i class="pi pi-arrow-left"></i>
+                </span>
+
+                <span class="fav-title">{{ expandedFavProject.name }}</span>
+
+                <!-- Loader for expanded fav project -->
+                <ng-container *ngIf="isLoading(expandedFavProject.id)">
+                    <div class="inline-loader spinner" style="margin-left: 8px;"></div>
+                </ng-container>
+            </div>
+            <!-- Info Tip inside Expanded Favourite Project View -->
+            <div class="fav-info-banner">
+                <i class="pi pi-lightbulb icon"></i>
+                <div class="text">
+                    Tip: Explore the project’s structure, <strong>select up to 5 tickets</strong>, and
+                    <strong>right-click</strong> to ask intelligent queries.
+                </div>
+            </div>
+
+            <div class="project-structure">
+                <ng-container
+                    *ngTemplateOutlet="recursiveList; context: { $implicit: expandedFavProject.structure[0].children }">
+                </ng-container>
+            </div>
+        </div>
+
+        <!-- Regular Project List -->
+        <div *ngIf="!expandedFavProject">
+            <div class="tree-section-label">
+                <div class="tree-parent-node">
+                    <span class="node-dot"></span>
+                    <span class="node-label">
+                        {{ currentSection === 'all' ? 'All Projects' : 'Favourite Projects' }}
+                    </span>
+                </div>
+            </div>
+
+            <div class="project-list tree-style">
+                <div *ngFor="let proj of (currentSection === 'all' ? allProjects : favouriteProjects)"
+                    class="project-item tree-node" [ngClass]="{
+           'fav-dot': proj.isFavourite,
+           'non-fav-dot': !proj.isFavourite && currentSection === 'all',
+           'blink-dot': isFavouriteLoading(proj.id),
+           'favourited': animateMap[proj.id]
+         }" [class.loading]="isFavouriteLoading(proj.id) || isLoading(proj.id)">
+                    <div class="project-left" (click)="currentSection === 'fav' ? onFavouriteProjectClick(proj) : null">
+                        <div class="animated-avatar" [ngClass]="'avatar-' + (proj.id % 6)">
+                            {{ proj.name.charAt(0).toUpperCase() }}
+                        </div>
+                        <div class="project-details">
+                            <div class="project-name">{{ proj.name }}</div>
+                            <div class="project-id">ID: {{ proj.id }}</div>
+                        </div>
+                    </div>
+
+                    <div class="project-right">
+                        <!-- All Projects Star Toggle -->
+                        <ng-container *ngIf="currentSection === 'all'">
+                            <ng-container *ngIf="!isFavouriteLoading(proj.id); else loadingIcon">
+                                <i class="pi" [ngClass]="proj.isFavourite ? 'pi-star-fill' : 'pi-star'"
+                                    (click)="onFavouriteClick(proj)"
+                                    [ngStyle]="{ color: proj.isFavourite ? '#ffc107' : '#888' }"
+                                    [class.disabled]="isFavouriteLoading(proj.id)"
+                                    pTooltip="{{ proj.isFavourite ? 'Unfavourite' : 'Mark as favourite' }}"
+                                    tooltipPosition="left"></i>
+                            </ng-container>
+                            <ng-template #loadingIcon>
+                                <div class="inline-loader spinner"></div>
+                            </ng-template>
+                        </ng-container>
+
+                        <!-- Chevron in Favourites -->
+                        <ng-container *ngIf="currentSection === 'fav'">
+                            <ng-container *ngIf="!isLoading(proj.id); else favLoader">
+                                <i class="pi pi-chevron-down" *ngIf="!proj.structure[0].isExpanded"></i>
+                                <i class="pi pi-chevron-up" *ngIf="proj.structure[0].isExpanded"></i>
+                            </ng-container>
+                            <ng-template #favLoader>
+                                <div class="inline-loader spinner"></div>
+                            </ng-template>
+                        </ng-container>
+                    </div>
+
+                    <!-- Card loader overlay -->
+                    <!-- <div class="card-loader" *ngIf="isFavouriteLoading(proj.id) || isLoading(proj.id)">
+                        <div class="spinner"></div>
+                    </div> -->
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Recursive Tree Template -->
+    <ng-template #recursiveList let-nodes let-depth="depth">
+        <ul class="tree-list" [class.root]="depth === 0">
+            <li *ngFor="let node of nodes" class="tree-item">
+                <div class="tree-node" [style.marginLeft.px]="depth * 20">
+                    <span *ngIf="node.type === 'folder'" class="folder-label"
+                        (click)="node.isExpanded = !node.isExpanded" [class.expanded]="node.isExpanded">
+                        <i class="pi" [ngClass]="node.isExpanded ? 'pi-folder-open' : 'pi-folder'"></i>
+                        {{ node.name }}
+                    </span>
+
+                    <label *ngIf="node.type === 'file'" class="file-label" (contextmenu)="showOverlay($event, node)">
+                        <i class="pi pi-file"></i>
+                        <input type="checkbox" [checked]="node.selected"
+                            [disabled]="!node.selected && selectedFiles.length >= 1" (change)="onFileToggle(node)" />
+                        <span class="ticket-id">{{ node.ticketKey }}</span>
+                        <span class="ticket-summary">{{ getTicketSummary(node.name) }}</span>
+                    </label>
+                </div>
+
+                <!-- Recursive Children -->
+                <ng-container *ngIf="node.children && node.isExpanded">
+                    <ng-container
+                        *ngTemplateOutlet="recursiveList; context: { $implicit: node.children, depth: depth + 1 }">
+                    </ng-container>
+                </ng-container>
+            </li>
+        </ul>
+    </ng-template>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* =============== GLOBAL WRAPPER =============== */
+.sidebar {
+    width: 380px;
+    height: 100vh;
+    background-color: #171717;
+    color: #e0e0e0;
+    font-family: 'Segoe UI', sans-serif;
+    font-size: 0.85rem;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.sidebar-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.5rem 1rem;
+}
+
+/* =============== HEADER =============== */
+.sidebar-header.enhanced {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background-color: #1d1d1d;
+    padding: 1rem;
+    border-bottom: 1px solid #2a2a2a;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    animation: slideDown 0.4s ease;
+}
+
+.jira-icon {
+    background: #2a2a2a;
+    font-size: 1.5rem;
+    padding: 8px;
+    border-radius: 50%;
+    box-shadow: 0 1px 6px rgba(255, 255, 255, 0.05);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: bounceIn 0.5s ease;
+}
+
+.jira-heading {
+    display: flex;
+    flex-direction: column;
+}
+
+.jira-heading-title {
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: #fff;
+}
+
+.jira-heading-sub {
+    font-size: 0.75rem;
+    color: #aaa;
+    opacity: 0.85;
+    margin-top: 2px;
+}
+
+.custom-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 18px;
+    background: #222;
+    border: 1px solid #2a2a2a;
+    border-radius: 12px;
+    transition: background 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    cursor: pointer;
+    overflow: hidden;
+    position: relative;
+}
+
+.custom-header:hover {
+    background: #2b2b2b;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+}
+
+.custom-header::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.03), transparent);
+    transition: left 0.6s ease;
+}
+
+.custom-header:hover::after {
+    left: 100%;
+}
+
+.custom-header-icon {
+    font-size: 1.2rem;
+    background: #2c2c2c;
+    padding: 6px;
+    border-radius: 50%;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: inset 0 0 8px rgba(255, 255, 255, 0.03);
+    animation: popIn 0.4s ease-in-out;
+}
+
+.custom-header-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #f1f1f1;
+}
+
+.custom-header-sub {
+    font-size: 0.75rem;
+    color: #aaa;
+    opacity: 0.8;
+    margin-top: 2px;
+}
+
+/* =============== PROJECT LIST =============== */
+.project-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 10px;
+    padding: 0 1rem;
+}
+
+.project-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #1c1c1c;
+    border: 1px solid #2b2f3a;
+    padding: 10px 14px;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    position: relative;
+}
+
+.project-item:hover {
+    background: #242424;
+}
+
+.project-item.loading {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.project-item.favourited {
+    animation: boom 0.4s ease;
+    border-left: 4px solid #ffc107;
+    background: linear-gradient(135deg, #2e2e2e, #1e1e1e);
+}
+
+.project-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+}
+
+.project-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    object-fit: contain;
+    background: #333;
+}
+
+.project-details {
+    display: flex;
+    flex-direction: column;
+}
+
+.project-name {
+    font-weight: 500;
+    font-size: 0.875rem;
+}
+
+.project-id {
+    font-size: 11px;
+    color: #888;
+}
+
+.project-right i {
+    font-size: 1.1rem;
+    cursor: pointer;
+    transition: transform 0.2s ease;
+}
+
+.project-right i:hover {
+    transform: scale(1.2) rotate(-10deg);
+}
+
+.card-loader {
+    position: absolute;
+    right: 16px;
+    z-index: 2;
+}
+
+.spinner,
+.inline-loader.spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid #666;
+    border-top-color: #ffc107;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-left: 4px;
+}
+
+/* =============== FAVOURITE PROJECT PANEL =============== */
+.favourite-project-panel {
+    background: #1e1e1e;
+    padding: 1rem;
+    border-radius: 8px;
+    animation: fadeInSlide 0.3s ease;
+    min-height: 100px;
+}
+
+.favourite-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.favourite-header .back-button {
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 8px 10px;
+    background: #232323;
+    border-radius: 8px;
+    transition: transform 0.2s ease, box-shadow 0.3s ease, background 0.2s ease;
+    box-shadow: 0 0 4px rgba(255, 193, 7, 0.15);
+}
+
+.favourite-header .back-button:hover {
+    background: #2c2c2c;
+    transform: scale(1.08);
+    box-shadow: 0 0 10px rgba(255, 193, 7, 0.3);
+}
+
+.fav-title {
+    font-weight: 600;
+    font-size: 15px;
+}
+
+.fav-tree-container {
+    max-height: calc(100vh - 140px);
+    overflow-y: auto;
+}
+
+/* =============== OVERLAY PANEL =============== */
+:host ::ng-deep .p-overlaypanel {
+    background-color: #1f1f1f;
+    color: #eee;
+    border: 1px solid #333;
+    box-shadow: 0 2px 8px rgba(255, 255, 255, 0.05);
+}
+
+.query-title {
+    font-weight: bold;
+    margin-bottom: 6px;
+    font-size: 0.8125rem;
+    color: #fff;
+}
+
+.query-button {
+    background: #007bff;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    padding: 4px 10px;
+    margin: 4px 0;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.query-button:hover {
+    background: #0056b3;
+}
+
+/* =============== ANIMATIONS =============== */
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes bounceIn {
+    0% {
+        transform: scale(0.6);
+        opacity: 0;
+    }
+
+    60% {
+        transform: scale(1.2);
+        opacity: 1;
+    }
+
+    100% {
+        transform: scale(1);
+    }
+}
+
+@keyframes popIn {
+    0% {
+        transform: scale(0.5) rotate(-20deg);
+        opacity: 0;
+    }
+
+    60% {
+        transform: scale(1.2) rotate(5deg);
+        opacity: 1;
+    }
+
+    100% {
+        transform: scale(1) rotate(0deg);
+    }
+}
+
+@keyframes fadeInSlide {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes boom {
+    0% {
+        transform: scale(1);
+        box-shadow: 0 0 0 transparent;
+    }
+
+    50% {
+        transform: scale(1.05);
+        box-shadow: 0 0 14px rgba(255, 193, 7, 0.35);
+    }
+
+    100% {
+        transform: scale(1);
+        box-shadow: none;
+    }
+}
+
+
+.logout-icon {
+    margin-left: auto;
+    font-size: 1.4rem;
+    color: #ffc107;
+    cursor: pointer;
+    transition: transform 0.25s ease, color 0.25s ease, text-shadow 0.25s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    border-radius: 6px;
+}
+
+.logout-icon:hover {
+    transform: scale(1.25) rotate(-8deg);
+    color: #fff176;
+    /* subtle variation of yellow */
+    text-shadow: 0 0 6px rgba(255, 193, 7, 0.4);
+}
+
+
+
+
+/* ===== Tree-Style Project List ===== */
+.project-list.tree-style {
+    position: relative;
+    margin-left: 24px;
+    /* spacing for vertical line */
+    padding-left: 12px;
+    // border-left: 2px solid #555;
+    /* vertical connector */
+}
+
+/* Each node (project card) */
+.project-list.tree-style .tree-node {
+    position: relative;
+    margin-bottom: 14px;
+}
+
+/* Horizontal connector from vertical line */
+.project-list.tree-style .tree-node::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: -12px;
+    /* connects from vertical line to card */
+    width: 12px;
+    height: 2px;
+    background-color: #777;
+    transform: translateY(-50%);
+}
+
+/* Connector Dot (default style) */
+.project-list.tree-style .tree-node::after {
+    content: '';
+    position: absolute;
+    left: -15px;
+    top: 50%;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: #666;
+    transform: translateY(-50%);
+    transform-origin: center;
+    transition: background-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* Non-Favourite Projects in All Projects (Gray Dot) */
+.project-list.tree-style .tree-node.non-fav-dot::after {
+    background-color: #666;
+    box-shadow: none;
+}
+
+/* Favourite Projects in All or Favourite Section (Yellow Dot) */
+.project-list.tree-style .tree-node.fav-dot::after {
+    background-color: #ffc107;
+    box-shadow: 0 0 4px rgba(255, 193, 7, 0.5);
+}
+
+
+/* Pulse animation around the dot */
+@keyframes dotPulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.5);
+        transform: scale(1);
+    }
+
+    70% {
+        box-shadow: 0 0 0 8px rgba(255, 193, 7, 0);
+        transform: scale(1.2);
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(255, 193, 7, 0);
+        transform: scale(1);
+    }
+}
+
+/* Apply the pulse animation when loading */
+.project-list.tree-style .tree-node.blink-dot::after {
+    animation: glowPulse 1s ease-out infinite;
+    background-color: #ffc107 !important;
+    z-index: 2;
+}
+
+.tree-section-label {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-top: 0.75rem;
+}
+
+.tree-parent-node {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+    animation: parentNodeEnter 0.5s ease-out;
+    position: relative;
+}
+
+/* Glowing blinking dot */
+.tree-parent-node .node-dot {
+    width: 10px;
+    height: 10px;
+    background-color: #ffc107;
+    border-radius: 50%;
+    animation: glowPulse 1.4s ease-out infinite;
+    box-shadow: 0 0 0 rgba(255, 193, 7, 0.4);
+}
+
+/* Section label text */
+.tree-parent-node .node-label {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #ffc107;
+    text-shadow: 0 0 4px rgba(255, 193, 7, 0.25);
+    letter-spacing: 0.4px;
+    opacity: 0.95;
+}
+
+/* Only glow, no scale */
+@keyframes glowPulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.5);
+    }
+
+    70% {
+        box-shadow: 0 0 0 6px rgba(255, 193, 7, 0);
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(255, 193, 7, 0);
+    }
+}
+
+@keyframes parentNodeEnter {
+    0% {
+        opacity: 0;
+        transform: translateY(-10px) scale(0.95);
+    }
+
+    100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+
+.animated-avatar {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    font-size: 0.75rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #111;
+    animation: floatY 4s ease-in-out infinite, pulseSoft 3s ease-in-out infinite;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* Floating animation */
+@keyframes floatY {
+
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-1.5px);
+    }
+}
+
+/* Soft pulse glow */
+@keyframes pulseSoft {
+
+    0%,
+    100% {
+        box-shadow: 0 0 6px rgba(255, 255, 255, 0.08);
+    }
+
+    50% {
+        box-shadow: 0 0 12px rgba(255, 255, 255, 0.15);
+    }
+}
+
+/* ==== Color Variants (Dark Theme Friendly) ==== */
+.avatar-0 {
+    background-color: #ffc107;
+    color: #111;
+}
+
+.avatar-1 {
+    background-color: #42a5f5;
+    /* soft blue */
+    color: #fff;
+}
+
+.avatar-2 {
+    background-color: #66bb6a;
+    /* soft green */
+    color: #fff;
+}
+
+.avatar-3 {
+    background-color: #ef5350;
+    /* soft red */
+    color: #fff;
+}
+
+.avatar-4 {
+    background-color: #ab47bc;
+    /* soft purple */
+    color: #fff;
+}
+
+.avatar-5 {
+    background-color: #ffa726;
+    /* orange */
+    color: #111;
+}
+
+.project-tabs {
+    display: flex;
+    justify-content: space-around;
+    margin: 1rem 0 0.5rem;
+    background: #1c1c1c;
+    border: 1px solid #2a2a2a;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.tab-button {
+    flex: 1;
+    text-align: center;
+    padding: 10px;
+    cursor: pointer;
+    font-weight: 600;
+    color: #ccc;
+    background: #1c1c1c;
+    transition: background 0.3s ease;
+}
+
+.tab-button.active {
+    background: #2a2a2a;
+    color: #ffc107;
+}
+
+
+.info-box {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    background: #202020;
+    padding: 12px 16px;
+    border-left: 4px solid #ffc107;
+    border-radius: 8px;
+    margin: 12px 0 16px;
+    color: #ddd;
+    box-shadow: 0 2px 6px rgba(255, 193, 7, 0.05);
+    animation: fadeSlideUp 0.4s ease;
+}
+
+.info-icon {
+    font-size: 1.4rem;
+    color: #ffc107;
+    margin-top: 4px;
+}
+
+.info-content {
+    display: flex;
+    flex-direction: column;
+}
+
+.info-title {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: #ffc107;
+}
+
+.info-subtext {
+    font-size: 0.78rem;
+    color: #ccc;
+    margin-top: 4px;
+    line-height: 1.4;
+}
+
+@keyframes fadeSlideUp {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.fav-info-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    background: #262626;
+    color: #eee;
+    padding: 10px 14px;
+    border-left: 4px solid #ffc107;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    font-size: 0.8rem;
+    animation: fadeSlideUp 0.4s ease-in-out;
+    box-shadow: 0 1px 4px rgba(255, 193, 7, 0.1);
+}
+
+.fav-info-banner .icon {
+    font-size: 1.2rem;
+    color: #ffc107;
+    margin-top: 2px;
+}
+
+.fav-info-banner .text {
+    line-height: 1.4;
+    color: #ccc;
+}
+
+
+.info-dismiss {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    font-size: 1rem;
+    cursor: pointer;
+    color: #999;
+    transition: color 0.3s ease;
+}
+
+.info-dismiss:hover {
+    color: #f44336;
+}
+
+.info-box-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #888;
+    font-size: 0.78rem;
+    cursor: pointer;
+    margin: 0.5rem 0 1rem 0.5rem;
+    transition: color 0.3s ease;
+}
+
+.info-box-toggle:hover {
+    color: #ffc107;
+}
+
+
+
+
+
+
+
+
+
+
+
+.tree-scroll-wrapper {
+    overflow-x: auto;
+    overflow-y: hidden;
+    max-width: 100%;
+    padding-bottom: 8px;
+    white-space: nowrap;
+    background-color: #111;
+}
+
+.tree-list {
+    list-style: none;
+    padding-left: 0;
+    margin: 0;
+    width: max-content;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-size: 14px;
+    color: #ddd;
+}
+
+.tree-list.root {
+    margin-left: 0;
+}
+
+.tree-list .tree-item {
+    position: relative;
+    padding-left: 12px;
+}
+
+.tree-list .tree-item::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 9px;
+    bottom: 0;
+    width: 1px;
+    background-color: #444;
+}
+
+.tree-list .tree-item:last-child::before {
+    height: 18px;
+}
+
+.tree-list .tree-node {
+    position: relative;
+    display: flex;
+    align-items: center;
+    padding: 6px 10px;
+    margin-left: 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.2s;
+}
+
+.tree-list .tree-node::before {
+    content: '';
+    position: absolute;
+    left: -9px;
+    top: 16px;
+    width: 16px;
+    height: 1px;
+    background-color: #444;
+}
+
+.tree-list .tree-node:hover {
+    background-color: #1f1f1f;
+    transform: translateX(2px);
+}
+
+.tree-list .folder-label,
+.tree-list .file-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    transition: color 0.2s ease;
+    padding: 2px 0;
+}
+
+.tree-list .folder-label i {
+    color: #fbc02d;
+    font-size: 1rem;
+    transition: transform 0.2s ease;
+}
+
+.tree-list .file-label i {
+    color: #90caf9;
+    font-size: 1rem;
+}
+
+.tree-list .folder-label:hover,
+.tree-list .file-label:hover {
+    color: #fff;
+}
+
+.tree-list .folder-label.expanded i {
+    transform: rotate(0deg);
+}
+
+.tree-list .ticket-id {
+    font-weight: 500;
+    color: #ccc;
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.tree-list .ticket-summary {
+    color: #aaa;
+    font-size: 12.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 160px;
+}
+
+.tree-list input[type='checkbox'] {
+    margin-left: 4px;
+    transform: scale(1.05);
+    cursor: pointer;
+    accent-color: #4dabf7;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+import { Component, OnInit, ViewChild } from '@angular/core';
+import { OverlayPanel } from 'primeng/overlaypanel';
+
+interface FileNode {
+  name: string;
+  type: 'folder' | 'file';
+  children?: FileNode[];
+  isExpanded?: boolean;
+  selected?: boolean;
+  ticketKey?: string;
+  queries?: string[];
+}
+
+interface RawProjectMap {
+  [key: string]: {
+    key: string;
+    id: string;
+    type: string;
+    icon: string;
+  };
+}
+
+interface Project {
+  id: number;
+  name: string;
+  icon: string;
+  isFavourite: boolean;
+  structure: FileNode[];
+}
+
+@Component({
+  selector: 'app-page-tree',
+  templateUrl: './page-tree.component.html',
+  styleUrls: ['./page-tree.component.scss'],
+})
+export class PageTreeComponent implements OnInit {
+  @ViewChild('op') overlayPanel!: OverlayPanel;
+
+  queryList: string[] = [];
+  selectedFiles: FileNode[] = [];
+  loadingProjectIds: number[] = [];
+  favouriteLoadingIds: number[] = [];
+  animateMap: { [id: number]: boolean } = {};
+
+  rawAllProjects: RawProjectMap = {
+    "1": { key: "Project Alpha", id: "1", type: "project", icon: "" },
+    "2": { key: "Project Beta", id: "2", type: "project", icon: "" },
+    "3": { key: "Project Gamma", id: "3", type: "project", icon: "" },
+    "4": { key: "Project Delta", id: "4", type: "project", icon: "" },
+    "5": { key: "Project Epsilon", id: "5", type: "project", icon: "" }
+  };
+
+  rawFavouriteProjects: RawProjectMap = {
+    "1": { key: "Project Alpha", id: "1", type: "project", icon: "" },
+    "2": { key: "Project Beta", id: "2", type: "project", icon: "" }
+  };
+
+  allProjects: Project[] = [];
+  favouriteProjects: Project[] = [];
+  expandedFavProject: Project | null = null;
+
+  ngOnInit() {
+    this.allProjects = this.normalizeProjects(this.rawAllProjects);
+    const favIds = Object.keys(this.rawFavouriteProjects);
+    this.favouriteProjects = this.allProjects.filter(p => favIds.includes(p.id.toString()));
+    this.allProjects.forEach(p => p.isFavourite = favIds.includes(p.id.toString()));
+  }
+
+  normalizeProjects(data: RawProjectMap): Project[] {
+    return Object.entries(data).map(([id, value]) => ({
+      id: Number(id),
+      name: value.key,
+      icon: value.icon || 'https://cdn-icons-png.flaticon.com/512/1828/1828911.png',
+      isFavourite: false,
+      structure: [{ name: 'JIRA', type: 'folder', children: [], isExpanded: false }]
+    }));
+  }
+
+  toggleExpand(project: Project) {
+    const root = project.structure[0];
+    if (root.isExpanded) {
+      root.isExpanded = false;
+      return;
+    }
+
+    root.isExpanded = true;
+
+    if (!root.children || root.children.length === 0) {
+      this.loadingProjectIds.push(project.id);
+      root.children = undefined;
+
+      this.animateMap[project.id] = true;
+      setTimeout(() => this.animateMap[project.id] = false, 600);
+
+      this.fetchJiraInfo(project.id).then(data => {
+        root.children = this.transformJiraToNodes(data);
+        this.loadingProjectIds = this.loadingProjectIds.filter(id => id !== project.id);
+      });
+    }
+  }
+
+  isLoading(projectId: number): boolean {
+    return this.loadingProjectIds.includes(projectId);
+  }
+
+  transformJiraToNodes(data: any): FileNode[] {
+    return Object.entries(data).map(([category, value]: any) => ({
+      name: category,
+      type: 'folder',
+      isExpanded: false,
+      queries: value.queries,
+      children: value.tickets.map((ticket: any) => ({
+        name: `${ticket.key}: ${ticket.summary}`,
+        type: 'file',
+        ticketKey: ticket.key,
+        queries: value.queries
+      }))
+    }));
+  }
+
+  fetchJiraInfo(projectId: number): Promise<any> {
+    return new Promise(resolve => {
+      setTimeout(() => {
+        resolve({
+          Task: {
+            tickets: [
+              { type: 'Task', summary: 'Improve performance', key: `T-${projectId}-1` },
+              { type: 'Task', summary: 'Fix bugs', key: `T-${projectId}-2` }
+            ],
+            queries: ['What are the open tasks?', 'Show task status.']
+          },
+          Epic: {
+            tickets: [
+              { type: 'Epic', summary: 'User onboarding', key: `E-${projectId}-1` },
+              { type: 'Epic', summary: 'Upgrade backend', key: `E-${projectId}-2` }
+            ],
+            queries: ['List all epics', 'Epic completion rate']
+          }
+        });
+      }, 1500);
+    });
+  }
+
+  onFileToggle(file: FileNode) {
+    if (!file.selected) {
+      if (this.selectedFiles.length >= 5) {
+        alert('You can select a maximum of 5 tickets.');
+        return;
+      }
+      file.selected = true;
+      this.selectedFiles.push(file);
+    } else {
+      file.selected = false;
+      this.selectedFiles = this.selectedFiles.filter(f => f !== file);
+    }
+  }
+
+  showOverlay(event: MouseEvent, node: FileNode) {
+    event.preventDefault();
+    this.queryList = node.queries ?? [];
+    this.overlayPanel.toggle(event);
+  }
+
+  askQuery(query: string) {
+    alert(`Ask: ${query}`);
+    this.overlayPanel.hide();
+  }
+
+  isFavouriteLoading(projectId: number): boolean {
+    return this.favouriteLoadingIds.includes(projectId);
+  }
+
+  onFavouriteClick(project: Project) {
+    if (this.isFavouriteLoading(project.id)) return;
+
+    this.favouriteLoadingIds.push(project.id);
+
+    setTimeout(() => {
+      project.isFavourite = !project.isFavourite;
+
+      if (project.isFavourite) {
+        this.favouriteProjects.push(project);
+      } else {
+        this.favouriteProjects = this.favouriteProjects.filter(p => p.id !== project.id);
+      }
+
+      this.animateMap[project.id] = true;
+      setTimeout(() => this.animateMap[project.id] = false, 600);
+
+      this.favouriteLoadingIds = this.favouriteLoadingIds.filter(id => id !== project.id);
+    }, 1200);
+  }
+
+  onFavouriteProjectClick(proj: Project) {
+    if (!proj.structure[0].children || proj.structure[0].children.length === 0) {
+      this.loadingProjectIds.push(proj.id);
+      this.fetchPageTree(proj.id).then(response => {
+        proj.structure[0].children = this.normalizeTree(response);
+        this.expandedFavProject = proj;
+        this.loadingProjectIds = this.loadingProjectIds.filter(id => id !== proj.id);
+      });
+    } else {
+      this.expandedFavProject = proj;
+    }
+  }
+
+  fetchPageTree(projectId: number): Promise<any[]> {
+    return new Promise(resolve => {
+      setTimeout(() => {
+        resolve([]
+        );
+      }, 10000000);
+    });
+  }
+
+
+
+  getTicketSummary(fullName: string): string {
+    const parts = fullName.split(':');
+    return parts.length > 1 ? parts.slice(1).join(':').trim() : fullName;
+  }
+
+  logout() {
+    // Replace this with actual logout logic
+    console.log('User logged out');
+  }
+
+  infoBoxVisible = {
+    all: true,
+    fav: true
+  };
+
+  private _currentSection: 'all' | 'fav' = 'all';
+
+  get currentSection(): 'all' | 'fav' {
+    return this._currentSection;
+  }
+
+  set currentSection(value: 'all' | 'fav') {
+    if (this._currentSection === 'fav' && value === 'all') {
+      this.expandedFavProject = null; // reset expanded view when switching away from fav
+    }
+    this._currentSection = value;
+  }
+
+  normalizeTree(data: any[]): FileNode[] {
+    return data.map(node => ({
+      name: node.title,
+      type: node.chiildren?.length ? 'folder' : 'file', // use 'chiildren' from your response
+      isExpanded: false,
+      selected: false,
+      ticketKey: node.page_id,
+      children: this.normalizeTree(node.chiildren ?? []),
+      queries: ['Query 1 for ' + node.title, 'Query 2 for ' + node.title] // Example queries
+    }));
+  }
+
+
+}
