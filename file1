@@ -1,89 +1,87 @@
-import { DynamicDialogModule } from 'primeng/dynamicdialog';
-import { DialogService } from 'primeng/dynamicdialog';
-
-@NgModule({
-  imports: [
-    DynamicDialogModule,
-    // other modules...
-  ],
-  providers: [DialogService],
-})
-export class AppModule {}
-
-
-
-
-
-
-
-
-import { DialogService, DynamicDialogRef } from 'primeng/dynamicdialog';
-import { JiraIssuePageComponent } from './jira-issue-page/jira-issue-page.component';
-
-@Component({
-  selector: 'app-parent',
-  templateUrl: './parent.component.html',
-  styleUrls: ['./parent.component.css'],
-  providers: [DialogService]
-})
-export class ParentComponent {
-  ref: DynamicDialogRef | undefined;
-
-  constructor(private dialogService: DialogService) {}
-
-  openJiraModal(issue: any) {
-    this.ref = this.dialogService.open(JiraIssuePageComponent, {
-      header: `${issue.key} - ${issue.title}`,
-      width: '70%',
-      contentStyle: { 'max-height': '80vh', overflow: 'auto', background: '#171717', color: '#e0e0e0' },
-      data: { issue },
-      styleClass: 'jira-popup-dialog'
-    });
-  }
-
-  ngOnDestroy() {
-    if (this.ref) this.ref.close();
-  }
-}
-
-
-
-
-
-
-
-
-
-
-<button (click)="openJiraModal(issue)">Open Jira Issue</button>
-
-
-
-
-
-
-
-
-import { Component, Input } from '@angular/core';
-import { DynamicDialogConfig, DynamicDialogRef } from 'primeng/dynamicdialog';
+import { Component } from '@angular/core';
+import { marked } from 'marked';
 
 @Component({
   selector: 'app-jira-issue-page',
   templateUrl: './jira-issue-page.component.html',
-  styleUrls: ['./jira-issue-page.component.css']
+  styleUrls: ['./jira-issue-page.component.scss']
 })
 export class JiraIssuePageComponent {
-  issue: any;
 
-  constructor(public config: DynamicDialogConfig, public ref: DynamicDialogRef) {
-    this.issue = config.data.issue;
+  issue = {
+    key: 'SM-315',
+    project: 'SWDSD Management',
+    projectId: 'SWDSD',
+    title: 'How to link JIRA projects to space in Confluence',
+    type: 'Task',
+    priority: 'Lowest',
+    status: 'To Do',
+    resolution: 'Unresolved',
+    assignee: 'Unassigned',
+    assigneeAvatar: '',
+    reporter: 'aaa',
+    reporterAvatar: '',
+    description: `
+### Problem
+
+We need to support **markdown** in the Jira issue description.
+
+- This includes:
+  - Bold
+  - Italics
+  - Code blocks
+
+\`\`\`ts
+console.log('Hello Markdown!');
+\`\`\`
+  `,
+    attachments: [],
+    issueLinks: [
+      {
+        type: 'mentioned in',
+        title: 'JIRA - Issue tracking system - obsolete'
+      }
+    ],
+    created: '1 minute ago',
+    updated: '1 minute ago'
+  };
+
+
+  statusOptions = [
+    { label: 'To Do', value: 'To Do' },
+    { label: 'In Progress', value: 'In Progress' },
+    { label: 'Done', value: 'Done' }
+  ];
+
+  sections = {
+    details: true,
+    description: true,
+    attachments: true,
+    issueLinks: true,
+    activity: true,
+    people: true,
+    dates: true,
+    agile: true
+  };
+
+  toggle(section: keyof typeof this.sections) {
+    this.sections[section] = !this.sections[section];
   }
 
-  close() {
-    this.ref.close();
+  getDescriptionAsHtml(): any {
+    return marked.parse(this.issue.description);
   }
 
-  // ... your toggle and markdown logic
+  navigateToProject(projectId: string) {
+    // Your routing or action
+    console.log('Go to project', projectId);
+  }
+
+  navigateToIssue(issueKey: string) {
+    // Your routing or action
+    console.log('Go to issue', issueKey);
+  }
+
 }
 
 
@@ -94,6 +92,471 @@ export class JiraIssuePageComponent {
 
 
 
-<div style="text-align: right; margin-bottom: 10px;">
-  <button class="comment-btn" (click)="close()">Close</button>
+
+
+
+
+
+
+<div class="jira-container">
+    <!-- Header -->
+    <div class="jira-header-wrapper">
+        <div class="jira-icon-container">
+            <img src="" alt="Jira Logo" class="jira-logo" />
+        </div>
+
+        <div class="jira-header-text">
+            <div class="jira-id-line">
+                <a class="project-link" href="#" (click)="navigateToProject(issue.projectId)">
+                    {{ issue.project }}
+                </a>
+                /
+                <a class="issue-link" href="#" (click)="navigateToIssue(issue.key)">
+                    {{ issue.key }}
+                </a>
+            </div>
+
+            <div class="jira-title-line">
+                {{ issue.title }}
+            </div>
+        </div>
+    </div>
+
+
+
+    <!-- Action Bar -->
+    <div class="action-bar">
+        <button>Edit</button>
+        <button>Comment</button>
+        <button>Assign</button>
+        <button>More</button>
+        <p-dropdown [options]="statusOptions" [(ngModel)]="issue.status" optionLabel="label"></p-dropdown>
+    </div>
+
+    <div class="jira-main">
+        <!-- Left Column -->
+        <div class="left-column">
+            <!-- Details -->
+            <div class="section">
+                <div class="section-header" (click)="toggle('details')">
+                    <i class="pi" [ngClass]="sections.details ? 'pi-chevron-down' : 'pi-chevron-right'"></i>
+                    <h4>Details</h4>
+                </div>
+                <div *ngIf="sections.details">
+                    <div class="details-row">
+                        <div class="details-item"><strong>Type:</strong> {{ issue.type }}</div>
+                        <div class="details-item"><strong>Status:</strong> {{ issue.status }}</div>
+                    </div>
+                    <div class="details-row">
+                        <div class="details-item"><strong>Priority:</strong> {{ issue.priority }}</div>
+                        <div class="details-item"><strong>Resolution:</strong> {{ issue.resolution }}</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Description -->
+            <div class="section">
+                <div class="section-header" (click)="toggle('description')">
+                    <i class="pi" [ngClass]="sections.description ? 'pi-chevron-down' : 'pi-chevron-right'"></i>
+                    <h4>Description</h4>
+                </div>
+                <div *ngIf="sections.description">
+                    <div [innerHTML]="getDescriptionAsHtml()" class="markdown-body"></div>
+                </div>
+            </div>
+
+            <!-- Attachments -->
+            <div class="section">
+                <div class="section-header" (click)="toggle('attachments')">
+                    <i class="pi" [ngClass]="sections.attachments ? 'pi-chevron-down' : 'pi-chevron-right'"></i>
+                    <h4>Attachments</h4>
+                </div>
+                <div *ngIf="sections.attachments">
+                    <div class="attachment-box">Drop files to attach, or <a href="#">browse</a>.</div>
+                </div>
+            </div>
+
+            <!-- Issue Links -->
+            <div class="section">
+                <div class="section-header" (click)="toggle('issueLinks')">
+                    <i class="pi" [ngClass]="sections.issueLinks ? 'pi-chevron-down' : 'pi-chevron-right'"></i>
+                    <h4>Issue Links</h4>
+                </div>
+                <div *ngIf="sections.issueLinks">
+                    <div *ngFor="let link of issue.issueLinks">
+                        <span class="link-type">{{ link.type }}</span>
+                        <a href="#">{{ link.title }}</a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Activity -->
+            <div class="section">
+                <div class="section-header" (click)="toggle('activity')">
+                    <i class="pi" [ngClass]="sections.activity ? 'pi-chevron-down' : 'pi-chevron-right'"></i>
+                    <h4>Activity</h4>
+                </div>
+                <div *ngIf="sections.activity">
+                    <div class="tabs">All | <strong>Comments</strong> | Work Log | History | Activity</div>
+                    <p class="no-comments">There are no comments yet on this issue.</p>
+                    <button class="comment-btn">Comment</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column -->
+        <div class="right-column">
+            <!-- People -->
+            <div class="section">
+                <div class="section-header" (click)="toggle('people')">
+                    <i class="pi" [ngClass]="sections.people ? 'pi-chevron-down' : 'pi-chevron-right'"></i>
+                    <h4>People</h4>
+                </div>
+                <div *ngIf="sections.people">
+                    <div class="user-info">
+                        <strong>Assignee:</strong>
+                        <img class="avatar" [src]="issue.assigneeAvatar" alt="Assignee" />
+                        <span>{{ issue.assignee }}</span>
+                    </div>
+
+                    <div class="user-info">
+                        <strong>Reporter:</strong>
+                        <img class="avatar" [src]="issue.reporterAvatar" alt="Reporter" />
+                        <span>{{ issue.reporter }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dates -->
+            <div class="section">
+                <div class="section-header" (click)="toggle('dates')">
+                    <i class="pi" [ngClass]="sections.dates ? 'pi-chevron-down' : 'pi-chevron-right'"></i>
+                    <h4>Dates</h4>
+                </div>
+                <div *ngIf="sections.dates">
+                    <p><strong>Created:</strong> {{ issue.created }}</p>
+                    <p><strong>Updated:</strong> {{ issue.updated }}</p>
+                </div>
+            </div>
+
+            <!-- Agile -->
+            <div class="section">
+                <div class="section-header" (click)="toggle('agile')">
+                    <i class="pi" [ngClass]="sections.agile ? 'pi-chevron-down' : 'pi-chevron-right'"></i>
+                    <h4>Agile</h4>
+                </div>
+                <div *ngIf="sections.agile">
+                    <a href="#">View on Board</a>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+:host {
+    display: block;
+    background-color: #171717;
+    color: #f0f0f0;
+    font-family: 'Segoe UI', sans-serif;
+    font-size: 0.875rem;
+    padding: 20px;
+}
+
+/* Header */
+.jira-header {
+    font-size: 0.875rem;
+    margin-bottom: 10px;
+    color: #a0a0a0;
+}
+
+.issue-title {
+    font-size: 1.125rem;
+    font-weight: 500;
+    margin: 4px 0 12px;
+    color: #f0f0f0;
+}
+
+/* Action Bar */
+.action-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.action-bar button {
+    background-color: #2962ff;
+    color: #ffffff;
+    border: none;
+    padding: 6px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.875rem;
+    transition: background-color 0.2s;
+}
+
+.action-bar button:hover {
+    background-color: #0039cb;
+}
+
+/* Main Layout */
+.jira-main {
+    display: flex;
+    gap: 30px;
+}
+
+/* Columns */
+.left-column {
+    flex: 3;
+}
+
+.right-column {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* Sections */
+.section {
+    background-color: #1e1e1e;
+    border: 1px solid #2d2d2d;
+    border-radius: 6px;
+    padding: 14px;
+    margin-bottom: 20px;
+}
+
+.section-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+    margin-bottom: 10px;
+    color: #3ea6ff;
+}
+
+.section-header h4 {
+    margin: 0;
+    font-size: 0.9375rem;
+}
+
+.pi {
+    font-size: 12px;
+    color: #3ea6ff;
+}
+
+.details-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    gap: 20px;
+}
+
+.details-item {
+    flex: 1;
+    color: #cfcfcf;
+    font-size: 0.875rem;
+}
+
+.details-item strong {
+    color: #f0f0f0;
+    font-weight: 500;
+    margin-right: 4px;
+}
+
+.attachment-box {
+    background-color: #1e1e1e;
+    padding: 10px;
+    border: 1px dashed #444;
+    border-radius: 4px;
+    font-size: 0.8125rem;
+    color: #bbb;
+}
+
+.attachment-box a,
+.section a {
+    color: #3ea6ff;
+    text-decoration: none;
+}
+
+.section a:hover {
+    text-decoration: underline;
+}
+
+.link-type {
+    color: #aaa;
+    font-style: italic;
+    margin-right: 5px;
+}
+
+.tabs {
+    margin-bottom: 10px;
+    color: #999;
+    font-size: 0.875rem;
+}
+
+.no-comments {
+    font-style: italic;
+    color: #777;
+}
+
+.comment-btn {
+    background-color: #1e1e1e;
+    color: #e0e0e0;
+    padding: 6px 10px;
+    border: 1px solid #3ea6ff;
+    border-radius: 4px;
+    margin-top: 10px;
+    cursor: pointer;
+}
+
+.comment-btn:hover {
+    background-color: #2a2a2a;
+}
+
+/* Dropdown */
+p-dropdown .p-dropdown {
+    background: #1e1e1e;
+    color: #f0f0f0;
+    border: 1px solid #2a2a2a;
+    font-size: 0.875rem;
+}
+
+/* Markdown Content */
+.markdown-body {
+    font-size: 0.875rem;
+    color: #e0e0e0;
+    line-height: 1.6;
+}
+
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3 {
+    color: #ffffff;
+    margin: 12px 0 6px;
+}
+
+.markdown-body code {
+    background-color: #2c2c2c;
+    padding: 3px 6px;
+    border-radius: 4px;
+    color: #f78c6c;
+    font-family: 'Fira Code', monospace;
+    font-size: 0.8125rem;
+}
+
+.markdown-body pre {
+    background-color: #2c2c2c;
+    color: #f8f8f2;
+    padding: 12px;
+    border-radius: 6px;
+    overflow-x: auto;
+    font-size: 0.8125rem;
+    margin: 8px 0;
+}
+
+.markdown-body a {
+    color: #3ea6ff;
+}
+
+/* Link Styling */
+.project-link,
+.issue-link {
+    color: #3ea6ff;
+    text-decoration: none;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.project-link:hover,
+.issue-link:hover {
+    text-decoration: underline;
+}
+
+/* Avatar + Name */
+.user-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-size: 0.875rem;
+}
+
+.avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1px solid #333;
+}
+
+.jira-header-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 1.5rem;
+}
+
+/* Icon vertically centers across both lines */
+.jira-icon-container {
+    display: flex;
+    align-items: center;
+    height: 100%;
+}
+
+.jira-logo {
+    width: 28px;
+    height: 28px;
+    filter: brightness(1.5);
+}
+
+/* Text block */
+.jira-header-text {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+}
+
+/* Top line with links */
+.jira-id-line {
+    font-size: 0.9375rem;
+    color: #ccc;
+}
+
+.project-link,
+.issue-link {
+    color: #3ea6ff;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.project-link:hover,
+.issue-link:hover {
+    text-decoration: underline;
+}
+
+/* Bottom line with title */
+.jira-title-line {
+    color: #e0e0e0;
+    font-size: 1.0625rem;
+    font-weight: 500;
+}
