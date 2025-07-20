@@ -1,54 +1,48 @@
-<div class="container">
-    <div class="compact-header">
-        <div class="welcome-text">
-            <h2>Feedback</h2>
-            <p>Your voice matters. Suggest new ideas, report bugs, or discuss improvements to help us grow together.</p>
-        </div>
-    </div>
+const drawPolygon = (ctx, polygonJson) => {
+  if (!polygonJson) return;
 
-    <!-- New Action Bar Below Header -->
-    <div class="action-bar">
-        <div class="elevated-search-container">
-            <i class="fa fa-search search-icon"></i>
-            <input type="text" pInputText [(ngModel)]="searchText" placeholder="Search issues..."
-                class="elevated-search-input" />
-        </div>
-        <button class="create-btn">
-            <i class="fa fa-plus"></i> Create
-        </button>
-    </div>
+  const polygons = JSON.parse(polygonJson); // [[x1, y1, x2, y2, ..., xn, yn]]
+  if (!polygons.length) return;
 
-    <!-- Feedback Items -->
-    <div *ngFor="let item of paginatedItems" class="card">
-        <div class="card-top">
-            <div class="left">
-                <span class="label" [ngClass]="item.labelClass">
-                    <i *ngIf="item.labelClass === 'feature'" class="fa fa-lightbulb"></i>
-                    <i *ngIf="item.labelClass === 'bug'" class="fa fa-bug"></i>
-                    <i *ngIf="item.labelClass === 'discussion'" class="fa fa-comments"></i>
-                    {{ item.category }}
-                </span>
-                <span class="id">#{{ item.id }}</span>
-            </div>
-            <div class="right">
-                <div>Created {{ item.created }} by <strong>{{ item.author }}</strong></div>
-                <div class="stats">
-                    <span><i class="fa fa-comment"></i> {{ item.comments }} comments</span>
-                    <span><i class="fa fa-thumbs-up"></i> {{ item.votes }} votes</span>
-                </div>
-            </div>
-        </div>
+  ctx.strokeStyle = "#00FF00";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
 
-        <h3>{{ item.title }}</h3>
-        <p>{{ item.description }}</p>
+  const coords = polygons[0]; // First polygon only for now
+  ctx.moveTo(coords[0], coords[1]);
 
-        <div class="footer">
-            <span class="action comments"><i class="fa fa-comment"></i> Comment</span>
-            <span class="action votes"><i class="fa fa-thumbs-up"></i> Vote</span>
-        </div>
-    </div>
+  for (let i = 2; i < coords.length; i += 2) {
+    ctx.lineTo(coords[i], coords[i + 1]);
+  }
 
-    <!-- Pagination -->
-    <!-- <p-paginator [rows]="rows" [totalRecords]="filteredItems.length" [first]="first" [rowsPerPageOptions]="[3, 5, 10]"
-        (onPageChange)="onPageChange($event)"></p-paginator> -->
-</div>
+  ctx.closePath();
+  ctx.stroke();
+};
+
+
+
+
+
+
+
+
+const onCanvasLoad = (canvasRef, image) => {
+  const ctx = canvasRef.getContext("2d");
+  const img = new Image();
+  img.src = formatImage(image.image_data);
+
+  img.onload = () => {
+    canvasRef.width = img.width;
+    canvasRef.height = img.height;
+    ctx.drawImage(img, 0, 0);
+
+    // If segmentation exists, draw it
+    if (image.segmentation) {
+      drawPolygon(ctx, image.segmentation);
+    } else if (image.boundingbox) {
+      drawBoundingBox(ctx, image.boundingbox); // fallback
+    }
+  };
+};
+
+
