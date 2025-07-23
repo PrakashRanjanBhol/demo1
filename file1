@@ -1,27 +1,104 @@
-import { Component } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
+import { PostService } from '../post.service';
 
 @Component({
-  selector: 'app-create-issue',
-  templateUrl: './create-issue.component.html',
-  styleUrls: ['./create-issue.component.scss']
+  selector: 'app-post-card',
+  templateUrl: './post-card.component.html',
+  styleUrls: ['./post-card.component.scss']
 })
-export class CreateIssueComponent {
-  issue = {
-    title: '',
-    type: '',
-    description: ''
-  };
+export class PostCardComponent implements OnInit {
+  posts: any[] = [];
 
-  typeOptions = [
-    { label: 'Feature Request', value: 'feature' },
-    { label: 'Bug Report', value: 'bug' },
-    { label: 'Discussion', value: 'discussion' },
-    { label: 'Question', value: 'question' }
-  ];
+  constructor(private postService: PostService) { }
 
-  submitIssue() {
-    console.log('Submitted Issue:', this.issue);
-    // Add API integration here if needed
+  ngOnInit() {
+    this.postService.getPosts().subscribe((data: any) => {
+      this.posts = data.map((post: any) => ({
+        ...post,
+        comments: [],
+        showComments: false,
+        newComment: '',
+        expanded: false,
+        commentsLoaded: false,
+        commentsLoading: false,
+        liked: false,
+        likeCount: post.likes ?? 0,
+        likeLoading: false,
+        postingComment: false
+      }));
+    });
+  }
+
+  toggleComments(post: any) {
+    if (post.showComments) {
+      post.showComments = false;
+      return;
+    }
+
+    post.showComments = true;
+    post.commentsLoading = true;
+    post.comments = [];
+
+    this.postService.getComments(post.id).subscribe((comments) => {
+      setTimeout(() => {
+        post.comments = comments;
+        post.commentsLoading = false;
+      }, 100); // simulate loading delay
+    });
+  }
+
+  postComment(post: any) {
+    const text = post.newComment?.trim();
+    if (!text || post.postingComment) return;
+
+    post.postingComment = true;
+
+    const newComment = { name: 'You', text };
+
+    setTimeout(() => {
+      post.comments.push(newComment);
+      post.newComment = '';
+      post.postingComment = false;
+    }, 10000); // simulate API delay
+  }
+
+
+  toggleLike(post: any) {
+    if (post.likeLoading) return;
+
+    post.likeLoading = true;
+
+    const wasLiked = post.liked;
+    const originalLikeCount = post.likeCount;
+
+    // Optimistic update
+    post.liked = !wasLiked;
+    post.likeCount += post.liked ? 1 : -1;
+
+    setTimeout(() => {
+      post.likeLoading = false;
+    }, 1000)
+
+    // this.postService.likePost(post.id, post.liked).subscribe({
+    //   next: () => {
+    //     post.likeLoading = false;
+    //   },
+    //   error: () => {
+    //     // Revert in case of error
+    //     post.liked = wasLiked;
+    //     post.likeCount = originalLikeCount;
+    //     post.likeLoading = false;
+    //   }
+    // });
+  }
+
+  getAvatarColor(name: string): string {
+    const colors = ['#e57373', '#64b5f6', '#81c784', '#ffd54f', '#ba68c8', '#4db6ac'];
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+      hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return colors[Math.abs(hash) % colors.length];
   }
 }
 
@@ -35,47 +112,120 @@ export class CreateIssueComponent {
 
 
 
-<div class="create-issue-container">
-    <p-card header="Create New Issue" class="issue-card">
-        <form (ngSubmit)="submitIssue()" #issueForm="ngForm" class="form-grid">
 
-            <!-- Title -->
-            <div class="p-field">
-                <label for="title">Title</label>
-                <input pInputText id="title" [(ngModel)]="issue.title" name="title" required #titleRef="ngModel" />
-                <div class="error-msg" *ngIf="titleRef.invalid && titleRef.touched">
-                    Title is required.
+
+
+
+
+
+<div *ngFor="let post of posts" class="post-card">
+    <!-- Post Header -->
+    <div class="post-header">
+        <div class="user-info">
+            <div class="avatar" [ngStyle]="{ 'background-color': getAvatarColor(post.userName) }">
+                {{ post.userName.charAt(0) }}
+            </div>
+            <div class="user-details">
+                <h4>{{ post.userName }} <i class="fab fa-linkedin"></i></h4>
+                <span>{{ post.role }} • {{ post.time }}</span>
+            </div>
+        </div>
+        <div class="follow-btn">+ Follow</div>
+    </div>
+
+    <!-- Post Content -->
+    <div class="post-content">
+        <span *ngIf="!post.expanded">
+            {{ post.content | slice: 0:200 }}
+            <span *ngIf="post.content.length > 200" class="see-more" (click)="post.expanded = true">...see more</span>
+        </span>
+        <span *ngIf="post.expanded">
+            {{ post.content }}
+            <span class="see-more" (click)="post.expanded = false"> see less</span>
+        </span>
+    </div>
+
+    <!-- Post Footer -->
+    <div class="post-footer">
+        <i class="fas fa-thumbs-up" style="color: #0a66c2;"></i> {{ post.likeCount }} • {{ post.comments.length }}
+        Comments
+    </div>
+
+    <!-- Post Actions -->
+    <div class="post-actions">
+        <div (click)="toggleLike(post)" [ngClass]="{ liked: post.liked, loading: post.likeLoading }">
+            <ng-container *ngIf="!post.likeLoading; else loadingTemplate">
+                <i [class.fas]="post.liked" [class.far]="!post.liked" class="fa-thumbs-up"></i>
+                {{ post.liked ? 'Liked' : 'Like' }}
+            </ng-container>
+            <ng-template #loadingTemplate>
+                <i class="fas fa-spinner"></i> {{ post.liked ? 'Liking...' : 'Disliking...' }}
+            </ng-template>
+        </div>
+
+        <div (click)="toggleComments(post)">
+            <i class="far fa-comment"></i> Comment
+        </div>
+        <div>
+            <i class="fas fa-share"></i> Share
+        </div>
+    </div>
+
+    <!-- Comment Section -->
+    <div class="comment-section" *ngIf="post.showComments">
+        <!-- Skeleton Loader -->
+        <div class="skeleton-comment-loader" *ngIf="post.commentsLoading">
+            <div class="comment-skeleton" *ngFor="let i of [1, 2, 3]">
+                <div class="avatar-skeleton"></div>
+                <div class="text-skeleton">
+                    <div class="line long"></div>
+                    <div class="line short"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Comments -->
+        <ng-container *ngIf="!post.commentsLoading">
+            <div class="comment" *ngFor="let comment of post.comments">
+                <div class="avatar small" [ngStyle]="{ 'background-color': getAvatarColor(comment.name) }">
+                    {{ comment.name.charAt(0).toUpperCase() }}
+                </div>
+                <div class="comment-body">
+                    <h5>{{ comment.name }}</h5>
+                    <p>{{ comment.text }}</p>
                 </div>
             </div>
 
-            <!-- Type Dropdown -->
-            <div class="p-field">
-                <label for="type">Type</label>
-                <p-dropdown id="type" name="type" [(ngModel)]="issue.type" [options]="typeOptions"
-                    placeholder="Select Issue Type" [showClear]="true" #typeRef="ngModel"
-                    [ngModelOptions]="{ standalone: false }" styleClass="w-full"></p-dropdown>
-                <div class="error-msg" *ngIf="typeRef.invalid && typeRef.touched">
-                    Type is required.
+            <!-- Comment Posting Loader -->
+            <div class="posting-loader" *ngIf="post.postingComment">
+                <div class="comment">
+                    <div class="avatar small" style="background-color: #555">Y</div>
+                    <div class="comment-body">
+                        <h5>You</h5>
+                        <div class="typing-indicator">
+                            <span></span>
+                            <span></span>
+                            <span></span>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <!-- Description -->
-            <div class="p-field">
-                <label for="description">Description</label>
-                <textarea pInputTextarea id="description" [(ngModel)]="issue.description" name="description" rows="5"
-                    required #descRef="ngModel"></textarea>
-                <div class="error-msg" *ngIf="descRef.invalid && descRef.touched">
-                    Description is required.
+            <!-- Comment Input -->
+            <!-- Comment Input -->
+            <div class="comment-input-area">
+                <div class="avatar small" [ngStyle]="{ 'background-color': getAvatarColor('You') }">Y</div>
+                <div style="flex: 1">
+                    <textarea [(ngModel)]="post.newComment" placeholder="Write a comment..."
+                        [disabled]="post.postingComment"></textarea>
+                    <button (click)="postComment(post)" [disabled]="post.postingComment || !post.newComment?.trim()">
+                        Post
+                    </button>
                 </div>
             </div>
 
-            <!-- Submit Button -->
-            <div class="p-field">
-                <button pButton type="submit" label="Submit Issue" [disabled]="issueForm.invalid"
-                    class="w-full"></button>
-            </div>
-        </form>
-    </p-card>
+        </ng-container>
+    </div>
 </div>
 
 
@@ -88,31 +238,429 @@ export class CreateIssueComponent {
 
 
 
-.create-issue-container {
-    max-width: 600px;
-    margin: 2rem auto;
+
+
+
+
+
+
+
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #212121;
+    padding: 2rem;
+    color: #e0e0e0;
+    font-size: 0.875rem;
+    /* base font-size 14px */
+}
+
+.post-card {
+    max-width: 36rem;
+    background: #141414;
+    border-radius: 0.625rem;
+    padding: 1rem;
+    box-shadow: 0 0.125rem 0.5rem rgba(0, 0, 0, 0.6);
+    margin: 0 auto 1.5rem;
+}
+
+.post-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.user-info {
+    display: flex;
+    gap: 0.625rem;
+}
+
+.user-info img {
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+}
+
+.user-details {
+    line-height: 1.2;
+}
+
+.user-details h4 {
+    margin: 0;
+    font-size: 0.9375rem;
+    font-weight: 600;
     color: #ffffff;
 }
 
-.issue-card {
-    background-color: #1e1e2f;
-    border-radius: 12px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.6);
+.user-details span {
+    font-size: 0.75rem;
+    color: #a0a0a0;
 }
 
-.form-grid .p-field {
-    margin-bottom: 1.5rem;
+.follow-btn {
+    color: #4ea7ff;
+    font-weight: 600;
+    font-size: 0.8125rem;
+    cursor: pointer;
+}
+
+.post-content {
+    margin-top: 0.75rem;
+    font-size: 0.875rem;
+    color: #dddddd;
+    white-space: pre-wrap;
+}
+
+.see-more {
+    color: #0a66c2;
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 0.8125rem;
+    margin-left: 5px;
+}
+
+.post-footer {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    margin-top: 0.75rem;
+    color: #999;
+    font-size: 0.8125rem;
+}
+
+/* ✅ Cleaned-up & updated post-actions */
+.post-actions {
+    display: flex;
+    gap: 20px;
+    padding: 10px 0;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.post-actions div {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    transition: color 0.3s ease;
+    color: #999;
+    font-size: 0.8125rem;
+}
+
+.post-actions div i {
+    font-size: 16px;
+}
+
+.post-actions div.liked {
+    color: #0a66c2;
+    /* LinkedIn blue */
+}
+
+.post-actions div:hover {
+    color: #0a66c2;
+}
+
+.comment-section {
+    margin-top: 1rem;
+}
+
+.comment {
+    display: flex;
+    gap: 0.625rem;
+    margin-top: 0.75rem;
+}
+
+.comment img {
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 50%;
+}
+
+.comment-body {
+    background: #1f1f1f;
+    padding: 0.625rem;
+    border-radius: 0.625rem;
+    max-width: 90%;
+    color: #ddd;
+}
+
+.comment-body h5 {
+    margin: 0;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+.comment-body p {
+    margin: 0.25rem 0 0;
+    font-size: 0.8125rem;
+    color: #cccccc;
+}
+
+.comment-input-area {
+    display: flex;
+    gap: 0.625rem;
+    margin-top: 1rem;
+    align-items: flex-start;
+}
+
+.comment-input-area img {
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 50%;
+}
+
+.comment-input-area textarea {
+    width: 100%;
+    height: 3.75rem;
+    border-radius: 0.5rem;
+    border: 1px solid #444;
+    padding: 0.5rem;
+    font-size: 0.8125rem;
+    resize: none;
+    background-color: #1f1f1f;
+    color: #ddd;
+}
+
+.comment-input-area button {
+    background-color: #0a66c2;
+    color: #fff;
+    border: none;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.375rem;
+    margin-top: 0.25rem;
+    cursor: pointer;
+    font-size: 0.8125rem;
+}
+
+.comment-input-area button:hover {
+    background-color: #084b91;
+}
+
+.avatar {
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-transform: uppercase;
+}
+
+.avatar.small {
+    width: 1.75rem;
+    height: 1.75rem;
+    font-size: 0.8125rem;
+}
+
+/* Skeleton loader styles for comments */
+.skeleton-comment-loader {
     display: flex;
     flex-direction: column;
+    gap: 0.75rem;
+    margin-top: 1rem;
 }
 
-label {
-    font-weight: 500;
-    margin-bottom: 0.5rem;
+.comment-skeleton {
+    display: flex;
+    gap: 0.625rem;
+    align-items: center;
 }
 
-.error-msg {
-    color: #f87171;
-    font-size: 0.85rem;
-    margin-top: 0.25rem;
+.avatar-skeleton {
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    background: #2a2a2a;
+    animation: pulse 1.2s infinite ease-in-out;
+}
+
+.text-skeleton {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.text-skeleton .line {
+    height: 0.625rem;
+    border-radius: 0.25rem;
+    background: #2a2a2a;
+    animation: pulse 1.2s infinite ease-in-out;
+}
+
+.line.short {
+    width: 40%;
+}
+
+.line.long {
+    width: 80%;
+}
+
+@keyframes pulse {
+    0% {
+        opacity: 0.5;
+    }
+
+    50% {
+        opacity: 1;
+    }
+
+    100% {
+        opacity: 0.5;
+    }
+}
+
+/* 🔄 Loading state for Like button */
+.post-actions div.loading {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+/* 🔄 Spinner icon style inside Like button */
+.post-actions div.loading i.fa-spinner {
+    font-size: 1rem;
+    animation: spin 1s linear infinite;
+}
+
+/* ✅ Pulse animation when liked */
+.post-actions div.liked i {
+    animation: like-pulse 0.25s ease-in-out;
+}
+
+/* 🔄 Spinner keyframes */
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes like-pulse {
+    0% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(1.25);
+    }
+
+    100% {
+        transform: scale(1);
+    }
+}
+
+.typing-indicator {
+    display: flex;
+    align-items: center;
+    height: 20px;
+    gap: 4px;
+}
+
+.typing-indicator span {
+    width: 6px;
+    height: 6px;
+    background-color: #bbb;
+    border-radius: 50%;
+    display: inline-block;
+    animation: typingAnimation 1.2s infinite ease-in-out;
+}
+
+.typing-indicator span:nth-child(1) {
+    animation-delay: 0s;
+}
+
+.typing-indicator span:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.typing-indicator span:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+@keyframes typingAnimation {
+
+    0%,
+    80%,
+    100% {
+        transform: scale(0.8);
+        opacity: 0.6;
+    }
+
+    40% {
+        transform: scale(1.4);
+        opacity: 1;
+    }
+}
+
+textarea:disabled {
+    background-color: #2c2c2c;
+    color: #888;
+    cursor: not-allowed;
+}
+
+button:disabled {
+    background-color: #444;
+    color: #999;
+    cursor: not-allowed;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import { Injectable } from '@angular/core';
+import { Observable, of } from 'rxjs';
+
+@Injectable({ providedIn: 'root' })
+export class PostService {
+  getPosts(): Observable<any[]> {
+    return of([
+      {
+        id: 1,
+        userName: 'Abc',
+        role: 'Software Engineer',
+        time: '2h',
+        content: `Some ideas on networking and meeting people when you're introverted:\n\n1. Go to "long tail" or "niche" events... Some ideas on networking and meeting people when you're introverted:\n\n1. Go to "long tail" or "niche" events...`,
+        likes: 1758
+      },
+      {
+        id: 2,
+        userName: 'XYZ',
+        role: 'Tech Lead',
+        time: '5h',
+        content: `Excited to announce Starlink for remote areas is expanding rapidly.`,
+        likes: 982
+      }
+    ]);
+  }
+
+  getComments(postId: number): Observable<any[]> {
+    const dummyComments: any = {
+      1: [
+        { name: 'Jane Doe', text: 'Great tip!' },
+        { name: 'ABC', text: 'Been to niche events, agree!' }
+      ],
+      2: [
+        { name: 'Mark', text: 'Awesome update!' }
+      ]
+    };
+    return of(dummyComments[postId] || []);
+  }
 }
