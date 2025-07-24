@@ -1,15 +1,89 @@
-// Define a dynamic color palette
-const palette = [
-  '#91cc75', '#fac858', '#ee6666',
-  '#5470c6', '#73c0de', '#3ba272',
-  '#fc8452', '#9a60b4', '#ea7ccc'
+import React, { useState, useEffect, useMemo } from 'react';
+import ReactECharts from 'echarts-for-react';
+
+const colorPalette = [
+  '#91cc75', '#fac858', '#ee6666', '#73c0de', '#3ba272',
+  '#fc8452', '#9a60b4', '#ea7ccc', '#5470c6', '#1d9bf0'
 ];
 
-// Extract unique d_types
-const uniqueTypes = [...new Set(response.map(item => item.d_type))];
+const ScatterChart = ({ scatterData, lineData }) => {
+  // Extract unique types
+  const allTypes = useMemo(
+    () => Array.from(new Set(scatterData.map(item => item.d_type))),
+    [scatterData]
+  );
 
-// Create dynamic colorMap
-const colorMap: { [key: string]: string } = {};
-uniqueTypes.forEach((type, index) => {
-  colorMap[type] = palette[index % palette.length];
-});
+  const [selectedType, setSelectedType] = useState(allTypes[0]);
+
+  // Dynamically generate color map based on types
+  const colorMap = useMemo(() => {
+    const map = {};
+    allTypes.forEach((type, index) => {
+      map[type] = colorPalette[index % colorPalette.length];
+    });
+    return map;
+  }, [allTypes]);
+
+  const filteredData = scatterData
+    .filter(item => item.d_type === selectedType)
+    .map(item => [item.xcoord, item.ycoord]);
+
+  const scatterSeries = [
+    {
+      name: selectedType,
+      type: 'scatter',
+      data: filteredData,
+      symbolSize: 12,
+      itemStyle: {
+        color: colorMap[selectedType]
+      }
+    }
+  ];
+
+  const lineSeries = lineData && lineData.length > 0
+    ? [{
+        name: 'Line Defect',
+        type: 'line',
+        data: lineData.flat(),
+        lineStyle: {
+          type: 'dashed',
+          width: 2,
+          color: '#ffa500'
+        },
+        showSymbol: false
+      }]
+    : [];
+
+  const option = {
+    backgroundColor: '#090d16',
+    tooltip: { trigger: 'item' },
+    xAxis: { type: 'value' },
+    yAxis: { type: 'value' },
+    series: [...scatterSeries, ...lineSeries]
+  };
+
+  return (
+    <div>
+      <select
+        value={selectedType}
+        onChange={(e) => setSelectedType(e.target.value)}
+        style={{
+          background: '#1a1a1a',
+          color: '#fff',
+          padding: '0.5rem',
+          border: '1px solid #333',
+          borderRadius: '6px',
+          marginBottom: '1rem'
+        }}
+      >
+        {allTypes.map(type => (
+          <option key={type} value={type}>{type}</option>
+        ))}
+      </select>
+
+      <ReactECharts option={option} style={{ height: '400px', width: '100%' }} />
+    </div>
+  );
+};
+
+export default ScatterChart;
