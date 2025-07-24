@@ -1,96 +1,47 @@
-<!DOCTYPE html>
-<html lang="en">
+const grouped = response.reduce((acc, point) => {
+  const key = point.d_type;
+  if (!acc[key]) acc[key] = [];
+  acc[key].push([point.xcoord, point.ycoord]);
+  return acc;
+}, {} as Record<string, [number, number][]>);
 
-<head>
-    <meta charset="UTF-8">
-    <title>Glowing Bulb Badges</title>
-    <style>
-        body {
-            background-color: #171717;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            color: #e0e0e0;
-            padding: 2rem;
-        }
+// If you have explicit line coordinates, define them here
+const linesData: [number, number][][] = [
+  [[10, 20], [30, 40]],
+  [[100, 200], [150, 250]]
+];
 
-        .badge-container {
-            display: flex;
-            gap: 1rem;
-            flex-wrap: wrap;
-        }
+// Scatter plot series (with check)
+const scatterSeries = Object.entries(grouped).map(([category, data], index) => ({
+  name: category,
+  type: 'scatter',
+  data,
+  symbolSize: 10,
+  itemStyle: {
+    color: ['#91cc75', '#fac858', '#ee6666', '#73c0de'][index % 4]
+  }
+}));
 
-        .badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.6rem;
-            padding: 0.5rem 1.2rem 0.5rem 0.8rem;
-            border-radius: 999px;
-            font-size: 0.85rem;
-            font-weight: 600;
-            color: #fff;
-            position: relative;
-            background-color: #222;
-            box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.05);
-            transition: transform 0.3s ease;
-        }
+// Line series — ONLY add if 'Line Defect' exists in scatter
+const lineDefectExists = Object.keys(grouped).includes('Line Defect');
 
-        .badge:hover {
-            transform: scale(1.05);
-        }
+const lineSeries = lineDefectExists
+  ? linesData.map(coords => ({
+      type: 'line',
+      data: coords,
+      lineStyle: {
+        color: 'orange',
+        width: 2,
+        type: 'solid'
+      },
+      showSymbol: false,
+      name: 'Line Defect',
+      silent: true // optional: prevent tooltip
+    }))
+  : [];
 
-        .badge::before {
-            content: '';
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background-color: currentColor;
-            box-shadow: 0 0 10px currentColor;
-            animation: pulse 1.5s infinite ease-in-out;
-            flex-shrink: 0;
-        }
 
-        .badge.feature {
-            color: #00e676;
-        }
 
-        .badge.bug {
-            color: #ff5252;
-        }
 
-        .badge.discussion {
-            color: #448aff;
-        }
 
-        .badge.question {
-            color: #ffee58;
-        }
-
-        @keyframes pulse {
-
-            0%,
-            100% {
-                opacity: 0.8;
-                box-shadow: 0 0 5px currentColor;
-            }
-
-            50% {
-                opacity: 1;
-                box-shadow: 0 0 12px currentColor;
-            }
-        }
-    </style>
-</head>
-
-<body>
-
-    <h2 style="margin-bottom: 1rem;">Glowing Bulb Badges</h2>
-
-    <div class="badge-container">
-        <span class="badge feature">Feature</span>
-        <span class="badge bug">Bug</span>
-        <span class="badge discussion">Discussion</span>
-        <span class="badge question">Question</span>
-    </div>
-
-</body>
-
-</html>
+const series = [...scatterSeries, ...lineSeries];
