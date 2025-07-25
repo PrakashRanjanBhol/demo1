@@ -1,84 +1,80 @@
-import React, { useEffect, useState } from 'react';
-import ReactECharts from 'echarts-for-react';
+const scatterData = [
+  { d_type: 'Test', 'd-category': 'Line A', xcoord: 120, ycoord: 440 },
+  { d_type: 'Actual', 'd-category': 'Line A', xcoord: 130, ycoord: 430 },
+  { d_type: 'Test', 'd-category': 'Line B', xcoord: 140, ycoord: 420 },
+  { d_type: 'Actual', 'd-category': 'Line B', xcoord: 150, ycoord: 410 },
+  { d_type: 'Estimate', 'd-category': 'Line A', xcoord: 160, ycoord: 400 },
+  { d_type: 'Estimate', 'd-category': 'Line C', xcoord: 100, ycoord: 405 }
+];
 
-const getColor = (key: string) => {
-  const hash = [...key].reduce((acc, char) => acc + char.charCodeAt(0), 0);
-  const hue = hash % 360;
-  return `hsl(${hue}, 70%, 50%)`;
+const lineData = [
+  [[10, 20], [30, 40]],
+  [[100, 200], [150, 250]]
+];
+
+// Group scatter data by d_type
+const grouped = scatterData.reduce((acc, item) => {
+  const key = item.d_type;
+  if (!acc[key]) acc[key] = [];
+  acc[key].push([item.xcoord, item.ycoord]);
+  return acc;
+}, {});
+
+// Define colors for each d_type
+const colorMap: { [key: string]: string } = {
+  'Test': '#91cc75',
+  'Actual': '#fac858',
+  'Estimate': '#ee6666'
 };
 
-const ScatterChart = ({ response = [], cords = [] }) => {
-  const allTypes = Array.from(new Set(response.map(item => item.defect_type)));
-  const [selectedType, setSelectedType] = useState(allTypes[0] || '');
+// Create scatter series
+const scatterSeries = Object.entries(grouped).map(([category, data]) => ({
+  name: category,
+  type: 'scatter',
+  data,
+  symbolSize: 12,
+  itemStyle: { color: colorMap[category] || '#73c0de' }
+}));
 
-  const handleTypeChange = (e) => {
-    setSelectedType(e.target.value);
-  };
+// Only add line series if lineData is not empty
+const lineSeries = lineData.length > 0
+  ? [{
+      name: 'Line Defect',
+      type: 'line',
+      data: lineData.flat(),
+      lineStyle: {
+        type: 'dashed',
+        width: 2,
+        color: '#ffa500' // orange for black background
+      },
+      showSymbol: false
+    }]
+  : [];
 
-  // Filter scatter data based on selected defect_type
-  const filteredScatter = response
-    .filter(item => item.defect_type === selectedType)
-    .map(item => ({
-      value: [item.xcoord, item.ycoord],
-      name: item.defect_category
-    }));
+// Final series array
+const series = [...scatterSeries, ...lineSeries];
 
-  const scatterSeries = {
-    name: selectedType,
-    type: 'scatter',
-    symbolSize: 12,
-    itemStyle: {
-      color: getColor(selectedType)
-    },
-    data: filteredScatter
-  };
 
-  const lineSeries = cords.map((line, index) => ({
-    name: `Line ${index + 1}`,
-    type: 'line',
-    lineStyle: {
-      color: getColor(`line-${index}`),
-      width: 2
-    },
-    symbol: 'none',
-    data: line
-  }));
 
-  const option = {
-    backgroundColor: '#090d16',
-    tooltip: {
-      trigger: 'item',
-      formatter: (params) => {
-        if (params.seriesType === 'scatter') {
-          return `Category: ${params.data.name}<br/>[${params.data.value.join(', ')}]`;
-        } else {
-          return `Line<br/>[${params.data.join(', ')}]`;
-        }
-      }
-    },
-    legend: {
-      data: [selectedType, ...lineSeries.map(l => l.name)],
-      textStyle: { color: '#fff' }
-    },
-    xAxis: { type: 'value', axisLine: { lineStyle: { color: '#fff' } } },
-    yAxis: { type: 'value', axisLine: { lineStyle: { color: '#fff' } } },
-    series: [scatterSeries, ...lineSeries]
-  };
 
-  return (
-    <div>
-      <div style={{ marginBottom: '1rem' }}>
-        <label style={{ color: 'white', marginRight: '8px' }}>Select Defect Type:</label>
-        <select value={selectedType} onChange={handleTypeChange}>
-          {allTypes.map(type => (
-            <option key={type} value={type}>{type}</option>
-          ))}
-        </select>
-      </div>
 
-      <ReactECharts option={option} style={{ height: '500px' }} />
-    </div>
-  );
-};
 
-export default ScatterChart;
+
+
+
+
+// Define a dynamic color palette
+const palette = [
+  '#91cc75', '#fac858', '#ee6666',
+  '#5470c6', '#73c0de', '#3ba272',
+  '#fc8452', '#9a60b4', '#ea7ccc'
+];
+
+// Extract unique d_types
+const uniqueTypes = [...new Set(response.map(item => item.d_type))];
+
+// Create dynamic colorMap
+const colorMap: { [key: string]: string } = {};
+uniqueTypes.forEach((type, index) => {
+  colorMap[type] = palette[index % palette.length];
+});
