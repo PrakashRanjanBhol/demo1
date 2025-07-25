@@ -1,81 +1,150 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import ReactECharts from 'echarts-for-react';
+import { Dropdown } from 'primereact/dropdown';
+import { Dialog } from 'primereact/dialog';
+import styles from './ScatterChart.module.css';
 
-const ScatterChart = ({ response = [], cords = [] }) => {
-  // Extract unique defect types and categories
-  const uniqueTypes = Array.from(new Set(response.map(d => d.defect_type)));
-  const uniqueCategories = Array.from(new Set(response.map(d => d.defect_category)));
+const ScatterChart = () => {
+    const response = [
+        { defect_type: 'Test', defect_category: 'Line Defect', xcoord: 120, ycoord: 440 },
+        { defect_type: 'Actual', defect_category: 'ABC', xcoord: 130, ycoord: 430 },
+        { defect_type: 'Test', defect_category: 'Line Defect', xcoord: 140, ycoord: 420 },
+        { defect_type: 'Actual', defect_category: 'ABC', xcoord: 150, ycoord: 410 }
+    ];
 
-  // Create a dynamic color map
-  const allKeys = [...uniqueTypes, ...uniqueCategories];
-  const colorPalette = [
-    '#91cc75', '#fac858', '#ee6666', '#73c0de',
-    '#3ba272', '#fc8452', '#9a60b4', '#ea7ccc'
-  ];
-  const dynamicColorMap = {};
-  allKeys.forEach((key, index) => {
-    dynamicColorMap[key] = colorPalette[index % colorPalette.length];
-  });
+    const cords = [
+        [[10, 11], [20, 21]],
+        [[32, 32], [41, 42]]
+    ];
 
-  // Scatter series (grouped by defect_type)
-  const scatterSeries = uniqueTypes.map(type => ({
-    name: type,
-    type: 'scatter',
-    data: response
-      .filter(d => d.defect_type === type)
-      .map(d => [d.xcoord, d.ycoord]),
-    symbolSize: 12,
-    emphasis: { focus: 'series' },
-    itemStyle: { color: dynamicColorMap[type] }
-  }));
+    const allTypes = Array.from(new Set(response.map(item => item.defect_type)));
+    const [selectedType, setSelectedType] = useState(allTypes[0]);
+    const [visible, setVisible] = useState(false);
 
-  // Line series (grouped by defect_category)
-  const lineSeries = uniqueCategories.map(category => {
-    const categoryLines = response
-      .filter(d => d.defect_category === category)
-      .map(d => [d.xcoord, d.ycoord])
-      .sort((a, b) => a[0] - b[0]);
+    const filteredData = useMemo(
+        () => response.filter(item => item.defect_type === selectedType),
+        [selectedType]
+    );
 
-    return {
-      name: category,
-      type: 'line',
-      data: categoryLines,
-      lineStyle: {
-        width: 2,
-        color: dynamicColorMap[category],
-      },
-      showSymbol: false,
-      emphasis: { focus: 'series' }
+    const hasLineDefect = useMemo(
+        () => filteredData.some(item => item.defect_category === 'Line Defect'),
+        [filteredData]
+    );
+
+    const groupedScatter = useMemo(() => {
+        const result = {};
+        filteredData.forEach(item => {
+            if (item.defect_category !== 'Line Defect') {
+                const label = `${item.defect_category} (Points)`;
+                if (!result[label]) result[label] = [];
+                result[label].push([item.xcoord, item.ycoord]);
+            }
+        });
+        return result;
+    }, [filteredData]);
+
+    const scatterSeries = Object.entries(groupedScatter).map(([category, data], index) => ({
+        name: category,
+        type: 'scatter',
+        data,
+        symbolSize: 12,
+        itemStyle: {
+            color: ['#91cc75', '#fac858', '#ee6666', '#73c0de'][index % 4]
+        }
+    }));
+
+    const actualLineSeries = hasLineDefect
+        ? cords.map((lineData, index) => ({
+              name: 'Line Defect (Lines)',
+              type: 'line',
+              data: lineData,
+              lineStyle: {
+                  type: 'dashed',
+                  width: 2,
+                  color: '#888'
+              },
+              symbol: 'none',
+              emphasis: { focus: 'series' },
+              legendHoverLink: true
+          }))
+        : [];
+
+    // Include 'Line Defect (Lines)' in legend only once
+    const legendEntries = [
+        ...Object.keys(groupedScatter),
+        ...(hasLineDefect ? ['Line Defect (Lines)'] : [])
+    ];
+
+    const chartOption = {
+        title: {
+            text: `Scatter Plot - ${selectedType}`,
+            left: 'center',
+            textStyle: { color: '#fff' }
+        },
+        legend: {
+            top: 30,
+            textStyle: { color: '#ccc' },
+            data: legendEntries,
+            selected: Object.fromEntries(legendEntries.map(name => [name, true]))
+        },
+        tooltip: {
+            trigger: 'item',
+            formatter: params =>
+                `Series: ${params.seriesName}<br/>X: ${params.data[0]}<br/>Y: ${params.data[1]}`
+        },
+        xAxis: {
+            type: 'value',
+            name: 'X Coord',
+            nameTextStyle: { color: '#ccc' },
+            axisLabel: { color: '#aaa' },
+            splitLine: { lineStyle: { type: 'dashed', color: '#444' } }
+        },
+        yAxis: {
+            type: 'value',
+            name: 'Y Coord',
+            nameTextStyle: { color: '#ccc' },
+            axisLabel: { color: '#aaa' },
+            splitLine: { lineStyle: { type: 'dashed', color: '#444' } }
+        },
+        series: [...scatterSeries, ...actualLineSeries]
     };
-  });
 
-  const option = {
-    tooltip: {
-      trigger: 'item',
-      formatter: ({ seriesName, data }) => `${seriesName}<br/>X: ${data[0]}<br/>Y: ${data[1]}`
-    },
-    legend: {
-      top: 10,
-      left: 'center',
-      type: 'scroll'
-    },
-    xAxis: {
-      type: 'value',
-      name: 'X Axis',
-      nameTextStyle: { color: '#ccc' },
-      axisLabel: { color: '#ccc' }
-    },
-    yAxis: {
-      type: 'value',
-      name: 'Y Axis',
-      nameTextStyle: { color: '#ccc' },
-      axisLabel: { color: '#ccc' }
-    },
-    series: [...scatterSeries, ...lineSeries],
-    backgroundColor: '#1f1f1f'
-  };
+    return (
+        <>
+            <div className={styles.container}>
+                <div className={styles.chartWrapper}>
+                    <i
+                        className={`pi pi-window-maximize ${styles.expandIcon}`}
+                        onClick={() => setVisible(true)}
+                        title="Expand"
+                    />
+                    <ReactECharts option={chartOption} style={{ height: '100%', width: '100%' }} />
+                </div>
+                <div className={styles.dropdownWrapper}>
+                    <Dropdown
+                        value={selectedType}
+                        options={allTypes.map(type => ({ label: type, value: type }))}
+                        onChange={(e) => setSelectedType(e.value)}
+                        placeholder="Select defect_type"
+                        className={styles.dropdown}
+                    />
+                </div>
+            </div>
 
-  return <ReactECharts option={option} style={{ height: 500, width: '100%' }} />;
+            <Dialog
+                header={`Full View - ${selectedType}`}
+                visible={visible}
+                onHide={() => setVisible(false)}
+                modal
+                dismissableMask
+                maximizable
+                style={{ width: '90vw', height: '90vh' }}
+                contentStyle={{ height: 'calc(100% - 3rem)' }}
+            >
+                <ReactECharts option={chartOption} style={{ height: '100%', width: '100%' }} />
+            </Dialog>
+        </>
+    );
 };
 
 export default ScatterChart;
