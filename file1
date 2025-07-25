@@ -1,37 +1,45 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import ReactECharts from 'echarts-for-react';
 
 const ScatterChart = ({ response = [], cords = [] }) => {
-  // Extract unique defect types and categories
-  const uniqueTypes = Array.from(new Set(response.map(d => d.defect_type)));
-  const uniqueCategories = Array.from(new Set(response.map(d => d.defect_category)));
+  const defectTypes = useMemo(
+    () => Array.from(new Set(response.map(d => d.defect_type))),
+    [response]
+  );
 
-  // Create a dynamic color map
-  const allKeys = [...uniqueTypes, ...uniqueCategories];
+  const defectCategories = useMemo(
+    () => Array.from(new Set(response.map(d => d.defect_category))),
+    [response]
+  );
+
+  const [selectedType, setSelectedType] = useState(defectTypes[0] || '');
+
   const colorPalette = [
     '#91cc75', '#fac858', '#ee6666', '#73c0de',
     '#3ba272', '#fc8452', '#9a60b4', '#ea7ccc'
   ];
+
+  const allKeys = [...defectTypes, ...defectCategories];
   const dynamicColorMap = {};
   allKeys.forEach((key, index) => {
     dynamicColorMap[key] = colorPalette[index % colorPalette.length];
   });
 
-  // Scatter series (grouped by defect_type)
-  const scatterSeries = uniqueTypes.map(type => ({
-    name: type,
+  // Scatter data for selected d_type
+  const scatterSeries = {
+    name: selectedType,
     type: 'scatter',
     data: response
-      .filter(d => d.defect_type === type)
+      .filter(d => d.defect_type === selectedType)
       .map(d => [d.xcoord, d.ycoord]),
     symbolSize: 12,
-    emphasis: { focus: 'series' },
-    itemStyle: { color: dynamicColorMap[type] }
-  }));
+    itemStyle: { color: dynamicColorMap[selectedType] },
+    emphasis: { focus: 'series' }
+  };
 
-  // Line series (grouped by defect_category)
-  const lineSeries = uniqueCategories.map(category => {
-    const categoryLines = response
+  // Line series for each d_category
+  const lineSeries = defectCategories.map(category => {
+    const categoryData = response
       .filter(d => d.defect_category === category)
       .map(d => [d.xcoord, d.ycoord])
       .sort((a, b) => a[0] - b[0]);
@@ -39,7 +47,7 @@ const ScatterChart = ({ response = [], cords = [] }) => {
     return {
       name: category,
       type: 'line',
-      data: categoryLines,
+      data: categoryData,
       lineStyle: {
         width: 2,
         color: dynamicColorMap[category],
@@ -71,11 +79,37 @@ const ScatterChart = ({ response = [], cords = [] }) => {
       nameTextStyle: { color: '#ccc' },
       axisLabel: { color: '#ccc' }
     },
-    series: [...scatterSeries, ...lineSeries],
+    series: [scatterSeries, ...lineSeries],
     backgroundColor: '#1f1f1f'
   };
 
-  return <ReactECharts option={option} style={{ height: 500, width: '100%' }} />;
+  return (
+    <div style={{ padding: '1rem', backgroundColor: '#1f1f1f', color: '#fff' }}>
+      <label style={{ marginBottom: '0.5rem', display: 'block' }}>
+        Select Defect Type:
+      </label>
+      <select
+        value={selectedType}
+        onChange={e => setSelectedType(e.target.value)}
+        style={{
+          padding: '0.5rem',
+          borderRadius: '6px',
+          marginBottom: '1rem',
+          backgroundColor: '#333',
+          color: '#fff',
+          border: '1px solid #555'
+        }}
+      >
+        {defectTypes.map(type => (
+          <option key={type} value={type}>
+            {type}
+          </option>
+        ))}
+      </select>
+
+      <ReactECharts option={option} style={{ height: 500, width: '100%' }} />
+    </div>
+  );
 };
 
 export default ScatterChart;
