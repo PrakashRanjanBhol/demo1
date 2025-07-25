@@ -1,81 +1,81 @@
-const ScatterChart = ({ response, cords }) => {
-  const scatterData = response;
-  const lineData = cords;
+import React from 'react';
+import ReactECharts from 'echarts-for-react';
 
-  // Get all unique defect types
-  const allTypes = useMemo(
-    () => Array.from(new Set(scatterData.map(item => item.critical_defect_type))),
-    [scatterData]
-  );
+const ScatterChart = ({ response = [], cords = [] }) => {
+  // Extract unique defect types and categories
+  const uniqueTypes = Array.from(new Set(response.map(d => d.defect_type)));
+  const uniqueCategories = Array.from(new Set(response.map(d => d.defect_category)));
 
-  const [selectedType, setSelectedType] = useState(allTypes[0]);
-
-  const colorMap = useMemo(() => {
-    const map = {};
-    allTypes.forEach((type, index) => {
-      map[type] = colorPalette[index % colorPalette.length];
-    });
-    return map;
-  }, [allTypes]);
-
-  const filteredData = scatterData
-    .filter(item => item.critical_defect_type === selectedType)
-    .map(item => [item.xcoord, item.ycoord]);
-
-  const scatterSeries = [
-    {
-      name: selectedType,
-      type: 'scatter',
-      data: filteredData,
-      symbolSize: 12,
-      itemStyle: {
-        color: colorMap[selectedType]
-      }
-    }
+  // Create a dynamic color map
+  const allKeys = [...uniqueTypes, ...uniqueCategories];
+  const colorPalette = [
+    '#91cc75', '#fac858', '#ee6666', '#73c0de',
+    '#3ba272', '#fc8452', '#9a60b4', '#ea7ccc'
   ];
+  const dynamicColorMap = {};
+  allKeys.forEach((key, index) => {
+    dynamicColorMap[key] = colorPalette[index % colorPalette.length];
+  });
 
-  const lineSeries = cords && cords.length > 0
-    ? [{
-        name: 'Line Defect',
-        type: 'line',
-        data: cords.flat(),
-        lineStyle: {
-          type: 'dashed',
-          width: 2,
-          color: '#ffa500'
-        },
-        showSymbol: false
-      }]
-    : [];
+  // Scatter series (grouped by defect_type)
+  const scatterSeries = uniqueTypes.map(type => ({
+    name: type,
+    type: 'scatter',
+    data: response
+      .filter(d => d.defect_type === type)
+      .map(d => [d.xcoord, d.ycoord]),
+    symbolSize: 12,
+    emphasis: { focus: 'series' },
+    itemStyle: { color: dynamicColorMap[type] }
+  }));
+
+  // Line series (grouped by defect_category)
+  const lineSeries = uniqueCategories.map(category => {
+    const categoryLines = response
+      .filter(d => d.defect_category === category)
+      .map(d => [d.xcoord, d.ycoord])
+      .sort((a, b) => a[0] - b[0]);
+
+    return {
+      name: category,
+      type: 'line',
+      data: categoryLines,
+      lineStyle: {
+        width: 2,
+        color: dynamicColorMap[category],
+      },
+      showSymbol: false,
+      emphasis: { focus: 'series' }
+    };
+  });
 
   const option = {
-    backgroundColor: '#090d16',
-    tooltip: { trigger: 'item' },
-    xAxis: { type: 'value' },
-    yAxis: { type: 'value' },
-    series: [...scatterSeries, ...lineSeries]
+    tooltip: {
+      trigger: 'item',
+      formatter: ({ seriesName, data }) => `${seriesName}<br/>X: ${data[0]}<br/>Y: ${data[1]}`
+    },
+    legend: {
+      top: 10,
+      left: 'center',
+      type: 'scroll'
+    },
+    xAxis: {
+      type: 'value',
+      name: 'X Axis',
+      nameTextStyle: { color: '#ccc' },
+      axisLabel: { color: '#ccc' }
+    },
+    yAxis: {
+      type: 'value',
+      name: 'Y Axis',
+      nameTextStyle: { color: '#ccc' },
+      axisLabel: { color: '#ccc' }
+    },
+    series: [...scatterSeries, ...lineSeries],
+    backgroundColor: '#1f1f1f'
   };
 
-  return (
-    <div>
-      <select
-        value={selectedType}
-        onChange={(e) => setSelectedType(e.target.value)}
-        style={{
-          background: '#1a1a1a',
-          color: '#fff',
-          padding: '0.5rem',
-          border: '1px solid #333',
-          borderRadius: '6px',
-          marginBottom: '1rem'
-        }}
-      >
-        {allTypes.map(type => (
-          <option key={type} value={type}>{type}</option>
-        ))}
-      </select>
-
-      <ReactECharts option={option} style={{ height: '400px', width: '100%' }} />
-    </div>
-  );
+  return <ReactECharts option={option} style={{ height: 500, width: '100%' }} />;
 };
+
+export default ScatterChart;
