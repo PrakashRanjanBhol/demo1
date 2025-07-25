@@ -1,80 +1,81 @@
-const scatterData = [
-  { d_type: 'Test', 'd-category': 'Line A', xcoord: 120, ycoord: 440 },
-  { d_type: 'Actual', 'd-category': 'Line A', xcoord: 130, ycoord: 430 },
-  { d_type: 'Test', 'd-category': 'Line B', xcoord: 140, ycoord: 420 },
-  { d_type: 'Actual', 'd-category': 'Line B', xcoord: 150, ycoord: 410 },
-  { d_type: 'Estimate', 'd-category': 'Line A', xcoord: 160, ycoord: 400 },
-  { d_type: 'Estimate', 'd-category': 'Line C', xcoord: 100, ycoord: 405 }
-];
+const ScatterChart = ({ response, cords }) => {
+  const scatterData = response;
+  const lineData = cords;
 
-const lineData = [
-  [[10, 20], [30, 40]],
-  [[100, 200], [150, 250]]
-];
+  // Get all unique defect types
+  const allTypes = useMemo(
+    () => Array.from(new Set(scatterData.map(item => item.critical_defect_type))),
+    [scatterData]
+  );
 
-// Group scatter data by d_type
-const grouped = scatterData.reduce((acc, item) => {
-  const key = item.d_type;
-  if (!acc[key]) acc[key] = [];
-  acc[key].push([item.xcoord, item.ycoord]);
-  return acc;
-}, {});
+  const [selectedType, setSelectedType] = useState(allTypes[0]);
 
-// Define colors for each d_type
-const colorMap: { [key: string]: string } = {
-  'Test': '#91cc75',
-  'Actual': '#fac858',
-  'Estimate': '#ee6666'
+  const colorMap = useMemo(() => {
+    const map = {};
+    allTypes.forEach((type, index) => {
+      map[type] = colorPalette[index % colorPalette.length];
+    });
+    return map;
+  }, [allTypes]);
+
+  const filteredData = scatterData
+    .filter(item => item.critical_defect_type === selectedType)
+    .map(item => [item.xcoord, item.ycoord]);
+
+  const scatterSeries = [
+    {
+      name: selectedType,
+      type: 'scatter',
+      data: filteredData,
+      symbolSize: 12,
+      itemStyle: {
+        color: colorMap[selectedType]
+      }
+    }
+  ];
+
+  const lineSeries = cords && cords.length > 0
+    ? [{
+        name: 'Line Defect',
+        type: 'line',
+        data: cords.flat(),
+        lineStyle: {
+          type: 'dashed',
+          width: 2,
+          color: '#ffa500'
+        },
+        showSymbol: false
+      }]
+    : [];
+
+  const option = {
+    backgroundColor: '#090d16',
+    tooltip: { trigger: 'item' },
+    xAxis: { type: 'value' },
+    yAxis: { type: 'value' },
+    series: [...scatterSeries, ...lineSeries]
+  };
+
+  return (
+    <div>
+      <select
+        value={selectedType}
+        onChange={(e) => setSelectedType(e.target.value)}
+        style={{
+          background: '#1a1a1a',
+          color: '#fff',
+          padding: '0.5rem',
+          border: '1px solid #333',
+          borderRadius: '6px',
+          marginBottom: '1rem'
+        }}
+      >
+        {allTypes.map(type => (
+          <option key={type} value={type}>{type}</option>
+        ))}
+      </select>
+
+      <ReactECharts option={option} style={{ height: '400px', width: '100%' }} />
+    </div>
+  );
 };
-
-// Create scatter series
-const scatterSeries = Object.entries(grouped).map(([category, data]) => ({
-  name: category,
-  type: 'scatter',
-  data,
-  symbolSize: 12,
-  itemStyle: { color: colorMap[category] || '#73c0de' }
-}));
-
-// Only add line series if lineData is not empty
-const lineSeries = lineData.length > 0
-  ? [{
-      name: 'Line Defect',
-      type: 'line',
-      data: lineData.flat(),
-      lineStyle: {
-        type: 'dashed',
-        width: 2,
-        color: '#ffa500' // orange for black background
-      },
-      showSymbol: false
-    }]
-  : [];
-
-// Final series array
-const series = [...scatterSeries, ...lineSeries];
-
-
-
-
-
-
-
-
-
-
-// Define a dynamic color palette
-const palette = [
-  '#91cc75', '#fac858', '#ee6666',
-  '#5470c6', '#73c0de', '#3ba272',
-  '#fc8452', '#9a60b4', '#ea7ccc'
-];
-
-// Extract unique d_types
-const uniqueTypes = [...new Set(response.map(item => item.d_type))];
-
-// Create dynamic colorMap
-const colorMap: { [key: string]: string } = {};
-uniqueTypes.forEach((type, index) => {
-  colorMap[type] = palette[index % palette.length];
-});
