@@ -1,113 +1,82 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import ReactECharts from 'echarts-for-react';
 
+const getColor = (key: string) => {
+  const hash = [...key].reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  const hue = hash % 360;
+  return `hsl(${hue}, 70%, 50%)`;
+};
+
 const ScatterChart = ({ response = [], cords = [] }) => {
-  const defectTypes = useMemo(
-    () => Array.from(new Set(response.map(d => d.defect_type))),
-    [response]
-  );
+  const allTypes = Array.from(new Set(response.map(item => item.defect_type)));
+  const [selectedType, setSelectedType] = useState(allTypes[0] || '');
 
-  const defectCategories = useMemo(
-    () => Array.from(new Set(response.map(d => d.defect_category))),
-    [response]
-  );
+  const handleTypeChange = (e) => {
+    setSelectedType(e.target.value);
+  };
 
-  const [selectedType, setSelectedType] = useState(defectTypes[0] || '');
+  // Filter scatter data based on selected defect_type
+  const filteredScatter = response
+    .filter(item => item.defect_type === selectedType)
+    .map(item => ({
+      value: [item.xcoord, item.ycoord],
+      name: item.defect_category
+    }));
 
-  const colorPalette = [
-    '#91cc75', '#fac858', '#ee6666', '#73c0de',
-    '#3ba272', '#fc8452', '#9a60b4', '#ea7ccc'
-  ];
-
-  const allKeys = [...defectTypes, ...defectCategories];
-  const dynamicColorMap = {};
-  allKeys.forEach((key, index) => {
-    dynamicColorMap[key] = colorPalette[index % colorPalette.length];
-  });
-
-  // Scatter data for selected d_type
   const scatterSeries = {
     name: selectedType,
     type: 'scatter',
-    data: response
-      .filter(d => d.defect_type === selectedType)
-      .map(d => [d.xcoord, d.ycoord]),
     symbolSize: 12,
-    itemStyle: { color: dynamicColorMap[selectedType] },
-    emphasis: { focus: 'series' }
+    itemStyle: {
+      color: getColor(selectedType)
+    },
+    data: filteredScatter
   };
 
-  // Line series for each d_category
-  const lineSeries = defectCategories.map(category => {
-    const categoryData = response
-      .filter(d => d.defect_category === category)
-      .map(d => [d.xcoord, d.ycoord])
-      .sort((a, b) => a[0] - b[0]);
-
-    return {
-      name: category,
-      type: 'line',
-      data: categoryData,
-      lineStyle: {
-        width: 2,
-        color: dynamicColorMap[category],
-      },
-      showSymbol: false,
-      emphasis: { focus: 'series' }
-    };
-  });
+  const lineSeries = cords.map((line, index) => ({
+    name: `Line ${index + 1}`,
+    type: 'line',
+    lineStyle: {
+      color: getColor(`line-${index}`),
+      width: 2
+    },
+    symbol: 'none',
+    data: line
+  }));
 
   const option = {
+    backgroundColor: '#090d16',
     tooltip: {
       trigger: 'item',
-      formatter: ({ seriesName, data }) => `${seriesName}<br/>X: ${data[0]}<br/>Y: ${data[1]}`
+      formatter: (params) => {
+        if (params.seriesType === 'scatter') {
+          return `Category: ${params.data.name}<br/>[${params.data.value.join(', ')}]`;
+        } else {
+          return `Line<br/>[${params.data.join(', ')}]`;
+        }
+      }
     },
     legend: {
-      top: 10,
-      left: 'center',
-      type: 'scroll'
+      data: [selectedType, ...lineSeries.map(l => l.name)],
+      textStyle: { color: '#fff' }
     },
-    xAxis: {
-      type: 'value',
-      name: 'X Axis',
-      nameTextStyle: { color: '#ccc' },
-      axisLabel: { color: '#ccc' }
-    },
-    yAxis: {
-      type: 'value',
-      name: 'Y Axis',
-      nameTextStyle: { color: '#ccc' },
-      axisLabel: { color: '#ccc' }
-    },
-    series: [scatterSeries, ...lineSeries],
-    backgroundColor: '#1f1f1f'
+    xAxis: { type: 'value', axisLine: { lineStyle: { color: '#fff' } } },
+    yAxis: { type: 'value', axisLine: { lineStyle: { color: '#fff' } } },
+    series: [scatterSeries, ...lineSeries]
   };
 
   return (
-    <div style={{ padding: '1rem', backgroundColor: '#1f1f1f', color: '#fff' }}>
-      <label style={{ marginBottom: '0.5rem', display: 'block' }}>
-        Select Defect Type:
-      </label>
-      <select
-        value={selectedType}
-        onChange={e => setSelectedType(e.target.value)}
-        style={{
-          padding: '0.5rem',
-          borderRadius: '6px',
-          marginBottom: '1rem',
-          backgroundColor: '#333',
-          color: '#fff',
-          border: '1px solid #555'
-        }}
-      >
-        {defectTypes.map(type => (
-          <option key={type} value={type}>
-            {type}
-          </option>
-        ))}
-      </select>
+    <div>
+      <div style={{ marginBottom: '1rem' }}>
+        <label style={{ color: 'white', marginRight: '8px' }}>Select Defect Type:</label>
+        <select value={selectedType} onChange={handleTypeChange}>
+          {allTypes.map(type => (
+            <option key={type} value={type}>{type}</option>
+          ))}
+        </select>
+      </div>
 
-      <ReactECharts option={option} style={{ height: 500, width: '100%' }} />
+      <ReactECharts option={option} style={{ height: '500px' }} />
     </div>
   );
 };
