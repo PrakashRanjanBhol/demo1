@@ -20,6 +20,7 @@ const ScatterChart = () => {
     const allTypes = Array.from(new Set(response.map(item => item.defect_type)));
     const [selectedType, setSelectedType] = useState(allTypes[0]);
     const [visible, setVisible] = useState(false);
+    const [legendState, setLegendState] = useState({});
 
     const filteredData = useMemo(
         () => response.filter(item => item.defect_type === selectedType),
@@ -54,25 +55,52 @@ const ScatterChart = () => {
     }));
 
     const actualLineSeries = hasLineDefect
-        ? cords.map((lineData, index) => ({
-              name: 'Line Defect (Lines)',
-              type: 'line',
-              data: lineData,
-              lineStyle: {
-                  type: 'dashed',
-                  width: 2,
-                  color: '#888'
-              },
-              symbol: 'none',
-              emphasis: { focus: 'series' },
-              legendHoverLink: true
-          }))
+        ? [{
+            name: 'Line Defect (Lines)',
+            type: 'line',
+            data: cords.flatMap(pair => [...pair, [null, null]]),
+            lineStyle: {
+                type: 'dashed',
+                width: 2,
+                color: '#ff0'  // changed to yellow
+            },
+            symbol: 'circle',
+            symbolSize: 8,
+            itemStyle: { color: '#ff0' }, // yellow points if symbol shown
+            emphasis: { focus: 'series' },
+            legendHoverLink: true
+        }]
         : [];
 
-    // Include 'Line Defect (Lines)' in legend only once
+    const endpointData = hasLineDefect
+        ? cords.flatMap(([start, end]) => [
+            { value: start, label: 'Start Point' },
+            { value: end, label: 'End Point' }
+        ])
+        : [];
+
+    const lineLegendKey = 'Line Defect (Lines)';
+    const lineVisible = legendState[lineLegendKey] !== false; // default to true
+
+    const endpointSeries = hasLineDefect && lineVisible
+        ? [{
+            name: 'Line Endpoints',
+            type: 'scatter',
+            data: endpointData.map(p => p.value),
+            symbolSize: 10,
+            itemStyle: { color: '#fff' },
+            tooltip: {
+                formatter: (params) => {
+                    const point = endpointData[params.dataIndex];
+                    return `${point.label}<br/>X: ${point.value[0]}<br/>Y: ${point.value[1]}`;
+                }
+            }
+        }]
+        : [];
+
     const legendEntries = [
         ...Object.keys(groupedScatter),
-        ...(hasLineDefect ? ['Line Defect (Lines)'] : [])
+        ...(hasLineDefect ? [lineLegendKey] : [])
     ];
 
     const chartOption = {
@@ -85,7 +113,9 @@ const ScatterChart = () => {
             top: 30,
             textStyle: { color: '#ccc' },
             data: legendEntries,
-            selected: Object.fromEntries(legendEntries.map(name => [name, true]))
+            selected: Object.fromEntries(
+                legendEntries.map(name => [name, legendState[name] !== false])
+            )
         },
         tooltip: {
             trigger: 'item',
@@ -106,7 +136,18 @@ const ScatterChart = () => {
             axisLabel: { color: '#aaa' },
             splitLine: { lineStyle: { type: 'dashed', color: '#444' } }
         },
-        series: [...scatterSeries, ...actualLineSeries]
+        series: [
+            ...scatterSeries,
+            ...actualLineSeries,
+            ...endpointSeries
+        ]
+    };
+
+    const handleLegendChange = (e) => {
+        setLegendState(prev => ({
+            ...prev,
+            ...e.selected
+        }));
     };
 
     return (
@@ -118,7 +159,11 @@ const ScatterChart = () => {
                         onClick={() => setVisible(true)}
                         title="Expand"
                     />
-                    <ReactECharts option={chartOption} style={{ height: '100%', width: '100%' }} />
+                    <ReactECharts
+                        option={chartOption}
+                        style={{ height: '100%', width: '100%' }}
+                        onEvents={{ legendselectchanged: handleLegendChange }}
+                    />
                 </div>
                 <div className={styles.dropdownWrapper}>
                     <Dropdown
@@ -141,7 +186,11 @@ const ScatterChart = () => {
                 style={{ width: '90vw', height: '90vh' }}
                 contentStyle={{ height: 'calc(100% - 3rem)' }}
             >
-                <ReactECharts option={chartOption} style={{ height: '100%', width: '100%' }} />
+                <ReactECharts
+                    option={chartOption}
+                    style={{ height: '100%', width: '100%' }}
+                    onEvents={{ legendselectchanged: handleLegendChange }}
+                />
             </Dialog>
         </>
     );
