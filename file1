@@ -1,12 +1,81 @@
-const option = {
-  backgroundColor: '#090d16',
-  tooltip: { trigger: 'item' },
-  legend: {
-    textStyle: { color: '#fff' },
-    top: 10,
-    data: [selectedType, 'Line Defect'] // must match `series.name`
-  },
-  xAxis: { type: 'value' },
-  yAxis: { type: 'value' },
-  series: [...scatterSeries, ...lineSeries]
+import React from 'react';
+import ReactECharts from 'echarts-for-react';
+
+const ScatterChart = ({ response = [], cords = [] }) => {
+  // Extract unique defect types and categories
+  const uniqueTypes = Array.from(new Set(response.map(d => d.defect_type)));
+  const uniqueCategories = Array.from(new Set(response.map(d => d.defect_category)));
+
+  // Create a dynamic color map
+  const allKeys = [...uniqueTypes, ...uniqueCategories];
+  const colorPalette = [
+    '#91cc75', '#fac858', '#ee6666', '#73c0de',
+    '#3ba272', '#fc8452', '#9a60b4', '#ea7ccc'
+  ];
+  const dynamicColorMap = {};
+  allKeys.forEach((key, index) => {
+    dynamicColorMap[key] = colorPalette[index % colorPalette.length];
+  });
+
+  // Scatter series (grouped by defect_type)
+  const scatterSeries = uniqueTypes.map(type => ({
+    name: type,
+    type: 'scatter',
+    data: response
+      .filter(d => d.defect_type === type)
+      .map(d => [d.xcoord, d.ycoord]),
+    symbolSize: 12,
+    emphasis: { focus: 'series' },
+    itemStyle: { color: dynamicColorMap[type] }
+  }));
+
+  // Line series (grouped by defect_category)
+  const lineSeries = uniqueCategories.map(category => {
+    const categoryLines = response
+      .filter(d => d.defect_category === category)
+      .map(d => [d.xcoord, d.ycoord])
+      .sort((a, b) => a[0] - b[0]);
+
+    return {
+      name: category,
+      type: 'line',
+      data: categoryLines,
+      lineStyle: {
+        width: 2,
+        color: dynamicColorMap[category],
+      },
+      showSymbol: false,
+      emphasis: { focus: 'series' }
+    };
+  });
+
+  const option = {
+    tooltip: {
+      trigger: 'item',
+      formatter: ({ seriesName, data }) => `${seriesName}<br/>X: ${data[0]}<br/>Y: ${data[1]}`
+    },
+    legend: {
+      top: 10,
+      left: 'center',
+      type: 'scroll'
+    },
+    xAxis: {
+      type: 'value',
+      name: 'X Axis',
+      nameTextStyle: { color: '#ccc' },
+      axisLabel: { color: '#ccc' }
+    },
+    yAxis: {
+      type: 'value',
+      name: 'Y Axis',
+      nameTextStyle: { color: '#ccc' },
+      axisLabel: { color: '#ccc' }
+    },
+    series: [...scatterSeries, ...lineSeries],
+    backgroundColor: '#1f1f1f'
+  };
+
+  return <ReactECharts option={option} style={{ height: 500, width: '100%' }} />;
 };
+
+export default ScatterChart;
