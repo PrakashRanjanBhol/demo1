@@ -1,199 +1,32 @@
-import React, { useState, useMemo } from 'react';
-import ReactECharts from 'echarts-for-react';
-import { Dropdown } from 'primereact/dropdown';
-import { Dialog } from 'primereact/dialog';
-import styles from './ScatterChart.module.css';
-
-const ScatterChart = () => {
-    const response = [
-        { defect_type: 'Test', defect_category: 'Line Defect', xcoord: 120, ycoord: 440 },
-        { defect_type: 'Actual', defect_category: 'ABC', xcoord: 130, ycoord: 430 },
-        { defect_type: 'Test', defect_category: 'Line Defect', xcoord: 140, ycoord: 420 },
-        { defect_type: 'Actual', defect_category: 'ABC', xcoord: 150, ycoord: 410 }
-    ];
-
-    const cords = [
-        [[10, 11], [20, 21]],
-        [[32, 32], [41, 42]]
-    ];
-
-    const allTypes = Array.from(new Set(response.map(item => item.defect_type)));
-    const [selectedType, setSelectedType] = useState(allTypes[0]);
-    const [visible, setVisible] = useState(false);
-    const [legendState, setLegendState] = useState({});
-
-    const filteredData = useMemo(
-        () => response.filter(item => item.defect_type === selectedType),
-        [selectedType]
-    );
-
-    const hasLineDefect = useMemo(
-        () => filteredData.some(item => item.defect_category === 'Line Defect'),
-        [filteredData]
-    );
-
-    const groupedScatter = useMemo(() => {
-        const result = {};
-        filteredData.forEach(item => {
-            if (item.defect_category !== 'Line Defect') {
-                const label = `${item.defect_category} (Points)`;
-                if (!result[label]) result[label] = [];
-                result[label].push([item.xcoord, item.ycoord]);
-            }
-        });
-        return result;
-    }, [filteredData]);
-
-    const scatterSeries = Object.entries(groupedScatter).map(([category, data], index) => ({
-        name: category,
-        type: 'scatter',
-        data,
-        symbolSize: 12,
-        itemStyle: {
-            color: ['#91cc75', '#fac858', '#ee6666', '#73c0de'][index % 4]
-        }
-    }));
-
-    const actualLineSeries = hasLineDefect
-        ? [{
-            name: 'Line Defect (Lines)',
-            type: 'line',
-            data: cords.flatMap(pair => [...pair, [null, null]]),
-            lineStyle: {
-                type: 'dashed',
-                width: 2,
-                color: '#ff0'  // changed to yellow
-            },
-            symbol: 'circle',
-            symbolSize: 8,
-            itemStyle: { color: '#ff0' }, // yellow points if symbol shown
-            emphasis: { focus: 'series' },
-            legendHoverLink: true
-        }]
-        : [];
-
-    const endpointData = hasLineDefect
-        ? cords.flatMap(([start, end]) => [
-            { value: start, label: 'Start Point' },
-            { value: end, label: 'End Point' }
-        ])
-        : [];
-
-    const lineLegendKey = 'Line Defect (Lines)';
-    const lineVisible = legendState[lineLegendKey] !== false; // default to true
-
-    const endpointSeries = hasLineDefect && lineVisible
-        ? [{
-            name: 'Line Endpoints',
-            type: 'scatter',
-            data: endpointData.map(p => p.value),
-            symbolSize: 10,
-            itemStyle: { color: '#fff' },
-            tooltip: {
-                formatter: (params) => {
-                    const point = endpointData[params.dataIndex];
-                    return `${point.label}<br/>X: ${point.value[0]}<br/>Y: ${point.value[1]}`;
-                }
-            }
-        }]
-        : [];
-
-    const legendEntries = [
-        ...Object.keys(groupedScatter),
-        ...(hasLineDefect ? [lineLegendKey] : [])
-    ];
-
-    const chartOption = {
-        title: {
-            text: `Scatter Plot - ${selectedType}`,
-            left: 'center',
-            textStyle: { color: '#fff' }
-        },
-        legend: {
-            top: 30,
-            textStyle: { color: '#ccc' },
-            data: legendEntries,
-            selected: Object.fromEntries(
-                legendEntries.map(name => [name, legendState[name] !== false])
-            )
-        },
-        tooltip: {
-            trigger: 'item',
-            formatter: params =>
-                `Series: ${params.seriesName}<br/>X: ${params.data[0]}<br/>Y: ${params.data[1]}`
-        },
-        xAxis: {
-            type: 'value',
-            name: 'X Coord',
-            nameTextStyle: { color: '#ccc' },
-            axisLabel: { color: '#aaa' },
-            splitLine: { lineStyle: { type: 'dashed', color: '#444' } }
-        },
-        yAxis: {
-            type: 'value',
-            name: 'Y Coord',
-            nameTextStyle: { color: '#ccc' },
-            axisLabel: { color: '#aaa' },
-            splitLine: { lineStyle: { type: 'dashed', color: '#444' } }
-        },
-        series: [
-            ...scatterSeries,
-            ...actualLineSeries,
-            ...endpointSeries
-        ]
-    };
-
-    const handleLegendChange = (e) => {
-        setLegendState(prev => ({
-            ...prev,
-            ...e.selected
-        }));
-    };
-
-    return (
-        <>
-            <div className={styles.container}>
-                <div className={styles.chartWrapper}>
-                    <i
-                        className={`pi pi-window-maximize ${styles.expandIcon}`}
-                        onClick={() => setVisible(true)}
-                        title="Expand"
-                    />
-                    <ReactECharts
-                        option={chartOption}
-                        style={{ height: '100%', width: '100%' }}
-                        onEvents={{ legendselectchanged: handleLegendChange }}
-                    />
-                </div>
-                <div className={styles.dropdownWrapper}>
-                    <Dropdown
-                        value={selectedType}
-                        options={allTypes.map(type => ({ label: type, value: type }))}
-                        onChange={(e) => setSelectedType(e.value)}
-                        placeholder="Select defect_type"
-                        className={styles.dropdown}
-                    />
-                </div>
-            </div>
-
-            <Dialog
-                header={`Full View - ${selectedType}`}
-                visible={visible}
-                onHide={() => setVisible(false)}
-                modal
-                dismissableMask
-                maximizable
-                style={{ width: '90vw', height: '90vh' }}
-                contentStyle={{ height: 'calc(100% - 3rem)' }}
-            >
-                <ReactECharts
-                    option={chartOption}
-                    style={{ height: '100%', width: '100%' }}
-                    onEvents={{ legendselectchanged: handleLegendChange }}
-                />
-            </Dialog>
-        </>
-    );
-};
-
-export default ScatterChart;
+const promptCharArrays = [
+  ['W','h','a','t','','c','a','n','','I','','d','o','','f','o','r','','y','o','u','','t','o','d','a','y','?'],
+  ['A','n','y','t','h','i','n','g','','y','o','u','’','d','','l','i','k','e','','t','o','','s','t','a','r','t','','w','i','t','h','?'],
+  ['L','e','t','’','s','','g','e','t','','s','o','m','e','t','h','i','n','g','','d','o','n','e','','—','','w','h','a','t','’','s','','f','i','r','s','t','?'],
+  ['W','h','a','t','’','s','','t','h','e','','n','e','x','t','','i','t','e','m','','o','n','','y','o','u','r','','l','i','s','t','?'],
+  ['H','o','w','','c','a','n','','I','','m','a','k','e','','y','o','u','r','','d','a','y','','e','a','s','i','e','r','?'],
+  ['W','h','a','t','','a','r','e','','w','e','','f','o','c','u','s','i','n','g','','o','n','','t','o','d','a','y','?'],
+  ['G','o','t','','a','','t','a','s','k','','i','n','','m','i','n','d','?'],
+  ['W','h','a','t',"'",'s','','t','h','e','','g','o','a','l','','f','o','r','','t','o','d','a','y','?'],
+  ['W','h','e','r','e','','s','h','o','u','l','d','','w','e','','b','e','g','i','n','?'],
+  ['W','h','a','t','','w','o','u','l','d','','y','o','u','','l','i','k','e','','h','e','l','p','','w','i','t','h','','r','i','g','h','t','','n','o','w','?'],
+  ['N','e','e','d','','h','e','l','p','','w','i','t','h','','s','o','m','e','t','h','i','n','g','','o','n','','y','o','u','r','','p','l','a','t','e','?'],
+  ['W','h','a','t','’','s','','t','h','e','','f','i','r','s','t','','p','r','i','o','r','i','t','y','','t','o','d','a','y','?'],
+  ['H','o','w','','c','a','n','','I','','a','s','s','i','s','t','','y','o','u','r','','w','o','r','k','f','l','o','w','?'],
+  ['I','s','','t','h','e','r','e','','s','o','m','e','t','h','i','n','g','','y','o','u','’','r','e','','s','t','u','c','k','','o','n','?'],
+  ['W','h','a','t','','c','a','n','','I','','s','u','p','p','o','r','t','','y','o','u','','w','i','t','h','?'],
+  ['L','e','t','’','s','','s','t','a','r','t','','s','t','r','o','n','g','','—','','w','h','a','t','','a','r','e','','w','e','','w','o','r','k','i','n','g','','o','n','?'],
+  ['W','h','a','t',"'",'s','','y','o','u','r','','p','l','a','n','','o','f','','a','c','t','i','o','n','','t','o','d','a','y','?'],
+  ['R','e','a','d','y','','t','o','','b','e','g','i','n','','—','','w','h','a','t',"'",'s','','t','h','e','','t','a','s','k','?'],
+  ['L','e','t','','m','e','','k','n','o','w','','w','h','e','r','e','','y','o','u',"'",'d','','l','i','k','e','','t','o','','s','t','a','r','t','.'],
+  ['W','h','a','t','','d','o','','y','o','u','','n','e','e','d','','a','','h','a','n','d','','w','i','t','h','?'],
+  ['H','o','w','','c','a','n','','I','','c','o','n','t','r','i','b','u','t','e','','t','o','d','a','y','?'],
+  ['W','h','a','t','’','s','','o','n','','y','o','u','r','','r','a','d','a','r','','r','i','g','h','t','','n','o','w','?'],
+  ['T','e','l','l','','m','e','','w','h','a','t','','y','o','u','','n','e','e','d','','h','e','l','p','','w','i','t','h','.'],
+  ['W','h','a','t',"'",'s','','t','h','e','','m','a','i','n','','f','o','c','u','s','','a','t','','t','h','e','','m','o','m','e','n','t','?'],
+  ['L','e','t','’','s','','t','a','k','e','','t','h','e','','n','e','x','t','','s','t','e','p','','—','','w','h','a','t','','i','s','','i','t','?'],
+  ['N','e','e','d','','a','s','s','i','s','t','a','n','c','e','','w','i','t','h','','a','','s','p','e','c','i','f','i','c','','t','a','s','k','?'],
+  ['I','’','m','','h','e','r','e','','t','o','','h','e','l','p','','—','','w','h','a','t','’','s','','n','e','x','t','?'],
+  ['W','h','a','t','’','s','','y','o','u','r','','t','o','p','','p','r','i','o','r','i','t','y','','r','i','g','h','t','','n','o','w','?'],
+  ['A','n','y','t','h','i','n','g','','y','o','u',"'",'d','','l','i','k','e','','t','o','','g','e','t','','d','o','n','e','','t','o','g','e','t','h','e','r','?'],
+  ['L','e','t','’','s','','m','o','v','e','','f','o','r','w','a','r','d','','—','','w','h','e','r','e','','s','h','o','u','l','d','','w','e','','b','e','g','i','n','?']
+];
