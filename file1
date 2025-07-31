@@ -1,116 +1,127 @@
-
-
-body {
-  background: #f0f2f5;
-  font-family: Arial, sans-serif;
-}
-
-.post-card {
-  max-width: 500px;
-  margin: auto;
-  background: #fff;
-  border-radius: 8px;
-  padding: 12px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-}
-
-.post-images {
+.image-grid-square {
   display: grid;
-  gap: 4px;
-  border-radius: 8px;
-  overflow: hidden;
+  grid-template-columns: repeat(2, 80px);
+  grid-template-rows: repeat(2, 80px);
+  gap: 6px;
+  width: max-content;
 }
 
-.post-images img {
+.image-wrapper {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  cursor: pointer;
+}
+
+.thumbnail {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  cursor: pointer;
+  border-radius: 6px;
+  transition: transform 0.2s ease;
 }
 
-/* Layouts */
-.layout-1 {
-  grid-template-columns: 1fr;
-  grid-template-rows: 300px;
+.thumbnail:hover {
+  transform: scale(1.05);
 }
 
-.layout-2 {
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: 250px;
-}
-
-.layout-3 {
-  grid-template-columns: 2fr 1fr;
-  grid-template-rows: 250px 1fr;
-  grid-template-areas:
-    'img1 img2'
-    'img1 img3';
-}
-
-.layout-3 img:nth-child(1) {
-  grid-area: img1;
-}
-.layout-3 img:nth-child(2) {
-  grid-area: img2;
-}
-.layout-3 img:nth-child(3) {
-  grid-area: img3;
-}
-
-.layout-4,
-.layout-more {
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: 200px 200px;
-}
-
-.image-count-overlay {
+.more-overlay {
   position: relative;
-  cursor: pointer;
 }
 
-.image-count-overlay::after {
-  content: attr(data-count);
+.darken {
+  filter: brightness(0.5);
+}
+
+.more-count {
   position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
   color: white;
-  font-size: 28px;
   font-weight: bold;
+  font-size: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-/* Fullscreen modal */
-.image-modal {
+/* Overlay Styles */
+.overlay {
   position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.9);
-  z-index: 999;
-  overflow: auto;
-  padding: 40px;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.88);
   display: flex;
-  align-items: start;
+  align-items: center;
   justify-content: center;
+  z-index: 999;
 }
 
-.modal-content {
-  border-radius: 8px;
-  display: block;
-  max-width: unset;
-  max-height: unset;
-  width: auto;
+.overlay-content {
+  position: relative;
+  width: 80%;
+  max-width: 800px;
+}
+
+.large-image {
+  width: 100%;
   height: auto;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(255, 255, 255, 0.3);
+}
+
+.nav {
+  position: absolute;
+  top: 50%;
+  font-size: 32px;
+  color: white;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transform: translateY(-50%);
+  padding: 10px;
+}
+
+.nav.prev {
+  left: -40px;
+}
+
+.nav.next {
+  right: -40px;
+}
+
+.nav:disabled {
+  color: #666;
+  cursor: not-allowed;
 }
 
 .close-btn {
-  position: fixed;
-  top: 20px;
-  right: 30px;
-  font-size: 32px;
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 40px;
+  height: 40px;
+  background: rgba(255, 255, 255, 0.1);
   color: #fff;
+  border: none;
+  border-radius: 50%;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
   cursor: pointer;
-  z-index: 1000;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.close-btn:hover {
+  background: rgba(255, 255, 255, 0.85);
+  color: #000;
+  transform: scale(1.1);
 }
 
 
@@ -122,40 +133,32 @@ body {
 
 
 
+<div class="image-grid-square">
+    <ng-container *ngFor="let img of squareImages; let i = index">
+        <div class="image-wrapper" *ngIf="!isLastWithMore(i)" (click)="openOverlay(i)">
+            <img [src]="img" class="thumbnail" />
+        </div>
 
-
-
-
-
-
-
-
-
-<div class="post-card">
-  <div class="post-images" [ngClass]="getLayoutClass()">
-    <ng-container *ngFor="let img of images.slice(0, 4); let i = index">
-      <div
-        class="image-count-overlay"
-        *ngIf="i === 3 && images.length > 4"
-        [attr.data-count]="'+' + (images.length - 4)"
-        (click)="openImage(img)"
-      >
-        <img [src]="img" alt="Post image" />
-      </div>
-      <img
-        *ngIf="!(i === 3 && images.length > 4)"
-        [src]="img"
-        alt="Post image"
-        (click)="openImage(img)"
-      />
+        <!-- Show +N on the last square if more images exist -->
+        <div class="image-wrapper more-overlay" *ngIf="isLastWithMore(i)" (click)="openOverlay(i)">
+            <img [src]="img" class="thumbnail darken" />
+            <div class="more-count">+{{ remainingCount }}</div>
+        </div>
     </ng-container>
-  </div>
 </div>
 
-<!-- Fullscreen Image Modal -->
-<div class="image-modal" *ngIf="selectedImage">
-  <span class="close-btn" (click)="closeOverlay()">×</span>
-  <img [src]="selectedImage" class="modal-content" />
+<!-- Overlay Lightbox -->
+<div class="overlay" *ngIf="showOverlay">
+    <div class="overlay-content">
+        <button class="close-btn p-button p-button-rounded p-button-text" (click)="closeOverlay()">
+            <i class="pi pi-times"></i>
+        </button>
+
+        <img [src]="images[currentIndex]" class="large-image" />
+
+        <button class="nav prev" (click)="prevImage()" [disabled]="currentIndex === 0">&#10094;</button>
+        <button class="nav next" (click)="nextImage()" [disabled]="currentIndex === images.length - 1">&#10095;</button>
+    </div>
 </div>
 
 
@@ -168,36 +171,45 @@ body {
 
 
 
+  images: string[] = [];
+  showOverlay = false;
+  currentIndex = 0;
 
+  get squareImages() {
+    return this.images.slice(0, 4);
+  }
 
+  get remainingCount() {
+    return this.images.length > 4 ? this.images.length - 4 : 0;
+  }
 
-  images: string[] = [
-    'https://picsum.photos/id/1015/600/800',
-    'https://picsum.photos/id/1016/1200/800',
-    'https://picsum.photos/id/1018/600/600',
-    'https://picsum.photos/id/1024/600/400',
-    'https://picsum.photos/id/1032/700/500',
-    'https://picsum.photos/id/1045/800/600',
-  ];
+  isLastWithMore(index: number): boolean {
+    return index === 3 && this.images.length > 4;
+  }
 
-  selectedImage: string | null = null;
-
-  openImage(src: string) {
-    this.selectedImage = src;
+  openOverlay(index: number) {
+    this.currentIndex = index;
+    this.showOverlay = true;
   }
 
   closeOverlay() {
-    this.selectedImage = null;
+    this.showOverlay = false;
   }
 
-  getLayoutClass(): string {
-    const count = this.images.length;
-    if (count === 1) return 'layout-1';
-    if (count === 2) return 'layout-2';
-    if (count === 3) return 'layout-3';
-    if (count === 4) return 'layout-4';
-    return 'layout-more';
+  nextImage() {
+    if (this.currentIndex < this.images.length - 1) {
+      this.currentIndex++;
+    }
   }
+
+  prevImage() {
+    if (this.currentIndex > 0) {
+      this.currentIndex--;
+    }
+  }
+
+
+
 
 
 
