@@ -1,1 +1,491 @@
-• Right-Click on a Ticket → See suggested queries you can run instantly
+<div class="sidebar-container">
+  <div class="tree-scroll-wrapper">
+    <ul class="tree">
+      <ng-container *ngTemplateOutlet="renderNode; context: { $implicit: treeData, parent: null }"></ng-container>
+    </ul>
+  </div>
+
+  <ng-template #renderNode let-node let-parent="parent">
+    <!-- add class.has-children so CSS can target parents -->
+    <li class="tree-node" [class.has-children]="node.children && node.children.length">
+      <div class="node-content"
+           (click)="node.type === 'folder' && toggleFolder(node)"
+           [title]="node.name">
+
+        <!-- checkbox -->
+        <input *ngIf="shouldShowCheckbox(node, parent)"
+               type="checkbox"
+               [checked]="node.checked"
+               (click)="$event.stopPropagation()"
+               (change)="node.type === 'folder' ? onFolderSelect(node) : onFileSelect(node, parent)" />
+
+        <!-- PrimeNG icons -->
+        <i *ngIf="node.type === 'folder'"
+           class="pi"
+           [ngClass]="node.expanded ? 'pi-folder-open' : 'pi-folder'"></i>
+
+        <i *ngIf="node.type === 'file'" class="pi pi-file"></i>
+
+        <span class="node-label">{{ node.name }}</span>
+      </div>
+
+      <!-- children -->
+      <ul *ngIf="node.children && node.expanded">
+        <ng-container *ngFor="let child of node.children">
+          <ng-container *ngTemplateOutlet="renderNode; context: { $implicit: child, parent: node }"></ng-container>
+        </ng-container>
+      </ul>
+    </li>
+  </ng-template>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* 🌳 Sidebar container (Dark Mode) */
+.sidebar-container {
+    width: 320px;
+    height: 100vh;
+    background-color: var(--bg);
+    border-right: 1px solid #1f2022;
+    font-family: 'Segoe UI', 'Roboto', sans-serif;
+    display: flex;
+    flex-direction: column;
+    color: var(--text);
+}
+
+.tree-scroll-wrapper {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: auto;
+    /* ✅ allow horizontal scroll */
+    padding: 12px;
+    white-space: nowrap;
+    /* ✅ keep everything in one line if it overflows horizontally */
+}
+
+/* 🌲 Reset lists */
+.tree,
+.tree ul,
+.tree li {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+/* ---------- THE CONNECTORS ----------
+   Strategy:
+   - each child-list (ul) draws a vertical trunk (ul::before)
+   - each node draws a short horizontal branch to reach the trunk (.node-content::before)
+   - parents with children draw a short vertical stub down (.tree-node.has-children > .node-content::after)
+   Together these form a clean L from parent -> child.
+--------------------------------------*/
+
+/* container for nested children: keeps trunk positioned */
+.tree ul {
+    position: relative;
+    padding-left: 28px;
+    /* space for trunk + branch */
+    margin-top: 6px;
+}
+
+/* vertical trunk for the child-group */
+.tree ul::before {
+    content: '';
+    position: absolute;
+    left: 14px;
+    /* center of trunk relative to ul */
+    top: 6px;
+    /* start a little below parent's stub */
+    bottom: 0;
+    width: 0;
+    border-left: 1px dashed var(--muted);
+    pointer-events: none;
+}
+
+/* node (li) baseline */
+.tree-node {
+    position: relative;
+    margin: 6px 0;
+}
+
+/* node content (the clickable row) */
+.node-content {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.15s ease, box-shadow 0.15s ease;
+    color: var(--text);
+    overflow: visible;
+}
+
+/* subtle hover */
+.node-content:hover {
+    background-color: var(--hover);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+}
+
+/* horizontal branch from trunk to node => forms the bottom part of the "L" */
+.node-content::before {
+    content: '';
+    position: absolute;
+    left: -14px;
+    /* reach toward the trunk (ul::before left is 14px) */
+    top: 50%;
+    width: 14px;
+    height: 0;
+    border-top: 1px dashed var(--muted);
+    transform: translateY(-50%);
+    pointer-events: none;
+}
+
+/* for nodes that are parents, draw a short vertical stub down from parent to meet the trunk */
+.tree-node.has-children>.node-content::after {
+    content: '';
+    position: absolute;
+    left: -14px;
+    /* align with trunk */
+    top: calc(100% + 2px);
+    /* just below parent row */
+    width: 0;
+    height: 8px;
+    /* short stub */
+    border-left: 1px dashed var(--muted);
+    pointer-events: none;
+}
+
+/* hide the vertical trunk after the last child (mask it for neatness) */
+.tree ul>.tree-node:last-child::after {
+    content: '';
+    position: absolute;
+    left: 14px;
+    /* same x as trunk */
+    bottom: -6px;
+    /* little bit below the last item to cover remaining trunk */
+    width: 0;
+    height: 10px;
+    /* covers the extra trunk portion */
+    background: var(--bg);
+    pointer-events: none;
+    z-index: 3;
+}
+
+/* spacing / alignment tweaks for icons & label */
+.node-content input[type='checkbox'] {
+    transform: scale(1.05);
+    margin-right: 2px;
+    accent-color: #4dabf7;
+    cursor: pointer;
+}
+
+/* Prime icons style */
+.pi {
+    font-size: 1rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* colored icons */
+.pi-folder,
+.pi-folder-open {
+    color: var(--folder);
+}
+
+.pi-file {
+    color: var(--file);
+}
+
+/* label */
+.node-label {
+    white-space: nowrap;
+    overflow: visible;
+    /* ✅ no hiding */
+    text-overflow: clip;
+    /* ✅ disable ellipsis */
+    flex: 1;
+}
+
+/* highlight when checked */
+.node-content input[type='checkbox']:checked~.node-label {
+    background-color: var(--accent);
+    border-radius: 4px;
+    padding: 2px 6px;
+    color: var(--file);
+    font-weight: 600;
+}
+
+/* nested children list indentation */
+.tree-node>ul {
+    margin-left: 0;
+    margin-top: 6px;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import { Component, Input } from '@angular/core';
+
+@Component({
+  selector: 'app-tree-selector',
+  templateUrl: './tree-selector.component.html',
+  styleUrls: ['./tree-selector.component.scss']
+})
+export class TreeSelectorComponent {
+
+  treeData = {
+    name: 'root_folder',
+    expanded: true,
+    checked: false,
+    type: 'folder',
+    children: [
+      {
+        name: 'Level 1 - A',
+        type: 'folder',
+        expanded: false,
+        checked: false,
+        rc_session_id: null,
+        rc_flag: false,
+        children: [
+          {
+            name: 'Level 2 - A',
+            type: 'folder',
+            expanded: false,
+            checked: false,
+            rc_session_id: null,
+            rc_flag: false,
+            children: [
+              {
+                name: 'Level 3 - A',
+                type: 'folder',
+                expanded: false,
+                checked: false,
+                rc_session_id: null,
+                rc_flag: false,
+                children: [
+                  {
+                    name: 'Level 4 - A',
+                    type: 'folder',
+                    expanded: false,
+                    checked: false,
+                    rc_session_id: null,
+                    rc_flag: false,
+                    children: [
+                      {
+                        name: 'Level 5 - A',
+                        type: 'folder',
+                        expanded: false,
+                        checked: false,
+                        rc_session_id: 'session-deep-1',
+                        rc_flag: true,
+                        children: [
+                          {
+                            name: 'file1.py',
+                            type: 'file',
+                            checked: false
+                          },
+                          {
+                            name: 'file2.py',
+                            type: 'file',
+                            checked: false
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        name: 'Level 1 - B',
+        type: 'folder',
+        expanded: false,
+        checked: false,
+        rc_session_id: null,
+        rc_flag: false,
+        children: [
+          {
+            name: 'Level 2 - B',
+            type: 'folder',
+            expanded: false,
+            checked: false,
+            rc_session_id: null,
+            rc_flag: false,
+            children: [
+              {
+                name: 'Level 3 - B',
+                type: 'folder',
+                expanded: false,
+                checked: false,
+                rc_session_id: null,
+                rc_flag: false,
+                children: [
+                  {
+                    name: 'Level 4 - B',
+                    type: 'folder',
+                    expanded: false,
+                    checked: false,
+                    rc_session_id: null,
+                    rc_flag: false,
+                    children: [
+                      {
+                        name: 'Level 5 - B',
+                        type: 'folder',
+                        expanded: false,
+                        checked: false,
+                        rc_session_id: null,
+                        rc_flag: false,
+                        children: [
+                          {
+                            name: 'Level 6 - B',
+                            type: 'folder',
+                            expanded: false,
+                            checked: false,
+                            rc_session_id: 'session-deep-2',
+                            rc_flag: true,
+                            children: [
+                              {
+                                name: 'fileA.py',
+                                type: 'file',
+                                checked: false
+                              },
+                              {
+                                name: 'fileB.py',
+                                type: 'file',
+                                checked: false
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  };
+
+
+  currentSelectedSessionId: string | null = null;
+
+  toggleFolder(node: any) {
+    node.expanded = !node.expanded;
+  }
+
+  onFolderSelect(node: any) {
+    if (this.currentSelectedSessionId && this.currentSelectedSessionId !== node.rc_session_id) {
+      this.resetAllChecked(this.treeData);
+    }
+
+    node.checked = !node.checked;
+    this.currentSelectedSessionId = node.checked ? node.rc_session_id : null;
+
+    this.checkAllChildren(node, node.checked);
+  }
+
+  onFileSelect(node: any, parent: any) {
+    // If already selected session is different, reset all
+    if (this.currentSelectedSessionId && this.currentSelectedSessionId !== parent.rc_session_id) {
+      this.resetAllChecked(this.treeData);
+    }
+
+    // Toggle file check
+    node.checked = !node.checked;
+
+    // Update session ID based on current selection
+    const anyChecked = parent.children.some((child: any) => child.checked);
+    this.currentSelectedSessionId = anyChecked ? parent.rc_session_id : null;
+
+    // Update parent checkbox based on all file children
+    const allChecked = parent.children.every((child: any) => child.checked);
+    parent.checked = allChecked;
+  }
+
+  resetAllChecked(node: any) {
+    node.checked = false;
+    if (node.children) {
+      node.children.forEach((child: any) => this.resetAllChecked(child));
+    }
+  }
+
+  checkAllChildren(node: any, checked: boolean) {
+    if (node.children) {
+      node.children.forEach((child: any) => {
+        if (child.type === 'file') {
+          child.checked = checked;
+        } else if (child.type === 'folder') {
+          child.checked = checked;
+          this.checkAllChildren(child, checked);
+        }
+      });
+    }
+  }
+
+  shouldShowCheckbox(node: any, parent: any = null): boolean {
+    if (node.type === 'folder') {
+      return !!node.rc_session_id;
+    } else {
+      return parent && !!parent.rc_session_id;
+    }
+  }
+
+
+  getSelectedFilesWithPath(): { path: string; file: any }[] {
+    const result: { path: string; file: any }[] = [];
+
+    const traverse = (node: any, currentPath: string) => {
+      const newPath = currentPath ? `${currentPath}/${node.name}` : node.name;
+
+      if (node.type === 'file' && node.checked) {
+        result.push({ path: newPath, file: node });
+      }
+
+      if (node.children) {
+        node.children.forEach((child: any) => traverse(child, newPath));
+      }
+    };
+
+    traverse(this.treeData, '');
+    console.log(result);
+    return result;
+  }
+
+}
+
+
+
