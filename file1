@@ -1,193 +1,201 @@
-ngAfterViewInit() {
-    // Example usage:
-    this.createDrawioDownloadCard("myContainer");
+import { Component, OnInit } from '@angular/core';
+import { EChartsOption } from 'echarts';
+
+@Component({
+  selector: 'app-charts',
+  templateUrl: './charts.component.html',
+  styleUrls: ['./charts.component.scss'],
+})
+export class ChartsComponent {
+selectedRange: Date[] = [];
+  chartOption: EChartsOption = {};
+
+  // 15 languages
+  private languages = [
+    'JavaScript','Python','Java','C#','TypeScript',
+    'C++','Go','Ruby','PHP','Swift',
+    'Kotlin','Rust','Dart','Scala','SQL'
+  ];
+
+  onDateRangeChange() {
+    if (!this.selectedRange || this.selectedRange.length < 2) return;
+    const [start, end] = this.normalizeRange(this.selectedRange);
+
+    const data = this.generateMockData(start, end);
+    const { grouped, overallTotal } = this.aggregateByLanguage(data);
+
+    this.updateChart(grouped, overallTotal);
   }
 
-  createDrawioDownloadCard(targetId: any) {
-    const target = document.getElementById(targetId);
-    if (!target) return;
-
-    // Card container
-    const card = document.createElement("div");
-    card.className = "drawio-download-card";
-
-    // Header
-    const header = document.createElement("div");
-    header.className = "download-header";
-
-    const icon = document.createElement("i");
-    icon.className = "pi pi-sitemap";
-
-    const headerTextContainer = document.createElement("div");
-    const h3 = document.createElement("h3");
-    h3.textContent = "Your Diagram is Ready!";
-
-    const p = document.createElement("p");
-    p.innerHTML = `Download the <code>.drawio</code> file and import it into Jira or Confluence to start editing instantly.`;
-
-    headerTextContainer.appendChild(h3);
-    headerTextContainer.appendChild(p);
-
-    header.appendChild(icon);
-    header.appendChild(headerTextContainer);
-
-    // Actions row
-    const actionsRow = document.createElement("div");
-    actionsRow.className = "actions-row";
-
-    // Download button
-    const button = document.createElement("button");
-    button.className = "download-btn";
-    button.addEventListener("click", () => {
-      console.log("Download clicked");
-      // downloadDrawIO(); // Call your actual function here
-    });
-
-    const btnIcon = document.createElement("i");
-    btnIcon.className = "pi pi-download";
-
-    const btnText = document.createTextNode(" Download Diagram");
-
-    button.appendChild(btnIcon);
-    button.appendChild(btnText);
-
-    // Usage guide
-    const details = document.createElement("details");
-    details.className = "usage-guide";
-
-    const summary = document.createElement("summary");
-    const summaryIcon = document.createElement("i");
-    summaryIcon.className = "pi pi-info-circle";
-    summary.appendChild(summaryIcon);
-    summary.appendChild(document.createTextNode(" How to Use in Jira/Confluence"));
-
-    const ol = document.createElement("ol");
-    const steps = [
-      "Click Download Diagram to save the file.",
-      "In Jira or Confluence, open the page editor.",
-      "Insert a diagram (Draw.io Macro) and choose Import.",
-      "Select the downloaded file and start editing."
-    ];
-    steps.forEach(stepText => {
-      const li = document.createElement("li");
-      li.innerHTML = stepText.replace("Download Diagram", "<b>Download Diagram</b>")
-        .replace("Import", "<b>Import</b>");
-      ol.appendChild(li);
-    });
-
-    details.appendChild(summary);
-    details.appendChild(ol);
-
-    // Append elements together
-    actionsRow.appendChild(button);
-    actionsRow.appendChild(details);
-
-    card.appendChild(header);
-    card.appendChild(actionsRow);
-
-    // Add to target
-    target.appendChild(card);
+  private normalizeRange(range: Date[]): [Date, Date] {
+    const start = new Date(range[0]);
+    const end = new Date(range[1] ?? range[0]);
+    start.setHours(0, 0, 0, 0);
+    end.setHours(23, 59, 59, 999);
+    return [start, end];
   }
 
+  // ---- MOCK DATA GENERATOR (deterministic for the same range) ----
+  private generateMockData(start: Date, end: Date) {
+    type Row = { date: string; language: string; lines: number };
+    const days = this.getDatesInRange(start, end);
+    const seed = this.hash(`${start.toISOString()}_${end.toISOString()}`);
+    const rnd = this.seeded(seed);
+
+    const rows: Row[] = [];
+    for (const d of days) {
+      // base demand for the day
+      const dayFactor = 0.6 + rnd() * 0.8; // 0.6..1.4
+      this.languages.forEach((lang, idx) => {
+        // language popularity weight (stable)
+        const langWeight = 0.5 + ((idx * 73) % 100) / 100; // 0.5..1.49
+        // random fluctuation
+        const noise = 0.7 + rnd() * 0.8; // 0.7..1.5
+        // baseline scale (tweak to increase/reduce totals)
+        const base = 300; // avg lines per lang per day
+        const lines = Math.round(base * dayFactor * langWeight * noise);
+
+        rows.push({
+          date: d.toISOString().slice(0, 10),
+          language: lang,
+          lines,
+        });
+      });
+    }
+    return rows;
+  }
+
+  private getDatesInRange(start: Date, end: Date): Date[] {
+    const dates: Date[] = [];
+    const cursor = new Date(start);
+    cursor.setHours(0, 0, 0, 0);
+    const last = new Date(end);
+    last.setHours(0, 0, 0, 0);
+    while (cursor <= last) {
+      dates.push(new Date(cursor));
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    return dates;
+  }
+
+  private hash(s: string): number {
+    // Simple FNV-1a 32-bit hash
+    let h = 0x811c9dc5;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+    return (h >>> 0) || 1;
+  }
+
+  private seeded(seed: number) {
+    // xorshift32
+    let x = seed >>> 0;
+    return () => {
+      x ^= x << 13;
+      x ^= x >>> 17;
+      x ^= x << 5;
+      return ((x >>> 0) % 100000) / 100000; // 0..1
+    };
+  }
+
+  private aggregateByLanguage(rows: { language: string; lines: number }[]) {
+    const grouped: Record<string, number> = {};
+    let overallTotal = 0;
+    rows.forEach((r) => {
+      grouped[r.language] = (grouped[r.language] || 0) + r.lines;
+      overallTotal += r.lines;
+    });
+    return { grouped, overallTotal };
+  }
+
+ private updateChart(grouped: Record<string, number>, overallTotal: number) {
+  this.chartOption = {
+    backgroundColor: '#111113',
+    title: {
+      text: `Total Lines: ${overallTotal.toLocaleString()}`,
+      left: 'center',
+      top: 10, // stays at top
+      textStyle: { color: '#ffffff', fontSize: 16, fontWeight: 'bold' },
+    },
+    tooltip: {
+      trigger: 'item',
+      backgroundColor: '#1e1e1e',
+      borderColor: '#333',
+      textStyle: { color: '#fff' },
+      formatter: (p: any) =>
+        `${p.name}<br/>${p.value.toLocaleString()} lines (${p.percent}%)`,
+    },
+    legend: {
+      type: 'scroll',
+      bottom: 0, // give more breathing room from chart
+      textStyle: { color: '#ffffff' },
+    },
+    series: [
+      {
+        name: 'Lines of Code',
+        type: 'pie',
+        radius: '65%', // slightly smaller to avoid overlapping
+        center: ['50%', '52%'], // move chart down (so title has space) and up (so legend has space)
+        itemStyle: { borderRadius: 0, borderWidth: 0 },
+        label: {
+          color: '#ffffff',
+          formatter: '{b}: {c}',
+        },
+        labelLine: { show: true },
+        data: Object.entries(grouped).map(([name, value]) => ({ name, value })),
+      },
+    ],
+    grid: {
+      top: 80,    // extra space for title
+      bottom: 80, // extra space for legend
+    }
+  };
+}
+
+
+
+}
 
 
 
 
 
-.drawio-download-card {
-  background-color: #111113;
-  border: 1px solid #27272a;
-  border-radius: 12px;
-  padding: 1.2rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
+
+
+
+/* code-lines-chart.component.css */
+.chart {
   width: 100%;
-  color: #e5e7eb;
-  font-family: 'Segoe UI', sans-serif;
+  height: 420px;
+  background: #111113;
+  border-radius: 12px;
+  padding: 10px;
 }
 
-.download-header {
-  display: flex;
-  gap: 0.8rem;
-  align-items: flex-start;
-}
-
-.download-header i {
-  font-size: 1.8rem;
-  color: #3b82f6;
-}
-
-.download-header h3 {
-  margin: 0;
-  font-size: 1.1rem;
+.date-range-filter {
+  margin-bottom: 20px;
   color: #fff;
 }
 
-.download-header p {
-  margin: 0.3rem 0 0 0;
-  font-size: 0.85rem;
-  color: #a1a1aa;
-}
 
-/* Flex row for button + usage guide */
-.actions-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 1rem;
-  flex-wrap: wrap;
-  /* Wrap on small screens */
-}
 
-.download-btn {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  background: linear-gradient(135deg, #3b82f6, #2563eb);
-  color: white;
-  font-weight: 500;
-  padding: 0.6rem 1.2rem;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 0.9rem;
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
-  transition: all 0.3s ease;
-  flex-shrink: 0;
-}
 
-.download-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.5);
-}
 
-.usage-guide {
-  font-size: 0.85rem;
-  color: #d4d4d8;
-  background-color: #1c1c1f;
-  border: 1px solid #27272a;
-  border-radius: 8px;
-  padding: 0.6rem 0.8rem;
-  display: inline-block;
-  width: auto;
-  max-width: 100%;
-}
 
-.usage-guide summary {
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-weight: 500;
-  color: #93c5fd;
-}
 
-.usage-guide ol {
-  margin: 0.5rem 0 0 1.2rem;
-  padding: 0;
-}
 
-.usage-guide li {
-  margin-bottom: 0.3rem;
-}
+<!-- code-lines-chart.component.html -->
+<div class="date-range-filter">
+    <p-calendar [(ngModel)]="selectedRange" selectionMode="range" dateFormat="yy-mm-dd" placeholder="Select Date Range"
+        (onSelect)="onDateRangeChange()"></p-calendar>
+</div>
+
+<div echarts [options]="chartOption" class="chart"></div>
+
+
+
+
+
+
 
