@@ -1,258 +1,153 @@
-import { Component, AfterViewInit, ElementRef, ViewChild } from '@angular/core';
+<div class="buttons">
+    <button (click)="loadChartData('daily')" [class.active]="activeView==='daily'">Daily</button>
+    <button (click)="loadChartData('weekly')" [class.active]="activeView==='weekly'">Weekly</button>
+    <button (click)="loadChartData('monthly')" [class.active]="activeView==='monthly'">Monthly</button>
+    <button (click)="loadChartData('yearly')" [class.active]="activeView==='yearly'">Yearly</button>
+</div>
+
+<div #chartContainer class="chart"></div>
+
+
+.buttons {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+button.active {
+  background-color: #007ad9;
+  color: white;
+}
+.chart {
+  width: 100%;
+  height: 400px;
+}
+
+
+
+
+
+
+
+
+
+import {
+  Component,
+  ElementRef,
+  ViewChild,
+  AfterViewInit,
+} from '@angular/core';
+import * as echarts from 'echarts';
+import { EChartsOption } from 'echarts';
 
 @Component({
-  selector: 'app-download-card',
-  template: `<div #container></div>`, // target container
-  styles: [] // you can keep the CSS in your global or component stylesheet
+  selector: 'app-charts',
+  templateUrl: './charts.component.html',
+  styleUrls: ['./charts.component.scss'],
 })
-export class DownloadCardComponent implements AfterViewInit {
-  @ViewChild('container', { static: true }) container!: ElementRef;
+export class ChartsComponent implements AfterViewInit {
+  @ViewChild('chartContainer', { static: true }) chartContainer!: ElementRef;
+  chartInstance!: echarts.ECharts;
+  activeView: 'daily' | 'weekly' | 'monthly' | 'yearly' = 'daily';
 
-  ngAfterViewInit(): void {
-    // Create main card
-    const card = document.createElement('div');
-    card.className = 'download-card';
-
-    // Create info section
-    const info = document.createElement('div');
-    info.className = 'download-info';
-
-    const infoIcon = document.createElement('i');
-    infoIcon.className = 'pi pi-info-circle info-icon';
-    info.appendChild(infoIcon);
-
-    const textDiv = document.createElement('div');
-
-    const title = document.createElement('h4');
-    title.textContent = 'Your Draw.io file is ready!';
-    textDiv.appendChild(title);
-
-    const desc = document.createElement('p');
-    desc.textContent =
-      'This file can be imported into a Confluence page to create or update diagrams. Download it and use it to visually represent your workflow or architecture.';
-    textDiv.appendChild(desc);
-
-    // Step-by-step guide
-    const steps = [
-      'Click the download button to save the Draw.io file.',
-      'Open your Confluence page where you want the diagram.',
-      'Insert a Draw.io diagram macro in Confluence.',
-      'Choose "Import Diagram" and select the downloaded file.',
-      'Edit and save your diagram as needed.'
-    ];
-
-    const ol = document.createElement('ol');
-    ol.className = 'download-steps';
-
-    steps.forEach((stepText, index) => {
-      const li = document.createElement('li');
-
-      const stepNumber = document.createElement('span');
-      stepNumber.className = 'step-number';
-      stepNumber.textContent = (index + 1).toString();
-
-      const stepContent = document.createTextNode(stepText);
-
-      li.appendChild(stepNumber);
-      li.appendChild(stepContent);
-      ol.appendChild(li);
-    });
-
-    textDiv.appendChild(ol);
-    info.appendChild(textDiv);
-    card.appendChild(info);
-
-    // Download button
-    const button = document.createElement('button');
-    button.className = 'modern-download-icon-btn';
-    button.type = 'button';
-    button.addEventListener('click', () => this.downloadFile());
-
-    const btnIcon = document.createElement('i');
-    btnIcon.className = 'pi pi-download';
-    button.appendChild(btnIcon);
-
-    card.appendChild(button);
-
-    // Append card to container
-    this.container.nativeElement.appendChild(card);
+  ngAfterViewInit() {
+    this.chartInstance = echarts.init(this.chartContainer.nativeElement);
+    this.loadChartData(this.activeView);
   }
 
-  downloadFile() {
-    // Replace with your actual download logic
-    console.log('Downloading Draw.io file...');
-    // Example: window.open('/path-to-drawio-file.drawio', '_blank');
+  // Dummy API simulation
+  getDummyApiResponse(view: string) {
+    switch (view) {
+      case 'daily':
+        return {
+          labels: this.getLastNDays(7),
+          data: {
+            Java: [120, 200, 150, 80, 70, 110, 130],
+            Angular: [90, 180, 100, 140, 60, 90, 120],
+            Python: [50, 90, 70, 120, 130, 100, 150],
+            All: [260, 470, 320, 340, 260, 300, 400],
+          },
+        };
+      case 'weekly':
+        return {
+          labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
+          data: {
+            Java: [600, 800, 750, 900],
+            Angular: [500, 700, 600, 800],
+            Python: [300, 500, 400, 600],
+            All: [1400, 2000, 1750, 2300],
+          },
+        };
+      case 'monthly':
+        return {
+          labels: this.getLastNMonths(6),
+          data: {
+            Java: [2200, 2400, 2600, 2800, 3000, 3200],
+            Angular: [1800, 2000, 2200, 2500, 2700, 2900],
+            Python: [1200, 1300, 1400, 1500, 1600, 1700],
+            All: [5200, 5700, 6200, 6800, 7300, 7800],
+          },
+        };
+      case 'yearly':
+        return {
+          labels: ['2024', '2025'],
+          data: {
+            Java: [25000, 27000],
+            Angular: [22000, 24000],
+            Python: [18000, 20000],
+            All: [65000, 71000],
+          },
+        };
+    }
+    return { labels: [], data: {} };
+  }
+
+  // Helpers
+  getLastNDays(n: number) {
+    const days: string[] = [];
+    const today = new Date();
+    for (let i = n - 1; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(today.getDate() - i);
+      days.push(
+        d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+      );
+    }
+    return days;
+  }
+
+  getLastNMonths(n: number) {
+    const months: string[] = [];
+    const today = new Date();
+    for (let i = n - 1; i >= 0; i--) {
+      const d = new Date(today);
+      d.setMonth(today.getMonth() - i);
+      months.push(
+        d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
+      );
+    }
+    return months;
+  }
+
+  loadChartData(view: 'daily' | 'weekly' | 'monthly' | 'yearly') {
+    this.activeView = view;
+    const response = this.getDummyApiResponse(view);
+
+    const option: EChartsOption = {
+      tooltip: { trigger: 'axis' },
+      legend: { data: ['Java', 'Angular', 'Python', 'All'], top: 10 },
+      grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+      xAxis: { type: 'category', data: response.labels },
+      yAxis: { type: 'value' },
+      series: Object.keys(response.data).map((lang) => ({
+        name: lang,
+        type: 'line',
+        smooth: true,
+        data: response.data[lang as keyof typeof response.data],
+      })),
+    };
+
+    if (this.chartInstance) {
+      this.chartInstance.setOption(option, true);
+    }
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* Download Card */
-.download-card {
-    background-color: #111113; /* matches container */
-    border-radius: 8px;
-    padding: 1rem;
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 1rem;
-    border: 1px solid #27272a; /* subtle border */
-    animation: slideFadeIn 0.5s ease forwards;
-    opacity: 0;
-}
-
-.download-info {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.8rem;
-}
-
-.info-icon {
-    font-size: 1.8rem;
-    color: #00bfff; /* info icon gradient accent */
-}
-
-.download-info h4 {
-    margin: 0;
-    font-size: 1.1rem;
-    color: #FFF;
-}
-
-.download-info p {
-    margin: 0.2rem 0 0 0;
-    font-size: 0.9rem;
-    color: #ccc;
-}
-
-/* Modern Download Icon Button */
-.modern-download-icon-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: linear-gradient(135deg, #00bfff, #0099ff);
-    color: #fff;
-    font-size: 1.3rem;
-    width: 50px;
-    height: 50px;
-    border: none;
-    border-radius: 50%;
-    cursor: pointer;
-    box-shadow: 0 4px 12px rgba(0, 191, 255, 0.4);
-    backdrop-filter: blur(6px);
-    transition: all 0.3s ease;
-    position: relative;
-    overflow: hidden;
-    animation: bounceIn 0.6s ease;
-    flex-shrink: 0; /* prevent stretching */
-}
-
-.modern-download-icon-btn i {
-    transition: transform 0.3s ease;
-}
-
-.modern-download-icon-btn:hover {
-    background: linear-gradient(135deg, #0099ff, #00bfff);
-    transform: translateY(-2px) scale(1.1);
-    box-shadow: 0 6px 16px rgba(0, 191, 255, 0.5);
-}
-
-.modern-download-icon-btn:hover i {
-    transform: rotate(-20deg);
-}
-
-.modern-download-icon-btn::after {
-    content: '';
-    position: absolute;
-    top: -50%;
-    left: -50%;
-    width: 200%;
-    height: 200%;
-    background: radial-gradient(circle, rgba(255, 255, 255, 0.15) 0%, transparent 70%);
-    transform: translate(-50%, -50%) rotate(45deg);
-    opacity: 0;
-    transition: opacity 0.3s ease;
-    pointer-events: none;
-}
-
-.modern-download-icon-btn:hover::after {
-    opacity: 1;
-}
-
-/* Step-by-Step Guide */
-.download-steps {
-    margin: 0.5rem 0 0 0;
-    padding-left: 0;
-    list-style: none;
-}
-
-.download-steps li {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.6rem;
-    margin-bottom: 0.5rem;
-    font-size: 0.9rem;
-    color: #ccc;
-    background-color: #1a1a26; /* slightly lighter than container */
-    padding: 0.5rem 0.7rem;
-    border-radius: 8px;
-    border: 1px solid #27272a; /* subtle border */
-    transition: background 0.3s ease;
-}
-
-.download-steps li:hover {
-    background: linear-gradient(90deg, #00bfff20, #0099ff20);
-}
-
-.step-number {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, #00bfff, #0099ff);
-    color: #fff;
-    font-weight: 600;
-    flex-shrink: 0;
-    font-size: 0.85rem;
-}
-
-/* Animations */
-@keyframes slideFadeIn {
-    0% {
-        opacity: 0;
-        transform: translateY(20px);
-    }
-    100% {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-@keyframes bounceIn {
-    0% {
-        transform: scale(0);
-        opacity: 0;
-    }
-    60% {
-        transform: scale(1.2);
-        opacity: 1;
-    }
-    100% {
-        transform: scale(1);
-        opacity: 1;
-    }
-}
-
-
