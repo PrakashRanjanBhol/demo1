@@ -1,239 +1,29 @@
-/* code-lines-chart.component.css */
-.chart {
-  width: 100%;
-  height: 420px;
-  background: #111113;
-  border-radius: 12px;
-  padding: 10px;
-}
+<button class="apply-btn">
+    <i class="pi pi-check"></i>
+    Apply
+</button>
 
-.date-range-filter {
-  margin-bottom: 20px;
-  color: #fff;
-}
 
-.date-range-filter {
-  display: flex;
-  flex-direction: column;
-  margin-bottom: 1rem;
-  font-family: 'Poppins', sans-serif;
-}
-
-.date-label {
-  font-size: 14px;
-  font-weight: 600;
-  margin-bottom: 6px;
-  color: #ffffff;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.date-icon {
-  font-size: 16px;
-  color: #42a5f5;
-}
-
-.date-picker-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
 
 .apply-btn {
-  border-radius: 6px !important;
-  padding: 0.5rem 1rem !important;
-  background: #42a5f5 !important;
-  border: none !important;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: linear-gradient(135deg, #22c55e, #16a34a);
+    /* green gradient */
+    color: white;
+    font-weight: 500;
+    padding: 0.6rem 1.2rem;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    box-shadow: 0 4px 12px rgba(22, 163, 74, 0.4);
+    transition: all 0.3s ease;
+    flex-shrink: 0;
 }
 
-/* Selected Period header */
-.period-header {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  background: #111113;
-  border: 1px solid #3a3f51;
-  border-radius: 8px;
-  padding: 0.6rem 1rem;
-  margin: 1rem 0;
-  font-family: 'Poppins', sans-serif;
-  color: #ffffff;
-  font-size: 14px;
-  font-weight: 500;
-  box-shadow: 0px 2px 6px rgba(0, 0, 0, 0.25);
-  transition: all 0.3s ease;
-}
-
-.period-header:hover {
-  box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.35);
-  transform: translateY(-2px);
-}
-
-.period-icon {
-  font-size: 16px;
-  color: #42a5f5;
-}
-
-.period-label {
-  font-weight: 600;
-  color: #aab4c3;
-}
-
-.period-value {
-  font-weight: 600;
-  color: #ffffff;
-}
-
-
-
-
-
-
-
-
-
-<div class="date-range-filter">
-    <label class="date-label">
-        <i class="pi pi-calendar"></i> Select a Date Range
-    </label>
-
-    <div class="date-picker-row">
-        <p-calendar [(ngModel)]="selectedRange" selectionMode="range" dateFormat="dd-mm-yy" placeholder="Choose dates"
-            [maxDate]="maxDate" [minDate]="minDate" [readonlyInput]="true"></p-calendar>
-
-        <button pButton type="button" label="Apply" icon="pi pi-check" class="apply-btn" (click)="applyDateRange()"
-            [disabled]="!selectedRange || selectedRange.length < 2"></button>
-    </div>
-</div>
-
-<!-- 🔹 Show only applied period -->
-<div *ngIf="appliedRange?.length === 2" class="period-header">
-    <i class="pi pi-clock"></i>
-    <span class="period-label">Selected Period:</span>
-    <span class="period-value">
-        {{ appliedRange[0] | date: 'dd-MM-yyyy' }} → {{ appliedRange[1] | date: 'dd-MM-yyyy' }}
-    </span>
-</div>
-
-<div echarts [options]="chartOption" class="chart"></div>
-
-
-
-
-
-
-
-
-import { Component, OnInit } from '@angular/core';
-import { EChartsOption } from 'echarts';
-
-@Component({
-  selector: 'app-charts',
-  templateUrl: './charts.component.html',
-  styleUrls: ['./charts.component.scss'],
-})
-export class ChartsComponent implements OnInit {
-  selectedRange: Date[] = []; // live selection from calendar
-  appliedRange: Date[] = [];  // confirmed after Apply
-  chartOption: EChartsOption = {};
-
-  minDate: Date;
-  maxDate: Date;
-
-  constructor() {
-    const today = new Date();
-    this.maxDate = today; // 🔹 disable future
-    this.minDate = new Date(today.getFullYear() - 5, today.getMonth(), today.getDate()); // 🔹 last 5 years only
-  }
-
-  ngOnInit() {
-    // Default: last 7 days
-    const end = new Date();
-    const start = new Date();
-    start.setDate(end.getDate() - 6);
-
-    this.selectedRange = [start, end];
-    this.appliedRange = [start, end];
-
-    this.applyDateRange(); // initial load
-  }
-
-  /** Triggered on Apply */
-  applyDateRange() {
-    if (!this.selectedRange || this.selectedRange.length < 2) return;
-
-    this.appliedRange = [...this.selectedRange]; // freeze applied range
-    const [start, end] = this.normalizeRange(this.appliedRange);
-
-    this.fetchData(start, end).then((response) => {
-      const grouped = response;
-      const overallTotal = Object.values(grouped).reduce((a, b) => a + b, 0);
-      this.updateChart(grouped, overallTotal);
-    });
-  }
-
-  private normalizeRange(range: Date[]): [Date, Date] {
-    const start = new Date(range[0]);
-    const end = new Date(range[1] ?? range[0]);
-    start.setHours(0, 0, 0, 0);
-    end.setHours(23, 59, 59, 999);
-    return [start, end];
-  }
-
-  // Mock API (replace with HttpClient)
-  private async fetchData(start: Date, end: Date): Promise<Record<string, number>> {
-    console.log('Fetching data for:', start, 'to', end);
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve({
-          Java: Math.floor(Math.random() * 50),
-          Angular: Math.floor(Math.random() * 50),
-          Python: Math.floor(Math.random() * 50),
-        });
-      }, 500);
-    });
-  }
-
-  private updateChart(grouped: Record<string, number>, overallTotal: number) {
-    this.chartOption = {
-      backgroundColor: '#111113',
-      title: {
-        text: `Total Lines: ${overallTotal.toLocaleString()}`,
-        left: 'center',
-        top: 10,
-        textStyle: { color: '#ffffff', fontSize: 16, fontWeight: 'bold' },
-      },
-      tooltip: {
-        trigger: 'item',
-        backgroundColor: '#1e1e1e',
-        borderColor: '#333',
-        textStyle: { color: '#fff' },
-        formatter: (p: any) =>
-          `${p.name}<br/>${p.value.toLocaleString()} lines (${p.percent}%)`,
-      },
-      legend: {
-        type: 'scroll',
-        bottom: 0,
-        textStyle: { color: '#ffffff' },
-      },
-      series: [
-        {
-          name: 'Lines of Code',
-          type: 'pie',
-          radius: '65%',
-          center: ['50%', '52%'],
-          label: {
-            color: '#ffffff',
-            formatter: '{b}: {c}',
-          },
-          data: Object.entries(grouped).map(([name, value]) => ({
-            name,
-            value,
-          })),
-        },
-      ],
-    };
-  }
+.apply-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(22, 163, 74, 0.5);
 }
