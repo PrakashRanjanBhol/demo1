@@ -1,3 +1,12 @@
+<div class="date-range-filter">
+    <p-calendar [(ngModel)]="selectedRange" selectionMode="range" dateFormat="dd-mm-yy" placeholder="Select Date Range"
+        (onSelect)="onDateRangeChange()">
+    </p-calendar>
+</div>
+
+<div echarts [options]="chartOption" class="chart"></div>
+
+
 import { Component, OnInit } from '@angular/core';
 import { EChartsOption } from 'echarts';
 
@@ -6,25 +15,29 @@ import { EChartsOption } from 'echarts';
   templateUrl: './charts.component.html',
   styleUrls: ['./charts.component.scss'],
 })
-export class ChartsComponent {
-selectedRange: Date[] = [];
+export class ChartsComponent implements OnInit {
+  selectedRange: Date[] = [];
   chartOption: EChartsOption = {};
 
-  // 15 languages
-  private languages = [
-    'JavaScript','Python','Java','C#','TypeScript',
-    'C++','Go','Ruby','PHP','Swift',
-    'Kotlin','Rust','Dart','Scala','SQL'
-  ];
+  ngOnInit() {
+    // 🔹 Default: last 7 days (including today)
+    const end = new Date();
+    const start = new Date();
+    start.setDate(end.getDate() - 6); // last 7 days
+    this.selectedRange = [start, end];
+
+    this.onDateRangeChange(); // load chart initially
+  }
 
   onDateRangeChange() {
     if (!this.selectedRange || this.selectedRange.length < 2) return;
     const [start, end] = this.normalizeRange(this.selectedRange);
 
-    const data = this.generateMockData(start, end);
-    const { grouped, overallTotal } = this.aggregateByLanguage(data);
-
-    this.updateChart(grouped, overallTotal);
+    this.fetchData(start, end).then((response) => {
+      const grouped = response;
+      const overallTotal = Object.values(grouped).reduce((a, b) => a + b, 0);
+      this.updateChart(grouped, overallTotal);
+    });
   }
 
   private normalizeRange(range: Date[]): [Date, Date] {
@@ -35,167 +48,63 @@ selectedRange: Date[] = [];
     return [start, end];
   }
 
-  // ---- MOCK DATA GENERATOR (deterministic for the same range) ----
-  private generateMockData(start: Date, end: Date) {
-    type Row = { date: string; language: string; lines: number };
-    const days = this.getDatesInRange(start, end);
-    const seed = this.hash(`${start.toISOString()}_${end.toISOString()}`);
-    const rnd = this.seeded(seed);
-
-    const rows: Row[] = [];
-    for (const d of days) {
-      // base demand for the day
-      const dayFactor = 0.6 + rnd() * 0.8; // 0.6..1.4
-      this.languages.forEach((lang, idx) => {
-        // language popularity weight (stable)
-        const langWeight = 0.5 + ((idx * 73) % 100) / 100; // 0.5..1.49
-        // random fluctuation
-        const noise = 0.7 + rnd() * 0.8; // 0.7..1.5
-        // baseline scale (tweak to increase/reduce totals)
-        const base = 300; // avg lines per lang per day
-        const lines = Math.round(base * dayFactor * langWeight * noise);
-
-        rows.push({
-          date: d.toISOString().slice(0, 10),
-          language: lang,
-          lines,
+  // 🔹 Replace with HttpClient call
+  private async fetchData(start: Date, end: Date): Promise<Record<string, number>> {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        resolve({
+          Java: 10,
+          Angular: 20,
+          Python: 30,
         });
-      });
-    }
-    return rows;
+      }, 300);
+    });
   }
 
-  private getDatesInRange(start: Date, end: Date): Date[] {
-    const dates: Date[] = [];
-    const cursor = new Date(start);
-    cursor.setHours(0, 0, 0, 0);
-    const last = new Date(end);
-    last.setHours(0, 0, 0, 0);
-    while (cursor <= last) {
-      dates.push(new Date(cursor));
-      cursor.setDate(cursor.getDate() + 1);
-    }
-    return dates;
-  }
-
-  private hash(s: string): number {
-    // Simple FNV-1a 32-bit hash
-    let h = 0x811c9dc5;
-    for (let i = 0; i < s.length; i++) {
-      h ^= s.charCodeAt(i);
-      h = Math.imul(h, 0x01000193);
-    }
-    return (h >>> 0) || 1;
-  }
-
-  private seeded(seed: number) {
-    // xorshift32
-    let x = seed >>> 0;
-    return () => {
-      x ^= x << 13;
-      x ^= x >>> 17;
-      x ^= x << 5;
-      return ((x >>> 0) % 100000) / 100000; // 0..1
+  private updateChart(grouped: Record<string, number>, overallTotal: number) {
+    this.chartOption = {
+      backgroundColor: '#111113',
+      title: {
+        text: `Total Lines: ${overallTotal.toLocaleString()}`,
+        left: 'center',
+        top: 10,
+        textStyle: { color: '#ffffff', fontSize: 16, fontWeight: 'bold' },
+      },
+      tooltip: {
+        trigger: 'item',
+        backgroundColor: '#1e1e1e',
+        borderColor: '#333',
+        textStyle: { color: '#fff' },
+        formatter: (p: any) =>
+          `${p.name}<br/>${p.value.toLocaleString()} lines (${p.percent}%)`,
+      },
+      legend: {
+        type: 'scroll',
+        bottom: 0,
+        textStyle: { color: '#ffffff' },
+      },
+      series: [
+        {
+          name: 'Lines of Code',
+          type: 'pie',
+          radius: '65%',
+          center: ['50%', '52%'],
+          itemStyle: { borderRadius: 0, borderWidth: 0 },
+          label: {
+            color: '#ffffff',
+            formatter: '{b}: {c}',
+          },
+          labelLine: { show: true },
+          data: Object.entries(grouped).map(([name, value]) => ({
+            name,
+            value,
+          })),
+        },
+      ],
+      grid: {
+        top: 80,
+        bottom: 80,
+      },
     };
   }
-
-  private aggregateByLanguage(rows: { language: string; lines: number }[]) {
-    const grouped: Record<string, number> = {};
-    let overallTotal = 0;
-    rows.forEach((r) => {
-      grouped[r.language] = (grouped[r.language] || 0) + r.lines;
-      overallTotal += r.lines;
-    });
-    return { grouped, overallTotal };
-  }
-
- private updateChart(grouped: Record<string, number>, overallTotal: number) {
-  this.chartOption = {
-    backgroundColor: '#111113',
-    title: {
-      text: `Total Lines: ${overallTotal.toLocaleString()}`,
-      left: 'center',
-      top: 10, // stays at top
-      textStyle: { color: '#ffffff', fontSize: 16, fontWeight: 'bold' },
-    },
-    tooltip: {
-      trigger: 'item',
-      backgroundColor: '#1e1e1e',
-      borderColor: '#333',
-      textStyle: { color: '#fff' },
-      formatter: (p: any) =>
-        `${p.name}<br/>${p.value.toLocaleString()} lines (${p.percent}%)`,
-    },
-    legend: {
-      type: 'scroll',
-      bottom: 0, // give more breathing room from chart
-      textStyle: { color: '#ffffff' },
-    },
-    series: [
-      {
-        name: 'Lines of Code',
-        type: 'pie',
-        radius: '65%', // slightly smaller to avoid overlapping
-        center: ['50%', '52%'], // move chart down (so title has space) and up (so legend has space)
-        itemStyle: { borderRadius: 0, borderWidth: 0 },
-        label: {
-          color: '#ffffff',
-          formatter: '{b}: {c}',
-        },
-        labelLine: { show: true },
-        data: Object.entries(grouped).map(([name, value]) => ({ name, value })),
-      },
-    ],
-    grid: {
-      top: 80,    // extra space for title
-      bottom: 80, // extra space for legend
-    }
-  };
 }
-
-
-
-}
-
-
-
-
-
-
-
-
-/* code-lines-chart.component.css */
-.chart {
-  width: 100%;
-  height: 420px;
-  background: #111113;
-  border-radius: 12px;
-  padding: 10px;
-}
-
-.date-range-filter {
-  margin-bottom: 20px;
-  color: #fff;
-}
-
-
-
-
-
-
-
-
-<!-- code-lines-chart.component.html -->
-<div class="date-range-filter">
-    <p-calendar [(ngModel)]="selectedRange" selectionMode="range" dateFormat="yy-mm-dd" placeholder="Select Date Range"
-        (onSelect)="onDateRangeChange()"></p-calendar>
-</div>
-
-<div echarts [options]="chartOption" class="chart"></div>
-
-
-
-
-
-
-
