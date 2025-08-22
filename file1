@@ -1,7 +1,30 @@
-code = code.replace(/subgraph\s+([^\n]*)/g, (match, p1) => {
-    if (p1.includes("(") || p1.includes(")")) {
-        const sanitized = p1.replace(/[()]/g, "");
-        return `subgraph ${sanitized}`;
-    }
-    return match; // leave untouched
-});
+// ── 1) Subgraph headline: remove parentheses only in the headline segment
+    // Matches: "subgraph <headline up to [ or newline>"
+    code = code.replace(/^(\s*subgraph\s+)([^\n\[]+)/gm, (m, prefix, headline) => {
+        const cleanedHeadline = headline.replace(/[()]/g, '');
+        return prefix + cleanedHeadline;
+    });
+
+    // Helper to escape unescaped parentheses (avoid double-escaping)
+    const escapeParens = (text) => {
+        // Temporarily protect already-escaped parens
+        const P_OPEN = '\uE000', P_CLOSE = '\uE001';
+        return text
+            .replace(/\\\(/g, P_OPEN)
+            .replace(/\\\)/g, P_CLOSE)
+            .replace(/\(/g, '\\(')
+            .replace(/\)/g, '\\)')
+            .replace(new RegExp(P_OPEN, 'g'), '\\(')
+            .replace(new RegExp(P_CLOSE, 'g'), '\\)');
+    };
+
+    // ── 2) Escape parens inside node labels: [ ... ]
+    // (Single line labels; Mermaid node labels are typically single-line)
+    code = code.replace(/\[([^\[\]\n]*)\]/g, (m, inner) => {
+        return `[${escapeParens(inner)}]`;
+    });
+
+    // ── 3) Escape parens inside edge labels: | ... |
+    code = code.replace(/\|([^|\n]*)\|/g, (m, inner) => {
+        return `|${escapeParens(inner)}|`;
+    });
