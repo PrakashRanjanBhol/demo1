@@ -129,7 +129,7 @@
         <div>
             <h3>Custom Diagram:</h3>
             <textarea id="custom-input" placeholder="Enter Mermaid code here...">graph LR
-    subgraph "Frontend - Angular"
+    subgraph Frontend (Angular)
         A[Login Page] --> B[Dashboard]
         B --> C[Settings]
     end
@@ -240,19 +240,23 @@
             // Remove extra whitespace and normalize line endings
             let cleaned = code.trim().replace(/\r\n/g, '\n');
             
-            // Fix subgraph labels with parentheses
-            cleaned = cleaned.replace(/subgraph\s+([^"\n]*\([^)]*\)[^"\n]*)/g, function(match, label) {
-                // If the label contains parentheses and isn't already quoted, quote it
-                if (label.includes('(') && !label.startsWith('"')) {
-                    return 'subgraph "' + label.trim() + '"';
-                }
-                return match;
+            // Fix subgraph labels with parentheses or special characters
+            // This regex finds: subgraph + whitespace + text containing parentheses + optional whitespace before newline/end
+            cleaned = cleaned.replace(/subgraph\s+([^"\n\r]+\([^)]*\)[^"\n\r]*)/gi, function(match, label) {
+                const trimmedLabel = label.trim();
+                console.log('Found subgraph with parentheses:', trimmedLabel);
+                return 'subgraph "' + trimmedLabel + '"';
             });
             
-            // Fix node labels with special characters
-            cleaned = cleaned.replace(/\[([^\]]*\([^)]*\)[^\]]*)\]/g, function(match, label) {
-                // If the label contains parentheses, ensure it's properly escaped
-                return '[' + label + ']';
+            // Also handle other special characters in subgraph labels (spaces, hyphens, etc.)
+            cleaned = cleaned.replace(/subgraph\s+([^"\n\r]*[\s\-&]+[^"\n\r]*)/gi, function(match, label) {
+                const trimmedLabel = label.trim();
+                // Don't double-quote already quoted labels
+                if (!trimmedLabel.startsWith('"') && !trimmedLabel.endsWith('"')) {
+                    console.log('Found subgraph needing quotes:', trimmedLabel);
+                    return 'subgraph "' + trimmedLabel + '"';
+                }
+                return match;
             });
             
             return cleaned;
