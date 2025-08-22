@@ -1,30 +1,440 @@
-// ── 1) Subgraph headline: remove parentheses only in the headline segment
-    // Matches: "subgraph <headline up to [ or newline>"
-    code = code.replace(/^(\s*subgraph\s+)([^\n\[]+)/gm, (m, prefix, headline) => {
-        const cleanedHeadline = headline.replace(/[()]/g, '');
-        return prefix + cleanedHeadline;
-    });
+<!DOCTYPE html>
+<html lang="en">
 
-    // Helper to escape unescaped parentheses (avoid double-escaping)
-    const escapeParens = (text) => {
-        // Temporarily protect already-escaped parens
-        const P_OPEN = '\uE000', P_CLOSE = '\uE001';
-        return text
-            .replace(/\\\(/g, P_OPEN)
-            .replace(/\\\)/g, P_CLOSE)
-            .replace(/\(/g, '\\(')
-            .replace(/\)/g, '\\)')
-            .replace(new RegExp(P_OPEN, 'g'), '\\(')
-            .replace(new RegExp(P_CLOSE, 'g'), '\\)');
-    };
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Mermaid Diagrams</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.6.1/mermaid.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
 
-    // ── 2) Escape parens inside node labels: [ ... ]
-    // (Single line labels; Mermaid node labels are typically single-line)
-    code = code.replace(/\[([^\[\]\n]*)\]/g, (m, inner) => {
-        return `[${escapeParens(inner)}]`;
-    });
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
 
-    // ── 3) Escape parens inside edge labels: | ... |
-    code = code.replace(/\|([^|\n]*)\|/g, (m, inner) => {
-        return `|${escapeParens(inner)}|`;
-    });
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+
+        .buttons {
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #0056b3;
+        }
+
+        .download-btn {
+            background: #28a745;
+        }
+
+        .download-btn:hover {
+            background: #1e7e34;
+        }
+
+        .download-btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+
+        #diagram-container {
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            min-height: 200px;
+            background: #fafafa;
+            text-align: center;
+        }
+
+        .status {
+            background: #e9ecef;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            text-align: center;
+        }
+
+        textarea {
+            width: 100%;
+            height: 100px;
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+
+        .download-options {
+            text-align: center;
+            margin: 10px 0;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            display: none;
+        }
+
+        .download-options.show {
+            display: block;
+        }
+
+        .format-group {
+            margin: 5px 0;
+        }
+
+        select {
+            padding: 5px 10px;
+            margin: 0 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Mermaid Diagrams with JavaScript</h1>
+
+        <div class="buttons">
+            <button onclick="showFlowchart()">Flowchart</button>
+            <button onclick="showSequence()">Sequence Diagram</button>
+            <button onclick="showPieChart()">Pie Chart</button>
+            <button onclick="showGantt()">Gantt Chart</button>
+            <button onclick="testMermaid()">Test Mermaid</button>
+            <button onclick="clearDiagram()">Clear</button>
+        </div>
+
+        <div>
+            <h3>Custom Diagram:</h3>
+            <textarea id="custom-input" placeholder="Enter Mermaid code here...">graph LR
+    subgraph "Frontend - Angular"
+        A[Login Page] --> B[Dashboard]
+        B --> C[Settings]
+    end
+    subgraph Backend
+        D[API Gateway] --> E[Auth Service]
+        E --> F[Database]
+    end
+    A --> D
+    C --> F</textarea>
+            <button onclick="renderCustom()">Render Custom</button>
+        </div>
+
+        <div id="diagram-container">
+            <p>Click a button above to display a diagram</p>
+        </div>
+
+        <div class="download-options" id="download-options">
+            <div class="format-group">
+                <label>Download Format:</label>
+                <select id="download-format">
+                    <option value="svg">SVG</option>
+                    <option value="png">PNG</option>
+                </select>
+                <button class="download-btn" onclick="downloadDiagram()">Download Diagram</button>
+            </div>
+        </div>
+
+        <div class="status">
+            <span>Status: </span><span id="status-text">Ready</span> |
+            <span>Diagrams rendered: </span><span id="counter">0</span>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Mermaid with proper configuration
+        mermaid.initialize({ 
+            startOnLoad: false,
+            theme: 'default',
+            securityLevel: 'loose',
+            flowchart: {
+                useMaxWidth: true,
+                htmlLabels: true
+            }
+        });
+
+        let diagramCount = 0;
+        let currentSvg = null;
+        let currentDiagramName = '';
+
+        function renderDiagram(code, name) {
+            // Get the container element using getElementById
+            const container = document.getElementById('diagram-container');
+            const statusText = document.getElementById('status-text');
+            const counter = document.getElementById('counter');
+            const downloadOptions = document.getElementById('download-options');
+
+            // Show loading message
+            container.innerHTML = '<p>Rendering diagram...</p>';
+            statusText.innerHTML = 'Rendering ' + name;
+
+            // Hide download options while rendering
+            downloadOptions.classList.remove('show');
+
+            // Clean and fix common Mermaid syntax issues
+            let cleanedCode = cleanMermaidCode(code);
+
+            // Create unique ID for the diagram
+            const diagramId = 'diagram-' + Date.now();
+
+            try {
+                // Render the Mermaid diagram
+                mermaid.render(diagramId, cleanedCode)
+                    .then(function (result) {
+                        // Insert the generated SVG into the container
+                        container.innerHTML = result.svg;
+
+                        // Store the SVG for download
+                        currentSvg = result.svg;
+                        currentDiagramName = name.replace(/\s+/g, '_').toLowerCase();
+
+                        // Update status
+                        diagramCount++;
+                        statusText.innerHTML = name + ' rendered successfully';
+                        counter.innerHTML = diagramCount;
+
+                        // Show download options
+                        downloadOptions.classList.add('show');
+                    })
+                    .catch(function (error) {
+                        // Handle errors with more detail
+                        console.error('Mermaid rendering error:', error);
+                        console.log('Original code:', code);
+                        console.log('Cleaned code:', cleanedCode);
+                        container.innerHTML = '<p style="color: red;">Error: ' + error.message + '</p><p style="color: #666; font-size: 12px;">Check the console for more details.</p>';
+                        statusText.innerHTML = 'Error rendering ' + name;
+                        downloadOptions.classList.remove('show');
+                    });
+            } catch (error) {
+                // Handle synchronous errors
+                console.error('Mermaid error:', error);
+                container.innerHTML = '<p style="color: red;">Error: ' + error.message + '</p>';
+                statusText.innerHTML = 'Error rendering ' + name;
+                downloadOptions.classList.remove('show');
+            }
+        }
+
+        function cleanMermaidCode(code) {
+            // Remove extra whitespace and normalize line endings
+            let cleaned = code.trim().replace(/\r\n/g, '\n');
+            
+            // Fix subgraph labels with parentheses
+            cleaned = cleaned.replace(/subgraph\s+([^"\n]*\([^)]*\)[^"\n]*)/g, function(match, label) {
+                // If the label contains parentheses and isn't already quoted, quote it
+                if (label.includes('(') && !label.startsWith('"')) {
+                    return 'subgraph "' + label.trim() + '"';
+                }
+                return match;
+            });
+            
+            // Fix node labels with special characters
+            cleaned = cleaned.replace(/\[([^\]]*\([^)]*\)[^\]]*)\]/g, function(match, label) {
+                // If the label contains parentheses, ensure it's properly escaped
+                return '[' + label + ']';
+            });
+            
+            return cleaned;
+        }
+
+        function downloadDiagram() {
+            if (!currentSvg) {
+                alert('No diagram to download. Please render a diagram first.');
+                return;
+            }
+
+            const format = document.getElementById('download-format').value;
+            const fileName = currentDiagramName + '_' + new Date().toISOString().slice(0, 10);
+
+            if (format === 'svg') {
+                downloadSVG(currentSvg, fileName + '.svg');
+            } else if (format === 'png') {
+                downloadPNG(currentSvg, fileName + '.png');
+            }
+        }
+
+        function downloadSVG(svgContent, fileName) {
+            // Create a blob with the SVG content
+            const blob = new Blob([svgContent], { type: 'image/svg+xml' });
+            const url = URL.createObjectURL(blob);
+
+            // Create a temporary download link
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+
+            // Clean up
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
+
+        function downloadPNG(svgContent, fileName) {
+            // Create a temporary canvas to convert SVG to PNG
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const img = new Image();
+
+            // Create SVG blob URL
+            const svgBlob = new Blob([svgContent], { type: 'image/svg+xml' });
+            const url = URL.createObjectURL(svgBlob);
+
+            img.onload = function() {
+                // Set canvas size to match image
+                canvas.width = img.width;
+                canvas.height = img.height;
+
+                // Fill with white background
+                ctx.fillStyle = 'white';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // Draw the SVG image
+                ctx.drawImage(img, 0, 0);
+
+                // Convert to PNG and download
+                canvas.toBlob(function(blob) {
+                    const pngUrl = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = pngUrl;
+                    link.download = fileName;
+                    document.body.appendChild(link);
+                    link.click();
+
+                    // Clean up
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(pngUrl);
+                });
+
+                // Clean up SVG URL
+                URL.revokeObjectURL(url);
+            };
+
+            img.onerror = function() {
+                alert('Error converting to PNG. SVG download is still available.');
+                URL.revokeObjectURL(url);
+            };
+
+            img.src = url;
+        }
+
+        function testMermaid() {
+            const container = document.getElementById('diagram-container');
+            const statusText = document.getElementById('status-text');
+            
+            // Test if Mermaid is loaded
+            if (typeof mermaid === 'undefined') {
+                container.innerHTML = '<p style="color: red;">Mermaid library is not loaded!</p>';
+                statusText.innerHTML = 'Mermaid library missing';
+                return;
+            }
+            
+            statusText.innerHTML = 'Testing Mermaid...';
+            console.log('Mermaid version:', mermaid.version);
+            
+            // Simple test diagram
+            const testCode = `graph LR
+    A[Test] --> B[Working]`;
+            
+            renderDiagram(testCode, 'Test Diagram');
+        }
+
+        function showFlowchart() {
+            const flowchartCode = `
+                graph TD
+                    A[Start] --> B{Decision?}
+                    B -->|Yes| C[Do Something]
+                    B -->|No| D[Do Something Else]
+                    C --> E[End]
+                    D --> E
+            `;
+            renderDiagram(flowchartCode, 'Flowchart');
+        }
+
+        function showSequence() {
+            const sequenceCode = `
+                sequenceDiagram
+                    participant A as Alice
+                    participant B as Bob
+                    A->>B: Hello Bob, how are you?
+                    B-->>A: Great!
+                    A->>B: See you later!
+            `;
+            renderDiagram(sequenceCode, 'Sequence Diagram');
+        }
+
+        function showPieChart() {
+            const pieCode = `
+                pie title My Pie Chart
+                    "Apples" : 42.96
+                    "Oranges" : 50.05
+                    "Bananas" : 10.01
+            `;
+            renderDiagram(pieCode, 'Pie Chart');
+        }
+
+        function showGantt() {
+            const ganttCode = `
+                gantt
+                    title A Simple Gantt
+                    dateFormat YYYY-MM-DD
+                    section Section
+                    Task 1 :a1, 2024-01-01, 30d
+                    Task 2 :after a1, 20d
+                    Task 3 :2024-01-12, 12d
+            `;
+            renderDiagram(ganttCode, 'Gantt Chart');
+        }
+
+        function renderCustom() {
+            // Get the custom input using getElementById
+            const customInput = document.getElementById('custom-input');
+            const code = customInput.value;
+
+            if (code.trim() === '') {
+                alert('Please enter some Mermaid code');
+                return;
+            }
+
+            renderDiagram(code, 'Custom Diagram');
+        }
+
+        function clearDiagram() {
+            // Clear the diagram container
+            const container = document.getElementById('diagram-container');
+            const statusText = document.getElementById('status-text');
+            const downloadOptions = document.getElementById('download-options');
+
+            container.innerHTML = '<p>Click a button above to display a diagram</p>';
+            statusText.innerHTML = 'Ready';
+            downloadOptions.classList.remove('show');
+
+            // Clear stored diagram data
+            currentSvg = null;
+            currentDiagramName = '';
+        }
+    </script>
+</body>
+
+</html>
