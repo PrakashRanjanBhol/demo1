@@ -1,170 +1,340 @@
+import { Component, Input, OnChanges, SimpleChanges, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+
+@Component({
+  selector: 'app-code-preview',
+  template: `
+    <div class="code-preview-container">
+      <!-- Code Input Section -->
+      <div class="code-inputs">
+        <div class="input-group">
+          <label>HTML Code:</label>
+          <textarea 
+            [(ngModel)]="htmlCode" 
+            (input)="updatePreview()"
+            placeholder="Enter HTML code here..."
+            class="code-textarea">
+          </textarea>
+        </div>
+        
+        <div class="input-group">
+          <label>CSS Code:</label>
+          <textarea 
+            [(ngModel)]="cssCode" 
+            (input)="updatePreview()"
+            placeholder="Enter CSS code here..."
+            class="code-textarea">
+          </textarea>
+        </div>
+        
+        <div class="input-group">
+          <label>JavaScript Code:</label>
+          <textarea 
+            [(ngModel)]="jsCode" 
+            (input)="updatePreview()"
+            placeholder="Enter JavaScript code here..."
+            class="code-textarea">
+          </textarea>
+        </div>
+      </div>
+      
+      <!-- Preview Section -->
+      <div class="preview-section">
+        <div class="preview-header">
+          <h3>Live Preview</h3>
+          <button (click)="refreshPreview()" class="refresh-btn">Refresh</button>
+        </div>
+        <div class="preview-container">
+          <iframe 
+            #previewFrame
+            class="preview-iframe"
+            sandbox="allow-scripts allow-same-origin">
+          </iframe>
+        </div>
+      </div>
+    </div>
+  `,
+   styles: [`
+    .code-preview-container {
+      display: flex;
+      gap: 20px;
+      height: 100vh;
+      padding: 20px;
+    }
+    
+    .code-inputs {
+      width: 350px; /* fixed width */
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+    
+    .input-group {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+    }
+    
+    .input-group label {
+      font-weight: bold;
+      margin-bottom: 5px;
+      color: #333;
+    }
+    
+    .code-textarea {
+      flex: 1;
+      font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+      font-size: 14px;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      resize: none;
+      background: #f8f9fa;
+    }
+    
+    .code-textarea:focus {
+      outline: none;
+      border-color: #007bff;
+      box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+    }
+    
+    .preview-section {
+      flex: 1; /* take remaining width */
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .preview-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    
+    .preview-header h3 {
+      margin: 0;
+      color: #333;
+    }
+    
+    .refresh-btn {
+      padding: 8px 16px;
+      background: #007bff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    
+    .refresh-btn:hover {
+      background: #0056b3;
+    }
+    
+    .preview-container {
+      flex: 1;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    
+    .preview-iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      background: white;
+    }
+    
+    @media (max-width: 768px) {
+      .code-preview-container {
+        flex-direction: column;
+        height: auto;
+      }
+      
+      .code-inputs {
+        width: 100%;
+        height: 60vh;
+      }
+      
+      .preview-section {
+        width: 100%;
+        height: 40vh;
+      }
+    }
+  `]
+
+})
+export class CodePreviewComponent implements OnChanges, AfterViewInit {
+  @Input() htmlCode: string = '';
+  @Input() cssCode: string = '';
+  @Input() jsCode: string = '';
+
+  @ViewChild('previewFrame') previewFrame!: ElementRef<HTMLIFrameElement>;
+
+  constructor(private sanitizer: DomSanitizer) { }
+
+  ngAfterViewInit() {
+    this.updatePreview();
+  }
+
+  ngOnChanges(changes: SimpleChanges) {
+    if (this.previewFrame) {
+      this.updatePreview();
+    }
+  }
+
+  updatePreview() {
+    if (!this.previewFrame?.nativeElement) return;
+
+    const consolidatedHtml = this.consolidateCode();
+    const iframe = this.previewFrame.nativeElement;
+
+    // Write the consolidated HTML to the iframe
+    const doc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (doc) {
+      doc.open();
+      doc.write(consolidatedHtml);
+      doc.close();
+    }
+  }
+
+  refreshPreview() {
+    this.updatePreview();
+  }
+
+  private consolidateCode(): string {
+    return `
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Small Toggle Code/Graph</title>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-  <style>
-    body {
-      background: #0e1117;
-      font-family: 'Poppins', sans-serif;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-      color: #e5e7eb;
-    }
-
-    .playground-container {
-      display: flex;
-      align-items: center;
-      gap: 0.4rem;
-      background: #161b22;
-      padding: 0.3rem 0.5rem;
-      border: 1px solid #2c313c;
-      border-radius: 8px;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-      font-size: 0.75rem;
-    }
-
-    .playground-message {
-      font-size: 0.7rem;
-      color: #a1f0a1;
-      opacity: 0;
-      transition: opacity 0.3s ease;
-      min-width: 70px; /* reserve space so layout doesn’t shift */
-      white-space: nowrap;
-    }
-
-    .playground-message.show {
-      opacity: 1;
-    }
-
-    .playground-buttons {
-      display: flex;
-      background: #1f2937;
-      border-radius: 6px;
-      overflow: hidden;
-      border: 1px solid #2c313c;
-    }
-
-    .playground-icon {
-      color: #9ca3af;
-      padding: 0.3rem 0.5rem;
-      font-size: 0.9rem;
-      cursor: pointer;
-      transition: all 0.2s ease;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .playground-icon:hover {
-      color: #d1d5db;
-      background: #374151;
-    }
-
-    .playground-icon.active {
-      background: #2563eb;
-      color: #fff;
-      box-shadow: inset 0 0 4px rgba(255, 255, 255, 0.15),
-        0 0 3px rgba(37, 99, 235, 0.5);
-    }
-
-    .playground-action {
-      color: #9ca3af;
-      font-size: 0.9rem;
-      cursor: pointer;
-      transition: color 0.2s ease, transform 0.15s ease;
-      padding: 0.3rem;
-      border-radius: 4px;
-    }
-
-    .playground-action:hover {
-      color: #60a5fa;
-      background: rgba(96, 165, 250, 0.08);
-      transform: scale(1.05);
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Preview</title>
+    <style>
+        /* Reset some default styles */
+        body { margin: 0; padding: 20px; font-family: Arial, sans-serif; }
+        
+        /* User CSS */
+        ${this.cssCode}
+    </style>
 </head>
-
 <body>
-
-  <script>
-    // Container
-    const toggleContainer = document.createElement("div");
-    toggleContainer.className = "playground-container";
-
-    // Message element (first child inside flex)
-    const message = document.createElement("div");
-    message.className = "playground-message";
-    toggleContainer.appendChild(message);
-
-    // Toggle group
-    const toggleButtons = document.createElement("div");
-    toggleButtons.className = "playground-buttons";
-
-    // Code Icon
-    const codeIcon = document.createElement("i");
-    codeIcon.className = "fa-solid fa-code playground-icon active";
-    codeIcon.title = "Code View";
-
-    // Graph Icon
-    const graphIcon = document.createElement("i");
-    graphIcon.className = "fa-solid fa-chart-bar playground-icon";
-    graphIcon.title = "Graph View";
-
-    // Action Icon (dynamic)
-    const actionIcon = document.createElement("i");
-    actionIcon.className = "fa-solid fa-copy playground-action";
-    actionIcon.title = "Copy";
-
-    // Append icons
-    toggleButtons.appendChild(codeIcon);
-    toggleButtons.appendChild(graphIcon);
-    toggleContainer.appendChild(toggleButtons);
-    toggleContainer.appendChild(actionIcon);
-
-    // Append to body
-    document.body.appendChild(toggleContainer);
-
-    // Show message function
-    function showMessage(text) {
-      message.innerHTML = `<i class="fa-solid fa-check"></i> ${text}`;
-      message.classList.add("show");
-
-      setTimeout(() => {
-        message.classList.remove("show");
-      }, 1500);
-    }
-
-    // Toggle Logic
-    codeIcon.addEventListener("click", () => {
-      codeIcon.classList.add("active");
-      graphIcon.classList.remove("active");
-      actionIcon.className = "fa-solid fa-copy playground-action";
-      actionIcon.title = "Copy";
-    });
-
-    graphIcon.addEventListener("click", () => {
-      graphIcon.classList.add("active");
-      codeIcon.classList.remove("active");
-      actionIcon.className = "fa-solid fa-download playground-action";
-      actionIcon.title = "Download";
-    });
-
-    // Action click
-    actionIcon.addEventListener("click", () => {
-      if (actionIcon.classList.contains("fa-copy")) {
-        showMessage("Copied");
-      } else {
-        showMessage("Downloaded");
-      }
-    });
-  </script>
-
+    ${this.htmlCode}
+    
+    <script>
+        // Error handling for JavaScript
+        window.onerror = function(msg, url, lineNo, columnNo, error) {
+            document.body.innerHTML += '<div style="color: red; background: #ffe6e6; padding: 10px; margin: 10px 0; border: 1px solid red; border-radius: 4px;"><strong>JavaScript Error:</strong> ' + msg + '</div>';
+            return false;
+        };
+        
+        // User JavaScript
+        try {
+            ${this.jsCode}
+        } catch (error) {
+            document.body.innerHTML += '<div style="color: red; background: #ffe6e6; padding: 10px; margin: 10px 0; border: 1px solid red; border-radius: 4px;"><strong>JavaScript Error:</strong> ' + error.message + '</div>';
+        }
+    </script>
 </body>
+</html>`;
+  }
 
-</html>
+  // Method to set code from external source (like LLM response)
+  setCodeFromLLMResponse(htmlBlock: string, cssBlock: string, jsBlock: string) {
+    this.htmlCode = htmlBlock;
+    this.cssCode = cssBlock;
+    this.jsCode = jsBlock;
+    this.updatePreview();
+  }
+
+  // Method to extract code blocks from markdown-style response
+  extractCodeFromMarkdown(llmResponse: string) {
+    const htmlMatch = llmResponse.match(/```html\n([\s\S]*?)\n```/i);
+    const cssMatch = llmResponse.match(/```css\n([\s\S]*?)\n```/i);
+    const jsMatch = llmResponse.match(/```(?:javascript|js)\n([\s\S]*?)\n```/i);
+
+    this.htmlCode = htmlMatch ? htmlMatch[1].trim() : '';
+    this.cssCode = cssMatch ? cssMatch[1].trim() : '';
+    this.jsCode = jsMatch ? jsMatch[1].trim() : '';
+
+    this.updatePreview();
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ <app-code-preview #codePreview [htmlCode]="sampleHtml" [cssCode]="sampleCss" [jsCode]="sampleJs">
+    </app-code-preview>
+
+
+
+
+
+  @ViewChild('codePreview') codePreview!: CodePreviewComponent;
+
+  sampleHtml = '<h1>Hello World</h1><button onclick="changeColor()">Click me</button>';
+  sampleCss = 'h1 { color: blue; } button { padding: 10px; }';
+  sampleJs = 'function changeColor() { document.querySelector("h1").style.color = "red"; }';
+
+  loadSampleCode() {
+    this.codePreview.setCodeFromLLMResponse(
+      this.sampleHtml,
+      this.sampleCss,
+      this.sampleJs
+    );
+  }
+
+  loadFromLLMResponse() {
+    const llmResponse = `
+Here's your code:
+
+\`\`\`html
+<div class="container">
+  <h1>Dynamic Content</h1>
+  <p id="text">Click the button to change me!</p>
+  <button onclick="updateText()">Update Text</button>
+</div>
+\`\`\`
+
+\`\`\`css
+.container {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 20px;
+  text-align: center;
+}
+h1 { color: #333; }
+button {
+  background: #007bff;
+  color: white;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+\`\`\`
+
+\`\`\`javascript
+function updateText() {
+  document.getElementById('text').textContent = 'Text updated at ' + new Date().toLocaleTimeString();
+}
+\`\`\`
+    `;
+
+    this.codePreview.extractCodeFromMarkdown(llmResponse);
+  }
+
