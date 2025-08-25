@@ -1,340 +1,66 @@
-import { Component, Input, OnChanges, SimpleChanges, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
-import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+ private updateChart(grouped: Record<string, number>, overallTotal: number) {
+  this.totalLines = overallTotal;
 
-@Component({
-  selector: 'app-code-preview',
-  template: `
-    <div class="code-preview-container">
-      <!-- Code Input Section -->
-      <div class="code-inputs">
-        <div class="input-group">
-          <label>HTML Code:</label>
-          <textarea 
-            [(ngModel)]="htmlCode" 
-            (input)="updatePreview()"
-            placeholder="Enter HTML code here..."
-            class="code-textarea">
-          </textarea>
-        </div>
-        
-        <div class="input-group">
-          <label>CSS Code:</label>
-          <textarea 
-            [(ngModel)]="cssCode" 
-            (input)="updatePreview()"
-            placeholder="Enter CSS code here..."
-            class="code-textarea">
-          </textarea>
-        </div>
-        
-        <div class="input-group">
-          <label>JavaScript Code:</label>
-          <textarea 
-            [(ngModel)]="jsCode" 
-            (input)="updatePreview()"
-            placeholder="Enter JavaScript code here..."
-            class="code-textarea">
-          </textarea>
-        </div>
-      </div>
-      
-      <!-- Preview Section -->
-      <div class="preview-section">
-        <div class="preview-header">
-          <h3>Live Preview</h3>
-          <button (click)="refreshPreview()" class="refresh-btn">Refresh</button>
-        </div>
-        <div class="preview-container">
-          <iframe 
-            #previewFrame
-            class="preview-iframe"
-            sandbox="allow-scripts allow-same-origin">
-          </iframe>
-        </div>
-      </div>
-    </div>
-  `,
-   styles: [`
-    .code-preview-container {
-      display: flex;
-      gap: 20px;
-      height: 100vh;
-      padding: 20px;
-    }
-    
-    .code-inputs {
-      width: 350px; /* fixed width */
-      display: flex;
-      flex-direction: column;
-      gap: 15px;
-    }
-    
-    .input-group {
-      display: flex;
-      flex-direction: column;
-      flex: 1;
-    }
-    
-    .input-group label {
-      font-weight: bold;
-      margin-bottom: 5px;
-      color: #333;
-    }
-    
-    .code-textarea {
-      flex: 1;
-      font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-      font-size: 14px;
-      padding: 10px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      resize: none;
-      background: #f8f9fa;
-    }
-    
-    .code-textarea:focus {
-      outline: none;
-      border-color: #007bff;
-      box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
-    }
-    
-    .preview-section {
-      flex: 1; /* take remaining width */
-      display: flex;
-      flex-direction: column;
-    }
-    
-    .preview-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 10px;
-    }
-    
-    .preview-header h3 {
-      margin: 0;
-      color: #333;
-    }
-    
-    .refresh-btn {
-      padding: 8px 16px;
-      background: #007bff;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    
-    .refresh-btn:hover {
-      background: #0056b3;
-    }
-    
-    .preview-container {
-      flex: 1;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      overflow: hidden;
-    }
-    
-    .preview-iframe {
-      width: 100%;
-      height: 100%;
-      border: none;
-      background: white;
-    }
-    
-    @media (max-width: 768px) {
-      .code-preview-container {
-        flex-direction: column;
-        height: auto;
+  const languages = Object.keys(grouped);
+  const colors = ['#4cafef', '#00e676', '#ff5252', '#ffc107'];
+
+  this.chartOption = {
+    backgroundColor: '#111113',
+    tooltip: {
+      trigger: 'item',
+      backgroundColor: '#1e1e1e',
+      borderColor: '#333',
+      textStyle: { color: '#fff' },
+      formatter: (params: any) => {
+        return `${params.seriesName}<br/>${params.value.toLocaleString()} lines`;
       }
-      
-      .code-inputs {
-        width: 100%;
-        height: 60vh;
-      }
-      
-      .preview-section {
-        width: 100%;
-        height: 40vh;
-      }
-    }
-  `]
-
-})
-export class CodePreviewComponent implements OnChanges, AfterViewInit {
-  @Input() htmlCode: string = '';
-  @Input() cssCode: string = '';
-  @Input() jsCode: string = '';
-
-  @ViewChild('previewFrame') previewFrame!: ElementRef<HTMLIFrameElement>;
-
-  constructor(private sanitizer: DomSanitizer) { }
-
-  ngAfterViewInit() {
-    this.updatePreview();
-  }
-
-  ngOnChanges(changes: SimpleChanges) {
-    if (this.previewFrame) {
-      this.updatePreview();
-    }
-  }
-
-  updatePreview() {
-    if (!this.previewFrame?.nativeElement) return;
-
-    const consolidatedHtml = this.consolidateCode();
-    const iframe = this.previewFrame.nativeElement;
-
-    // Write the consolidated HTML to the iframe
-    const doc = iframe.contentDocument || iframe.contentWindow?.document;
-    if (doc) {
-      doc.open();
-      doc.write(consolidatedHtml);
-      doc.close();
-    }
-  }
-
-  refreshPreview() {
-    this.updatePreview();
-  }
-
-  private consolidateCode(): string {
-    return `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Live Preview</title>
-    <style>
-        /* Reset some default styles */
-        body { margin: 0; padding: 20px; font-family: Arial, sans-serif; }
-        
-        /* User CSS */
-        ${this.cssCode}
-    </style>
-</head>
-<body>
-    ${this.htmlCode}
-    
-    <script>
-        // Error handling for JavaScript
-        window.onerror = function(msg, url, lineNo, columnNo, error) {
-            document.body.innerHTML += '<div style="color: red; background: #ffe6e6; padding: 10px; margin: 10px 0; border: 1px solid red; border-radius: 4px;"><strong>JavaScript Error:</strong> ' + msg + '</div>';
-            return false;
-        };
-        
-        // User JavaScript
-        try {
-            ${this.jsCode}
-        } catch (error) {
-            document.body.innerHTML += '<div style="color: red; background: #ffe6e6; padding: 10px; margin: 10px 0; border: 1px solid red; border-radius: 4px;"><strong>JavaScript Error:</strong> ' + error.message + '</div>';
-        }
-    </script>
-</body>
-</html>`;
-  }
-
-  // Method to set code from external source (like LLM response)
-  setCodeFromLLMResponse(htmlBlock: string, cssBlock: string, jsBlock: string) {
-    this.htmlCode = htmlBlock;
-    this.cssCode = cssBlock;
-    this.jsCode = jsBlock;
-    this.updatePreview();
-  }
-
-  // Method to extract code blocks from markdown-style response
-  extractCodeFromMarkdown(llmResponse: string) {
-    const htmlMatch = llmResponse.match(/```html\n([\s\S]*?)\n```/i);
-    const cssMatch = llmResponse.match(/```css\n([\s\S]*?)\n```/i);
-    const jsMatch = llmResponse.match(/```(?:javascript|js)\n([\s\S]*?)\n```/i);
-
-    this.htmlCode = htmlMatch ? htmlMatch[1].trim() : '';
-    this.cssCode = cssMatch ? cssMatch[1].trim() : '';
-    this.jsCode = jsMatch ? jsMatch[1].trim() : '';
-
-    this.updatePreview();
-  }
+    },
+    legend: {
+      type: 'scroll',
+      bottom: 0,
+      textStyle: { color: '#ffffff' },
+      data: languages, // ✅ legends will now map to series names
+    },
+    grid: {
+      left: '5%',
+      right: '5%',
+      bottom: '15%',
+      containLabel: true,
+    },
+    xAxis: {
+      type: 'category',
+      data: ['Lines of Code'], // ✅ single shared category
+      axisLabel: { color: '#ffffff' },
+      axisLine: { lineStyle: { color: '#777' } },
+    },
+    yAxis: {
+      type: 'value',
+      axisLabel: { color: '#ffffff' },
+      axisLine: { lineStyle: { color: '#777' } },
+      splitLine: { lineStyle: { color: '#333' } },
+    },
+    series: languages.map((lang, idx) => ({
+      name: lang, // ✅ legend entry = language name
+      type: 'bar',
+      barWidth: '25%', // ✅ smaller bar size
+      label: {
+        show: true,
+        position: 'top',
+        color: '#ffffff',
+      },
+      itemStyle: {
+        color: colors[idx % colors.length],
+      },
+      emphasis: {
+        itemStyle: {
+          color: '#ffd54f', // ✅ highlight on hover
+          borderColor: '#fff',
+          borderWidth: 2,
+          shadowBlur: 10,
+          shadowColor: 'rgba(255,255,255,0.5)',
+        },
+      },
+      data: [grouped[lang]], // ✅ one bar per language
+    })),
+  };
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
- <app-code-preview #codePreview [htmlCode]="sampleHtml" [cssCode]="sampleCss" [jsCode]="sampleJs">
-    </app-code-preview>
-
-
-
-
-
-  @ViewChild('codePreview') codePreview!: CodePreviewComponent;
-
-  sampleHtml = '<h1>Hello World</h1><button onclick="changeColor()">Click me</button>';
-  sampleCss = 'h1 { color: blue; } button { padding: 10px; }';
-  sampleJs = 'function changeColor() { document.querySelector("h1").style.color = "red"; }';
-
-  loadSampleCode() {
-    this.codePreview.setCodeFromLLMResponse(
-      this.sampleHtml,
-      this.sampleCss,
-      this.sampleJs
-    );
-  }
-
-  loadFromLLMResponse() {
-    const llmResponse = `
-Here's your code:
-
-\`\`\`html
-<div class="container">
-  <h1>Dynamic Content</h1>
-  <p id="text">Click the button to change me!</p>
-  <button onclick="updateText()">Update Text</button>
-</div>
-\`\`\`
-
-\`\`\`css
-.container {
-  max-width: 600px;
-  margin: 0 auto;
-  padding: 20px;
-  text-align: center;
-}
-h1 { color: #333; }
-button {
-  background: #007bff;
-  color: white;
-  padding: 10px 20px;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
-}
-\`\`\`
-
-\`\`\`javascript
-function updateText() {
-  document.getElementById('text').textContent = 'Text updated at ' + new Date().toLocaleTimeString();
-}
-\`\`\`
-    `;
-
-    this.codePreview.extractCodeFromMarkdown(llmResponse);
-  }
-
