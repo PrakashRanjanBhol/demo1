@@ -1,19 +1,481 @@
-🚀 New Release – Feature Update
+import { Injectable } from '@angular/core';
+import { BehaviorSubject } from 'rxjs';
 
-We’re excited to announce our latest release packed with powerful new features to make your workflow smarter and more productive:
+export interface ParsedCode {
+  html: string;
+  css: string;
+  javascript: string;
+}
 
-🔁 Reusable Component
+@Injectable({
+  providedIn: 'root'
+})
+export class CodeParserService {
+  private htmlCode = new BehaviorSubject<string>('');
+  private cssCode = new BehaviorSubject<string>('');
+  private jsCode = new BehaviorSubject<string>('');
+  
+  public htmlCode$ = this.htmlCode.asObservable();
+  public cssCode$ = this.cssCode.asObservable();
+  public jsCode$ = this.jsCode.asObservable();
 
-Easily ask queries related to our reusable codebase and get quick, contextual answers.
+  private streamBuffer = '';
 
-📊 Lines of Code Metrics
+  constructor() { }
 
-View and track your code productivity with detailed lines of code generated over time.
+  // Process streaming chunks
+  processStreamChunk(chunk: string): void {
+    this.streamBuffer += chunk;
+    this.parseCodeBlocks();
+  }
 
-⬇️ Enhanced Download Options
+  // Parse complete response
+  parseCompleteResponse(response: string): ParsedCode {
+    this.streamBuffer = response;
+    return this.parseCodeBlocks();
+  }
 
-Now you can download CSV, draw.io, and other generated assets directly from the Jira module.
+  private parseCodeBlocks(): ParsedCode {
+    const codeBlockRegex = /```(\w+)?\s*\n([\s\S]*?)```/g;
+    let match;
+    
+    let htmlContent = '';
+    let cssContent = '';
+    let jsContent = '';
 
-🪄 Mermaid Diagram Generation
+    // Reset buffer copy for processing
+    const content = this.streamBuffer;
 
-Generate Mermaid diagrams instantly to visualize workflows and processes with ease.
+    while ((match = codeBlockRegex.exec(content)) !== null) {
+      const language = match[1]?.toLowerCase() || '';
+      const code = match[2].trim();
+
+      switch (language) {
+        case 'html':
+          htmlContent = code;
+          break;
+        case 'css':
+          cssContent = code;
+          break;
+        case 'javascript':
+        case 'js':
+          jsContent = code;
+          break;
+        case '':
+          // If no language specified, try to detect based on content
+          if (code.includes('<html>') || code.includes('<!DOCTYPE') || code.includes('<div>')) {
+            htmlContent = code;
+          } else if (code.includes('{') && (code.includes('color:') || code.includes('font-') || code.includes('margin:'))) {
+            cssContent = code;
+          } else if (code.includes('function') || code.includes('const ') || code.includes('let ') || code.includes('=>')) {
+            jsContent = code;
+          }
+          break;
+        default:
+          // Handle other cases or mixed content
+          if (language.includes('html')) htmlContent = code;
+          else if (language.includes('css')) cssContent = code;
+          else if (language.includes('js') || language.includes('javascript')) jsContent = code;
+          break;
+      }
+    }
+
+    // Update BehaviorSubjects
+    if (htmlContent !== this.htmlCode.value) {
+      this.htmlCode.next(htmlContent);
+    }
+    if (cssContent !== this.cssCode.value) {
+      this.cssCode.next(cssContent);
+    }
+    if (jsContent !== this.jsCode.value) {
+      this.jsCode.next(jsContent);
+    }
+
+    return {
+      html: htmlContent,
+      css: cssContent,
+      javascript: jsContent
+    };
+  }
+
+  // Get current values
+  getCurrentParsedCode(): ParsedCode {
+    return {
+      html: this.htmlCode.value,
+      css: this.cssCode.value,
+      javascript: this.jsCode.value
+    };
+  }
+
+  // Clear all stored code
+  clearCode(): void {
+    this.streamBuffer = '';
+    this.htmlCode.next('');
+    this.cssCode.next('');
+    this.jsCode.next('');
+  }
+
+  // Reset for new streaming session
+  resetStream(): void {
+    this.clearCode();
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Subject, takeUntil } from 'rxjs';
+import { CodeParserService, ParsedCode } from './code-parser.service';
+
+@Component({
+  selector: 'app-llm-response',
+  template: `
+    <div class="container">
+      <h2>LLM Response Parser</h2>
+      
+      <!-- Simulate streaming input -->
+      <div class="input-section">
+        <textarea 
+          [(ngModel)]="rawResponse" 
+          placeholder="Paste LLM response here or simulate streaming..."
+          rows="8" 
+          cols="80">
+        </textarea>
+        <br>
+        <button (click)="simulateStreaming()">Simulate Streaming</button>
+        <button (click)="parseComplete()">Parse Complete Response</button>
+        <button (click)="clearAll()">Clear All</button>
+      </div>
+
+      <!-- Display parsed results -->
+      <div class="results">
+        <div class="code-section">
+          <h3>HTML Code:</h3>
+          <pre><code>{{ htmlCode }}</code></pre>
+        </div>
+
+        <div class="code-section">
+          <h3>CSS Code:</h3>
+          <pre><code>{{ cssCode }}</code></pre>
+        </div>
+
+        <div class="code-section">
+          <h3>JavaScript Code:</h3>
+          <pre><code>{{ jsCode }}</code></pre>
+        </div>
+      </div>
+    </div>
+  `,
+  styles: [`
+    .container {
+      padding: 20px;
+      font-family: Arial, sans-serif;
+    }
+
+    .input-section {
+      margin-bottom: 30px;
+    }
+
+    textarea {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-family: monospace;
+    }
+
+    button {
+      margin: 10px 5px 0 0;
+      padding: 10px 15px;
+      background: #007bff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #0056b3;
+    }
+
+    .results {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 20px;
+    }
+
+    .code-section {
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .code-section h3 {
+      margin: 0;
+      padding: 10px;
+      background: #f8f9fa;
+      border-bottom: 1px solid #ddd;
+    }
+
+    .code-section pre {
+      margin: 0;
+      padding: 15px;
+      background: #f8f8f8;
+      overflow-x: auto;
+      min-height: 100px;
+    }
+
+    .code-section code {
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+    }
+
+    @media (min-width: 768px) {
+      .results {
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      }
+    }
+  `]
+})
+export class LlmResponseComponent implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>();
+  
+  rawResponse = `Here's a simple web page:
+
+\`\`\`html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Sample Page</title>
+</head>
+<body>
+    <div class="container">
+        <h1>Hello World</h1>
+        <button id="clickBtn">Click Me</button>
+    </div>
+</body>
+</html>
+\`\`\`
+
+And here's the styling:
+
+\`\`\`css
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+h1 {
+    color: #333;
+    text-align: center;
+}
+
+button {
+    background: #007bff;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 5px;
+    cursor: pointer;
+}
+\`\`\`
+
+Finally, some JavaScript functionality:
+
+\`\`\`javascript
+document.getElementById('clickBtn').addEventListener('click', function() {
+    alert('Button clicked!');
+    console.log('Hello from JavaScript!');
+});
+
+function greetUser(name) {
+    return \`Hello, \${name}!\`;
+}
+\`\`\``;
+
+  htmlCode = '';
+  cssCode = '';
+  jsCode = '';
+
+  constructor(private codeParserService: CodeParserService) {}
+
+  ngOnInit() {
+    // Subscribe to parsed code updates
+    this.codeParserService.htmlCode$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(html => this.htmlCode = html);
+
+    this.codeParserService.cssCode$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(css => this.cssCode = css);
+
+    this.codeParserService.jsCode$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(js => this.jsCode = js);
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
+  }
+
+  simulateStreaming() {
+    this.codeParserService.resetStream();
+    
+    // Simulate streaming by sending chunks
+    const chunks = this.rawResponse.match(/.{1,50}/g) || [];
+    let index = 0;
+
+    const streamInterval = setInterval(() => {
+      if (index < chunks.length) {
+        this.codeParserService.processStreamChunk(chunks[index]);
+        index++;
+      } else {
+        clearInterval(streamInterval);
+      }
+    }, 100); // Send chunk every 100ms
+  }
+
+  parseComplete() {
+    this.codeParserService.parseCompleteResponse(this.rawResponse);
+  }
+
+  clearAll() {
+    this.codeParserService.clearCode();
+    this.rawResponse = '';
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// Inject the service
+constructor(private codeParserService: CodeParserService) {}
+
+// For streaming responses (as chunks arrive)
+onStreamChunk(chunk: string) {
+  this.codeParserService.processStreamChunk(chunk);
+}
+
+// For complete responses
+onCompleteResponse(response: string) {
+  this.codeParserService.parseCompleteResponse(response);
+}
+
+// Subscribe to updates
+ngOnInit() {
+  this.codeParserService.htmlCode$.subscribe(html => {
+    this.htmlCode = html;
+    // Do something with HTML code
+  });
+
+  this.codeParserService.cssCode$.subscribe(css => {
+    this.cssCode = css;
+    // Do something with CSS code
+  });
+
+  this.codeParserService.jsCode$.subscribe(js => {
+    this.jsCode = js;
+    // Do something with JavaScript code
+  });
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// Example with HTTP streaming
+streamLLMResponse(prompt: string) {
+  this.codeParserService.resetStream();
+  
+  this.http.post('/api/llm-stream', { prompt }, { 
+    responseType: 'text',
+    observe: 'events',
+    reportProgress: true 
+  }).subscribe(event => {
+    if (event.type === HttpEventType.DownloadProgress && event.partialText) {
+      // Process each chunk
+      this.codeParserService.processStreamChunk(event.partialText);
+    }
+  });
+}
