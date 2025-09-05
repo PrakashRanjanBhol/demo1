@@ -1,41 +1,261 @@
-import { Injectable } from '@angular/core';
-import { BehaviorSubject } from 'rxjs';
+import { Component, Input, OnChanges, SimpleChanges, ViewChild, ElementRef, AfterViewInit, OnInit } from '@angular/core';
+import { DomSanitizer } from '@angular/platform-browser';
 
-export interface ParsedCode {
-  html: string;
-  css: string;
-  javascript: string;
-}
-
-@Injectable({
-  providedIn: 'root'
+@Component({
+  selector: 'app-streaming-code-preview',
+  template: `
+    <div class="code-preview-container">
+      <!-- Code Input Section -->
+      <div class="code-inputs">
+        <div class="input-group">
+          <label>HTML Code:</label>
+          <textarea 
+            [value]="htmlCode" 
+            readonly
+            placeholder="HTML code will appear here as it streams..."
+            class="code-textarea">
+          </textarea>
+        </div>
+        
+        <div class="input-group">
+          <label>CSS Code:</label>
+          <textarea 
+            [value]="cssCode" 
+            readonly
+            placeholder="CSS code will appear here as it streams..."
+            class="code-textarea">
+          </textarea>
+        </div>
+        
+        <div class="input-group">
+          <label>JavaScript Code:</label>
+          <textarea 
+            [value]="jsCode" 
+            readonly
+            placeholder="JavaScript code will appear here as it streams..."
+            class="code-textarea">
+          </textarea>
+        </div>
+      </div>
+      
+      <!-- Preview Section -->
+      <div class="preview-section">
+        <div class="preview-header">
+          <h3>Live Preview</h3>
+          <div class="header-controls">
+            <span class="status-indicator" [class.streaming]="isStreaming">
+              {{ isStreaming ? 'Streaming...' : 'Ready' }}
+            </span>
+            <button (click)="refreshPreview()" class="refresh-btn">Refresh</button>
+            <button (click)="clearAll()" class="clear-btn">Clear</button>
+          </div>
+        </div>
+        <div class="preview-container">
+          <iframe 
+            #previewFrame
+            class="preview-iframe"
+            sandbox="allow-scripts allow-same-origin">
+          </iframe>
+        </div>
+      </div>
+    </div>
+  `,
+  styles: [`
+    .code-preview-container {
+      display: flex;
+      gap: 20px;
+      height: 100vh;
+      padding: 20px;
+      font-family: Arial, sans-serif;
+    }
+    
+    .code-inputs {
+      width: 350px;
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+    
+    .input-group {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+    }
+    
+    .input-group label {
+      font-weight: bold;
+      margin-bottom: 5px;
+      color: #333;
+    }
+    
+    .code-textarea {
+      flex: 1;
+      font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+      font-size: 14px;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      resize: none;
+      background: #f8f9fa;
+      color: #333;
+    }
+    
+    .code-textarea:focus {
+      outline: none;
+      border-color: #007bff;
+      box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+    }
+    
+    .preview-section {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .preview-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    
+    .preview-header h3 {
+      margin: 0;
+      color: #333;
+    }
+    
+    .header-controls {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    
+    .status-indicator {
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: bold;
+      background: #28a745;
+      color: white;
+    }
+    
+    .status-indicator.streaming {
+      background: #ffc107;
+      color: #333;
+      animation: pulse 1.5s ease-in-out infinite alternate;
+    }
+    
+    @keyframes pulse {
+      from { opacity: 0.6; }
+      to { opacity: 1; }
+    }
+    
+    .refresh-btn, .clear-btn {
+      padding: 8px 16px;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    
+    .refresh-btn {
+      background: #007bff;
+    }
+    
+    .refresh-btn:hover {
+      background: #0056b3;
+    }
+    
+    .clear-btn {
+      background: #dc3545;
+    }
+    
+    .clear-btn:hover {
+      background: #c82333;
+    }
+    
+    .preview-container {
+      flex: 1;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    
+    .preview-iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      background: white;
+    }
+    
+    @media (max-width: 768px) {
+      .code-preview-container {
+        flex-direction: column;
+        height: auto;
+      }
+      
+      .code-inputs {
+        width: 100%;
+        height: 60vh;
+      }
+      
+      .preview-section {
+        width: 100%;
+        height: 40vh;
+      }
+    }
+  `]
 })
-export class CodeParserService {
-  private htmlCode = new BehaviorSubject<string>('');
-  private cssCode = new BehaviorSubject<string>('');
-  private jsCode = new BehaviorSubject<string>('');
+export class StreamingCodePreviewComponent implements OnChanges, AfterViewInit, OnInit {
+  @Input() chunk: string = ''; // Input for streaming chunks
+  @Input() autoRefresh: boolean = true; // Auto-refresh preview when code changes
+
+  htmlCode: string = '';
+  cssCode: string = '';
+  jsCode: string = '';
   
-  public htmlCode$ = this.htmlCode.asObservable();
-  public cssCode$ = this.cssCode.asObservable();
-  public jsCode$ = this.jsCode.asObservable();
+  private streamBuffer: string = '';
+  private debounceTimer: any;
+  isStreaming: boolean = false;
 
-  private streamBuffer = '';
+  @ViewChild('previewFrame') previewFrame!: ElementRef<HTMLIFrameElement>;
 
-  constructor() { }
+  constructor(private sanitizer: DomSanitizer) { }
 
-  // Process streaming chunks
-  processStreamChunk(chunk: string): void {
-    this.streamBuffer += chunk;
+  ngOnInit() {
+    // Initialize empty state
+  }
+
+  ngAfterViewInit() {
+    this.updatePreview();
+  }
+
+  ngOnChanges(changes: SimpleChanges) {
+    if (changes['chunk'] && changes['chunk'].currentValue) {
+      this.processChunk(changes['chunk'].currentValue);
+    }
+  }
+
+  private processChunk(newChunk: string) {
+    this.isStreaming = true;
+    this.streamBuffer += newChunk;
+    
+    // Clear previous debounce timer
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+    }
+
+    // Parse the accumulated buffer
     this.parseCodeBlocks();
+
+    // Set a debounce timer to stop streaming indicator
+    this.debounceTimer = setTimeout(() => {
+      this.isStreaming = false;
+    }, 1000); // Stop streaming indicator after 1 second of no new chunks
   }
 
-  // Parse complete response
-  parseCompleteResponse(response: string): ParsedCode {
-    this.streamBuffer = response;
-    return this.parseCodeBlocks();
-  }
-
-  private parseCodeBlocks(): ParsedCode {
+  private parseCodeBlocks() {
     const codeBlockRegex = /```(\w+)?\s*\n([\s\S]*?)```/g;
     let match;
     
@@ -43,10 +263,10 @@ export class CodeParserService {
     let cssContent = '';
     let jsContent = '';
 
-    // Reset buffer copy for processing
-    const content = this.streamBuffer;
+    // Reset regex lastIndex
+    codeBlockRegex.lastIndex = 0;
 
-    while ((match = codeBlockRegex.exec(content)) !== null) {
+    while ((match = codeBlockRegex.exec(this.streamBuffer)) !== null) {
       const language = match[1]?.toLowerCase() || '';
       const code = match[2].trim();
 
@@ -63,16 +283,16 @@ export class CodeParserService {
           break;
         case '':
           // If no language specified, try to detect based on content
-          if (code.includes('<html>') || code.includes('<!DOCTYPE') || code.includes('<div>')) {
+          if (this.isHtmlCode(code)) {
             htmlContent = code;
-          } else if (code.includes('{') && (code.includes('color:') || code.includes('font-') || code.includes('margin:'))) {
+          } else if (this.isCssCode(code)) {
             cssContent = code;
-          } else if (code.includes('function') || code.includes('const ') || code.includes('let ') || code.includes('=>')) {
+          } else if (this.isJsCode(code)) {
             jsContent = code;
           }
           break;
         default:
-          // Handle other cases or mixed content
+          // Handle other cases
           if (language.includes('html')) htmlContent = code;
           else if (language.includes('css')) cssContent = code;
           else if (language.includes('js') || language.includes('javascript')) jsContent = code;
@@ -80,311 +300,146 @@ export class CodeParserService {
       }
     }
 
-    // Update BehaviorSubjects
-    if (htmlContent !== this.htmlCode.value) {
-      this.htmlCode.next(htmlContent);
-    }
-    if (cssContent !== this.cssCode.value) {
-      this.cssCode.next(cssContent);
-    }
-    if (jsContent !== this.jsCode.value) {
-      this.jsCode.next(jsContent);
-    }
-
-    return {
-      html: htmlContent,
-      css: cssContent,
-      javascript: jsContent
-    };
-  }
-
-  // Get current values
-  getCurrentParsedCode(): ParsedCode {
-    return {
-      html: this.htmlCode.value,
-      css: this.cssCode.value,
-      javascript: this.jsCode.value
-    };
-  }
-
-  // Clear all stored code
-  clearCode(): void {
-    this.streamBuffer = '';
-    this.htmlCode.next('');
-    this.cssCode.next('');
-    this.jsCode.next('');
-  }
-
-  // Reset for new streaming session
-  resetStream(): void {
-    this.clearCode();
-  }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-import { Component, OnInit, OnDestroy } from '@angular/core';
-import { Subject, takeUntil } from 'rxjs';
-import { CodeParserService, ParsedCode } from './code-parser.service';
-
-@Component({
-  selector: 'app-llm-response',
-  template: `
-    <div class="container">
-      <h2>LLM Response Parser</h2>
-      
-      <!-- Simulate streaming input -->
-      <div class="input-section">
-        <textarea 
-          [(ngModel)]="rawResponse" 
-          placeholder="Paste LLM response here or simulate streaming..."
-          rows="8" 
-          cols="80">
-        </textarea>
-        <br>
-        <button (click)="simulateStreaming()">Simulate Streaming</button>
-        <button (click)="parseComplete()">Parse Complete Response</button>
-        <button (click)="clearAll()">Clear All</button>
-      </div>
-
-      <!-- Display parsed results -->
-      <div class="results">
-        <div class="code-section">
-          <h3>HTML Code:</h3>
-          <pre><code>{{ htmlCode }}</code></pre>
-        </div>
-
-        <div class="code-section">
-          <h3>CSS Code:</h3>
-          <pre><code>{{ cssCode }}</code></pre>
-        </div>
-
-        <div class="code-section">
-          <h3>JavaScript Code:</h3>
-          <pre><code>{{ jsCode }}</code></pre>
-        </div>
-      </div>
-    </div>
-  `,
-  styles: [`
-    .container {
-      padding: 20px;
-      font-family: Arial, sans-serif;
-    }
-
-    .input-section {
-      margin-bottom: 30px;
-    }
-
-    textarea {
-      width: 100%;
-      padding: 10px;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-      font-family: monospace;
-    }
-
-    button {
-      margin: 10px 5px 0 0;
-      padding: 10px 15px;
-      background: #007bff;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-
-    button:hover {
-      background: #0056b3;
-    }
-
-    .results {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 20px;
-    }
-
-    .code-section {
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      overflow: hidden;
-    }
-
-    .code-section h3 {
-      margin: 0;
-      padding: 10px;
-      background: #f8f9fa;
-      border-bottom: 1px solid #ddd;
-    }
-
-    .code-section pre {
-      margin: 0;
-      padding: 15px;
-      background: #f8f8f8;
-      overflow-x: auto;
-      min-height: 100px;
-    }
-
-    .code-section code {
-      font-family: 'Courier New', monospace;
-      font-size: 14px;
-    }
-
-    @media (min-width: 768px) {
-      .results {
-        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-      }
-    }
-  `]
-})
-export class LlmResponseComponent implements OnInit, OnDestroy {
-  private destroy$ = new Subject<void>();
-  
-  rawResponse = `Here's a simple web page:
-
-\`\`\`html
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Sample Page</title>
-</head>
-<body>
-    <div class="container">
-        <h1>Hello World</h1>
-        <button id="clickBtn">Click Me</button>
-    </div>
-</body>
-</html>
-\`\`\`
-
-And here's the styling:
-
-\`\`\`css
-.container {
-    max-width: 800px;
-    margin: 0 auto;
-    padding: 20px;
-}
-
-h1 {
-    color: #333;
-    text-align: center;
-}
-
-button {
-    background: #007bff;
-    color: white;
-    border: none;
-    padding: 10px 20px;
-    border-radius: 5px;
-    cursor: pointer;
-}
-\`\`\`
-
-Finally, some JavaScript functionality:
-
-\`\`\`javascript
-document.getElementById('clickBtn').addEventListener('click', function() {
-    alert('Button clicked!');
-    console.log('Hello from JavaScript!');
-});
-
-function greetUser(name) {
-    return \`Hello, \${name}!\`;
-}
-\`\`\``;
-
-  htmlCode = '';
-  cssCode = '';
-  jsCode = '';
-
-  constructor(private codeParserService: CodeParserService) {}
-
-  ngOnInit() {
-    // Subscribe to parsed code updates
-    this.codeParserService.htmlCode$
-      .pipe(takeUntil(this.destroy$))
-      .subscribe(html => this.htmlCode = html);
-
-    this.codeParserService.cssCode$
-      .pipe(takeUntil(this.destroy$))
-      .subscribe(css => this.cssCode = css);
-
-    this.codeParserService.jsCode$
-      .pipe(takeUntil(this.destroy$))
-      .subscribe(js => this.jsCode = js);
-  }
-
-  ngOnDestroy() {
-    this.destroy$.next();
-    this.destroy$.complete();
-  }
-
-  simulateStreaming() {
-    this.codeParserService.resetStream();
+    // Update codes if they have changed
+    let hasChanges = false;
     
-    // Simulate streaming by sending chunks
-    const chunks = this.rawResponse.match(/.{1,50}/g) || [];
-    let index = 0;
+    if (htmlContent !== this.htmlCode) {
+      this.htmlCode = htmlContent;
+      hasChanges = true;
+    }
+    if (cssContent !== this.cssCode) {
+      this.cssCode = cssContent;
+      hasChanges = true;
+    }
+    if (jsContent !== this.jsCode) {
+      this.jsCode = jsContent;
+      hasChanges = true;
+    }
 
-    const streamInterval = setInterval(() => {
-      if (index < chunks.length) {
-        this.codeParserService.processStreamChunk(chunks[index]);
-        index++;
-      } else {
-        clearInterval(streamInterval);
-      }
-    }, 100); // Send chunk every 100ms
+    // Auto-refresh preview if there are changes and auto-refresh is enabled
+    if (hasChanges && this.autoRefresh && this.previewFrame) {
+      this.updatePreview();
+    }
   }
 
-  parseComplete() {
-    this.codeParserService.parseCompleteResponse(this.rawResponse);
+  private isHtmlCode(code: string): boolean {
+    return code.includes('<html>') || 
+           code.includes('<!DOCTYPE') || 
+           code.includes('<div>') || 
+           code.includes('<body>') ||
+           code.includes('<head>') ||
+           /<[a-z][\s\S]*>/i.test(code);
+  }
+
+  private isCssCode(code: string): boolean {
+    return code.includes('{') && 
+           (code.includes('color:') || 
+            code.includes('font-') || 
+            code.includes('margin:') ||
+            code.includes('padding:') ||
+            code.includes('background') ||
+            /[.#][\w-]+\s*{/.test(code));
+  }
+
+  private isJsCode(code: string): boolean {
+    return code.includes('function') || 
+           code.includes('const ') || 
+           code.includes('let ') || 
+           code.includes('var ') ||
+           code.includes('=>') ||
+           code.includes('console.') ||
+           code.includes('document.');
+  }
+
+  updatePreview() {
+    if (!this.previewFrame?.nativeElement) return;
+
+    const consolidatedHtml = this.consolidateCode();
+    const iframe = this.previewFrame.nativeElement;
+
+    // Write the consolidated HTML to the iframe
+    const doc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (doc) {
+      doc.open();
+      doc.write(consolidatedHtml);
+      doc.close();
+    }
+  }
+
+  refreshPreview() {
+    this.updatePreview();
   }
 
   clearAll() {
-    this.codeParserService.clearCode();
-    this.rawResponse = '';
+    this.streamBuffer = '';
+    this.htmlCode = '';
+    this.cssCode = '';
+    this.jsCode = '';
+    this.isStreaming = false;
+    this.updatePreview();
+  }
+
+  private consolidateCode(): string {
+    return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Preview</title>
+    <style>
+        /* Reset some default styles */
+        body { 
+          margin: 0; 
+          padding: 20px; 
+          font-family: Arial, sans-serif; 
+          background: white;
+        }
+        
+        /* User CSS */
+        ${this.cssCode}
+    </style>
+</head>
+<body>
+    ${this.htmlCode}
+    
+    <script>
+        // Error handling for JavaScript
+        window.onerror = function(msg, url, lineNo, columnNo, error) {
+            const errorDiv = document.createElement('div');
+            errorDiv.style.cssText = 'color: red; background: #ffe6e6; padding: 10px; margin: 10px 0; border: 1px solid red; border-radius: 4px;';
+            errorDiv.innerHTML = '<strong>JavaScript Error:</strong> ' + msg;
+            document.body.appendChild(errorDiv);
+            return false;
+        };
+        
+        // User JavaScript
+        try {
+            ${this.jsCode}
+        } catch (error) {
+            const errorDiv = document.createElement('div');
+            errorDiv.style.cssText = 'color: red; background: #ffe6e6; padding: 10px; margin: 10px 0; border: 1px solid red; border-radius: 4px;';
+            errorDiv.innerHTML = '<strong>JavaScript Error:</strong> ' + error.message;
+            document.body.appendChild(errorDiv);
+        }
+    </script>
+</body>
+</html>`;
+  }
+
+  // Public method to reset the component for a new streaming session
+  resetStream() {
+    this.clearAll();
+  }
+
+  // Get current parsed code state
+  getCurrentCode() {
+    return {
+      html: this.htmlCode,
+      css: this.cssCode,
+      javascript: this.jsCode,
+      buffer: this.streamBuffer
+    };
   }
 }
 
@@ -404,78 +459,3 @@ function greetUser(name) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// Inject the service
-constructor(private codeParserService: CodeParserService) {}
-
-// For streaming responses (as chunks arrive)
-onStreamChunk(chunk: string) {
-  this.codeParserService.processStreamChunk(chunk);
-}
-
-// For complete responses
-onCompleteResponse(response: string) {
-  this.codeParserService.parseCompleteResponse(response);
-}
-
-// Subscribe to updates
-ngOnInit() {
-  this.codeParserService.htmlCode$.subscribe(html => {
-    this.htmlCode = html;
-    // Do something with HTML code
-  });
-
-  this.codeParserService.cssCode$.subscribe(css => {
-    this.cssCode = css;
-    // Do something with CSS code
-  });
-
-  this.codeParserService.jsCode$.subscribe(js => {
-    this.jsCode = js;
-    // Do something with JavaScript code
-  });
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// Example with HTTP streaming
-streamLLMResponse(prompt: string) {
-  this.codeParserService.resetStream();
-  
-  this.http.post('/api/llm-stream', { prompt }, { 
-    responseType: 'text',
-    observe: 'events',
-    reportProgress: true 
-  }).subscribe(event => {
-    if (event.type === HttpEventType.DownloadProgress && event.partialText) {
-      // Process each chunk
-      this.codeParserService.processStreamChunk(event.partialText);
-    }
-  });
-}
