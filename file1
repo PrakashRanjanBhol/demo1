@@ -1,40 +1,206 @@
-// vertical-splitter.component.ts
-import { Component, ElementRef, ViewChild, AfterViewInit, OnDestroy } from '@angular/core';
+// modal-splitter.component.ts
+import { Component, ElementRef, ViewChild, AfterViewInit, OnDestroy, Input, Output, EventEmitter } from '@angular/core';
 
 @Component({
-  selector: 'app-vertical-splitter',
+  selector: 'app-modal-splitter',
   template: `
-    <div class="splitter-container" #container>
-      <div class="left-panel" [style.width.px]="leftPanelWidth">
-        <div class="panel-content">
-          <h3>Left Panel</h3>
-          <p>This is the left panel content. You can put any content here.</p>
-          <p>Width: {{leftPanelWidth}}px</p>
-        </div>
-      </div>
+    <!-- Modal Backdrop -->
+    <div 
+      class="modal-backdrop" 
+      [class.show]="isVisible"
+      (click)="onBackdropClick($event)"
+      *ngIf="isOpen">
       
+      <!-- Modal Container -->
       <div 
-        class="splitter" 
-        #splitter
-        (mousedown)="onMouseDown($event)"
-        [class.dragging]="isDragging">
-        <div class="splitter-handle"></div>
-      </div>
-      
-      <div class="right-panel" [style.width.px]="rightPanelWidth">
-        <div class="panel-content">
-          <h3>Right Panel</h3>
-          <p>This is the right panel content. You can put any content here.</p>
-          <p>Width: {{rightPanelWidth}}px</p>
+        class="modal-container" 
+        [class.show]="isVisible"
+        #modalContainer
+        (click)="$event.stopPropagation()">
+        
+        <!-- Modal Header -->
+        <div class="modal-header">
+          <h2>Splitter Modal</h2>
+          <button class="close-btn" (click)="closeModal()">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+              <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+        
+        <!-- Splitter Content -->
+        <div class="splitter-container" #container>
+          <div class="left-panel" [style.width.px]="leftPanelWidth">
+            <div class="panel-content">
+              <h3>Left Panel</h3>
+              <p>This is the left panel content. You can put any content here.</p>
+              <p>Width: {{leftPanelWidth}}px</p>
+              <div class="sample-content">
+                <p>You can add:</p>
+                <ul>
+                  <li>Navigation menus</li>
+                  <li>Sidebar content</li>
+                  <li>Filter options</li>
+                  <li>Settings panel</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+          
+          <div 
+            class="splitter" 
+            #splitter
+            (mousedown)="onMouseDown($event)"
+            [class.dragging]="isDragging">
+            <div class="splitter-handle"></div>
+          </div>
+          
+          <div class="right-panel" [style.width.px]="rightPanelWidth">
+            <div class="panel-content">
+              <h3>Main Content</h3>
+              <p>This is the main content area with the requested dark background.</p>
+              <p>Width: {{rightPanelWidth}}px</p>
+              <div class="sample-content">
+                <p>Perfect for:</p>
+                <ul>
+                  <li>Main application content</li>
+                  <li>Data visualization</li>
+                  <li>Forms and inputs</li>
+                  <li>Dashboard widgets</li>
+                </ul>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
+    
+    <!-- Trigger Button -->
+    <button class="trigger-btn" (click)="openModal()" *ngIf="!isOpen">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+        <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      Open Splitter
+    </button>
   `,
   styles: [`
+    /* Trigger Button */
+    .trigger-btn {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      padding: 12px 20px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      z-index: 1000;
+    }
+
+    .trigger-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 35px rgba(102, 126, 234, 0.4);
+    }
+
+    .trigger-btn:active {
+      transform: translateY(0);
+    }
+
+    /* Modal Backdrop */
+    .modal-backdrop {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0);
+      backdrop-filter: blur(0px);
+      z-index: 10000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .modal-backdrop.show {
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(8px);
+      opacity: 1;
+      pointer-events: all;
+    }
+
+    /* Modal Container */
+    .modal-container {
+      width: 90%;
+      height: 85%;
+      max-width: 1200px;
+      max-height: 800px;
+      background: #1a1a1b;
+      border-radius: 16px;
+      box-shadow: 0 25px 50px rgba(0, 0, 0, 0.8);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      transform: scale(0.8) translate(25%, 25%);
+      opacity: 0;
+      transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .modal-container.show {
+      transform: scale(1) translate(0%, 0%);
+      opacity: 1;
+    }
+
+    /* Modal Header */
+    .modal-header {
+      background: #2a2a2b;
+      padding: 20px 24px;
+      border-bottom: 1px solid #333;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    .modal-header h2 {
+      margin: 0;
+      color: #ffffff;
+      font-size: 20px;
+      font-weight: 600;
+    }
+
+    .close-btn {
+      background: transparent;
+      border: none;
+      color: #b3b3b3;
+      cursor: pointer;
+      padding: 8px;
+      border-radius: 8px;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .close-btn:hover {
+      background: #333;
+      color: #ffffff;
+    }
+
+    /* Splitter Container */
     .splitter-container {
       display: flex;
-      height: 100vh;
-      width: 100%;
+      flex: 1;
       overflow: hidden;
       background-color: #0a0a0b;
     }
@@ -55,17 +221,34 @@ import { Component, ElementRef, ViewChild, AfterViewInit, OnDestroy } from '@ang
     }
 
     .panel-content {
-      padding: 20px;
+      padding: 24px;
     }
 
     .panel-content h3 {
       margin-top: 0;
+      margin-bottom: 16px;
       color: #ffffff;
       font-weight: 600;
+      font-size: 18px;
     }
 
     .panel-content p {
       color: #b3b3b3;
+      line-height: 1.6;
+      margin-bottom: 12px;
+    }
+
+    .sample-content {
+      margin-top: 24px;
+    }
+
+    .sample-content ul {
+      color: #999;
+      padding-left: 20px;
+    }
+
+    .sample-content li {
+      margin-bottom: 8px;
       line-height: 1.5;
     }
 
@@ -85,7 +268,7 @@ import { Component, ElementRef, ViewChild, AfterViewInit, OnDestroy } from '@ang
     }
 
     .splitter.dragging {
-      background-color: #4299e1;
+      background-color: #667eea;
     }
 
     .splitter-handle {
@@ -133,22 +316,48 @@ import { Component, ElementRef, ViewChild, AfterViewInit, OnDestroy } from '@ang
     .right-panel::-webkit-scrollbar-thumb:hover {
       background: #555;
     }
+
+    /* Responsive Design */
+    @media (max-width: 768px) {
+      .modal-container {
+        width: 95%;
+        height: 90%;
+      }
+      
+      .trigger-btn {
+        bottom: 16px;
+        right: 16px;
+        padding: 10px 16px;
+        font-size: 14px;
+      }
+      
+      .panel-content {
+        padding: 16px;
+      }
+    }
   `]
 })
-export class VerticalSplitterComponent implements AfterViewInit, OnDestroy {
+export class ModalSplitterComponent implements AfterViewInit, OnDestroy {
   @ViewChild('container', { static: true }) containerRef!: ElementRef;
   @ViewChild('splitter', { static: true }) splitterRef!: ElementRef;
+  @ViewChild('modalContainer', { static: false }) modalContainer!: ElementRef;
 
-  leftPanelWidth: number = 300; // Default 300px
-  rightPanelWidth: number = 0; // Will be calculated
+  @Input() defaultLeftWidth: number = 300;
+  @Output() modalClosed = new EventEmitter<void>();
+  @Output() modalOpened = new EventEmitter<void>();
+
+  leftPanelWidth: number = 300;
+  rightPanelWidth: number = 0;
   isDragging: boolean = false;
+  isOpen: boolean = false;
+  isVisible: boolean = false;
   
   private startX: number = 0;
   private startLeftWidth: number = 0;
   private containerWidth: number = 0;
 
   ngAfterViewInit() {
-    this.initializePanels();
+    this.leftPanelWidth = this.defaultLeftWidth;
     window.addEventListener('resize', this.onWindowResize.bind(this));
   }
 
@@ -157,7 +366,38 @@ export class VerticalSplitterComponent implements AfterViewInit, OnDestroy {
     this.removeGlobalListeners();
   }
 
+  openModal() {
+    this.isOpen = true;
+    document.body.style.overflow = 'hidden'; // Prevent body scroll
+    
+    // Trigger animation after DOM update
+    setTimeout(() => {
+      this.isVisible = true;
+      this.initializePanels();
+      this.modalOpened.emit();
+    }, 10);
+  }
+
+  closeModal() {
+    this.isVisible = false;
+    
+    // Wait for animation to complete before removing from DOM
+    setTimeout(() => {
+      this.isOpen = false;
+      document.body.style.overflow = ''; // Restore body scroll
+      this.modalClosed.emit();
+    }, 500);
+  }
+
+  onBackdropClick(event: Event) {
+    if (event.target === event.currentTarget) {
+      this.closeModal();
+    }
+  }
+
   private initializePanels() {
+    if (!this.containerRef) return;
+    
     const container = this.containerRef.nativeElement;
     this.containerWidth = container.offsetWidth;
     const splitterWidth = 6;
@@ -225,10 +465,13 @@ export class VerticalSplitterComponent implements AfterViewInit, OnDestroy {
   }
 
   private onWindowResize() {
+    if (!this.isOpen) return;
     this.updatePanelWidths();
   }
 
   private updatePanelWidths() {
+    if (!this.containerRef) return;
+    
     const container = this.containerRef.nativeElement;
     const newContainerWidth = container.offsetWidth;
     const splitterWidth = 6;
@@ -256,29 +499,54 @@ Usage in your module:
 
 1. Add to your component declarations in app.module.ts or feature module:
 
-import { VerticalSplitterComponent } from './vertical-splitter.component';
+import { ModalSplitterComponent } from './modal-splitter.component';
 
 @NgModule({
   declarations: [
-    VerticalSplitterComponent,
+    ModalSplitterComponent,
     // ... other components
   ],
   // ...
 })
 
 2. Use in your template:
-<app-vertical-splitter></app-vertical-splitter>
+<app-modal-splitter 
+  [defaultLeftWidth]="300"
+  (modalOpened)="onModalOpened()"
+  (modalClosed)="onModalClosed()">
+</app-modal-splitter>
 
-3. Customize the content by modifying the template sections for left-panel and right-panel.
+3. Optional: Handle modal events in your component:
+onModalOpened() {
+  console.log('Modal opened');
+}
+
+onModalClosed() {
+  console.log('Modal closed');
+}
 
 Features:
-- Default 300px left panel width on load
+- Beautiful modal popup with backdrop blur effect
+- Animated entrance from right bottom corner with elastic easing
+- Fixed trigger button in bottom-right corner
+- Default 300px left panel width (customizable via input)
 - Full range resizing: 0px minimum to 100% maximum
 - Dark theme with #0a0a0b background for right panel
-- Smooth dragging with visual feedback
-- Responsive behavior on window resize
-- Visual hover and drag states
-- Prevents text selection during drag
-- Custom dark theme scrollbars
-- TypeScript support with proper typing
+- Modal header with close button
+- Click outside to close functionality
+- Responsive design for mobile devices
+- Smooth animations with cubic-bezier easing
+- Event emitters for modal open/close
+- Body scroll prevention when modal is open
+- ESC key support can be added if needed
 */
+
+
+
+
+
+<app-modal-splitter 
+  [defaultLeftWidth]="300"
+  (modalOpened)="onModalOpened()"
+  (modalClosed)="onModalClosed()">
+</app-modal-splitter>
