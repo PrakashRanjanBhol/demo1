@@ -1,243 +1,356 @@
 import { Component, Input, OnInit, OnDestroy } from '@angular/core';
 
 @Component({
-  selector: 'app-ai-thinking-animation',
+  selector: 'app-ai-typing-animation',
   template: `
-    <div class="ai-response">
-      <div class="ai-avatar">AI</div>
-      
-      <div class="response-content">
-        <div class="thinking-animation">
-          <div class="brain-container">
-            <div class="neuron" *ngFor="let neuron of neurons; let i = index" 
-                 [style.top.px]="neuron.top" 
-                 [style.left.px]="neuron.left"
-                 [style.background]="neuron.color"
-                 [style.animation-delay.s]="neuron.delay">
-            </div>
-            <div class="connection" *ngFor="let connection of connections; let i = index"
-                 [style.top.px]="connection.top"
-                 [style.left.px]="connection.left" 
-                 [style.width.px]="connection.width"
-                 [style.transform]="'rotate(' + connection.rotation + 'deg)'"
-                 [style.animation-delay.s]="connection.delay">
-            </div>
-          </div>
-          
-          <div class="thinking-content">
-            <div class="thinking-text">{{ statusText }}</div>
-            <div class="thought-words">
-              <span class="word" *ngFor="let word of thoughtWords; let i = index"
-                    [style.animation-delay.s]="word.delay">
-                {{ word.text }}
-              </span>
-            </div>
-          </div>
+    <div class="typing-container" [class.minimal]="isMinimal">
+      <div class="typing-indicator" *ngIf="showTypingDots">
+        <div class="typing-dot" *ngFor="let dot of typingDots; let i = index"
+             [style.animation-delay.s]="dot.delay"
+             [style.background]="dot.color">
         </div>
-        
-        <div class="processing-indicator" *ngIf="showSpinner">
-          <div class="spinner"></div>
-          <span>{{ processingMessage }}</span>
+      </div>
+
+      <div class="generation-status" *ngIf="showStatus">
+        <div class="pulse-icon">
+          <div class="pulse-ring"></div>
+          <div class="pulse-core"></div>
+        </div>
+        <span class="status-text">{{ statusText }}</span>
+      </div>
+
+      <div class="word-stream" *ngIf="showWordStream">
+        <div class="stream-word" *ngFor="let word of streamWords; let i = index"
+             [style.animation-delay.s]="word.delay">
+          {{ word.text }}
+        </div>
+      </div>
+
+      <div class="cursor-blink" *ngIf="showCursor">
+        <span class="blinking-cursor">{{ cursorChar }}</span>
+      </div>
+
+      <div class="neural-activity" *ngIf="showNeuralActivity">
+        <div class="activity-bar" *ngFor="let bar of activityBars; let i = index"
+             [style.height.%]="bar.height"
+             [style.animation-delay.s]="bar.delay"
+             [style.background]="bar.color">
         </div>
       </div>
     </div>
   `,
   styles: [`
-    .ai-response {
+    .typing-container {
       display: flex;
-      align-items: flex-start;
+      align-items: center;
       gap: 12px;
+      padding: 8px 0;
+      min-height: 32px;
     }
 
-    .ai-avatar {
-      width: 32px;
-      height: 32px;
-      border-radius: 8px;
-      background: linear-gradient(135deg, #8b5cf6, #06b6d4);
+    .typing-container.minimal {
+      gap: 8px;
+      min-height: 20px;
+    }
+
+    /* Typing Dots Animation */
+    .typing-indicator {
       display: flex;
+      gap: 4px;
       align-items: center;
-      justify-content: center;
-      color: white;
-      font-weight: 600;
-      font-size: 14px;
-      flex-shrink: 0;
     }
 
-    .thinking-animation {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      padding: 16px 0;
-    }
-
-    .brain-container {
-      position: relative;
-      width: 60px;
-      height: 40px;
-    }
-
-    .neuron {
-      position: absolute;
-      width: 8px;
-      height: 8px;
+    .typing-dot {
+      width: 6px;
+      height: 6px;
       border-radius: 50%;
       background: #8b5cf6;
-      animation: neuronFire 2s infinite ease-in-out;
+      animation: typingBounce 1.4s infinite ease-in-out;
     }
 
-    .connection {
-      position: absolute;
-      height: 1px;
-      background: linear-gradient(90deg, transparent, rgba(139, 92, 246, 0.6), transparent);
-      animation: synapseFlow 2s infinite ease-in-out;
-    }
-
-    .thinking-text {
+    /* Generation Status with Pulse */
+    .generation-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
       color: #999;
-      font-size: 14px;
+      font-size: 12px;
+    }
+
+    .pulse-icon {
+      position: relative;
+      width: 12px;
+      height: 12px;
+    }
+
+    .pulse-core {
+      position: absolute;
+      width: 6px;
+      height: 6px;
+      background: #8b5cf6;
+      border-radius: 50%;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+    }
+
+    .pulse-ring {
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      border: 1px solid #8b5cf6;
+      border-radius: 50%;
+      top: 0;
+      left: 0;
+      animation: pulseRing 2s infinite ease-out;
+    }
+
+    .status-text {
       font-weight: 500;
     }
 
-    .thought-words {
+    /* Word Stream Animation */
+    .word-stream {
       display: flex;
-      gap: 8px;
-      margin-left: 8px;
+      gap: 6px;
+      overflow: hidden;
     }
 
-    .word {
+    .stream-word {
       color: #666;
-      font-size: 12px;
+      font-size: 11px;
       opacity: 0;
-      animation: wordAppear 3s infinite ease-in-out;
+      transform: translateX(-10px);
+      animation: wordFlow 2s infinite ease-out;
+      white-space: nowrap;
     }
 
-    .processing-indicator {
+    /* Blinking Cursor */
+    .cursor-blink {
       display: flex;
       align-items: center;
-      gap: 8px;
-      margin-top: 12px;
-      color: #666;
-      font-size: 12px;
     }
 
-    .spinner {
-      width: 12px;
-      height: 12px;
-      border: 1px solid #333;
-      border-top: 1px solid #8b5cf6;
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
+    .blinking-cursor {
+      color: #8b5cf6;
+      font-size: 16px;
+      font-weight: bold;
+      animation: cursorBlink 1s infinite;
     }
 
-    @keyframes neuronFire {
-      0%, 100% {
-        transform: scale(1);
-        opacity: 0.6;
-        box-shadow: 0 0 0 rgba(139, 92, 246, 0);
+    /* Neural Activity Bars */
+    .neural-activity {
+      display: flex;
+      gap: 2px;
+      align-items: end;
+      height: 20px;
+    }
+
+    .activity-bar {
+      width: 3px;
+      background: #8b5cf6;
+      border-radius: 1px;
+      animation: activityPulse 1.2s infinite ease-in-out;
+    }
+
+    /* Animations */
+    @keyframes typingBounce {
+      0%, 80%, 100% {
+        transform: scale(0.8);
+        opacity: 0.5;
       }
-      50% {
-        transform: scale(1.5);
+      40% {
+        transform: scale(1.2);
         opacity: 1;
-        box-shadow: 0 0 20px rgba(139, 92, 246, 0.8);
       }
     }
 
-    @keyframes synapseFlow {
+    @keyframes pulseRing {
+      0% {
+        transform: scale(0.8);
+        opacity: 1;
+      }
+      100% {
+        transform: scale(2);
+        opacity: 0;
+      }
+    }
+
+    @keyframes wordFlow {
       0% {
         opacity: 0;
-        transform: scale(0.5);
+        transform: translateX(-10px);
       }
-      50% {
-        opacity: 1;
-        transform: scale(1);
+      20%, 80% {
+        opacity: 0.7;
+        transform: translateX(0);
       }
       100% {
         opacity: 0;
-        transform: scale(0.5);
+        transform: translateX(10px);
       }
     }
 
-    @keyframes wordAppear {
-      0%, 20% {
-        opacity: 0;
-        transform: translateY(10px);
-      }
-      30%, 70% {
+    @keyframes cursorBlink {
+      0%, 50% {
         opacity: 1;
-        transform: translateY(0);
       }
-      80%, 100% {
+      51%, 100% {
         opacity: 0;
-        transform: translateY(-10px);
       }
     }
 
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
+    @keyframes activityPulse {
+      0%, 100% {
+        height: 20%;
+      }
+      50% {
+        height: 100%;
+      }
+    }
+
+    /* Responsive adjustments */
+    .typing-container.minimal .typing-dot {
+      width: 4px;
+      height: 4px;
+    }
+
+    .typing-container.minimal .status-text {
+      font-size: 11px;
+    }
+
+    .typing-container.minimal .pulse-icon {
+      width: 10px;
+      height: 10px;
+    }
+
+    .typing-container.minimal .pulse-core {
+      width: 4px;
+      height: 4px;
+    }
+
+    .typing-container.minimal .pulse-ring {
+      width: 10px;
+      height: 10px;
     }
   `]
 })
-export class AiThinkingAnimationComponent implements OnInit, OnDestroy {
-  @Input() statusText: string = 'Processing your request';
-  @Input() processingMessage: string = 'AI is thinking deeply about your request';
-  @Input() showSpinner: boolean = true;
-  @Input() customThoughtWords: string[] = [];
+export class AiTypingAnimationComponent implements OnInit, OnDestroy {
+  @Input() animationType: 'dots' | 'pulse' | 'words' | 'cursor' | 'neural' | 'all' = 'all';
+  @Input() statusText: string = 'Generating response...';
+  @Input() cursorChar: string = '|';
+  @Input() isMinimal: boolean = false;
+  @Input() customColors: string[] = [];
+  @Input() customWords: string[] = [];
 
-  neurons = [
-    { top: 5, left: 10, color: '#8b5cf6', delay: 0 },
-    { top: 15, left: 25, color: '#06b6d4', delay: 0.3 },
-    { top: 8, left: 40, color: '#00ff88', delay: 0.6 },
-    { top: 25, left: 15, color: '#ff6b6b', delay: 0.9 },
-    { top: 30, left: 35, color: '#ffd93d', delay: 1.2 }
-  ];
+  // Animation visibility flags
+  showTypingDots: boolean = true;
+  showStatus: boolean = true;
+  showWordStream: boolean = true;
+  showCursor: boolean = true;
+  showNeuralActivity: boolean = true;
 
-  connections = [
-    { top: 9, left: 18, width: 15, rotation: 20, delay: 0.3 },
-    { top: 19, left: 33, width: 12, rotation: -30, delay: 0.6 },
-    { top: 29, left: 23, width: 18, rotation: 10, delay: 0.9 }
-  ];
+  typingDots: Array<{delay: number, color: string}> = [];
+  streamWords: Array<{text: string, delay: number}> = [];
+  activityBars: Array<{height: number, delay: number, color: string}> = [];
 
-  thoughtWords: Array<{text: string, delay: number}> = [];
-
-  private defaultWords = ['analyzing...', 'understanding...', 'generating...', 'crafting...'];
+  private defaultColors = ['#8b5cf6', '#06b6d4', '#00ff88', '#ff6b6b', '#ffd93d'];
+  private defaultWords = ['crafting', 'words', 'flowing', 'ideas', 'forming'];
 
   ngOnInit() {
-    this.initializeThoughtWords();
+    this.setupAnimationType();
+    this.initializeElements();
   }
 
   ngOnDestroy() {
     // Cleanup if needed
   }
 
-  private initializeThoughtWords() {
-    const wordsToUse = this.customThoughtWords.length > 0 ? this.customThoughtWords : this.defaultWords;
-    
-    this.thoughtWords = wordsToUse.map((word, index) => ({
+  private setupAnimationType() {
+    // Reset all visibility
+    this.showTypingDots = false;
+    this.showStatus = false;
+    this.showWordStream = false;
+    this.showCursor = false;
+    this.showNeuralActivity = false;
+
+    // Enable based on animation type
+    switch (this.animationType) {
+      case 'dots':
+        this.showTypingDots = true;
+        break;
+      case 'pulse':
+        this.showStatus = true;
+        break;
+      case 'words':
+        this.showWordStream = true;
+        break;
+      case 'cursor':
+        this.showCursor = true;
+        break;
+      case 'neural':
+        this.showNeuralActivity = true;
+        break;
+      case 'all':
+      default:
+        this.showTypingDots = true;
+        this.showStatus = true;
+        break;
+    }
+  }
+
+  private initializeElements() {
+    const colors = this.customColors.length > 0 ? this.customColors : this.defaultColors;
+    const words = this.customWords.length > 0 ? this.customWords : this.defaultWords;
+
+    // Initialize typing dots
+    this.typingDots = Array(3).fill(0).map((_, i) => ({
+      delay: i * 0.2,
+      color: colors[i % colors.length]
+    }));
+
+    // Initialize stream words
+    this.streamWords = words.map((word, i) => ({
       text: word,
-      delay: 0.5 + (index * 0.5)
+      delay: i * 0.4
+    }));
+
+    // Initialize activity bars
+    this.activityBars = Array(8).fill(0).map((_, i) => ({
+      height: Math.random() * 60 + 20,
+      delay: i * 0.1,
+      color: colors[i % colors.length]
     }));
   }
 
-  // Method to restart animation (can be called from parent component)
-  restartAnimation() {
-    // Trigger change detection to restart animations
-    this.thoughtWords = [...this.thoughtWords];
-    this.neurons = [...this.neurons];
-    this.connections = [...this.connections];
+  // Public methods for dynamic control
+  setAnimationType(type: 'dots' | 'pulse' | 'words' | 'cursor' | 'neural' | 'all') {
+    this.animationType = type;
+    this.setupAnimationType();
   }
 
-  // Method to update thought words dynamically
-  updateThoughtWords(newWords: string[]) {
-    this.customThoughtWords = newWords;
-    this.initializeThoughtWords();
-  }
-
-  // Method to update status text
-  updateStatus(newStatus: string, newProcessingMessage?: string) {
+  updateStatus(newStatus: string) {
     this.statusText = newStatus;
-    if (newProcessingMessage) {
-      this.processingMessage = newProcessingMessage;
-    }
+  }
+
+  updateColors(newColors: string[]) {
+    this.customColors = newColors;
+    this.initializeElements();
+  }
+
+  updateWords(newWords: string[]) {
+    this.customWords = newWords;
+    this.initializeElements();
+  }
+
+  // Method to show/hide the entire component
+  setVisible(visible: boolean) {
+    // This could be used to show/hide the component
+    // Implementation depends on parent component needs
+  }
+
+  // Restart animations
+  restartAnimations() {
+    this.initializeElements();
   }
 }
