@@ -36,21 +36,22 @@ import { Component, ElementRef, ViewChild, AfterViewInit, OnDestroy } from '@ang
       height: 100vh;
       width: 100%;
       overflow: hidden;
+      background-color: #0a0a0b;
     }
 
     .left-panel, .right-panel {
-      min-width: 100px;
+      min-width: 0;
       overflow: auto;
     }
 
     .left-panel {
-      background-color: #f0f4f8;
-      border-right: 1px solid #e2e8f0;
+      background-color: #1a1a1b;
+      border-right: 1px solid #333;
     }
 
     .right-panel {
-      background-color: #fafafa;
-      border-left: 1px solid #e2e8f0;
+      background-color: #0a0a0b;
+      border-left: 1px solid #333;
     }
 
     .panel-content {
@@ -59,17 +60,18 @@ import { Component, ElementRef, ViewChild, AfterViewInit, OnDestroy } from '@ang
 
     .panel-content h3 {
       margin-top: 0;
-      color: #2d3748;
+      color: #ffffff;
+      font-weight: 600;
     }
 
     .panel-content p {
-      color: #4a5568;
+      color: #b3b3b3;
       line-height: 1.5;
     }
 
     .splitter {
       width: 6px;
-      background-color: #e2e8f0;
+      background-color: #333;
       cursor: col-resize;
       position: relative;
       display: flex;
@@ -79,7 +81,7 @@ import { Component, ElementRef, ViewChild, AfterViewInit, OnDestroy } from '@ang
     }
 
     .splitter:hover {
-      background-color: #cbd5e0;
+      background-color: #444;
     }
 
     .splitter.dragging {
@@ -89,13 +91,13 @@ import { Component, ElementRef, ViewChild, AfterViewInit, OnDestroy } from '@ang
     .splitter-handle {
       width: 2px;
       height: 40px;
-      background-color: #a0aec0;
+      background-color: #666;
       border-radius: 1px;
       transition: background-color 0.2s ease;
     }
 
     .splitter:hover .splitter-handle {
-      background-color: #718096;
+      background-color: #888;
     }
 
     .splitter.dragging .splitter-handle {
@@ -110,7 +112,7 @@ import { Component, ElementRef, ViewChild, AfterViewInit, OnDestroy } from '@ang
       -ms-user-select: none;
     }
 
-    /* Custom scrollbar for panels */
+    /* Custom scrollbar for panels - Dark theme */
     .left-panel::-webkit-scrollbar,
     .right-panel::-webkit-scrollbar {
       width: 8px;
@@ -118,18 +120,18 @@ import { Component, ElementRef, ViewChild, AfterViewInit, OnDestroy } from '@ang
 
     .left-panel::-webkit-scrollbar-track,
     .right-panel::-webkit-scrollbar-track {
-      background: #f1f1f1;
+      background: #1a1a1b;
     }
 
     .left-panel::-webkit-scrollbar-thumb,
     .right-panel::-webkit-scrollbar-thumb {
-      background: #c1c1c1;
+      background: #444;
       border-radius: 4px;
     }
 
     .left-panel::-webkit-scrollbar-thumb:hover,
     .right-panel::-webkit-scrollbar-thumb:hover {
-      background: #a8a8a8;
+      background: #555;
     }
   `]
 })
@@ -137,23 +139,31 @@ export class VerticalSplitterComponent implements AfterViewInit, OnDestroy {
   @ViewChild('container', { static: true }) containerRef!: ElementRef;
   @ViewChild('splitter', { static: true }) splitterRef!: ElementRef;
 
-  leftPanelWidth: number = 300;
-  rightPanelWidth: number = 300;
+  leftPanelWidth: number = 300; // Default 300px
+  rightPanelWidth: number = 0; // Will be calculated
   isDragging: boolean = false;
   
   private startX: number = 0;
   private startLeftWidth: number = 0;
   private containerWidth: number = 0;
-  private minPanelWidth: number = 100;
 
   ngAfterViewInit() {
-    this.updatePanelWidths();
+    this.initializePanels();
     window.addEventListener('resize', this.onWindowResize.bind(this));
   }
 
   ngOnDestroy() {
     window.removeEventListener('resize', this.onWindowResize.bind(this));
     this.removeGlobalListeners();
+  }
+
+  private initializePanels() {
+    const container = this.containerRef.nativeElement;
+    this.containerWidth = container.offsetWidth;
+    const splitterWidth = 6;
+    
+    // Set right panel width based on available space
+    this.rightPanelWidth = this.containerWidth - this.leftPanelWidth - splitterWidth;
   }
 
   onMouseDown(event: MouseEvent) {
@@ -186,12 +196,9 @@ export class VerticalSplitterComponent implements AfterViewInit, OnDestroy {
     // Calculate splitter width (6px)
     const splitterWidth = 6;
     
-    // Ensure minimum widths
-    newLeftWidth = Math.max(newLeftWidth, this.minPanelWidth);
-    
-    // Ensure right panel has minimum width too
-    const maxLeftWidth = this.containerWidth - this.minPanelWidth - splitterWidth;
-    newLeftWidth = Math.min(newLeftWidth, maxLeftWidth);
+    // Allow full range from 0 to full width (minus splitter)
+    newLeftWidth = Math.max(newLeftWidth, 0);
+    newLeftWidth = Math.min(newLeftWidth, this.containerWidth - splitterWidth);
     
     this.leftPanelWidth = newLeftWidth;
     this.rightPanelWidth = this.containerWidth - newLeftWidth - splitterWidth;
@@ -230,11 +237,13 @@ export class VerticalSplitterComponent implements AfterViewInit, OnDestroy {
       // Maintain proportions on window resize
       const ratio = this.leftPanelWidth / (this.containerWidth - splitterWidth);
       this.containerWidth = newContainerWidth;
+      
+      // Calculate new left width maintaining ratio, but allow 0 to full width
       this.leftPanelWidth = Math.max(
-        this.minPanelWidth,
+        0,
         Math.min(
           ratio * (newContainerWidth - splitterWidth),
-          newContainerWidth - this.minPanelWidth - splitterWidth
+          newContainerWidth - splitterWidth
         )
       );
       this.rightPanelWidth = newContainerWidth - this.leftPanelWidth - splitterWidth;
@@ -263,12 +272,13 @@ import { VerticalSplitterComponent } from './vertical-splitter.component';
 3. Customize the content by modifying the template sections for left-panel and right-panel.
 
 Features:
+- Default 300px left panel width on load
+- Full range resizing: 0px minimum to 100% maximum
+- Dark theme with #0a0a0b background for right panel
 - Smooth dragging with visual feedback
-- Responsive default widths: 300px default, 450px on 1920px+ screens
-- Full range resizing: 0px minimum to full width maximum
 - Responsive behavior on window resize
 - Visual hover and drag states
 - Prevents text selection during drag
-- Custom scrollbars for panel content
+- Custom dark theme scrollbars
 - TypeScript support with proper typing
 */
