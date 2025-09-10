@@ -1,13 +1,14 @@
-// modal-splitter.component.ts
-import { Component, ElementRef, ViewChild, AfterViewInit, OnDestroy, Input, Output, EventEmitter } from '@angular/core';
+// modal-code-editor.component.ts
+import { Component, ElementRef, ViewChild, AfterViewInit, OnDestroy, Input, Output, EventEmitter, SimpleChanges, OnChanges } from '@angular/core';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 
 @Component({
-  selector: 'app-modal-splitter',
+  selector: 'app-modal-code-editor',
   template: `
     <!-- Trigger Button -->
     <p-button 
-      icon="pi pi-plus" 
-      label="Open Splitter" 
+      icon="pi pi-code" 
+      label="Open Code Editor" 
       styleClass="trigger-btn p-button-rounded p-button-outlined"
       (onClick)="openModal()"
       [style]="{'position': 'fixed', 'bottom': '20px', 'right': '20px', 'z-index': '1000'}">
@@ -23,30 +24,54 @@ import { Component, ElementRef, ViewChild, AfterViewInit, OnDestroy, Input, Outp
       [maximizable]="false"
       [closeOnEscape]="true"
       styleClass="custom-modal-dialog"
-      [style]="{width: '90vw', height: '85vh', 'max-width': '1200px', 'max-height': '800px'}"
-      header="Splitter Modal"
+      [style]="{width: '95vw', height: '90vh', 'max-width': '1400px', 'max-height': '900px'}"
+      header="Code Editor & Preview"
       (onShow)="onModalShow()"
       (onHide)="onModalHide()">
       
       <!-- Splitter Content -->
       <div class="splitter-container" #container>
+        <!-- Left Panel - Code Editor -->
         <div class="left-panel" [style.width.px]="leftPanelWidth">
           <div class="panel-content">
-            <h3>Left Panel</h3>
-            <p>This is the left panel content. You can put any content here.</p>
-            <p>Width: {{leftPanelWidth}}px</p>
-            <div class="sample-content">
-              <p>You can add:</p>
-              <ul>
-                <li>Navigation menus</li>
-                <li>Sidebar content</li>
-                <li>Filter options</li>
-                <li>Settings panel</li>
-              </ul>
+            <h3>Code Editor</h3>
+            
+            <!-- Code Input Section -->
+            <div class="code-inputs">
+              <div class="input-group">
+                <label>HTML Code:</label>
+                <textarea 
+                  [(ngModel)]="htmlCode" 
+                  (input)="updatePreview()"
+                  placeholder="Enter HTML code here..."
+                  class="code-textarea">
+                </textarea>
+              </div>
+              
+              <div class="input-group">
+                <label>CSS Code:</label>
+                <textarea 
+                  [(ngModel)]="cssCode" 
+                  (input)="updatePreview()"
+                  placeholder="Enter CSS code here..."
+                  class="code-textarea">
+                </textarea>
+              </div>
+              
+              <div class="input-group">
+                <label>JavaScript Code:</label>
+                <textarea 
+                  [(ngModel)]="jsCode" 
+                  (input)="updatePreview()"
+                  placeholder="Enter JavaScript code here..."
+                  class="code-textarea">
+                </textarea>
+              </div>
             </div>
           </div>
         </div>
         
+        <!-- Splitter Handle -->
         <div 
           class="splitter" 
           #splitter
@@ -55,19 +80,21 @@ import { Component, ElementRef, ViewChild, AfterViewInit, OnDestroy, Input, Outp
           <div class="splitter-handle"></div>
         </div>
         
+        <!-- Right Panel - Preview -->
         <div class="right-panel" [style.width.px]="rightPanelWidth">
           <div class="panel-content">
-            <h3>Main Content</h3>
-            <p>This is the main content area with the requested dark background.</p>
-            <p>Width: {{rightPanelWidth}}px</p>
-            <div class="sample-content">
-              <p>Perfect for:</p>
-              <ul>
-                <li>Main application content</li>
-                <li>Data visualization</li>
-                <li>Forms and inputs</li>
-                <li>Dashboard widgets</li>
-              </ul>
+            <div class="preview-header">
+              <h3>Live Preview</h3>
+              <button (click)="refreshPreview()" class="refresh-btn">
+                <i class="pi pi-refresh"></i> Refresh
+              </button>
+            </div>
+            <div class="preview-container">
+              <iframe 
+                #previewFrame
+                class="preview-iframe"
+                sandbox="allow-scripts allow-same-origin">
+              </iframe>
             </div>
           </div>
         </div>
@@ -192,7 +219,7 @@ import { Component, ElementRef, ViewChild, AfterViewInit, OnDestroy, Input, Outp
 
     .left-panel, .right-panel {
       min-width: 0;
-      overflow: auto;
+      overflow: hidden;
     }
 
     .left-panel {
@@ -206,7 +233,11 @@ import { Component, ElementRef, ViewChild, AfterViewInit, OnDestroy, Input, Outp
     }
 
     .panel-content {
-      padding: 24px;
+      padding: 20px;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
     }
 
     .panel-content h3 {
@@ -217,26 +248,105 @@ import { Component, ElementRef, ViewChild, AfterViewInit, OnDestroy, Input, Outp
       font-size: 18px;
     }
 
-    .panel-content p {
-      color: #b3b3b3;
-      line-height: 1.6;
-      margin-bottom: 12px;
+    /* Code Editor Styles */
+    .code-inputs {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      flex: 1;
+      overflow: hidden;
     }
 
-    .sample-content {
-      margin-top: 24px;
+    .input-group {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
     }
 
-    .sample-content ul {
-      color: #999;
-      padding-left: 20px;
+    .input-group label {
+      font-weight: 600;
+      margin-bottom: 5px;
+      color: #ffffff;
+      font-size: 14px;
     }
 
-    .sample-content li {
-      margin-bottom: 8px;
+    .code-textarea {
+      flex: 1;
+      font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+      font-size: 14px;
+      padding: 12px;
+      border: 1px solid #444;
+      border-radius: 6px;
+      resize: none;
+      background: #2a2a2b;
+      color: #ffffff;
       line-height: 1.5;
+      min-height: 100px;
     }
 
+    .code-textarea:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.25);
+    }
+
+    .code-textarea::placeholder {
+      color: #888;
+    }
+
+    /* Preview Styles */
+    .preview-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .preview-header h3 {
+      margin: 0;
+      color: #ffffff;
+    }
+
+    .refresh-btn {
+      padding: 8px 16px;
+      background: #667eea;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: background-color 0.2s ease;
+    }
+
+    .refresh-btn:hover {
+      background: #5a6fd8;
+    }
+
+    .refresh-btn:active {
+      background: #4e5bc4;
+    }
+
+    .preview-container {
+      flex: 1;
+      border: 1px solid #333;
+      border-radius: 6px;
+      overflow: hidden;
+      background: white;
+    }
+
+    .preview-iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      background: white;
+    }
+
+    /* Splitter Styles */
     .splitter {
       width: 6px;
       background-color: #333;
@@ -282,48 +392,62 @@ import { Component, ElementRef, ViewChild, AfterViewInit, OnDestroy, Input, Outp
 
     /* Custom scrollbar for panels - Dark theme */
     .left-panel::-webkit-scrollbar,
-    .right-panel::-webkit-scrollbar {
+    .right-panel::-webkit-scrollbar,
+    .code-textarea::-webkit-scrollbar {
       width: 8px;
     }
 
     .left-panel::-webkit-scrollbar-track,
-    .right-panel::-webkit-scrollbar-track {
+    .right-panel::-webkit-scrollbar-track,
+    .code-textarea::-webkit-scrollbar-track {
       background: #1a1a1b;
     }
 
     .left-panel::-webkit-scrollbar-thumb,
-    .right-panel::-webkit-scrollbar-thumb {
+    .right-panel::-webkit-scrollbar-thumb,
+    .code-textarea::-webkit-scrollbar-thumb {
       background: #444;
       border-radius: 4px;
     }
 
     .left-panel::-webkit-scrollbar-thumb:hover,
-    .right-panel::-webkit-scrollbar-thumb:hover {
+    .right-panel::-webkit-scrollbar-thumb:hover,
+    .code-textarea::-webkit-scrollbar-thumb:hover {
       background: #555;
     }
 
     /* Responsive Design */
     @media (max-width: 768px) {
       :host ::ng-deep .custom-modal-dialog {
-        width: 95vw !important;
-        height: 90vh !important;
+        width: 98vw !important;
+        height: 95vh !important;
       }
       
       .panel-content {
-        padding: 16px;
+        padding: 12px;
+      }
+
+      .code-textarea {
+        font-size: 12px;
+        padding: 8px;
       }
     }
   `]
 })
-export class ModalSplitterComponent implements AfterViewInit, OnDestroy {
+export class ModalCodeEditorComponent implements AfterViewInit, OnDestroy, OnChanges {
   @ViewChild('container', { static: true }) containerRef!: ElementRef;
   @ViewChild('splitter', { static: true }) splitterRef!: ElementRef;
+  @ViewChild('previewFrame') previewFrame!: ElementRef<HTMLIFrameElement>;
 
-  @Input() defaultLeftWidth: number = 300;
+  @Input() defaultLeftWidth: number = 500;
+  @Input() htmlCode: string = '';
+  @Input() cssCode: string = '';
+  @Input() jsCode: string = '';
+  
   @Output() modalClosed = new EventEmitter<void>();
   @Output() modalOpened = new EventEmitter<void>();
 
-  leftPanelWidth: number = 300;
+  leftPanelWidth: number = 500;
   rightPanelWidth: number = 0;
   isDragging: boolean = false;
   isVisible: boolean = false;
@@ -331,6 +455,8 @@ export class ModalSplitterComponent implements AfterViewInit, OnDestroy {
   private startX: number = 0;
   private startLeftWidth: number = 0;
   private containerWidth: number = 0;
+
+  constructor(private sanitizer: DomSanitizer) {}
 
   ngAfterViewInit() {
     this.leftPanelWidth = this.defaultLeftWidth;
@@ -340,6 +466,12 @@ export class ModalSplitterComponent implements AfterViewInit, OnDestroy {
   ngOnDestroy() {
     window.removeEventListener('resize', this.onWindowResize.bind(this));
     this.removeGlobalListeners();
+  }
+
+  ngOnChanges(changes: SimpleChanges) {
+    if (this.previewFrame && this.isVisible) {
+      this.updatePreview();
+    }
   }
 
   openModal() {
@@ -354,6 +486,7 @@ export class ModalSplitterComponent implements AfterViewInit, OnDestroy {
     // Initialize panels when modal is shown
     setTimeout(() => {
       this.initializePanels();
+      this.updatePreview();
       this.modalOpened.emit();
     }, 100);
   }
@@ -373,6 +506,7 @@ export class ModalSplitterComponent implements AfterViewInit, OnDestroy {
     this.rightPanelWidth = this.containerWidth - this.leftPanelWidth - splitterWidth;
   }
 
+  // Splitter functionality
   onMouseDown(event: MouseEvent) {
     event.preventDefault();
     
@@ -403,9 +537,12 @@ export class ModalSplitterComponent implements AfterViewInit, OnDestroy {
     // Calculate splitter width (6px)
     const splitterWidth = 6;
     
-    // Allow full range from 0 to full width (minus splitter)
-    newLeftWidth = Math.max(newLeftWidth, 0);
-    newLeftWidth = Math.min(newLeftWidth, this.containerWidth - splitterWidth);
+    // Set minimum and maximum widths
+    const minWidth = 300; // Minimum width for code editor
+    const maxWidth = this.containerWidth - 300 - splitterWidth; // Leave minimum space for preview
+    
+    newLeftWidth = Math.max(newLeftWidth, minWidth);
+    newLeftWidth = Math.min(newLeftWidth, maxWidth);
     
     this.leftPanelWidth = newLeftWidth;
     this.rightPanelWidth = this.containerWidth - newLeftWidth - splitterWidth;
@@ -448,15 +585,99 @@ export class ModalSplitterComponent implements AfterViewInit, OnDestroy {
       const ratio = this.leftPanelWidth / (this.containerWidth - splitterWidth);
       this.containerWidth = newContainerWidth;
       
-      // Calculate new left width maintaining ratio, but allow 0 to full width
+      // Calculate new left width maintaining ratio
+      const minWidth = 300;
+      const maxWidth = newContainerWidth - 300 - splitterWidth;
+      
       this.leftPanelWidth = Math.max(
-        0,
+        minWidth,
         Math.min(
           ratio * (newContainerWidth - splitterWidth),
-          newContainerWidth - splitterWidth
+          maxWidth
         )
       );
       this.rightPanelWidth = newContainerWidth - this.leftPanelWidth - splitterWidth;
+    }
+  }
+
+  // Preview functionality
+  updatePreview() {
+    if (!this.previewFrame?.nativeElement) return;
+
+    const consolidatedHtml = this.consolidateCode();
+    const iframe = this.previewFrame.nativeElement;
+
+    // Write the consolidated HTML to the iframe
+    const doc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (doc) {
+      doc.open();
+      doc.write(consolidatedHtml);
+      doc.close();
+    }
+  }
+
+  refreshPreview() {
+    this.updatePreview();
+  }
+
+  private consolidateCode(): string {
+    return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Preview</title>
+    <style>
+        /* Reset some default styles */
+        body { margin: 0; padding: 20px; font-family: Arial, sans-serif; }
+        
+        /* User CSS */
+        ${this.cssCode}
+    </style>
+</head>
+<body>
+    ${this.htmlCode}
+    
+    <script>
+        // Error handling for JavaScript
+        window.onerror = function(msg, url, lineNo, columnNo, error) {
+            document.body.innerHTML += '<div style="color: red; background: #ffe6e6; padding: 10px; margin: 10px 0; border: 1px solid red; border-radius: 4px;"><strong>JavaScript Error:</strong> ' + msg + '</div>';
+            return false;
+        };
+        
+        // User JavaScript
+        try {
+            ${this.jsCode}
+        } catch (error) {
+            document.body.innerHTML += '<div style="color: red; background: #ffe6e6; padding: 10px; margin: 10px 0; border: 1px solid red; border-radius: 4px;"><strong>JavaScript Error:</strong> ' + error.message + '</div>';
+        }
+    </script>
+</body>
+</html>`;
+  }
+
+  // Utility methods for external code injection
+  setCodeFromLLMResponse(htmlBlock: string, cssBlock: string, jsBlock: string) {
+    this.htmlCode = htmlBlock;
+    this.cssCode = cssBlock;
+    this.jsCode = jsBlock;
+    if (this.isVisible) {
+      this.updatePreview();
+    }
+  }
+
+  extractCodeFromMarkdown(llmResponse: string) {
+    const htmlMatch = llmResponse.match(/```html\n([\s\S]*?)\n```/i);
+    const cssMatch = llmResponse.match(/```css\n([\s\S]*?)\n```/i);
+    const jsMatch = llmResponse.match(/```(?:javascript|js)\n([\s\S]*?)\n```/i);
+
+    this.htmlCode = htmlMatch ? htmlMatch[1].trim() : '';
+    this.cssCode = cssMatch ? cssMatch[1].trim() : '';
+    this.jsCode = jsMatch ? jsMatch[1].trim() : '';
+
+    if (this.isVisible) {
+      this.updatePreview();
     }
   }
 }
@@ -465,51 +686,49 @@ export class ModalSplitterComponent implements AfterViewInit, OnDestroy {
 Usage in your module:
 
 1. Make sure you have PrimeNG installed and imported:
-
 npm install primeng@16
 
-2. Add PrimeNG modules to your module imports:
-
+2. Add required modules to your module imports:
 import { DialogModule } from 'primeng/dialog';
 import { ButtonModule } from 'primeng/button';
+import { FormsModule } from '@angular/forms'; // For ngModel
 
 @NgModule({
   imports: [
     DialogModule,
     ButtonModule,
+    FormsModule,
     // ... other imports
   ],
   declarations: [
-    ModalSplitterComponent,
+    ModalCodeEditorComponent,
     // ... other components
   ],
-  // ...
 })
 
 3. Import PrimeNG theme in your styles.css or angular.json:
-
 @import 'primeng/resources/themes/lara-dark-blue/theme.css';
 @import 'primeng/resources/primeng.css';
 @import 'primeicons/primeicons.css';
 
 4. Use in your template:
-<app-modal-splitter 
-  [defaultLeftWidth]="300"
+<app-modal-code-editor 
+  [defaultLeftWidth]="500"
+  [htmlCode]="initialHtml"
+  [cssCode]="initialCss"
+  [jsCode]="initialJs"
   (modalOpened)="onModalOpened()"
   (modalClosed)="onModalClosed()">
-</app-modal-splitter>
+</app-modal-code-editor>
 
 Features:
-- Code Playground with HTML, CSS, and JavaScript editors
-- Live preview that updates as you type
-- Dark theme code editor with syntax highlighting colors
-- Resizable splitter (300px default left panel, 0px to 100% range)
-- PrimeNG 16 Dialog with bottom-right entry animation
-- Error handling for JavaScript with user-friendly error display
-- Refresh button to manually update preview
-- Responsive design for mobile devices
-- Default starter code included
-- Method to programmatically set code content
-- Professional monospace font (Monaco, Menlo, Ubuntu Mono, Fira Code)
-- Real-time preview in sandboxed iframe
+- Code editor on the left (HTML, CSS, JS textareas)
+- Live preview on the right (iframe)
+- Resizable splitter between panels
+- Dark theme throughout
+- Auto-updates preview on code changes
+- Error handling for JavaScript
+- Responsive design
+- PrimeNG integration with custom animations
+- Methods to inject code from external sources
 */
