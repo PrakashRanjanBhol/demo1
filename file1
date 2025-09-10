@@ -1,624 +1,243 @@
-<!DOCTYPE html>
-<html lang="en">
+import { Component, Input, OnInit, OnDestroy } from '@angular/core';
 
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Compact Modern Themed Markdown</title>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@Component({
+  selector: 'app-ai-thinking-animation',
+  template: `
+    <div class="ai-response">
+      <div class="ai-avatar">AI</div>
+      
+      <div class="response-content">
+        <div class="thinking-animation">
+          <div class="brain-container">
+            <div class="neuron" *ngFor="let neuron of neurons; let i = index" 
+                 [style.top.px]="neuron.top" 
+                 [style.left.px]="neuron.left"
+                 [style.background]="neuron.color"
+                 [style.animation-delay.s]="neuron.delay">
+            </div>
+            <div class="connection" *ngFor="let connection of connections; let i = index"
+                 [style.top.px]="connection.top"
+                 [style.left.px]="connection.left" 
+                 [style.width.px]="connection.width"
+                 [style.transform]="'rotate(' + connection.rotation + 'deg)'"
+                 [style.animation-delay.s]="connection.delay">
+            </div>
+          </div>
+          
+          <div class="thinking-content">
+            <div class="thinking-text">{{ statusText }}</div>
+            <div class="thought-words">
+              <span class="word" *ngFor="let word of thoughtWords; let i = index"
+                    [style.animation-delay.s]="word.delay">
+                {{ word.text }}
+              </span>
+            </div>
+          </div>
+        </div>
         
-        :root {
-            /* Dark Theme Variables - Compact Modern Dark */
-            --bg-primary: #0a0a0b;
-            --bg-secondary: #0f0f11;
-            --bg-tertiary: #141417;
-            --bg-quaternary: #1a1a1e;
-            --bg-hover: rgba(139, 92, 246, 0.08);
-            --bg-even-row: rgba(30, 30, 35, 0.6);
-            --bg-code-inline: #1a1a1e;
-            --bg-code-block: linear-gradient(135deg, #0f0f11 0%, #141417 100%);
-            --bg-blockquote: linear-gradient(135deg, rgba(139, 92, 246, 0.06) 0%, rgba(99, 102, 241, 0.04) 100%);
-            --bg-table-header: linear-gradient(135deg, #8b5cf6 0%, #6366f1 50%, #3b82f6 100%);
-            --bg-card: linear-gradient(135deg, #141417 0%, #1a1a1e 100%);
-
-            --text-primary: #ffffff;
-            --text-secondary: #e2e8f0;
-            --text-muted: #94a3b8;
-            --text-header-h1: linear-gradient(135deg, #8b5cf6 0%, #6366f1 25%, #3b82f6 50%, #10b981 75%, #f59e0b 100%);
-            --text-header-h2: #8b5cf6;
-            --text-header-h3: #6366f1;
-            --text-header-h4: #3b82f6;
-            --text-header-h5: #10b981;
-            --text-header-h6: #f59e0b;
-            --text-link: #8b5cf6;
-            --text-link-hover: #a78bfa;
-            --text-code: #10b981;
-            --text-table-header: #ffffff;
-
-            --border-primary: #2a2a30;
-            --border-secondary: rgba(139, 92, 246, 0.2);
-            --border-table: rgba(75, 85, 99, 0.3);
-            --border-code: #2a2a30;
-
-            --accent-gradient: linear-gradient(90deg, #8b5cf6 0%, #6366f1 25%, #3b82f6 50%, #10b981 75%, #f59e0b 100%);
-            --accent-h2-border: #8b5cf6;
-            --accent-h3-arrow: #6366f1;
-            --accent-blockquote: #8b5cf6;
-
-            --bullet-level1: #8b5cf6;
-            --bullet-level2: #6366f1;
-            --bullet-level3: #3b82f6;
-            --list-marker: #8b5cf6;
-
-            --syntax-keyword: #f472b6;
-            --syntax-string: #10b981;
-            --syntax-comment: #6b7280;
-            --syntax-number: #f59e0b;
-            --syntax-function: #8b5cf6;
-            --syntax-variable: #60a5fa;
-
-            --shadow-card: 0 4px 8px rgba(0, 0, 0, 0.2);
-            --shadow-table: 0 2px 8px rgba(0, 0, 0, 0.3);
-        }
-
-        /* Light Theme Variables - Compact Clean Light */
-        [data-theme="light"] {
-            --bg-primary: #ffffff;
-            --bg-secondary: #fafbfc;
-            --bg-tertiary: #f5f7fa;
-            --bg-quaternary: #eef2f6;
-            --bg-hover: rgba(139, 92, 246, 0.06);
-            --bg-even-row: rgba(148, 163, 184, 0.04);
-            --bg-code-inline: #f1f5f9;
-            --bg-code-block: linear-gradient(135deg, #fafbfc 0%, #f5f7fa 100%);
-            --bg-blockquote: linear-gradient(135deg, rgba(139, 92, 246, 0.04) 0%, rgba(99, 102, 241, 0.02) 100%);
-            --bg-table-header: linear-gradient(135deg, #8b5cf6 0%, #6366f1 50%, #3b82f6 100%);
-            --bg-card: linear-gradient(135deg, #ffffff 0%, #fafbfc 100%);
-
-            --text-primary: #0f172a;
-            --text-secondary: #334155;
-            --text-muted: #64748b;
-            --text-header-h1: linear-gradient(135deg, #7c3aed 0%, #5b21b6 25%, #2563eb 50%, #059669 75%, #d97706 100%);
-            --text-header-h2: #7c3aed;
-            --text-header-h3: #5b21b6;
-            --text-header-h4: #2563eb;
-            --text-header-h5: #059669;
-            --text-header-h6: #d97706;
-            --text-link: #7c3aed;
-            --text-link-hover: #5b21b6;
-            --text-code: #059669;
-            --text-table-header: #ffffff;
-
-            --border-primary: #e2e8f0;
-            --border-secondary: rgba(139, 92, 246, 0.15);
-            --border-table: rgba(148, 163, 184, 0.15);
-            --border-code: #e2e8f0;
-
-            --shadow-card: 0 2px 4px rgba(0, 0, 0, 0.08);
-            --shadow-table: 0 1px 4px rgba(0, 0, 0, 0.1);
-        }
-
-        * {
-            transition: all 0.2s ease;
-        }
-
-        body {
-            margin: 0;
-            padding: 1rem;
-            max-width: 1200px;
-            margin: 0 auto;
-            background-color: var(--bg-primary);
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-            line-height: 1.5;
-            color: var(--text-primary);
-        }
-
-        .regular-text {
-            background-color: var(--bg-primary);
-            color: var(--text-primary);
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-            line-height: 1.5;
-            font-size: 14px;
-            font-weight: 400;
-        }
-
-        /* Compact Headers */
-        .regular-text h1,
-        .regular-text h2,
-        .regular-text h3,
-        .regular-text h4,
-        .regular-text h5,
-        .regular-text h6 {
-            font-weight: 600;
-            line-height: 1.2;
-            margin-top: 1.5rem;
-            margin-bottom: 0.75rem;
-            position: relative;
-            letter-spacing: -0.015em;
-        }
-
-        .regular-text h1 {
-            font-size: 1.75rem;
-            background: var(--text-header-h1);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            padding-bottom: 0.5rem;
-            margin-bottom: 1rem;
-        }
-
-        .regular-text h1::after {
-            content: '';
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            height: 2px;
-            background: var(--accent-gradient);
-            border-radius: 1px;
-        }
-
-        .regular-text h2 {
-            font-size: 1.375rem;
-            color: var(--text-header-h2);
-            position: relative;
-            padding-left: 1rem;
-        }
-
-        .regular-text h2::before {
-            content: '';
-            position: absolute;
-            left: 0;
-            top: 0;
-            bottom: 0;
-            width: 3px;
-            background: linear-gradient(180deg, var(--accent-h2-border), rgba(139, 92, 246, 0.3));
-            border-radius: 2px;
-        }
-
-        .regular-text h3 {
-            font-size: 1.125rem;
-            color: var(--text-header-h3);
-            position: relative;
-            padding-left: 1.25rem;
-        }
-
-        .regular-text h3::before {
-            content: '◆';
-            color: var(--accent-h3-arrow);
-            font-size: 0.75rem;
-            position: absolute;
-            left: 0;
-            top: 50%;
-            transform: translateY(-50%);
-        }
-
-        .regular-text h4 {
-            font-size: 1rem;
-            color: var(--text-header-h4);
-            border-bottom: 1px solid rgba(59, 130, 246, 0.2);
-            padding-bottom: 0.25rem;
-        }
-
-        .regular-text h5 {
-            font-size: 0.875rem;
-            color: var(--text-header-h5);
-            font-weight: 600;
-        }
-
-        .regular-text h6 {
-            font-size: 0.75rem;
-            color: var(--text-header-h6);
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            font-weight: 600;
-        }
-
-        /* Compact Lists */
-        .regular-text ul,
-        .regular-text ol {
-            margin: 1rem 0;
-            padding-left: 1.25rem;
-        }
-
-        .regular-text ul li {
-            position: relative;
-            margin: 0.375rem 0;
-            list-style: none;
-            padding-left: 0.25rem;
-        }
-
-        .regular-text ul li::before {
-            content: '●';
-            color: var(--bullet-level1);
-            font-size: 0.75rem;
-            position: absolute;
-            left: -1rem;
-            top: 0.125rem;
-        }
-
-        .regular-text ul ul li::before {
-            content: '◦';
-            color: var(--bullet-level2);
-            font-size: 0.875rem;
-        }
-
-        .regular-text ul ul ul li::before {
-            content: '▸';
-            color: var(--bullet-level3);
-            font-size: 0.75rem;
-        }
-
-        .regular-text ol li {
-            margin: 0.375rem 0;
-            color: var(--text-primary);
-            padding-left: 0.25rem;
-        }
-
-        .regular-text ol li::marker {
-            color: var(--list-marker);
-            font-weight: 600;
-        }
-
-        /* Compact Tables */
-        .regular-text table {
-            width: 100%;
-            border-collapse: separate;
-            border-spacing: 0;
-            margin: 1.5rem 0;
-            background: var(--bg-card);
-            border-radius: 8px;
-            overflow: hidden;
-            box-shadow: var(--shadow-table);
-            border: 1px solid var(--border-secondary);
-            font-size: 13px;
-        }
-
-        .regular-text th {
-            background: var(--bg-table-header);
-            color: var(--text-table-header);
-            font-weight: 600;
-            padding: 0.75rem 1rem;
-            text-align: left;
-            font-size: 0.75rem;
-            letter-spacing: 0.03em;
-            text-transform: uppercase;
-        }
-
-        .regular-text td {
-            padding: 0.625rem 1rem;
-            border-bottom: 1px solid var(--border-table);
-            background-color: transparent;
-            color: var(--text-secondary);
-            font-weight: 400;
-        }
-
-        .regular-text tr:last-child td {
-            border-bottom: none;
-        }
-
-        .regular-text tr:hover td {
-            background-color: var(--bg-hover);
-        }
-
-        .regular-text tr:nth-child(even) td {
-            background-color: var(--bg-even-row);
-        }
-
-        /* Compact Code Styling */
-        .regular-text code {
-            background: var(--bg-code-inline);
-            color: var(--text-code);
-            padding: 0.125rem 0.375rem;
-            border-radius: 4px;
-            font-family: 'JetBrains Mono', 'Fira Code', monospace;
-            font-size: 0.75rem;
-            font-weight: 500;
-            border: 1px solid var(--border-code);
-        }
-
-        .regular-text pre {
-            background: var(--bg-code-block);
-            border: 1px solid var(--border-code);
-            border-radius: 8px;
-            padding: 1rem;
-            overflow-x: auto;
-            margin: 1rem 0;
-            position: relative;
-        }
-
-        .regular-text pre::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 2px;
-            background: var(--accent-gradient);
-        }
-
-        .regular-text pre code {
-            background: none;
-            border: none;
-            padding: 0;
-            color: var(--text-primary);
-            font-size: 0.75rem;
-            line-height: 1.4;
-        }
-
-        /* Syntax Highlighting */
-        .regular-text .keyword { color: var(--syntax-keyword); font-weight: 600; }
-        .regular-text .string { color: var(--syntax-string); }
-        .regular-text .comment { color: var(--syntax-comment); font-style: italic; opacity: 0.8; }
-        .regular-text .number { color: var(--syntax-number); font-weight: 500; }
-        .regular-text .function { color: var(--syntax-function); font-weight: 500; }
-        .regular-text .variable { color: var(--syntax-variable); }
-
-        /* Compact Blockquotes */
-        .regular-text blockquote {
-            margin: 1.5rem 0;
-            padding: 1rem 1.5rem;
-            position: relative;
-            font-style: italic;
-            font-size: 0.875rem;
-            color: var(--text-secondary);
-            background: var(--bg-blockquote);
-            border: 1px solid var(--border-secondary);
-            border-left: 4px solid var(--accent-blockquote);
-            border-radius: 8px;
-            line-height: 1.5;
-        }
-
-        .regular-text blockquote::before {
-            content: """;
-            font-size: 2rem;
-            font-weight: 300;
-            color: var(--accent-blockquote);
-            position: absolute;
-            top: -5px;
-            left: 10px;
-            opacity: 0.2;
-            font-family: Georgia, serif;
-        }
-
-        /* Compact Links */
-        .regular-text a {
-            color: var(--text-link);
-            text-decoration: none;
-            position: relative;
-            font-weight: 500;
-            transition: all 0.2s ease;
-        }
-
-        .regular-text a::after {
-            content: '';
-            position: absolute;
-            bottom: -1px;
-            left: 0;
-            width: 0;
-            height: 1px;
-            background: var(--text-link);
-            transition: width 0.2s ease;
-        }
-
-        .regular-text a:hover {
-            color: var(--text-link-hover);
-        }
-
-        .regular-text a:hover::after {
-            width: 100%;
-        }
-
-        /* Compact HR */
-        .regular-text hr {
-            border: none;
-            height: 2px;
-            background: var(--accent-gradient);
-            margin: 1.5rem 0;
-            border-radius: 1px;
-        }
-
-        /* Compact Theme Toggle */
-        .theme-toggle {
-            position: fixed;
-            top: 15px;
-            right: 15px;
-            background: var(--bg-card);
-            color: var(--text-primary);
-            border: 1px solid var(--border-secondary);
-            padding: 0.5rem 0.75rem;
-            border-radius: 20px;
-            cursor: pointer;
-            font-weight: 500;
-            font-family: 'Inter', sans-serif;
-            font-size: 0.75rem;
-            z-index: 1000;
-            box-shadow: var(--shadow-card);
-            display: flex;
-            align-items: center;
-            gap: 0.375rem;
-        }
-
-        .theme-toggle:hover {
-            background: var(--bg-hover);
-            transform: translateY(-1px);
-        }
-
-        /* Compact Card Styling */
-        .card {
-            background: var(--bg-card);
-            border-radius: 12px;
-            padding: 1.5rem;
-            margin: 1.5rem 0;
-            border: 1px solid var(--border-primary);
-            box-shadow: var(--shadow-card);
-        }
-
-        .card:hover {
-            transform: translateY(-2px);
-        }
-
-        /* Responsive Design */
-        @media (max-width: 768px) {
-            body { padding: 0.75rem; }
-            .regular-text { font-size: 13px; }
-            .regular-text h1 { font-size: 1.5rem; }
-            .regular-text h2 { font-size: 1.25rem; }
-            .regular-text h3 { font-size: 1rem; }
-            .card { padding: 1rem; }
-            .theme-toggle { top: 10px; right: 10px; }
-            .regular-text table { font-size: 12px; }
-            .regular-text th { padding: 0.5rem 0.75rem; }
-            .regular-text td { padding: 0.5rem 0.75rem; }
-        }
-    </style>
-</head>
-
-<body>
-    <button class="theme-toggle" onclick="toggleTheme()">
-        <span id="theme-icon">🌙</span>
-        <span id="theme-text">Dark</span>
-    </button>
-
-    <div class="regular-text">
-        <div class="card">
-            <h1>Compact Modern Design</h1>
-            <p style="color: var(--text-muted); font-size: 0.875rem; margin-top: -0.5rem;">Clean, professional layout with optimized spacing and typography</p>
-
-            <h2>Header Showcase</h2>
-            <p>Compact headers with reduced spacing and smaller fonts.</p>
-            
-            <h3>Third Level</h3>
-            <h4>Fourth Level</h4>
-            <h5>Fifth Level</h5>
-            <h6>Sixth Level</h6>
-
-            <hr>
-
-            <h2>Lists & Navigation</h2>
-
-            <h3>Bulleted Lists</h3>
-            <ul>
-                <li>Compact spacing with <code>optimized typography</code></li>
-                <li>Efficient multi-level nesting
-                    <ul>
-                        <li>Second level content</li>
-                        <li>Clean visual hierarchy
-                            <ul>
-                                <li>Third level nested</li>
-                                <li>Minimal spacing</li>
-                            </ul>
-                        </li>
-                    </ul>
-                </li>
-                <li>Professional appearance</li>
-            </ul>
-
-            <h3>Numbered Lists</h3>
-            <ol>
-                <li>Compact numbered styling</li>
-                <li>Consistent typography</li>
-                <li>Space-efficient design</li>
-            </ol>
-
-            <hr>
-
-            <h2>Data Table</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Feature</th>
-                        <th>Status</th>
-                        <th>Priority</th>
-                        <th>Notes</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td><strong>Compact Design</strong></td>
-                        <td><span style="color: var(--text-header-h5);">✅ Active</span></td>
-                        <td>High</td>
-                        <td>Reduced spacing, smaller fonts</td>
-                    </tr>
-                    <tr>
-                        <td><strong>Typography</strong></td>
-                        <td><span style="color: var(--text-header-h6);">⚡ Enhanced</span></td>
-                        <td>High</td>
-                        <td>Professional readability</td>
-                    </tr>
-                    <tr>
-                        <td><strong>Tables</strong></td>
-                        <td><span style="color: var(--text-header-h4);">🎯 New</span></td>
-                        <td>Medium</td>
-                        <td>Clean, efficient layout</td>
-                    </tr>
-                    <tr>
-                        <td><strong>Responsive</strong></td>
-                        <td><span style="color: var(--text-header-h5);">✨ Ready</span></td>
-                        <td>High</td>
-                        <td>Mobile-optimized design</td>
-                    </tr>
-                </tbody>
-            </table>
-
-            <hr>
-
-            <h2>Code & Syntax</h2>
-
-            <h3>Inline Code</h3>
-            <p>Compact <code>inline code styling</code> with proper <code>contrast ratios</code> for readability.</p>
-
-            <h3>Code Blocks</h3>
-            <pre><code><span class="comment">// Compact JavaScript example</span>
-<span class="keyword">const</span> <span class="function">theme</span> = {
-    <span class="string">'spacing'</span>: <span class="string">'compact'</span>,
-    <span class="string">'fonts'</span>: <span class="string">'smaller'</span>,
-    <span class="string">'design'</span>: <span class="string">'professional'</span>
-};</code></pre>
-
-            <blockquote>
-                A compact blockquote with professional styling and efficient use of space while maintaining readability.
-            </blockquote>
-
-            <p>Experience clean <a href="#">link styling</a> with subtle hover effects and <a href="#">professional appearance</a>.</p>
+        <div class="processing-indicator" *ngIf="showSpinner">
+          <div class="spinner"></div>
+          <span>{{ processingMessage }}</span>
         </div>
-
-        <div class="card" style="border-left: 4px solid var(--text-header-h5);">
-            <h3 style="margin-top: 0; color: var(--text-header-h5); display: flex; align-items: center; gap: 0.5rem;">
-                <span style="font-size: 1rem;">📋</span>
-                Key Improvements
-            </h3>
-            <ul>
-                <li>Reduced font sizes across all elements</li>
-                <li>Compact spacing and margins</li>
-                <li>Cleaner table design with better proportions</li>
-                <li>Professional, space-efficient layout</li>
-                <li>Optimized for readability and performance</li>
-            </ul>
-        </div>
+      </div>
     </div>
+  `,
+  styles: [`
+    .ai-response {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
 
-    <script>
-        function toggleTheme() {
-            const body = document.body;
-            const currentTheme = body.getAttribute('data-theme');
-            const icon = document.getElementById('theme-icon');
-            const text = document.getElementById('theme-text');
+    .ai-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #8b5cf6, #06b6d4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 600;
+      font-size: 14px;
+      flex-shrink: 0;
+    }
 
-            if (currentTheme === 'light') {
-                body.removeAttribute('data-theme');
-                icon.textContent = '🌙';
-                text.textContent = 'Dark';
-            } else {
-                body.setAttribute('data-theme', 'light');
-                icon.textContent = '☀️';
-                text.textContent = 'Light';
-            }
-        }
+    .thinking-animation {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 16px 0;
+    }
 
-        document.documentElement.style.scrollBehavior = 'smooth';
-    </script>
-</body>
+    .brain-container {
+      position: relative;
+      width: 60px;
+      height: 40px;
+    }
 
-</html>
+    .neuron {
+      position: absolute;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #8b5cf6;
+      animation: neuronFire 2s infinite ease-in-out;
+    }
+
+    .connection {
+      position: absolute;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(139, 92, 246, 0.6), transparent);
+      animation: synapseFlow 2s infinite ease-in-out;
+    }
+
+    .thinking-text {
+      color: #999;
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .thought-words {
+      display: flex;
+      gap: 8px;
+      margin-left: 8px;
+    }
+
+    .word {
+      color: #666;
+      font-size: 12px;
+      opacity: 0;
+      animation: wordAppear 3s infinite ease-in-out;
+    }
+
+    .processing-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 12px;
+      color: #666;
+      font-size: 12px;
+    }
+
+    .spinner {
+      width: 12px;
+      height: 12px;
+      border: 1px solid #333;
+      border-top: 1px solid #8b5cf6;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes neuronFire {
+      0%, 100% {
+        transform: scale(1);
+        opacity: 0.6;
+        box-shadow: 0 0 0 rgba(139, 92, 246, 0);
+      }
+      50% {
+        transform: scale(1.5);
+        opacity: 1;
+        box-shadow: 0 0 20px rgba(139, 92, 246, 0.8);
+      }
+    }
+
+    @keyframes synapseFlow {
+      0% {
+        opacity: 0;
+        transform: scale(0.5);
+      }
+      50% {
+        opacity: 1;
+        transform: scale(1);
+      }
+      100% {
+        opacity: 0;
+        transform: scale(0.5);
+      }
+    }
+
+    @keyframes wordAppear {
+      0%, 20% {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      30%, 70% {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      80%, 100% {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  `]
+})
+export class AiThinkingAnimationComponent implements OnInit, OnDestroy {
+  @Input() statusText: string = 'Processing your request';
+  @Input() processingMessage: string = 'AI is thinking deeply about your request';
+  @Input() showSpinner: boolean = true;
+  @Input() customThoughtWords: string[] = [];
+
+  neurons = [
+    { top: 5, left: 10, color: '#8b5cf6', delay: 0 },
+    { top: 15, left: 25, color: '#06b6d4', delay: 0.3 },
+    { top: 8, left: 40, color: '#00ff88', delay: 0.6 },
+    { top: 25, left: 15, color: '#ff6b6b', delay: 0.9 },
+    { top: 30, left: 35, color: '#ffd93d', delay: 1.2 }
+  ];
+
+  connections = [
+    { top: 9, left: 18, width: 15, rotation: 20, delay: 0.3 },
+    { top: 19, left: 33, width: 12, rotation: -30, delay: 0.6 },
+    { top: 29, left: 23, width: 18, rotation: 10, delay: 0.9 }
+  ];
+
+  thoughtWords: Array<{text: string, delay: number}> = [];
+
+  private defaultWords = ['analyzing...', 'understanding...', 'generating...', 'crafting...'];
+
+  ngOnInit() {
+    this.initializeThoughtWords();
+  }
+
+  ngOnDestroy() {
+    // Cleanup if needed
+  }
+
+  private initializeThoughtWords() {
+    const wordsToUse = this.customThoughtWords.length > 0 ? this.customThoughtWords : this.defaultWords;
+    
+    this.thoughtWords = wordsToUse.map((word, index) => ({
+      text: word,
+      delay: 0.5 + (index * 0.5)
+    }));
+  }
+
+  // Method to restart animation (can be called from parent component)
+  restartAnimation() {
+    // Trigger change detection to restart animations
+    this.thoughtWords = [...this.thoughtWords];
+    this.neurons = [...this.neurons];
+    this.connections = [...this.connections];
+  }
+
+  // Method to update thought words dynamically
+  updateThoughtWords(newWords: string[]) {
+    this.customThoughtWords = newWords;
+    this.initializeThoughtWords();
+  }
+
+  // Method to update status text
+  updateStatus(newStatus: string, newProcessingMessage?: string) {
+    this.statusText = newStatus;
+    if (newProcessingMessage) {
+      this.processingMessage = newProcessingMessage;
+    }
+  }
+}
