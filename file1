@@ -1,137 +1,273 @@
-.typing-container {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem; /* ~12px */
-  padding: 0.5rem 0;
-  min-height: 2rem; /* ~32px */
+// vertical-splitter.component.ts
+import { Component, ElementRef, ViewChild, AfterViewInit, OnDestroy } from '@angular/core';
+
+@Component({
+  selector: 'app-vertical-splitter',
+  template: `
+    <div class="splitter-container" #container>
+      <div class="left-panel" [style.width.px]="leftPanelWidth">
+        <div class="panel-content">
+          <h3>Left Panel</h3>
+          <p>This is the left panel content. You can put any content here.</p>
+          <p>Width: {{leftPanelWidth}}px</p>
+        </div>
+      </div>
+      
+      <div 
+        class="splitter" 
+        #splitter
+        (mousedown)="onMouseDown($event)"
+        [class.dragging]="isDragging">
+        <div class="splitter-handle"></div>
+      </div>
+      
+      <div class="right-panel" [style.width.px]="rightPanelWidth">
+        <div class="panel-content">
+          <h3>Right Panel</h3>
+          <p>This is the right panel content. You can put any content here.</p>
+          <p>Width: {{rightPanelWidth}}px</p>
+        </div>
+      </div>
+    </div>
+  `,
+  styles: [`
+    .splitter-container {
+      display: flex;
+      height: 100vh;
+      width: 100%;
+      overflow: hidden;
+    }
+
+    .left-panel, .right-panel {
+      min-width: 100px;
+      overflow: auto;
+    }
+
+    .left-panel {
+      background-color: #f0f4f8;
+      border-right: 1px solid #e2e8f0;
+    }
+
+    .right-panel {
+      background-color: #fafafa;
+      border-left: 1px solid #e2e8f0;
+    }
+
+    .panel-content {
+      padding: 20px;
+    }
+
+    .panel-content h3 {
+      margin-top: 0;
+      color: #2d3748;
+    }
+
+    .panel-content p {
+      color: #4a5568;
+      line-height: 1.5;
+    }
+
+    .splitter {
+      width: 6px;
+      background-color: #e2e8f0;
+      cursor: col-resize;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background-color 0.2s ease;
+    }
+
+    .splitter:hover {
+      background-color: #cbd5e0;
+    }
+
+    .splitter.dragging {
+      background-color: #4299e1;
+    }
+
+    .splitter-handle {
+      width: 2px;
+      height: 40px;
+      background-color: #a0aec0;
+      border-radius: 1px;
+      transition: background-color 0.2s ease;
+    }
+
+    .splitter:hover .splitter-handle {
+      background-color: #718096;
+    }
+
+    .splitter.dragging .splitter-handle {
+      background-color: white;
+    }
+
+    /* Prevent text selection during drag */
+    .splitter-container.no-select {
+      user-select: none;
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+    }
+
+    /* Custom scrollbar for panels */
+    .left-panel::-webkit-scrollbar,
+    .right-panel::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    .left-panel::-webkit-scrollbar-track,
+    .right-panel::-webkit-scrollbar-track {
+      background: #f1f1f1;
+    }
+
+    .left-panel::-webkit-scrollbar-thumb,
+    .right-panel::-webkit-scrollbar-thumb {
+      background: #c1c1c1;
+      border-radius: 4px;
+    }
+
+    .left-panel::-webkit-scrollbar-thumb:hover,
+    .right-panel::-webkit-scrollbar-thumb:hover {
+      background: #a8a8a8;
+    }
+  `]
+})
+export class VerticalSplitterComponent implements AfterViewInit, OnDestroy {
+  @ViewChild('container', { static: true }) containerRef!: ElementRef;
+  @ViewChild('splitter', { static: true }) splitterRef!: ElementRef;
+
+  leftPanelWidth: number = 300;
+  rightPanelWidth: number = 300;
+  isDragging: boolean = false;
+  
+  private startX: number = 0;
+  private startLeftWidth: number = 0;
+  private containerWidth: number = 0;
+  private minPanelWidth: number = 100;
+
+  ngAfterViewInit() {
+    this.updatePanelWidths();
+    window.addEventListener('resize', this.onWindowResize.bind(this));
+  }
+
+  ngOnDestroy() {
+    window.removeEventListener('resize', this.onWindowResize.bind(this));
+    this.removeGlobalListeners();
+  }
+
+  onMouseDown(event: MouseEvent) {
+    event.preventDefault();
+    
+    this.isDragging = true;
+    this.startX = event.clientX;
+    this.startLeftWidth = this.leftPanelWidth;
+    this.containerWidth = this.containerRef.nativeElement.offsetWidth;
+    
+    // Add no-select class to prevent text selection
+    this.containerRef.nativeElement.classList.add('no-select');
+    
+    // Add global mouse event listeners
+    document.addEventListener('mousemove', this.onMouseMove.bind(this));
+    document.addEventListener('mouseup', this.onMouseUp.bind(this));
+    
+    // Change cursor for entire document
+    document.body.style.cursor = 'col-resize';
+  }
+
+  onMouseMove(event: MouseEvent) {
+    if (!this.isDragging) return;
+    
+    event.preventDefault();
+    
+    const deltaX = event.clientX - this.startX;
+    let newLeftWidth = this.startLeftWidth + deltaX;
+    
+    // Calculate splitter width (6px)
+    const splitterWidth = 6;
+    
+    // Ensure minimum widths
+    newLeftWidth = Math.max(newLeftWidth, this.minPanelWidth);
+    
+    // Ensure right panel has minimum width too
+    const maxLeftWidth = this.containerWidth - this.minPanelWidth - splitterWidth;
+    newLeftWidth = Math.min(newLeftWidth, maxLeftWidth);
+    
+    this.leftPanelWidth = newLeftWidth;
+    this.rightPanelWidth = this.containerWidth - newLeftWidth - splitterWidth;
+  }
+
+  onMouseUp(event: MouseEvent) {
+    if (!this.isDragging) return;
+    
+    this.isDragging = false;
+    
+    // Remove no-select class
+    this.containerRef.nativeElement.classList.remove('no-select');
+    
+    // Remove global listeners
+    this.removeGlobalListeners();
+    
+    // Reset cursor
+    document.body.style.cursor = '';
+  }
+
+  private removeGlobalListeners() {
+    document.removeEventListener('mousemove', this.onMouseMove.bind(this));
+    document.removeEventListener('mouseup', this.onMouseUp.bind(this));
+  }
+
+  private onWindowResize() {
+    this.updatePanelWidths();
+  }
+
+  private updatePanelWidths() {
+    const container = this.containerRef.nativeElement;
+    const newContainerWidth = container.offsetWidth;
+    const splitterWidth = 6;
+    
+    if (newContainerWidth !== this.containerWidth) {
+      // Maintain proportions on window resize
+      const ratio = this.leftPanelWidth / (this.containerWidth - splitterWidth);
+      this.containerWidth = newContainerWidth;
+      this.leftPanelWidth = Math.max(
+        this.minPanelWidth,
+        Math.min(
+          ratio * (newContainerWidth - splitterWidth),
+          newContainerWidth - this.minPanelWidth - splitterWidth
+        )
+      );
+      this.rightPanelWidth = newContainerWidth - this.leftPanelWidth - splitterWidth;
+    }
+  }
 }
 
-.typing-container.minimal {
-  gap: 0.5rem; /* ~8px */
-  min-height: 1.25rem; /* ~20px */
-}
+/*
+Usage in your module:
 
-/* Typing Dots Animation */
-.typing-indicator {
-  display: flex;
-  gap: 0.25rem; /* ~4px */
-  align-items: center;
-}
+1. Add to your component declarations in app.module.ts or feature module:
 
-.typing-dot {
-  width: 0.5rem;   /* ~8px */
-  height: 0.5rem;
-  border-radius: 50%;
-  background: #8b5cf6;
-  animation: typingBounce 1.4s infinite ease-in-out;
-}
+import { VerticalSplitterComponent } from './vertical-splitter.component';
 
-/* Generation Status with Pulse */
-.generation-status {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  color: #999;
-  font-size: 0.9rem; /* ~14px */
-}
+@NgModule({
+  declarations: [
+    VerticalSplitterComponent,
+    // ... other components
+  ],
+  // ...
+})
 
-.pulse-icon {
-  position: relative;
-  width: 0.9rem; /* ~14px */
-  height: 0.9rem;
-}
+2. Use in your template:
+<app-vertical-splitter></app-vertical-splitter>
 
-.pulse-core {
-  position: absolute;
-  width: 0.4rem; /* ~6px */
-  height: 0.4rem;
-  background: #8b5cf6;
-  border-radius: 50%;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-}
+3. Customize the content by modifying the template sections for left-panel and right-panel.
 
-.pulse-ring {
-  position: absolute;
-  width: 0.9rem; /* ~14px */
-  height: 0.9rem;
-  border: 1px solid #8b5cf6;
-  border-radius: 50%;
-  top: 0;
-  left: 0;
-  animation: pulseRing 2s infinite ease-out;
-}
-
-.status-text {
-  font-weight: 500;
-}
-
-/* Word Stream Animation */
-.word-stream {
-  display: flex;
-  gap: 0.4rem; /* ~6px */
-  overflow: hidden;
-}
-
-.stream-word {
-  color: #666;
-  font-size: 0.9rem; /* ~14px */
-  opacity: 0;
-  transform: translateX(-0.6rem);
-  animation: wordFlow 2s infinite ease-out;
-  white-space: nowrap;
-}
-
-/* Blinking Cursor */
-.cursor-blink {
-  display: flex;
-  align-items: center;
-}
-
-.blinking-cursor {
-  color: #8b5cf6;
-  font-size: 1.1rem; /* ~18px */
-  font-weight: bold;
-  animation: cursorBlink 1s infinite;
-}
-
-/* Neural Activity Bars */
-.neural-activity {
-  display: flex;
-  gap: 0.15rem; /* ~2.5px */
-  align-items: end;
-  height: 1.5rem; /* ~24px */
-}
-
-.activity-bar {
-  width: 0.2rem; /* ~3px */
-  background: #8b5cf6;
-  border-radius: 0.1rem;
-  animation: activityPulse 1.2s infinite ease-in-out;
-}
-
-/* Responsive adjustments */
-.typing-container.minimal .typing-dot {
-  width: 0.35rem; /* ~6px */
-  height: 0.35rem;
-}
-
-.typing-container.minimal .status-text {
-  font-size: 0.8rem;
-}
-
-.typing-container.minimal .pulse-icon {
-  width: 0.75rem;
-  height: 0.75rem;
-}
-
-.typing-container.minimal .pulse-core {
-  width: 0.3rem;
-  height: 0.3rem;
-}
-
-.typing-container.minimal .pulse-ring {
-  width: 0.75rem;
-  height: 0.75rem;
-}
+Features:
+- Smooth dragging with visual feedback
+- Minimum panel widths (100px each)
+- Responsive behavior on window resize
+- Visual hover and drag states
+- Prevents text selection during drag
+- Custom scrollbars for panel content
+- TypeScript support with proper typing
+*/
