@@ -1,62 +1,29 @@
-// prevent-page-scroll.directive.ts
-import { Directive, ElementRef, NgZone, AfterViewInit, OnDestroy } from '@angular/core';
+onKeyDown(e: KeyboardEvent) {
+  const target = e.target as HTMLTextAreaElement;
+  if (!target) return;
 
-@Directive({
-  selector: 'textarea[preventPageScroll]' // use as <textarea preventPageScroll>
-})
-export class PreventPageScrollDirective implements AfterViewInit, OnDestroy {
-  private handler = (e: KeyboardEvent) => this.onKeyDown(e);
+  const scrollTop = target.scrollTop;
+  const clientHeight = target.clientHeight;
+  const scrollHeight = target.scrollHeight;
 
-  constructor(private el: ElementRef<HTMLTextAreaElement>, private ngZone: NgZone) {}
+  const atTop = scrollTop <= 0;
+  const atBottom = Math.ceil(scrollTop + clientHeight) >= scrollHeight;
 
-  ngAfterViewInit(): void {
-    // Add listener in capture phase and outside Angular to ensure we catch it
-    this.ngZone.runOutsideAngular(() => {
-      this.el.nativeElement.addEventListener('keydown', this.handler, true);
-    });
-  }
-
-  ngOnDestroy(): void {
-    this.el.nativeElement.removeEventListener('keydown', this.handler, true);
-  }
-
-  private onKeyDown(e: KeyboardEvent) {
-    // Normalize keys (handles most browser/platform variants)
-    const key = e.key;
-    const code = (e as any).code;
-    const keyCode = (e as any).keyCode;
-
-    const isPageUp =
-      key === 'PageUp' || code === 'PageUp' || keyCode === 33 ||
-      (key === 'ArrowUp' && (e.ctrlKey || e.metaKey)); // fallback for some Fn combos
-    const isPageDown =
-      key === 'PageDown' || code === 'PageDown' || keyCode === 34 ||
-      (key === 'ArrowDown' && (e.ctrlKey || e.metaKey)); // fallback for some Fn combos
-
-    if (!isPageUp && !isPageDown) return;
-
-    const el = this.el.nativeElement;
-    const scrollTop = el.scrollTop;
-    const clientH = el.clientHeight;
-    const scrollH = el.scrollHeight;
-
-    const atTop = scrollTop <= 0;
-    // use ceil and small epsilon to avoid rounding errors
-    const atBottom = Math.ceil(scrollTop + clientH) >= Math.floor(scrollH) - 1;
-
-    if (isPageUp && atTop) {
-      // textarea can't scroll up any further -> block the global/page scroll
-      e.preventDefault();
+  if (e.key === 'PageUp') {
+    // block global scroll only when NOT at top
+    if (!atTop) {
       e.stopPropagation();
-    } else if (isPageDown && atBottom) {
-      // textarea can't scroll down any further -> block the global/page scroll
-      e.preventDefault();
-      e.stopPropagation();
+    } else {
+      e.preventDefault(); // avoid sidebar/global move
     }
-    // otherwise allow normal textarea PageUp/PageDown behavior
+  }
+
+  if (e.key === 'PageDown') {
+    // block global scroll only when NOT at bottom
+    if (!atBottom) {
+      e.stopPropagation();
+    } else {
+      e.preventDefault(); // avoid sidebar/global move
+    }
   }
 }
-
-
-
-
