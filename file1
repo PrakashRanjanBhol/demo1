@@ -6,7 +6,7 @@ import { Component, Input, OnChanges, SimpleChanges } from '@angular/core';
   styleUrls: ['./chat.component.css']
 })
 export class ChatComponent implements OnChanges {
-  @Input() chunk: string = '';   // incoming streamed chunk from parent
+  @Input() chunk: string = '';   // streamed chunk from parent
 
   htmlCode: string = '';
   cssCode: string = '';
@@ -14,6 +14,7 @@ export class ChatComponent implements OnChanges {
 
   private currentLang: string | null = null;
   private isInsideBlock = false;
+  private waitingForLang = false;  // when ``` comes without a language
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['chunk'] && this.chunk) {
@@ -25,19 +26,39 @@ export class ChatComponent implements OnChanges {
     const lines = chunk.split(/\r?\n/);
 
     for (let line of lines) {
-      if (line.startsWith('```')) {
+      // Case: Fence detected
+      if (line.trim().startsWith('```')) {
         if (!this.isInsideBlock) {
-          // Opening a block
+          // Opening block
           this.isInsideBlock = true;
-          this.currentLang = line.replace(/```/, '').trim().toLowerCase();
+          const lang = line.replace(/```/, '').trim().toLowerCase();
+
+          if (lang) {
+            this.currentLang = lang;
+          } else {
+            // Language comes in next line
+            this.waitingForLang = true;
+          }
         } else {
-          // Closing the block
+          // Closing block
           this.isInsideBlock = false;
           this.currentLang = null;
+          this.waitingForLang = false;
         }
         continue;
       }
 
+      // If we are waiting for language declaration
+      if (this.waitingForLang) {
+        const lang = line.trim().toLowerCase();
+        if (lang) {
+          this.currentLang = lang;
+          this.waitingForLang = false;
+          continue; // don’t treat this as code
+        }
+      }
+
+      // Append code into correct bucket
       if (this.isInsideBlock && this.currentLang) {
         switch (this.currentLang) {
           case 'html':
