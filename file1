@@ -1,309 +1,57 @@
 import { Component, Input, OnChanges, SimpleChanges } from '@angular/core';
 
 @Component({
-  selector: 'app-code-block-parser',
-  template: `
-    <div class="code-parser">
-      <div class="raw-content" *ngIf="showRawContent">
-        <h3>Raw Content:</h3>
-        <pre>{{ content }}</pre>
-      </div>
-
-      <div class="parsed-blocks">
-        <div class="code-block" *ngIf="htmlCode">
-          <h3>HTML Code:</h3>
-          <pre><code>{{ htmlCode }}</code></pre>
-        </div>
-
-        <div class="code-block" *ngIf="cssCode">
-          <h3>CSS Code:</h3>
-          <pre><code>{{ cssCode }}</code></pre>
-        </div>
-
-        <div class="code-block" *ngIf="jsCode">
-          <h3>JavaScript Code:</h3>
-          <pre><code>{{ jsCode }}</code></pre>
-        </div>
-      </div>
-    </div>
-  `,
-  styles: [`
-    .code-parser {
-      padding: 20px;
-      font-family: Arial, sans-serif;
-    }
-
-    .raw-content {
-      margin-bottom: 20px;
-      padding: 10px;
-      background-color: #f8f9fa;
-      border-radius: 4px;
-    }
-
-    .code-block {
-      margin-bottom: 20px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      overflow: hidden;
-    }
-
-    .code-block h3 {
-      background-color: #f8f9fa;
-      margin: 0;
-      padding: 10px;
-      border-bottom: 1px solid #ddd;
-      color: #333;
-    }
-
-    pre {
-      margin: 0;
-      padding: 15px;
-      background-color: #f8f8f8;
-      overflow-x: auto;
-      white-space: pre-wrap;
-      word-wrap: break-word;
-    }
-
-    code {
-      font-family: 'Courier New', monospace;
-      font-size: 14px;
-      line-height: 1.4;
-    }
-  `]
+  selector: 'app-chat',
+  templateUrl: './chat.component.html',
+  styleUrls: ['./chat.component.css']
 })
-export class CodeBlockParserComponent implements OnChanges {
-  @Input() content: string = '';
-  @Input() showRawContent: boolean = false;
+export class ChatComponent implements OnChanges {
+  @Input() chunk: string = '';   // incoming streamed chunk from parent
 
   htmlCode: string = '';
   cssCode: string = '';
   jsCode: string = '';
 
+  private currentLang: string | null = null;
+  private isInsideBlock = false;
+
   ngOnChanges(changes: SimpleChanges): void {
-    if (changes['content'] && this.content) {
-      this.parseCodeBlocks();
+    if (changes['chunk'] && this.chunk) {
+      this.processChunk(this.chunk);
     }
   }
 
-  private parseCodeBlocks(): void {
-    // Reset variables
-    this.htmlCode = '';
-    this.cssCode = '';
-    this.jsCode = '';
+  private processChunk(chunk: string): void {
+    const lines = chunk.split(/\r?\n/);
 
-    // Regex to match code blocks with language specification
-    const codeBlockRegex = /```(\w+)?\s*\n?([\s\S]*?)```/g;
-    let match;
+    for (let line of lines) {
+      if (line.startsWith('```')) {
+        if (!this.isInsideBlock) {
+          // Opening a block
+          this.isInsideBlock = true;
+          this.currentLang = line.replace(/```/, '').trim().toLowerCase();
+        } else {
+          // Closing the block
+          this.isInsideBlock = false;
+          this.currentLang = null;
+        }
+        continue;
+      }
 
-    // Find all complete code blocks
-    while ((match = codeBlockRegex.exec(this.content)) !== null) {
-      const language = match[1]?.toLowerCase() || '';
-      const code = match[2].trim();
-
-      switch (language) {
-        case 'html':
-          this.htmlCode = code;
-          break;
-        case 'css':
-          this.cssCode = code;
-          break;
-        case 'javascript':
-        case 'js':
-          this.jsCode = code;
-          break;
+      if (this.isInsideBlock && this.currentLang) {
+        switch (this.currentLang) {
+          case 'html':
+            this.htmlCode += line + '\n';
+            break;
+          case 'css':
+            this.cssCode += line + '\n';
+            break;
+          case 'js':
+          case 'javascript':
+            this.jsCode += line + '\n';
+            break;
+        }
       }
     }
-  }
-
-  // Optional: Method to get all code blocks as an object
-  getCodeBlocks(): { htmlCode: string; cssCode: string; jsCode: string } {
-    return {
-      htmlCode: this.htmlCode,
-      cssCode: this.cssCode,
-      jsCode: this.jsCode
-    };
-  }
-
-  // Check if a code block is incomplete (still streaming)
-  isIncompleteBlock(language: string): boolean {
-    const codeBlockPattern = new RegExp(`\`\`\`${language}[\\s\\S]*?\`\`\``, 'i');
-    const incompletePattern = new RegExp(`\`\`\`${language}(?![\\s\\S]*?\`\`\`)`, 'i');
-    
-    return incompletePattern.test(this.content) && !codeBlockPattern.test(this.content);
-  }
-}
-
-// Parent Component Example
-@Component({
-  selector: 'app-parent',
-  template: `
-    <div class="parent-component">
-      <h2>LLM Response Parser</h2>
-      
-      <div class="controls">
-        <button (click)="simulateStreaming()">Simulate Streaming</button>
-        <button (click)="clearContent()">Clear</button>
-        <label>
-          <input type="checkbox" [(ngModel)]="showRaw"> Show Raw Content
-        </label>
-      </div>
-
-      <div class="streaming-content">
-        <h3>Streaming Content ({{ streamingContent.length }} characters):</h3>
-        <div class="content-preview">{{ streamingContent.substring(0, 200) }}...</div>
-      </div>
-
-      <!-- Child component that processes the streaming content -->
-      <app-code-block-parser 
-        [content]="streamingContent"
-        [showRawContent]="showRaw">
-      </app-code-block-parser>
-    </div>
-  `,
-  styles: [`
-    .parent-component {
-      padding: 20px;
-      max-width: 1200px;
-      margin: 0 auto;
-    }
-
-    .controls {
-      margin-bottom: 20px;
-      padding: 15px;
-      background-color: #f8f9fa;
-      border-radius: 4px;
-    }
-
-    .controls button {
-      margin-right: 10px;
-      padding: 8px 16px;
-      background-color: #007bff;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-
-    .controls button:hover {
-      background-color: #0056b3;
-    }
-
-    .controls label {
-      margin-left: 15px;
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-    }
-
-    .streaming-content {
-      margin-bottom: 20px;
-      padding: 15px;
-      background-color: #e9ecef;
-      border-radius: 4px;
-    }
-
-    .content-preview {
-      font-family: monospace;
-      font-size: 12px;
-      color: #666;
-      margin-top: 10px;
-    }
-  `]
-})
-export class ParentComponent {
-  streamingContent: string = '';
-  showRaw: boolean = false;
-  private streamingInterval: any;
-
-  // Example streaming simulation
-  simulateStreaming(): void {
-    this.clearContent();
-    
-    const chunks = [
-      "Here's a complete web page example:\n\n",
-      "```html\n",
-      "<!DOCTYPE html>\n",
-      "<html lang=\"en\">\n",
-      "<head>\n",
-      "  <meta charset=\"UTF-8\">\n",
-      "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n",
-      "  <title>Sample Page</title>\n",
-      "  <link rel=\"stylesheet\" href=\"styles.css\">\n",
-      "</head>\n",
-      "<body>\n",
-      "  <header class=\"header\">\n",
-      "    <h1>Welcome to My Page</h1>\n",
-      "    <p>This is a simple HTML + CSS example.</p>\n",
-      "  </header>\n",
-      "  <main class=\"content\">\n",
-      "    <button class=\"btn\" onclick=\"handleClick()\">Click Me</button>\n",
-      "  </main>\n",
-      "  <script src=\"script.js\"></script>\n",
-      "</body>\n",
-      "</html>\n",
-      "```\n\n",
-      "Now here's the CSS styling:\n\n",
-      "```css\n",
-      ".header {\n",
-      "  background-color: #333;\n",
-      "  color: white;\n",
-      "  padding: 20px;\n",
-      "  text-align: center;\n",
-      "}\n\n",
-      ".content {\n",
-      "  padding: 40px;\n",
-      "  text-align: center;\n",
-      "}\n\n",
-      ".btn {\n",
-      "  background-color: #007bff;\n",
-      "  color: white;\n",
-      "  padding: 12px 24px;\n",
-      "  border: none;\n",
-      "  border-radius: 4px;\n",
-      "  cursor: pointer;\n",
-      "  font-size: 16px;\n",
-      "}\n\n",
-      ".btn:hover {\n",
-      "  background-color: #0056b3;\n",
-      "}\n",
-      "```\n\n",
-      "And finally, some JavaScript:\n\n",
-      "```javascript\n",
-      "function handleClick() {\n",
-      "  alert('Button clicked!');\n",
-      "  console.log('User clicked the button');\n",
-      "}\n\n",
-      "// Add event listener when page loads\n",
-      "document.addEventListener('DOMContentLoaded', function() {\n",
-      "  console.log('Page loaded successfully');\n",
-      "});\n",
-      "```\n\n",
-      "This creates a complete working web page!"
-    ];
-
-    let currentIndex = 0;
-    this.streamingInterval = setInterval(() => {
-      if (currentIndex < chunks.length) {
-        this.streamingContent += chunks[currentIndex];
-        currentIndex++;
-      } else {
-        clearInterval(this.streamingInterval);
-      }
-    }, 200); // Add chunk every 200ms to simulate streaming
-  }
-
-  clearContent(): void {
-    this.streamingContent = '';
-    if (this.streamingInterval) {
-      clearInterval(this.streamingInterval);
-    }
-  }
-
-  // Method to get parsed code blocks from child component
-  onGetCodeBlocks(): void {
-    // You can access the child component using ViewChild if needed
-    // @ViewChild(CodeBlockParserComponent) codeParser!: CodeBlockParserComponent;
-    // const blocks = this.codeParser.getCodeBlocks();
-    // console.log('Code blocks:', blocks);
   }
 }
