@@ -1,4 +1,7 @@
 import { Component, Input, OnChanges, SimpleChanges } from '@angular/core';
+import { html } from '@codemirror/lang-html';
+import { css } from '@codemirror/lang-css';
+import { javascript } from '@codemirror/lang-javascript';
 
 @Component({
   selector: 'app-chat',
@@ -6,107 +9,81 @@ import { Component, Input, OnChanges, SimpleChanges } from '@angular/core';
   styleUrls: ['./chat.component.css']
 })
 export class ChatComponent implements OnChanges {
-  @Input() chunk: string = ''; // streamed chunk from parent
+  @Input() chunk: string = '';
 
   htmlCode: string = '';
   cssCode: string = '';
   jsCode: string = '';
-  otherCode: string = ''; // for codeblocks without language
 
-  // Streaming parser state
-  private unprocessed: string = '';
-  private isInsideBlock = false;
+  htmlOptions: any;
+  cssOptions: any;
+  jsOptions: any;
+
   private currentLang: string | null = null;
+  private isInsideBlock = false;
   private waitingForLang = false;
+
+  constructor() {
+    // default CodeMirror options for read-only + proper indentation
+    this.htmlOptions = { value: '', extensions: [html()], lineNumbers: true, readOnly: true };
+    this.cssOptions = { value: '', extensions: [css()], lineNumbers: true, readOnly: true };
+    this.jsOptions = { value: '', extensions: [javascript()], lineNumbers: true, readOnly: true };
+  }
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['chunk'] && this.chunk) {
       this.processChunk(this.chunk);
+      this.updateEditorValues();
     }
   }
 
   private processChunk(chunk: string): void {
-    if (!chunk) return;
+    const lines = chunk.split(/\r?\n/);
 
-    let normalized = chunk
-      .replace(/\\r\\n/g, '\n')
-      .replace(/\\n/g, '\n')
-      .replace(/\r/g, '');
-
-    this.unprocessed += normalized;
-
-    while (true) {
-      if (!this.isInsideBlock) {
-        // 🔹 opening fence must be its own line
-        const fenceMatch = this.unprocessed.match(/(^|\n)\s*```+\s*([^\n]*)\n?/);
-        if (!fenceMatch) {
-          if (this.unprocessed.length > 2000) {
-            this.unprocessed = this.unprocessed.slice(-3);
-          }
-          break;
+    for (let line of lines) {
+      if (line.trim().startsWith('```')) {
+        if (!this.isInsideBlock) {
+          this.isInsideBlock = true;
+          const lang = line.replace(/```/, '').trim().toLowerCase();
+          if (lang) this.currentLang = lang;
+          else this.waitingForLang = true;
+        } else {
+          this.isInsideBlock = false;
+          this.currentLang = null;
+          this.waitingForLang = false;
         }
-
-        this.unprocessed = this.unprocessed.slice(fenceMatch.index! + fenceMatch[0].length);
-        this.isInsideBlock = true;
-
-        // Extract language (group 2)
-        const lang = (fenceMatch[2] || '').trim().toLowerCase();
-        this.currentLang = lang || 'other';
-        this.waitingForLang = false;
+        continue;
       }
 
       if (this.waitingForLang) {
-        const nlIndex = this.unprocessed.indexOf('\n');
-        if (nlIndex === -1) break;
-
-        const langLine = this.unprocessed.slice(0, nlIndex).trim();
-        this.currentLang = langLine ? langLine.toLowerCase() : 'other';
-        this.unprocessed = this.unprocessed.slice(nlIndex + 1);
-        this.waitingForLang = false;
+        const lang = line.trim().toLowerCase();
+        if (lang) {
+          this.currentLang = lang;
+          this.waitingForLang = false;
+          continue;
+        }
       }
 
-      // 🔹 closing fence must also be its own line
-      const closingMatch = this.unprocessed.match(/(^|\n)\s*```+\s*($|\n)/);
-      if (!closingMatch) {
-        if (this.currentLang) {
-          this.appendToLanguageBucket(this.currentLang, this.unprocessed);
+      if (this.isInsideBlock && this.currentLang) {
+        switch (this.currentLang) {
+          case 'html':
+            this.htmlCode += line + '\n';
+            break;
+          case 'css':
+            this.cssCode += line + '\n';
+            break;
+          case 'js':
+          case 'javascript':
+            this.jsCode += line + '\n';
+            break;
         }
-        this.unprocessed = '';
-        break;
-      } else {
-        const closingIndex = closingMatch.index!;
-        const content = this.unprocessed.slice(0, closingIndex);
-        if (this.currentLang) {
-          this.appendToLanguageBucket(this.currentLang, content);
-        }
-        this.unprocessed = this.unprocessed.slice(closingIndex + closingMatch[0].length);
-        this.isInsideBlock = false;
-        this.currentLang = null;
-        this.waitingForLang = false;
-        continue;
       }
     }
   }
 
-  private appendToLanguageBucket(lang: string, content: string) {
-    if (!content) return;
-
-    const safe = content.replace(/\\n/g, '\n').replace(/\r/g, '');
-
-    switch (lang) {
-      case 'html':
-        this.htmlCode += safe;
-        break;
-      case 'css':
-        this.cssCode += safe;
-        break;
-      case 'js':
-      case 'javascript':
-        this.jsCode += safe;
-        break;
-      default:
-        this.otherCode += safe;
-        break;
-    }
+  private updateEditorValues(): void {
+    this.htmlOptions = { ...this.htmlOptions, value: this.htmlCode };
+    this.cssOptions = { ...this.cssOptions, value: this.cssCode };
+    this.jsOptions = { ...this.jsOptions, value: this.jsCode };
   }
 }
