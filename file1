@@ -41,47 +41,111 @@ import { Component, Input, OnChanges, SimpleChanges } from '@angular/core';
   `]
 })
 export class CodeParserComponent implements OnChanges {
-  @Input() chunk: string = '';   // will now contain "content so far"
-
+  @Input() chunk: string = '';
+  
   htmlCode: string = '';
   cssCode: string = '';
   jsCode: string = '';
-
+  
+  private buffer: string = '';
+  private currentCodeType: 'html' | 'css' | 'js' | null = null;
+  private insideCodeBlock: boolean = false;
+  
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['chunk'] && changes['chunk'].currentValue !== undefined) {
-      this.parseFullContent(changes['chunk'].currentValue);
+      this.processChunk(changes['chunk'].currentValue);
     }
   }
+  
+  private processChunk(newChunk: string): void {
+    // Append incoming fragment to buffer
+    this.buffer += newChunk;
+    this.parseBuffer();
+  }
+  
+  private parseBuffer(): void {
+    let newlineIndex: number;
 
-  private parseFullContent(content: string): void {
-    // Reset on every re-parse
-    this.htmlCode = '';
-    this.cssCode = '';
-    this.jsCode = '';
+    // Only process full lines that end with \n
+    while ((newlineIndex = this.buffer.indexOf('\n')) >= 0) {
+      const line = this.buffer.slice(0, newlineIndex);
+      this.buffer = this.buffer.slice(newlineIndex + 1);
+      this.processLine(line);
+    }
 
-    const codeBlockRegex = /```(\w+)?\s*([\s\S]*?)```/g;
-    let match: RegExpExecArray | null;
-
-    while ((match = codeBlockRegex.exec(content)) !== null) {
-      const lang = (match[1] || '').toLowerCase().trim();
-      const code = match[2];
-
-      if (lang.includes('html')) {
-        this.htmlCode += code + '\n';
-      } else if (lang.includes('css')) {
-        this.cssCode += code + '\n';
-      } else if (lang.includes('js') || lang.includes('javascript') || lang.includes('ts') || lang.includes('typescript')) {
-        this.jsCode += code + '\n';
+    // ⚠️ At this point, buffer may contain partial fences like "```ht"
+    // We keep it until more chunks arrive
+  }
+  
+  private processLine(line: string): void {
+    const trimmedLine = line.trim();
+    
+    // Detect code fences
+    if (trimmedLine.startsWith('```')) {
+      if (!this.insideCodeBlock) {
+        // Start new block
+        this.insideCodeBlock = true;
+        this.currentCodeType = this.detectCodeType(trimmedLine);
+      } else {
+        // End current block
+        this.insideCodeBlock = false;
+        this.currentCodeType = null;
+      }
+      return;
+    }
+    
+    // Append to the correct buffer if inside a block
+    if (this.insideCodeBlock && this.currentCodeType) {
+      const codeContent = line + '\n';
+      
+      switch (this.currentCodeType) {
+        case 'html':
+          this.htmlCode += codeContent;
+          break;
+        case 'css':
+          this.cssCode += codeContent;
+          break;
+        case 'js':
+          this.jsCode += codeContent;
+          break;
       }
     }
   }
-
+  
+  private detectCodeType(codeBlockStart: string): 'html' | 'css' | 'js' | null {
+    const language = codeBlockStart.replace('```', '').toLowerCase().trim();
+    
+    if (language.includes('html') || language.includes('htm')) {
+      return 'html';
+    }
+    
+    if (language.includes('css')) {
+      return 'css';
+    }
+    
+    if (language.includes('javascript') || language.includes('js') || 
+        language.includes('typescript') || language.includes('ts')) {
+      return 'js';
+    }
+    
+    // Couldn’t detect from marker → keep null until next line gives hint
+    return null;
+  }
+  
+  private detectCodeTypeByContent(): 'html' | 'css' | 'js' | null {
+    // (Optional: smarter detection based on patterns if no explicit marker)
+    return null;
+  }
+  
   public clearAll(): void {
     this.htmlCode = '';
     this.cssCode = '';
     this.jsCode = '';
+    this.buffer = '';
+    this.currentCodeType = null;
+    this.insideCodeBlock = false;
   }
-
+  
   public getAllCode(): { html: string, css: string, js: string } {
     return {
       html: this.htmlCode,
