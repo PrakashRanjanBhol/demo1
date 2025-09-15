@@ -6,18 +6,12 @@ import { Component, Input, OnChanges, SimpleChanges } from '@angular/core';
   styleUrls: ['./chat.component.css']
 })
 export class ChatComponent implements OnChanges {
-  @Input() chunk: string = ''; // streamed chunk from parent
+  @Input() chunk: string = '';
 
   htmlCode: string = '';
   cssCode: string = '';
   jsCode: string = '';
-  otherCode: string = ''; // for code blocks without language
-
-  // Streaming parser state
-  private unprocessed: string = '';
-  private isInsideBlock = false;
-  private currentLang: string | null = null;
-  private waitingForLang = false;
+  otherCode: string = '';
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['chunk'] && this.chunk) {
@@ -28,111 +22,50 @@ export class ChatComponent implements OnChanges {
   private processChunk(chunk: string): void {
     if (!chunk) return;
 
-    // Normalize chunk: convert escaped \n or \r\n into real newlines
-    let normalized = chunk
-      .replace(/\\r\\n/g, '\n')
-      .replace(/\\n/g, '\n')
-      .replace(/\r/g, '');
+    // Normalize newlines
+    let normalized = chunk.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\r/g, '');
 
-    // Append new data into unprocessed buffer
-    this.unprocessed += normalized;
+    // Split by ``` to find code blocks
+    const parts = normalized.split('```');
 
-    while (true) {
-      // Look for opening fence if not inside a block
-      if (!this.isInsideBlock) {
-        const fenceIndex = this.unprocessed.indexOf('```');
-        if (fenceIndex === -1) {
-          if (this.unprocessed.length > 2000) {
-            this.unprocessed = this.unprocessed.slice(-3); // keep last chars to catch split fence
-          }
-          break; // wait for next chunk
-        }
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      if (i % 2 === 1) {
+        // Odd index -> inside a code block
+        const lines = part.split('\n');
+        const firstLine = lines[0].trim().toLowerCase();
 
-        // Enter code block
-        this.unprocessed = this.unprocessed.slice(fenceIndex + 3);
-        this.isInsideBlock = true;
+        // Determine language
+        let lang: string;
+        if (firstLine === 'html') lang = 'html';
+        else if (firstLine === 'css') lang = 'css';
+        else if (firstLine === 'js' || firstLine === 'javascript') lang = 'js';
+        else lang = 'other';
 
-        // Try to detect language
-        const langMatch = this.unprocessed.match(/^([A-Za-z0-9_+\-]+)(?:[ \t]*\n)?/);
-        if (langMatch) {
-          this.currentLang = langMatch[1].toLowerCase();
-          this.unprocessed = this.unprocessed.slice(langMatch[0].length);
-          this.waitingForLang = false;
-        } else if (this.unprocessed.startsWith('\n')) {
-          this.currentLang = 'other';
-          this.unprocessed = this.unprocessed.slice(1);
-          this.waitingForLang = false;
-        } else {
-          this.waitingForLang = true;
-          break;
-        }
+        // Remove the language line if it was there
+        const content = (lang !== 'other' ? lines.slice(1).join('\n') : part);
+
+        this.appendToLanguageBucket(lang, content);
       }
-
-      // Waiting for language token (split across chunks)
-      if (this.waitingForLang) {
-        const nlIndex = this.unprocessed.indexOf('\n');
-        if (nlIndex === -1) {
-          const tokenGuess = this.unprocessed.split(/\s/)[0];
-          if (tokenGuess.length > 0 && this.unprocessed.length > 50) {
-            this.currentLang = tokenGuess.toLowerCase();
-            this.unprocessed = this.unprocessed.slice(tokenGuess.length);
-            this.waitingForLang = false;
-          } else {
-            break;
-          }
-        } else {
-          const langLine = this.unprocessed.slice(0, nlIndex).trim();
-          this.currentLang = langLine ? langLine.toLowerCase() : 'other';
-          this.unprocessed = this.unprocessed.slice(nlIndex + 1);
-          this.waitingForLang = false;
-        }
-      }
-
-      // Capture content until closing fence
-      const closingIndex = this.unprocessed.indexOf('```');
-      if (closingIndex === -1) {
-        if (this.currentLang) {
-          // Keep a small look-behind buffer to avoid cutting numbers or units
-          const safeLength = Math.max(this.unprocessed.length - 10, 0);
-          if (safeLength > 0) {
-            this.appendToLanguageBucket(this.currentLang, this.unprocessed.slice(0, safeLength));
-            this.unprocessed = this.unprocessed.slice(safeLength); // keep last 10 chars for next chunk
-          }
-        }
-        break; // wait for next chunk
-      } else {
-        const content = this.unprocessed.slice(0, closingIndex);
-        if (this.currentLang) {
-          this.appendToLanguageBucket(this.currentLang, content);
-        }
-        this.unprocessed = this.unprocessed.slice(closingIndex + 3);
-        this.isInsideBlock = false;
-        this.currentLang = null;
-        this.waitingForLang = false;
-        continue;
-      }
+      // Even index -> normal text outside code block, ignore
     }
   }
 
   private appendToLanguageBucket(lang: string, content: string) {
     if (!content) return;
 
-    // Preserve content exactly as-is (except normalize escaped newlines)
-    const safe = content.replace(/\\n/g, '\n').replace(/\r/g, '');
-
     switch (lang) {
       case 'html':
-        this.htmlCode += safe;
+        this.htmlCode += content;
         break;
       case 'css':
-        this.cssCode += safe;
+        this.cssCode += content;
         break;
       case 'js':
-      case 'javascript':
-        this.jsCode += safe;
+        this.jsCode += content;
         break;
       default:
-        this.otherCode += safe;
+        this.otherCode += content;
         break;
     }
   }
