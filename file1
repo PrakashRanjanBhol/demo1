@@ -1,17 +1,56 @@
-if (this.isInsideBlock && this.currentLang) {
-  // Fix: convert escaped newlines into real newlines
-  const safeLine = line.replace(/\\n/g, '\n').replace(/\r/g, '');
+import { Component, Input, OnChanges, SimpleChanges } from '@angular/core';
+import { marked } from 'marked';
 
-  switch (this.currentLang) {
-    case 'html':
-      this.htmlCode += safeLine + '\n';
-      break;
-    case 'css':
-      this.cssCode += safeLine + '\n';
-      break;
-    case 'js':
-    case 'javascript':
-      this.jsCode += safeLine + '\n';
-      break;
+@Component({
+  selector: 'app-chat',
+  templateUrl: './chat.component.html',
+  styleUrls: ['./chat.component.css']
+})
+export class ChatComponent implements OnChanges {
+  @Input() chunk: string = '';   // streamed chunk from parent
+
+  htmlCode: string = '';
+  cssCode: string = '';
+  jsCode: string = '';
+
+  private buffer: string = '';   // accumulate chunks until code fences complete
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['chunk'] && this.chunk) {
+      this.processChunk(this.chunk);
+    }
+  }
+
+  private processChunk(chunk: string): void {
+    // Append new streamed text into buffer
+    this.buffer += chunk;
+
+    // Parse buffer into markdown tokens
+    const tokens = marked.lexer(this.buffer);
+
+    // Reset buckets (we’ll refill them from parsed markdown)
+    this.htmlCode = '';
+    this.cssCode = '';
+    this.jsCode = '';
+
+    for (const token of tokens) {
+      if (token.type === 'code') {
+        const lang = (token.lang || '').toLowerCase();
+        const code = token.text; // already has real newlines (\n)
+
+        switch (lang) {
+          case 'html':
+            this.htmlCode += code + '\n';
+            break;
+          case 'css':
+            this.cssCode += code + '\n';
+            break;
+          case 'js':
+          case 'javascript':
+            this.jsCode += code + '\n';
+            break;
+        }
+      }
+    }
   }
 }
