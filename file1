@@ -1,93 +1,65 @@
-import { Component, Input, OnChanges, SimpleChanges } from '@angular/core';
+private processChunk(chunk: string) {
+  if (!chunk) return;
 
-@Component({
-  selector: 'app-chat',
-  templateUrl: './chat.component.html',
-  styleUrls: ['./chat.component.css']
-})
-export class ChatComponent implements OnChanges {
-  @Input() chunk: string = '';
+  this.buffer += chunk.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\r/g, '');
 
-  htmlCode: string = '';
-  cssCode: string = '';
-  jsCode: string = '';
-  otherCode: string = '';
+  while (this.buffer.length > 0) {
+    if (!this.insideBlock) {
+      const fenceIndex = this.buffer.indexOf('```');
+      if (fenceIndex === -1) break;
 
-  private buffer: string = '';       // entire incoming buffer
-  private insideBlock = false;       // are we inside a code block?
-  private currentLang: string | null = null; // language of current code block
-  private blockBuffer: string = '';  // buffer for current code block content
-
-  ngOnChanges(changes: SimpleChanges): void {
-    if (changes['chunk'] && this.chunk) {
-      this.processChunk(this.chunk);
+      this.insideBlock = true;
+      this.buffer = this.buffer.slice(fenceIndex + 3);
+      this.currentLang = null;
     }
-  }
 
-  private processChunk(chunk: string) {
-    if (!chunk) return;
+    if (this.insideBlock && this.currentLang === null) {
+      const nlIndex = this.buffer.indexOf('\n');
+      if (nlIndex === -1) break; // wait for more data
 
-    // normalize newlines
-    this.buffer += chunk.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\r/g, '');
+      const langLine = this.buffer.slice(0, nlIndex).trim().toLowerCase();
+      this.buffer = this.buffer.slice(nlIndex + 1);
 
-    while (this.buffer.length > 0) {
-      if (!this.insideBlock) {
-        const fenceIndex = this.buffer.indexOf('```');
-        if (fenceIndex === -1) break;
+      if (langLine === 'html') this.currentLang = 'html';
+      else if (langLine === 'css') this.currentLang = 'css';
+      else if (langLine === 'js' || langLine === 'javascript') this.currentLang = 'js';
+      else this.currentLang = 'other';
+    }
 
-        this.insideBlock = true;
-        this.buffer = this.buffer.slice(fenceIndex + 3);
+    if (this.insideBlock && this.currentLang !== null) {
+      const closingIndex = this.buffer.indexOf('```');
+
+      if (closingIndex === -1) {
+        // Append only **full lines** so we don’t cut CSS values
+        const lastNl = this.buffer.lastIndexOf('\n');
+        if (lastNl !== -1) {
+          const completePart = this.buffer.slice(0, lastNl + 1);
+          this.appendToLanguageBucket(this.currentLang, completePart);
+          this.buffer = this.buffer.slice(lastNl + 1);
+        }
+        break;
+      } else {
+        const content = this.buffer.slice(0, closingIndex);
+        this.appendToLanguageBucket(this.currentLang, content);
+        this.buffer = this.buffer.slice(closingIndex + 3);
+        this.insideBlock = false;
         this.currentLang = null;
-        this.blockBuffer = '';
-      }
-
-      if (this.insideBlock && this.currentLang === null) {
-        // detect language
-        const nlIndex = this.buffer.indexOf('\n');
-        let langLine = '';
-        if (nlIndex !== -1) {
-          langLine = this.buffer.slice(0, nlIndex).trim().toLowerCase();
-          this.buffer = this.buffer.slice(nlIndex + 1);
-        } else {
-          // wait for more data if no newline yet
-          break;
-        }
-
-        if (langLine === 'html') this.currentLang = 'html';
-        else if (langLine === 'css') this.currentLang = 'css';
-        else if (langLine === 'js' || langLine === 'javascript') this.currentLang = 'js';
-        else this.currentLang = 'other';
-      }
-
-      if (this.insideBlock && this.currentLang !== null) {
-        const closingIndex = this.buffer.indexOf('```');
-        if (closingIndex === -1) {
-          // no closing fence yet -> append all to blockBuffer and wait
-          this.blockBuffer += this.buffer;
-          this.buffer = '';
-          break;
-        } else {
-          // closing fence found -> append until closing
-          this.blockBuffer += this.buffer.slice(0, closingIndex);
-          this.appendToLanguageBucket(this.currentLang, this.blockBuffer);
-
-          // remove used content + closing fence
-          this.buffer = this.buffer.slice(closingIndex + 3);
-          this.insideBlock = false;
-          this.currentLang = null;
-          this.blockBuffer = '';
-        }
       }
     }
   }
+}
 
-  private appendToLanguageBucket(lang: string, content: string) {
-    if (!content) return;
-    switch (lang) {
-      case 'html': this.htmlCode += content; break;
-      case 'css': this.cssCode += content; break;
-      case 'js': this.jsCode += content; break;
-      default: this.otherCode += content; break;
-    }
+private appendToLanguageBucket(lang: string, content: string) {
+  if (!content) return;
+
+  // Ensure no broken color codes or numbers
+  // (optional: trim only right-side if streaming mid-line)
+  const safeContent = content.replace(/\r/g, '');
+
+  switch (lang) {
+    case 'html': this.htmlCode += safeContent; break;
+    case 'css': this.cssCode += safeContent; break;
+    case 'js': this.jsCode += safeContent; break;
+    default: this.otherCode += safeContent; break;
   }
 }
