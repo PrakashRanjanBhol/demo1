@@ -1,83 +1,466 @@
 import { Component, Input, OnChanges, SimpleChanges } from '@angular/core';
 
 @Component({
-  selector: 'app-code-catcher',
+  selector: 'app-code-parser',
   template: `
-    <div>
-      <h3>HTML Code</h3>
-      <pre>{{ htmlCode }}</pre>
-
-      <h3>CSS Code</h3>
-      <pre>{{ cssCode }}</pre>
-
-      <h3>JS Code</h3>
-      <pre>{{ jsCode }}</pre>
+    <div class="code-container">
+      <div class="code-section">
+        <h3>HTML Code:</h3>
+        <pre><code>{{ htmlCode }}</code></pre>
+      </div>
+      
+      <div class="code-section">
+        <h3>CSS Code:</h3>
+        <pre><code>{{ cssCode }}</code></pre>
+      </div>
+      
+      <div class="code-section">
+        <h3>JavaScript Code:</h3>
+        <pre><code>{{ jsCode }}</code></pre>
+      </div>
     </div>
-  `
+  `,
+  styles: [`
+    .code-container {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .code-section {
+      border: 1px solid #ccc;
+      padding: 10px;
+      border-radius: 5px;
+    }
+    pre {
+      background-color: #f5f5f5;
+      padding: 10px;
+      border-radius: 3px;
+      overflow-x: auto;
+      white-space: pre-wrap;
+    }
+  `]
 })
-export class CodeCatcherComponent implements OnChanges {
+export class CodeParserComponent implements OnChanges {
   @Input() chunk: string = '';
-
+  
   htmlCode: string = '';
   cssCode: string = '';
   jsCode: string = '';
-
-  private currentBlock: 'html' | 'css' | 'js' | null = null;
-  private buffer: string = ''; // to handle cut-off ``` fences
-
-  ngOnChanges(changes: SimpleChanges) {
-    if (changes['chunk'] && this.chunk) {
-      this.processChunk(this.chunk);
+  
+  private buffer: string = '';
+  private currentCodeType: 'html' | 'css' | 'js' | null = null;
+  private insideCodeBlock: boolean = false;
+  
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['chunk'] && changes['chunk'].currentValue) {
+      this.processChunk(changes['chunk'].currentValue);
     }
   }
-
-  private processChunk(chunk: string) {
-    this.buffer += chunk; // accumulate chunk
-
-    // Check if there is a complete fence (```) in the buffer
-    let fenceIndex: number;
-    while ((fenceIndex = this.buffer.indexOf('```')) !== -1) {
-      const beforeFence = this.buffer.substring(0, fenceIndex).trim();
-      const afterFence = this.buffer.substring(fenceIndex + 3); // rest after fence
-
-      if (beforeFence.length > 0) {
-        // Append code to the current block
-        this.appendToBlock(beforeFence + '\n');
-      }
-
-      // Detect language after ```
-      const match = afterFence.match(/^(html|css|javascript|js)?/i);
-      const lang = match ? match[0].toLowerCase() : '';
-
-      if (lang === 'html') {
-        this.currentBlock = 'html';
-      } else if (lang === 'css') {
-        this.currentBlock = 'css';
-      } else if (lang === 'javascript' || lang === 'js') {
-        this.currentBlock = 'js';
+  
+  private processChunk(newChunk: string): void {
+    this.buffer += newChunk;
+    this.parseBuffer();
+  }
+  
+  private parseBuffer(): void {
+    const lines = this.buffer.split('\n');
+    let processedLines = 0;
+    
+    for (let i = 0; i < lines.length - 1; i++) { // Keep last line in buffer
+      const line = lines[i];
+      this.processLine(line);
+      processedLines++;
+    }
+    
+    // Keep unprocessed content in buffer
+    this.buffer = lines.slice(processedLines).join('\n');
+  }
+  
+  private processLine(line: string): void {
+    const trimmedLine = line.trim();
+    
+    // Check for code block start
+    if (trimmedLine.startsWith('```')) {
+      if (!this.insideCodeBlock) {
+        // Starting a new code block
+        this.insideCodeBlock = true;
+        this.currentCodeType = this.detectCodeType(trimmedLine);
       } else {
-        // Empty fence → means close block
-        this.currentBlock = null;
+        // Ending a code block
+        this.insideCodeBlock = false;
+        this.currentCodeType = null;
       }
-
-      // Remove the matched language keyword if present
-      this.buffer = afterFence.replace(/^(html|css|javascript|js)?/, '');
+      return;
     }
-
-    // If no fence found, just append to current block
-    if (this.currentBlock && this.buffer.trim()) {
-      this.appendToBlock(this.buffer);
-      this.buffer = ''; // consumed
+    
+    // If we're inside a code block, add to appropriate variable
+    if (this.insideCodeBlock && this.currentCodeType) {
+      const codeContent = line + '\n';
+      
+      switch (this.currentCodeType) {
+        case 'html':
+          this.htmlCode += codeContent;
+          break;
+        case 'css':
+          this.cssCode += codeContent;
+          break;
+        case 'js':
+          this.jsCode += codeContent;
+          break;
+      }
     }
   }
-
-  private appendToBlock(content: string) {
-    if (this.currentBlock === 'html') {
-      this.htmlCode += content;
-    } else if (this.currentBlock === 'css') {
-      this.cssCode += content;
-    } else if (this.currentBlock === 'js') {
-      this.jsCode += content;
+  
+  private detectCodeType(codeBlockStart: string): 'html' | 'css' | 'js' | null {
+    const language = codeBlockStart.replace('```', '').toLowerCase().trim();
+    
+    // HTML detection
+    if (language.includes('html') || language.includes('htm')) {
+      return 'html';
     }
+    
+    // CSS detection
+    if (language.includes('css')) {
+      return 'css';
+    }
+    
+    // JavaScript detection
+    if (language.includes('javascript') || language.includes('js') || 
+        language.includes('typescript') || language.includes('ts')) {
+      return 'js';
+    }
+    
+    // Default detection based on content patterns
+    return this.detectCodeTypeByContent();
+  }
+  
+  private detectCodeTypeByContent(): 'html' | 'css' | 'js' | null {
+    // This method can be enhanced to detect code type based on content patterns
+    // For now, returning null to avoid misclassification
+    return null;
+  }
+  
+  // Method to clear all code variables (useful for reset)
+  public clearAll(): void {
+    this.htmlCode = '';
+    this.cssCode = '';
+    this.jsCode = '';
+    this.buffer = '';
+    this.currentCodeType = null;
+    this.insideCodeBlock = false;
+  }
+  
+  // Method to get all code as an object
+  public getAllCode(): { html: string, css: string, js: string } {
+    return {
+      html: this.htmlCode,
+      css: this.cssCode,
+      js: this.jsCode
+    };
   }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import { Component, Input, OnChanges, SimpleChanges, Output, EventEmitter } from '@angular/core';
+
+interface CodeBlock {
+  type: 'html' | 'css' | 'js';
+  content: string;
+  isComplete: boolean;
+}
+
+@Component({
+  selector: 'app-advanced-code-parser',
+  template: `
+    <div class="code-container">
+      <div class="stats">
+        <span>HTML: {{ htmlCode.length }} chars</span>
+        <span>CSS: {{ cssCode.length }} chars</span>
+        <span>JS: {{ jsCode.length }} chars</span>
+        <button (click)="clearAll()">Clear All</button>
+      </div>
+      
+      <div class="code-section" *ngIf="htmlCode">
+        <h3>HTML Code:</h3>
+        <pre><code>{{ htmlCode }}</code></pre>
+      </div>
+      
+      <div class="code-section" *ngIf="cssCode">
+        <h3>CSS Code:</h3>
+        <pre><code>{{ cssCode }}</code></pre>
+      </div>
+      
+      <div class="code-section" *ngIf="jsCode">
+        <h3>JavaScript Code:</h3>
+        <pre><code>{{ jsCode }}</code></pre>
+      </div>
+    </div>
+  `,
+  styles: [`
+    .code-container {
+      font-family: Arial, sans-serif;
+    }
+    .stats {
+      display: flex;
+      gap: 20px;
+      margin-bottom: 20px;
+      padding: 10px;
+      background-color: #f0f0f0;
+      border-radius: 5px;
+      align-items: center;
+    }
+    .stats span {
+      font-weight: bold;
+    }
+    .stats button {
+      margin-left: auto;
+      padding: 5px 10px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+    }
+    .code-section {
+      margin-bottom: 20px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      overflow: hidden;
+    }
+    .code-section h3 {
+      margin: 0;
+      padding: 10px;
+      background-color: #f8f9fa;
+      border-bottom: 1px solid #ddd;
+    }
+    pre {
+      margin: 0;
+      padding: 15px;
+      background-color: #f5f5f5;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+  `]
+})
+export class AdvancedCodeParserComponent implements OnChanges {
+  @Input() chunk: string = '';
+  @Output() codeUpdated = new EventEmitter<{html: string, css: string, js: string}>();
+  
+  htmlCode: string = '';
+  cssCode: string = '';
+  jsCode: string = '';
+  
+  private buffer: string = '';
+  private currentBlock: CodeBlock | null = null;
+  
+  // Regex patterns for different code block formats
+  private readonly codeBlockPatterns = {
+    start: /^```(\w+)?$/,
+    end: /^```$/,
+    htmlInline: /<[^>]+>/,
+    cssSelector: /^[.#]?[\w-]+\s*{/,
+    jsFunction: /(function|const|let|var|=\s*\(|=>)/
+  };
+  
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['chunk'] && changes['chunk'].currentValue) {
+      this.processChunk(changes['chunk'].currentValue);
+    }
+  }
+  
+  private processChunk(newChunk: string): void {
+    this.buffer += newChunk;
+    this.parseBuffer();
+    this.emitCodeUpdate();
+  }
+  
+  private parseBuffer(): void {
+    const lines = this.buffer.split('\n');
+    let processedLines = 0;
+    
+    for (let i = 0; i < lines.length - 1; i++) {
+      const line = lines[i];
+      
+      if (this.processCodeBlockMarkers(line)) {
+        processedLines = i + 1;
+        continue;
+      }
+      
+      if (this.currentBlock) {
+        this.addToCurrentBlock(line);
+      } else {
+        // Try to detect code without explicit markers
+        this.tryAutoDetectCode(line);
+      }
+      
+      processedLines = i + 1;
+    }
+    
+    // Keep unprocessed content in buffer
+    this.buffer = lines.slice(processedLines).join('\n');
+  }
+  
+  private processCodeBlockMarkers(line: string): boolean {
+    const trimmedLine = line.trim();
+    
+    // Check for code block start
+    const startMatch = trimmedLine.match(this.codeBlockPatterns.start);
+    if (startMatch && !this.currentBlock) {
+      const language = startMatch[1] || '';
+      const codeType = this.mapLanguageToType(language);
+      
+      if (codeType) {
+        this.currentBlock = {
+          type: codeType,
+          content: '',
+          isComplete: false
+        };
+      }
+      return true;
+    }
+    
+    // Check for code block end
+    if (trimmedLine.match(this.codeBlockPatterns.end) && this.currentBlock) {
+      this.finalizeCurrentBlock();
+      return true;
+    }
+    
+    return false;
+  }
+  
+  private addToCurrentBlock(line: string): void {
+    if (this.currentBlock) {
+      this.currentBlock.content += line + '\n';
+    }
+  }
+  
+  private finalizeCurrentBlock(): void {
+    if (this.currentBlock) {
+      const content = this.currentBlock.content.trim();
+      
+      switch (this.currentBlock.type) {
+        case 'html':
+          this.htmlCode += content + '\n';
+          break;
+        case 'css':
+          this.cssCode += content + '\n';
+          break;
+        case 'js':
+          this.jsCode += content + '\n';
+          break;
+      }
+      
+      this.currentBlock = null;
+    }
+  }
+  
+  private tryAutoDetectCode(line: string): void {
+    const trimmedLine = line.trim();
+    
+    if (!trimmedLine) return;
+    
+    // HTML detection
+    if (this.codeBlockPatterns.htmlInline.test(trimmedLine)) {
+      this.htmlCode += line + '\n';
+      return;
+    }
+    
+    // CSS detection
+    if (this.codeBlockPatterns.cssSelector.test(trimmedLine)) {
+      this.cssCode += line + '\n';
+      return;
+    }
+    
+    // JavaScript detection
+    if (this.codeBlockPatterns.jsFunction.test(trimmedLine)) {
+      this.jsCode += line + '\n';
+      return;
+    }
+  }
+  
+  private mapLanguageToType(language: string): 'html' | 'css' | 'js' | null {
+    const lang = language.toLowerCase();
+    
+    if (lang.includes('html') || lang.includes('htm') || lang.includes('xml')) {
+      return 'html';
+    }
+    
+    if (lang.includes('css') || lang.includes('scss') || lang.includes('sass')) {
+      return 'css';
+    }
+    
+    if (lang.includes('js') || lang.includes('javascript') || 
+        lang.includes('ts') || lang.includes('typescript') ||
+        lang.includes('react') || lang.includes('vue')) {
+      return 'js';
+    }
+    
+    return null;
+  }
+  
+  private emitCodeUpdate(): void {
+    this.codeUpdated.emit({
+      html: this.htmlCode,
+      css: this.cssCode,
+      js: this.jsCode
+    });
+  }
+  
+  public clearAll(): void {
+    this.htmlCode = '';
+    this.cssCode = '';
+    this.jsCode = '';
+    this.buffer = '';
+    this.currentBlock = null;
+    this.emitCodeUpdate();
+  }
+  
+  public getAllCode(): { html: string, css: string, js: string } {
+    return {
+      html: this.htmlCode,
+      css: this.cssCode,
+      js: this.jsCode
+    };
+  }
+  
+  // Method to manually add code to specific type
+  public addCode(type: 'html' | 'css' | 'js', code: string): void {
+    switch (type) {
+      case 'html':
+        this.htmlCode += code;
+        break;
+      case 'css':
+        this.cssCode += code;
+        break;
+      case 'js':
+        this.jsCode += code;
+        break;
+    }
+    this.emitCodeUpdate();
+  }
+}
+
