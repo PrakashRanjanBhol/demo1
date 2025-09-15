@@ -52,62 +52,55 @@ export class CodeParserComponent implements OnChanges {
   private insideCodeBlock: boolean = false;
   
   ngOnChanges(changes: SimpleChanges): void {
-    if (changes['chunk'] && changes['chunk'].currentValue !== undefined) {
+    if (changes['chunk'] && typeof changes['chunk'].currentValue === 'string') {
       this.processChunk(changes['chunk'].currentValue);
     }
   }
   
   private processChunk(newChunk: string): void {
-    // Append incoming fragment to buffer
+    // Append new chunk to buffer
     this.buffer += newChunk;
+    // Parse only complete lines
     this.parseBuffer();
   }
   
   private parseBuffer(): void {
     let newlineIndex: number;
 
-    // Only process full lines that end with \n
+    // Extract and process full lines
     while ((newlineIndex = this.buffer.indexOf('\n')) >= 0) {
       const line = this.buffer.slice(0, newlineIndex);
       this.buffer = this.buffer.slice(newlineIndex + 1);
       this.processLine(line);
     }
 
-    // ⚠️ At this point, buffer may contain partial fences like "```ht"
-    // We keep it until more chunks arrive
+    // ⚠️ Buffer may now contain incomplete fragments (keep them!)
   }
   
   private processLine(line: string): void {
     const trimmedLine = line.trim();
-    
-    // Detect code fences
+
+    // Detect start/end of code block
     if (trimmedLine.startsWith('```')) {
       if (!this.insideCodeBlock) {
-        // Start new block
+        // Starting a block
         this.insideCodeBlock = true;
         this.currentCodeType = this.detectCodeType(trimmedLine);
       } else {
-        // End current block
+        // Ending a block
         this.insideCodeBlock = false;
         this.currentCodeType = null;
       }
       return;
     }
-    
-    // Append to the correct buffer if inside a block
+
+    // If inside a block, append line to correct variable
     if (this.insideCodeBlock && this.currentCodeType) {
       const codeContent = line + '\n';
-      
       switch (this.currentCodeType) {
-        case 'html':
-          this.htmlCode += codeContent;
-          break;
-        case 'css':
-          this.cssCode += codeContent;
-          break;
-        case 'js':
-          this.jsCode += codeContent;
-          break;
+        case 'html': this.htmlCode += codeContent; break;
+        case 'css': this.cssCode += codeContent; break;
+        case 'js': this.jsCode += codeContent; break;
       }
     }
   }
@@ -115,26 +108,12 @@ export class CodeParserComponent implements OnChanges {
   private detectCodeType(codeBlockStart: string): 'html' | 'css' | 'js' | null {
     const language = codeBlockStart.replace('```', '').toLowerCase().trim();
     
-    if (language.includes('html') || language.includes('htm')) {
-      return 'html';
-    }
+    if (language.includes('html') || language.includes('htm')) return 'html';
+    if (language.includes('css')) return 'css';
+    if (language.includes('javascript') || language.includes('js') ||
+        language.includes('typescript') || language.includes('ts')) return 'js';
     
-    if (language.includes('css')) {
-      return 'css';
-    }
-    
-    if (language.includes('javascript') || language.includes('js') || 
-        language.includes('typescript') || language.includes('ts')) {
-      return 'js';
-    }
-    
-    // Couldn’t detect from marker → keep null until next line gives hint
-    return null;
-  }
-  
-  private detectCodeTypeByContent(): 'html' | 'css' | 'js' | null {
-    // (Optional: smarter detection based on patterns if no explicit marker)
-    return null;
+    return null; // fallback if unknown
   }
   
   public clearAll(): void {
@@ -147,10 +126,6 @@ export class CodeParserComponent implements OnChanges {
   }
   
   public getAllCode(): { html: string, css: string, js: string } {
-    return {
-      html: this.htmlCode,
-      css: this.cssCode,
-      js: this.jsCode
-    };
+    return { html: this.htmlCode, css: this.cssCode, js: this.jsCode };
   }
 }
