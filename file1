@@ -22,32 +22,36 @@ export class ChatComponent implements OnChanges {
   private processChunk(chunk: string): void {
     if (!chunk) return;
 
-    // Normalize newlines
-    let normalized = chunk.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\r/g, '');
+    const normalized = chunk.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\r/g, '');
 
     // Split by ``` to find code blocks
     const parts = normalized.split('```');
 
-    for (let i = 0; i < parts.length; i++) {
-      const part = parts[i];
-      if (i % 2 === 1) {
-        // Odd index -> inside a code block
-        const lines = part.split('\n');
-        const firstLine = lines[0].trim().toLowerCase();
+    for (let i = 1; i < parts.length; i += 2) {
+      const block = parts[i];
+      const lines = block.split('\n');
 
-        // Determine language
-        let lang: string;
-        if (firstLine === 'html') lang = 'html';
-        else if (firstLine === 'css') lang = 'css';
-        else if (firstLine === 'js' || firstLine === 'javascript') lang = 'js';
-        else lang = 'other';
+      // Determine language: check first line, if empty, check second line
+      let langToken = lines[0].trim().toLowerCase();
+      let contentStartIndex = 1;
 
-        // Remove the language line if it was there
-        const content = (lang !== 'other' ? lines.slice(1).join('\n') : part);
-
-        this.appendToLanguageBucket(lang, content);
+      if (!langToken) {
+        // first line empty, take second line as language
+        langToken = lines[1]?.trim().toLowerCase() || 'other';
+        contentStartIndex = 2;
       }
-      // Even index -> normal text outside code block, ignore
+
+      let lang: string;
+      if (langToken === 'html') lang = 'html';
+      else if (langToken === 'css') lang = 'css';
+      else if (langToken === 'js' || langToken === 'javascript') lang = 'js';
+      else {
+        lang = 'other';
+        contentStartIndex = 0; // keep first line as content
+      }
+
+      const content = lines.slice(contentStartIndex).join('\n');
+      this.appendToLanguageBucket(lang, content);
     }
   }
 
