@@ -1,65 +1,83 @@
-private processChunk(chunk: string) {
-  if (!chunk) return;
+import { Component, Input, OnChanges, SimpleChanges } from '@angular/core';
 
-  this.buffer += chunk.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\r/g, '');
+@Component({
+  selector: 'app-code-catcher',
+  template: `
+    <div>
+      <h3>HTML Code</h3>
+      <pre>{{ htmlCode }}</pre>
 
-  while (this.buffer.length > 0) {
-    if (!this.insideBlock) {
-      const fenceIndex = this.buffer.indexOf('```');
-      if (fenceIndex === -1) break;
+      <h3>CSS Code</h3>
+      <pre>{{ cssCode }}</pre>
 
-      this.insideBlock = true;
-      this.buffer = this.buffer.slice(fenceIndex + 3);
-      this.currentLang = null;
-    }
+      <h3>JS Code</h3>
+      <pre>{{ jsCode }}</pre>
+    </div>
+  `
+})
+export class CodeCatcherComponent implements OnChanges {
+  @Input() chunk: string = '';
 
-    if (this.insideBlock && this.currentLang === null) {
-      const nlIndex = this.buffer.indexOf('\n');
-      if (nlIndex === -1) break; // wait for more data
+  htmlCode: string = '';
+  cssCode: string = '';
+  jsCode: string = '';
 
-      const langLine = this.buffer.slice(0, nlIndex).trim().toLowerCase();
-      this.buffer = this.buffer.slice(nlIndex + 1);
+  private currentBlock: 'html' | 'css' | 'js' | null = null;
+  private buffer: string = ''; // to handle cut-off ``` fences
 
-      if (langLine === 'html') this.currentLang = 'html';
-      else if (langLine === 'css') this.currentLang = 'css';
-      else if (langLine === 'js' || langLine === 'javascript') this.currentLang = 'js';
-      else this.currentLang = 'other';
-    }
-
-    if (this.insideBlock && this.currentLang !== null) {
-      const closingIndex = this.buffer.indexOf('```');
-
-      if (closingIndex === -1) {
-        // Append only **full lines** so we don’t cut CSS values
-        const lastNl = this.buffer.lastIndexOf('\n');
-        if (lastNl !== -1) {
-          const completePart = this.buffer.slice(0, lastNl + 1);
-          this.appendToLanguageBucket(this.currentLang, completePart);
-          this.buffer = this.buffer.slice(lastNl + 1);
-        }
-        break;
-      } else {
-        const content = this.buffer.slice(0, closingIndex);
-        this.appendToLanguageBucket(this.currentLang, content);
-        this.buffer = this.buffer.slice(closingIndex + 3);
-        this.insideBlock = false;
-        this.currentLang = null;
-      }
+  ngOnChanges(changes: SimpleChanges) {
+    if (changes['chunk'] && this.chunk) {
+      this.processChunk(this.chunk);
     }
   }
-}
 
-private appendToLanguageBucket(lang: string, content: string) {
-  if (!content) return;
+  private processChunk(chunk: string) {
+    this.buffer += chunk; // accumulate chunk
 
-  // Ensure no broken color codes or numbers
-  // (optional: trim only right-side if streaming mid-line)
-  const safeContent = content.replace(/\r/g, '');
+    // Check if there is a complete fence (```) in the buffer
+    let fenceIndex: number;
+    while ((fenceIndex = this.buffer.indexOf('```')) !== -1) {
+      const beforeFence = this.buffer.substring(0, fenceIndex).trim();
+      const afterFence = this.buffer.substring(fenceIndex + 3); // rest after fence
 
-  switch (lang) {
-    case 'html': this.htmlCode += safeContent; break;
-    case 'css': this.cssCode += safeContent; break;
-    case 'js': this.jsCode += safeContent; break;
-    default: this.otherCode += safeContent; break;
+      if (beforeFence.length > 0) {
+        // Append code to the current block
+        this.appendToBlock(beforeFence + '\n');
+      }
+
+      // Detect language after ```
+      const match = afterFence.match(/^(html|css|javascript|js)?/i);
+      const lang = match ? match[0].toLowerCase() : '';
+
+      if (lang === 'html') {
+        this.currentBlock = 'html';
+      } else if (lang === 'css') {
+        this.currentBlock = 'css';
+      } else if (lang === 'javascript' || lang === 'js') {
+        this.currentBlock = 'js';
+      } else {
+        // Empty fence → means close block
+        this.currentBlock = null;
+      }
+
+      // Remove the matched language keyword if present
+      this.buffer = afterFence.replace(/^(html|css|javascript|js)?/, '');
+    }
+
+    // If no fence found, just append to current block
+    if (this.currentBlock && this.buffer.trim()) {
+      this.appendToBlock(this.buffer);
+      this.buffer = ''; // consumed
+    }
+  }
+
+  private appendToBlock(content: string) {
+    if (this.currentBlock === 'html') {
+      this.htmlCode += content;
+    } else if (this.currentBlock === 'css') {
+      this.cssCode += content;
+    } else if (this.currentBlock === 'js') {
+      this.jsCode += content;
+    }
   }
 }
