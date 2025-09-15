@@ -1,106 +1,121 @@
 import { Component, Input, OnChanges, SimpleChanges } from '@angular/core';
 
 @Component({
-  selector: 'app-code-renderer',
-  template: `
-    <div class="code-section" *ngIf="htmlCode">
-      <h3>HTML</h3>
-      <pre><code>{{ htmlCode }}</code></pre>
-    </div>
-
-    <div class="code-section" *ngIf="cssCode">
-      <h3>CSS</h3>
-      <pre><code>{{ cssCode }}</code></pre>
-    </div>
-
-    <div class="code-section" *ngIf="jsCode">
-      <h3>JavaScript</h3>
-      <pre><code>{{ jsCode }}</code></pre>
-    </div>
-  `,
-  styles: [`
-    .code-section { margin-bottom: 1rem; }
-    pre { background: #1e1e1e; color: #dcdcdc; padding: 1rem; border-radius: 8px; overflow-x: auto; }
-  `]
+  selector: 'app-chat',
+  templateUrl: './chat.component.html',
+  styleUrls: ['./chat.component.css']
 })
-export class CodeRendererComponent implements OnChanges {
-  @Input() chunk: string = '';
+export class ChatComponent implements OnChanges {
+  @Input() chunk: string = ''; // streamed chunk from parent
 
-  htmlCode = '';
-  cssCode = '';
-  jsCode = '';
+  htmlCode: string = '';
+  cssCode: string = '';
+  jsCode: string = '';
+  otherCode: string = ''; // for codeblocks without language
 
-  private unprocessed = '';
+  // Streaming parser state
+  private unprocessed: string = '';
   private isInsideBlock = false;
   private currentLang: string | null = null;
   private waitingForLang = false;
 
   ngOnChanges(changes: SimpleChanges): void {
-    if (changes['chunk']?.currentValue) {
-      this.processChunk(changes['chunk'].currentValue);
+    if (changes['chunk'] && this.chunk) {
+      this.processChunk(this.chunk);
     }
   }
 
-  private processChunk(chunk: string) {
-    this.unprocessed += chunk;
+  private processChunk(chunk: string): void {
+    if (!chunk) return;
 
-    while (this.unprocessed.length > 0) {
+    let normalized = chunk
+      .replace(/\\r\\n/g, '\n')
+      .replace(/\\n/g, '\n')
+      .replace(/\r/g, '');
+
+    this.unprocessed += normalized;
+
+    while (true) {
       if (!this.isInsideBlock) {
-        // 🔍 Look for opening fence only if at line start
         const fenceMatch = this.unprocessed.match(/(^|\n)```/);
-        if (!fenceMatch) break;
-
-        const fenceIndex = fenceMatch.index!;
-        const langLine = this.unprocessed.substring(fenceIndex + fenceMatch[0].length);
-        const nextNewline = langLine.indexOf('\n');
-
-        let lang = '';
-        if (nextNewline !== -1) {
-          lang = langLine.substring(0, nextNewline).trim().toLowerCase();
-        } else {
-          lang = langLine.trim().toLowerCase();
-        }
-
-        this.isInsideBlock = true;
-        this.currentLang = lang || null;
-        this.waitingForLang = !lang;
-
-        this.unprocessed = this.unprocessed.substring(fenceIndex + fenceMatch[0].length + (nextNewline !== -1 ? nextNewline + 1 : 0));
-      } else {
-        // 🔍 Look for closing fence only if at line start
-        const closingMatch = this.unprocessed.match(/(^|\n)```/);
-        if (!closingMatch) {
-          this.appendCode(this.unprocessed);
-          this.unprocessed = '';
+        if (!fenceMatch) {
+          if (this.unprocessed.length > 2000) {
+            this.unprocessed = this.unprocessed.slice(-3);
+          }
           break;
         }
 
-        const closingIndex = closingMatch.index!;
-        const codeBlock = this.unprocessed.substring(0, closingIndex);
-        this.appendCode(codeBlock);
+        this.unprocessed = this.unprocessed.slice(fenceMatch.index! + fenceMatch[0].length);
+        this.isInsideBlock = true;
 
+        const langMatch = this.unprocessed.match(/^([A-Za-z0-9_+\-]+)(?:[ \t]*\n)?/);
+        if (langMatch) {
+          this.currentLang = langMatch[1].toLowerCase();
+          this.unprocessed = this.unprocessed.slice(langMatch[0].length);
+          this.waitingForLang = false;
+        } else {
+          if (this.unprocessed.startsWith('\n')) {
+            this.currentLang = 'other';
+            this.unprocessed = this.unprocessed.slice(1);
+            this.waitingForLang = false;
+          } else {
+            this.waitingForLang = true;
+            break;
+          }
+        }
+      }
+
+      if (this.waitingForLang) {
+        const nlIndex = this.unprocessed.indexOf('\n');
+        if (nlIndex === -1) break;
+
+        const langLine = this.unprocessed.slice(0, nlIndex).trim();
+        this.currentLang = langLine ? langLine.toLowerCase() : 'other';
+        this.unprocessed = this.unprocessed.slice(nlIndex + 1);
+        this.waitingForLang = false;
+      }
+
+      // 🔹 FIX: closing fence only at start of line
+      const closingMatch = this.unprocessed.match(/(^|\n)```/);
+      if (!closingMatch) {
+        if (this.currentLang) {
+          this.appendToLanguageBucket(this.currentLang, this.unprocessed);
+        }
+        this.unprocessed = '';
+        break;
+      } else {
+        const closingIndex = closingMatch.index!;
+        const content = this.unprocessed.slice(0, closingIndex);
+        if (this.currentLang) {
+          this.appendToLanguageBucket(this.currentLang, content);
+        }
+        this.unprocessed = this.unprocessed.slice(closingIndex + closingMatch[0].length);
         this.isInsideBlock = false;
         this.currentLang = null;
         this.waitingForLang = false;
-
-        this.unprocessed = this.unprocessed.substring(closingIndex + closingMatch[0].length);
+        continue;
       }
     }
   }
 
-  private appendCode(text: string) {
-    if (!this.currentLang) return;
+  private appendToLanguageBucket(lang: string, content: string) {
+    if (!content) return;
 
-    switch (this.currentLang) {
+    const safe = content.replace(/\\n/g, '\n').replace(/\r/g, '');
+
+    switch (lang) {
       case 'html':
-        this.htmlCode += text + '\n';
+        this.htmlCode += safe;
         break;
       case 'css':
-        this.cssCode += text + '\n';
+        this.cssCode += safe;
         break;
       case 'js':
       case 'javascript':
-        this.jsCode += text + '\n';
+        this.jsCode += safe;
+        break;
+      default:
+        this.otherCode += safe;
         break;
     }
   }
