@@ -1,5 +1,4 @@
 import { Component, Input, OnChanges, SimpleChanges } from '@angular/core';
-import { marked } from 'marked';
 
 @Component({
   selector: 'app-chat',
@@ -7,13 +6,18 @@ import { marked } from 'marked';
   styleUrls: ['./chat.component.css']
 })
 export class ChatComponent implements OnChanges {
-  @Input() chunk: string = '';   // streamed chunk from parent
+  @Input() chunk: string = ''; // streamed chunk from parent
 
   htmlCode: string = '';
   cssCode: string = '';
   jsCode: string = '';
+  otherCode: string = ''; // for codeblocks without language
 
-  private buffer: string = '';   // accumulate chunks until code fences complete
+  // Streaming parser state
+  private unprocessed: string = '';
+  private isInsideBlock = false;
+  private currentLang: string | null = null;
+  private waitingForLang = false;
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['chunk'] && this.chunk) {
@@ -22,35 +26,150 @@ export class ChatComponent implements OnChanges {
   }
 
   private processChunk(chunk: string): void {
-    // Append new streamed text into buffer
-    this.buffer += chunk;
+    if (!chunk) return;
 
-    // Parse buffer into markdown tokens
-    const tokens = marked.lexer(this.buffer);
+    // Normalize chunk:
+    // - convert escaped \\r\\n / \\n sequences into real newlines (common when receiving JSON-escaped streams)
+    // - remove stray CR characters
+    let normalized = chunk
+      .replace(/\\r\\n/g, '\n')
+      .replace(/\\n/g, '\n') // convert literal backslash-n to newline
+      .replace(/\r/g, '');
 
-    // Reset buckets (we’ll refill them from parsed markdown)
-    this.htmlCode = '';
-    this.cssCode = '';
-    this.jsCode = '';
+    // Append new data into unprocessed buffer
+    this.unprocessed += normalized;
 
-    for (const token of tokens) {
-      if (token.type === 'code') {
-        const lang = (token.lang || '').toLowerCase();
-        const code = token.text; // already has real newlines (\n)
+    // Parse the buffer sequentially looking for fences and contents
+    while (true) {
+      // If we're not inside a code block, look for an opening fence
+      if (!this.isInsideBlock) {
+        const fenceIndex = this.unprocessed.indexOf('```');
 
-        switch (lang) {
-          case 'html':
-            this.htmlCode += code + '\n';
+        if (fenceIndex === -1) {
+          // No fence yet. Keep buffer (but avoid unbounded growth).
+          // Keep last few chars to handle split fence across chunks.
+          if (this.unprocessed.length > 2000) {
+            this.unprocessed = this.unprocessed.slice(-3);
+          }
+          break; // wait for next chunk
+        }
+
+        // Found an opening fence -> discard preceding text and enter block state
+        // (we don't need non-code text)
+        this.unprocessed = this.unprocessed.slice(fenceIndex + 3);
+        this.isInsideBlock = true;
+
+        // Try to detect language immediately:
+        // Accept language tokens like "html", "css", "js", "javascript", etc.
+        // Match token at start: letters/digits/_+- until whitespace or newline
+        const langMatch = this.unprocessed.match(/^([A-Za-z0-9_+\-]+)(?:[ \t]*\n)?/);
+
+        if (langMatch) {
+          // Language present on same chunk
+          this.currentLang = langMatch[1].toLowerCase();
+          // Remove the matched language token (and optional newline)
+          this.unprocessed = this.unprocessed.slice(langMatch[0].length);
+          this.waitingForLang = false;
+        } else {
+          // No immediate language token — could be:
+          //  - language will arrive on next chunk (e.g. chunk was just "```")
+          //  - or the block starts immediately (no language) and next char is newline or content
+          if (this.unprocessed.startsWith('\n')) {
+            // fence followed by newline → no language provided
+            this.currentLang = 'other';
+            // remove that leading newline (start of content)
+            this.unprocessed = this.unprocessed.slice(1);
+            this.waitingForLang = false;
+          } else {
+            // Possibly the language is split across chunks — wait for next chunk to decide
+            this.waitingForLang = true;
             break;
-          case 'css':
-            this.cssCode += code + '\n';
-            break;
-          case 'js':
-          case 'javascript':
-            this.jsCode += code + '\n';
-            break;
+          }
         }
       }
+
+      // If we are waiting for language token (because fence arrived and language is on next chunk)
+      if (this.waitingForLang) {
+        const nlIndex = this.unprocessed.indexOf('\n');
+
+        if (nlIndex === -1) {
+          // still no newline — language token may still be incomplete
+          // but if buffer is long, take the first whitespace-separated token as language
+          const tokenGuess = this.unprocessed.split(/\s/)[0];
+          if (tokenGuess.length > 0 && this.unprocessed.length > 50) {
+            this.currentLang = tokenGuess.toLowerCase();
+            this.unprocessed = this.unprocessed.slice(tokenGuess.length);
+            this.waitingForLang = false;
+          } else {
+            // wait for more chunks
+            break;
+          }
+        } else {
+          // we have a full line — treat it as language (or empty => no language)
+          const langLine = this.unprocessed.slice(0, nlIndex).trim();
+          this.currentLang = langLine ? langLine.toLowerCase() : 'other';
+          this.unprocessed = this.unprocessed.slice(nlIndex + 1);
+          this.waitingForLang = false;
+        }
+      }
+
+      // Now we should be inside a block with a language (or 'other')
+      // Capture until the next closing fence (if any)
+      const closingIndex = this.unprocessed.indexOf('```');
+
+      if (closingIndex === -1) {
+        // No closing fence in current buffer — append everything as partial content and wait for more
+        if (this.currentLang) {
+          const content = this.unprocessed;
+          this.appendToLanguageBucket(this.currentLang, content);
+        }
+        // Clear buffer (we've consumed it into the code variables)
+        this.unprocessed = '';
+        break; // wait for more chunks
+      } else {
+        // Closing fence found — append content up to it, then remove fence and continue parsing
+        const content = this.unprocessed.slice(0, closingIndex);
+        if (this.currentLang) {
+          this.appendToLanguageBucket(this.currentLang, content);
+        }
+        // Remove content + closing fence from buffer
+        this.unprocessed = this.unprocessed.slice(closingIndex + 3);
+        // Reset state (block closed)
+        this.isInsideBlock = false;
+        this.currentLang = null;
+        this.waitingForLang = false;
+        // Continue loop to look for next blocks in buffer
+        continue;
+      }
+    } // end while
+
+    // Debugging help (uncomment if you want to inspect)
+    // console.log('htmlCode:', JSON.stringify(this.htmlCode));
+    // console.log('cssCode:', JSON.stringify(this.cssCode));
+    // console.log('jsCode:', JSON.stringify(this.jsCode));
+  }
+
+  private appendToLanguageBucket(lang: string, content: string) {
+    if (!content) return;
+
+    // Convert any remaining escaped newlines into real newlines (defensive)
+    const safe = content.replace(/\\n/g, '\n').replace(/\r/g, '');
+
+    switch (lang) {
+      case 'html':
+        this.htmlCode += safe;
+        break;
+      case 'css':
+        this.cssCode += safe;
+        break;
+      case 'js':
+      case 'javascript':
+        this.jsCode += safe;
+        break;
+      default:
+        // store unknown/untagged code blocks here
+        this.otherCode += safe;
+        break;
     }
   }
 }
