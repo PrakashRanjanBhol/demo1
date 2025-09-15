@@ -37,7 +37,8 @@ export class ChatComponent implements OnChanges {
 
     while (true) {
       if (!this.isInsideBlock) {
-        const fenceMatch = this.unprocessed.match(/(^|\n)```/);
+        // 🔹 opening fence must be its own line
+        const fenceMatch = this.unprocessed.match(/(^|\n)\s*```+\s*([^\n]*)\n?/);
         if (!fenceMatch) {
           if (this.unprocessed.length > 2000) {
             this.unprocessed = this.unprocessed.slice(-3);
@@ -48,21 +49,10 @@ export class ChatComponent implements OnChanges {
         this.unprocessed = this.unprocessed.slice(fenceMatch.index! + fenceMatch[0].length);
         this.isInsideBlock = true;
 
-        const langMatch = this.unprocessed.match(/^([A-Za-z0-9_+\-]+)(?:[ \t]*\n)?/);
-        if (langMatch) {
-          this.currentLang = langMatch[1].toLowerCase();
-          this.unprocessed = this.unprocessed.slice(langMatch[0].length);
-          this.waitingForLang = false;
-        } else {
-          if (this.unprocessed.startsWith('\n')) {
-            this.currentLang = 'other';
-            this.unprocessed = this.unprocessed.slice(1);
-            this.waitingForLang = false;
-          } else {
-            this.waitingForLang = true;
-            break;
-          }
-        }
+        // Extract language (group 2)
+        const lang = (fenceMatch[2] || '').trim().toLowerCase();
+        this.currentLang = lang || 'other';
+        this.waitingForLang = false;
       }
 
       if (this.waitingForLang) {
@@ -75,8 +65,8 @@ export class ChatComponent implements OnChanges {
         this.waitingForLang = false;
       }
 
-      // 🔹 FIX: closing fence only at start of line
-      const closingMatch = this.unprocessed.match(/(^|\n)```/);
+      // 🔹 closing fence must also be its own line
+      const closingMatch = this.unprocessed.match(/(^|\n)\s*```+\s*($|\n)/);
       if (!closingMatch) {
         if (this.currentLang) {
           this.appendToLanguageBucket(this.currentLang, this.unprocessed);
