@@ -13,64 +13,75 @@ export class ChatComponent implements OnChanges {
   jsCode: string = '';
   otherCode: string = '';
 
+  // Streaming state
+  private buffer: string = '';
+  private insideBlock: boolean = false;
+  private currentLang: string | null = null;
+
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['chunk'] && this.chunk) {
       this.processChunk(this.chunk);
     }
   }
 
-  private processChunk(chunk: string): void {
+  private processChunk(chunk: string) {
     if (!chunk) return;
 
-    const normalized = chunk.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\r/g, '');
+    this.buffer += chunk.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\r/g, '');
 
-    // Split by ``` to find code blocks
-    const parts = normalized.split('```');
+    while (this.buffer.length > 0) {
+      if (!this.insideBlock) {
+        const fenceIndex = this.buffer.indexOf('```');
+        if (fenceIndex === -1) break;
 
-    for (let i = 1; i < parts.length; i += 2) {
-      const block = parts[i];
-      const lines = block.split('\n');
-
-      // Determine language: check first line, if empty, check second line
-      let langToken = lines[0].trim().toLowerCase();
-      let contentStartIndex = 1;
-
-      if (!langToken) {
-        // first line empty, take second line as language
-        langToken = lines[1]?.trim().toLowerCase() || 'other';
-        contentStartIndex = 2;
+        this.insideBlock = true;
+        this.buffer = this.buffer.slice(fenceIndex + 3);
+        this.currentLang = null; // language not yet known
       }
 
-      let lang: string;
-      if (langToken === 'html') lang = 'html';
-      else if (langToken === 'css') lang = 'css';
-      else if (langToken === 'js' || langToken === 'javascript') lang = 'js';
-      else {
-        lang = 'other';
-        contentStartIndex = 0; // keep first line as content
+      if (this.insideBlock && this.currentLang === null) {
+        // Try to detect language from start of buffer
+        const nlIndex = this.buffer.indexOf('\n');
+        let langLine = '';
+        if (nlIndex !== -1) {
+          langLine = this.buffer.slice(0, nlIndex).trim().toLowerCase();
+          this.buffer = this.buffer.slice(nlIndex + 1);
+        } else {
+          // no newline yet, wait for next chunk
+          break;
+        }
+
+        if (langLine === 'html') this.currentLang = 'html';
+        else if (langLine === 'css') this.currentLang = 'css';
+        else if (langLine === 'js' || langLine === 'javascript') this.currentLang = 'js';
+        else this.currentLang = 'other';
       }
 
-      const content = lines.slice(contentStartIndex).join('\n');
-      this.appendToLanguageBucket(lang, content);
+      if (this.insideBlock && this.currentLang !== null) {
+        const closingIndex = this.buffer.indexOf('```');
+        if (closingIndex === -1) {
+          // No closing fence yet, append everything
+          this.appendToLanguageBucket(this.currentLang, this.buffer);
+          this.buffer = '';
+          break;
+        } else {
+          const content = this.buffer.slice(0, closingIndex);
+          this.appendToLanguageBucket(this.currentLang, content);
+          this.buffer = this.buffer.slice(closingIndex + 3);
+          this.insideBlock = false;
+          this.currentLang = null;
+        }
+      }
     }
   }
 
   private appendToLanguageBucket(lang: string, content: string) {
     if (!content) return;
-
     switch (lang) {
-      case 'html':
-        this.htmlCode += content;
-        break;
-      case 'css':
-        this.cssCode += content;
-        break;
-      case 'js':
-        this.jsCode += content;
-        break;
-      default:
-        this.otherCode += content;
-        break;
+      case 'html': this.htmlCode += content; break;
+      case 'css': this.cssCode += content; break;
+      case 'js': this.jsCode += content; break;
+      default: this.otherCode += content; break;
     }
   }
 }
