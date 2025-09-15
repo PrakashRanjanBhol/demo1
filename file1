@@ -13,10 +13,10 @@ export class ChatComponent implements OnChanges {
   jsCode: string = '';
   otherCode: string = '';
 
-  // Streaming state
-  private buffer: string = '';
-  private insideBlock: boolean = false;
-  private currentLang: string | null = null;
+  private buffer: string = '';       // entire incoming buffer
+  private insideBlock = false;       // are we inside a code block?
+  private currentLang: string | null = null; // language of current code block
+  private blockBuffer: string = '';  // buffer for current code block content
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['chunk'] && this.chunk) {
@@ -27,6 +27,7 @@ export class ChatComponent implements OnChanges {
   private processChunk(chunk: string) {
     if (!chunk) return;
 
+    // normalize newlines
     this.buffer += chunk.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\r/g, '');
 
     while (this.buffer.length > 0) {
@@ -36,18 +37,19 @@ export class ChatComponent implements OnChanges {
 
         this.insideBlock = true;
         this.buffer = this.buffer.slice(fenceIndex + 3);
-        this.currentLang = null; // language not yet known
+        this.currentLang = null;
+        this.blockBuffer = '';
       }
 
       if (this.insideBlock && this.currentLang === null) {
-        // Try to detect language from start of buffer
+        // detect language
         const nlIndex = this.buffer.indexOf('\n');
         let langLine = '';
         if (nlIndex !== -1) {
           langLine = this.buffer.slice(0, nlIndex).trim().toLowerCase();
           this.buffer = this.buffer.slice(nlIndex + 1);
         } else {
-          // no newline yet, wait for next chunk
+          // wait for more data if no newline yet
           break;
         }
 
@@ -60,16 +62,20 @@ export class ChatComponent implements OnChanges {
       if (this.insideBlock && this.currentLang !== null) {
         const closingIndex = this.buffer.indexOf('```');
         if (closingIndex === -1) {
-          // No closing fence yet, append everything
-          this.appendToLanguageBucket(this.currentLang, this.buffer);
+          // no closing fence yet -> append all to blockBuffer and wait
+          this.blockBuffer += this.buffer;
           this.buffer = '';
           break;
         } else {
-          const content = this.buffer.slice(0, closingIndex);
-          this.appendToLanguageBucket(this.currentLang, content);
+          // closing fence found -> append until closing
+          this.blockBuffer += this.buffer.slice(0, closingIndex);
+          this.appendToLanguageBucket(this.currentLang, this.blockBuffer);
+
+          // remove used content + closing fence
           this.buffer = this.buffer.slice(closingIndex + 3);
           this.insideBlock = false;
           this.currentLang = null;
+          this.blockBuffer = '';
         }
       }
     }
