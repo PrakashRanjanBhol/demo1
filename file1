@@ -475,55 +475,123 @@ export class CodePreviewComponent implements OnChanges, AfterViewInit {
     const bodyContent = tempDiv.innerHTML;
     let resourcesToLoad = links.length + scripts.length;
     let loadedCount = 0;
+    let isTimedOut = false;
+
+    // 10-second timeout handler
+    const timeoutId = setTimeout(() => {
+      if (!isTimedOut) {
+        isTimedOut = true;
+        console.warn('Resource loading timed out after 10 seconds');
+        showTimeoutAndProceed();
+      }
+    }, 10000);
+
+    const showTimeoutAndProceed = () => {
+      const previewLoader = doc.getElementById('preview-loader');
+      if (previewLoader) {
+        // Update loader to show timeout message
+        const loaderContent = previewLoader.querySelector('.loader-content');
+        if (loaderContent) {
+          loaderContent.innerHTML = `
+            <h2 class="loader-title" style="opacity: 1; color: #ff6b6b;">Request Timed Out</h2>
+            <div class="timeout-icon" style="font-size: 48px; margin: 20px 0;">⏱️</div>
+            <p class="loading-text" style="opacity: 1;">Some external resources took too long to load.<br/>Proceeding with available content...</p>
+            <div class="timeout-progress" style="width: 200px; height: 3px; background: rgba(255, 107, 107, 0.3); border-radius: 3px; margin: 20px auto; overflow: hidden;">
+              <div style="width: 100%; height: 100%; background: #ff6b6b; animation: timeoutFill 2s ease-out;"></div>
+            </div>
+          `;
+          
+          // Add timeout animation
+          const style = doc.createElement('style');
+          style.textContent += `
+            @keyframes timeoutFill {
+              0% { transform: translateX(-100%); }
+              100% { transform: translateX(0); }
+            }
+          `;
+          doc.head.appendChild(style);
+        }
+
+        // Proceed after showing timeout message
+        setTimeout(() => {
+          proceedWithContent();
+        }, 2500);
+      }
+    };
+
+    const proceedWithContent = () => {
+      const previewLoader = doc.getElementById('preview-loader');
+      if (previewLoader) {
+        previewLoader.style.animation = 'fadeOut 0.5s ease-out forwards';
+        setTimeout(() => {
+          previewLoader.remove();
+          doc.body.className = 'content-loaded';
+          doc.body.style.background = 'white';
+          
+          // Show content with timeout warning if resources failed
+          let finalContent = bodyContent;
+          if (isTimedOut && (loadedCount < resourcesToLoad)) {
+            const timeoutWarning = `
+              <div style="background: #fff3cd; color: #856404; padding: 12px; margin-bottom: 15px; border: 1px solid #ffeaa7; border-radius: 6px; font-size: 14px;">
+                <strong>⚠️ Loading Warning:</strong> ${resourcesToLoad - loadedCount} external resource(s) failed to load within 10 seconds and were skipped.
+              </div>
+            `;
+            finalContent = timeoutWarning + bodyContent;
+          }
+          
+          doc.body.innerHTML = finalContent;
+
+          // Inline JS (not from src) + user JS
+          const inlineScript = doc.createElement('script');
+          inlineScript.textContent = `
+            window.onerror = function(msg) {
+              document.body.innerHTML += '<div style="color:red;padding:5px;background:#ffe6e6;border:1px solid red;margin:10px 0;border-radius:4px;">Error: ' + msg + '</div>';
+            };
+            try {
+              ${this.jsCode}
+            } catch(e) {
+              document.body.innerHTML += '<div style="color:red;padding:5px;background:#ffe6e6;border:1px solid red;margin:10px 0;border-radius:4px;">Error: ' + e.message + '</div>';
+            }
+          `;
+          doc.body.appendChild(inlineScript);
+        }, 500);
+      }
+    };
 
     const checkIfDone = () => {
+      if (isTimedOut) return; // Don't process if already timed out
+      
       loadedCount++;
       if (loadedCount >= resourcesToLoad) {
+        clearTimeout(timeoutId); // Cancel timeout since we're done
         setTimeout(() => {
-          const previewLoader = doc.getElementById('preview-loader');
-          if (previewLoader) {
-            previewLoader.style.animation = 'fadeOut 0.5s ease-out forwards';
-            setTimeout(() => {
-              previewLoader.remove();
-              doc.body.className = 'content-loaded';
-              doc.body.style.background = 'white';
-              doc.body.innerHTML = bodyContent;
-
-              // Inline JS (not from src) + user JS
-              const inlineScript = doc.createElement('script');
-              inlineScript.textContent = `
-                window.onerror = function(msg) {
-                  document.body.innerHTML += '<div style="color:red;padding:5px;background:#ffe6e6;border:1px solid red;margin:10px 0;border-radius:4px;">Error: ' + msg + '</div>';
-                };
-                try {
-                  ${this.jsCode}
-                } catch(e) {
-                  document.body.innerHTML += '<div style="color:red;padding:5px;background:#ffe6e6;border:1px solid red;margin:10px 0;border-radius:4px;">Error: ' + e.message + '</div>';
-                }
-              `;
-              doc.body.appendChild(inlineScript);
-            }, 500);
-          }
+          proceedWithContent();
         }, 1200);
       }
     };
 
-    // Append CSS links
-    links.forEach(link => {
+    // Append CSS links with timeout handling
+    links.forEach((link, index) => {
       const newLink = doc.createElement('link');
       newLink.rel = 'stylesheet';
       newLink.href = link.getAttribute('href')!;
       newLink.onload = checkIfDone;
-      newLink.onerror = checkIfDone;
+      newLink.onerror = () => {
+        console.warn(`Failed to load CSS: ${newLink.href}`);
+        checkIfDone();
+      };
       doc.head.appendChild(newLink);
     });
 
-    // Append JS scripts
-    scripts.forEach(script => {
+    // Append JS scripts with timeout handling
+    scripts.forEach((script, index) => {
       const newScript = doc.createElement('script');
       newScript.src = script.getAttribute('src')!;
       newScript.onload = checkIfDone;
-      newScript.onerror = checkIfDone;
+      newScript.onerror = () => {
+        console.warn(`Failed to load JS: ${newScript.src}`);
+        checkIfDone();
+      };
       doc.body.appendChild(newScript);
     });
   }
