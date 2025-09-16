@@ -1,11 +1,5 @@
 // model-selector.component.ts
-import { Component, EventEmitter, Output, HostListener, OnInit } from '@angular/core';
-
-export interface ModelOption {
-  id: string;
-  name: string;
-  status: 'active' | 'beta' | 'soon';
-}
+import { Component, EventEmitter, Output, HostListener, OnInit, Input } from '@angular/core';
 
 @Component({
   selector: 'app-model-selector',
@@ -23,7 +17,7 @@ export interface ModelOption {
           
           <div class="model-name">
             <span class="model-icon"></span>
-            <span>{{ selectedModel?.name || 'Select Model' }}</span>
+            <span>{{ selectedModel || 'Select Model' }}</span>
           </div>
           <span class="dropdown-arrow">▼</span>
         </div>
@@ -34,26 +28,17 @@ export interface ModelOption {
           role="listbox">
           
           <div 
-            *ngFor="let model of models; trackBy: trackByModelId"
+            *ngFor="let model of models; trackBy: trackByModel"
             class="dropdown-item"
-            [class.selected]="model.id === selectedModel?.id"
+            [class.selected]="model === selectedModel"
             (click)="selectModel(model)"
             role="option"
-            [attr.aria-selected]="model.id === selectedModel?.id">
+            [attr.aria-selected]="model === selectedModel">
             
             <div class="item-info">
               <span class="model-icon"></span>
-              <span class="item-name">{{ model.name }}</span>
+              <span class="item-name">{{ model }}</span>
             </div>
-            <span 
-              class="item-status"
-              [ngClass]="{
-                'status-active': model.status === 'active',
-                'status-beta': model.status === 'beta',
-                'status-soon': model.status === 'soon'
-              }">
-              {{ model.status === 'soon' ? 'Soon' : model.status }}
-            </span>
           </div>
         </div>
       </div>
@@ -197,30 +182,6 @@ export interface ModelOption {
       font-weight: 500;
     }
 
-    .item-status {
-      padding: 2px 6px;
-      border-radius: 4px;
-      font-size: 0.7rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.3px;
-    }
-
-    .status-active {
-      background: rgba(34, 197, 94, 0.2);
-      color: #22c55e;
-    }
-
-    .status-beta {
-      background: rgba(251, 146, 60, 0.2);
-      color: #fb923c;
-    }
-
-    .status-soon {
-      background: rgba(156, 163, 175, 0.2);
-      color: #9ca3af;
-    }
-
     .refresh-btn {
       display: flex;
       align-items: center;
@@ -271,36 +232,26 @@ export interface ModelOption {
   `]
 })
 export class ModelSelectorComponent implements OnInit {
-  @Output() modelChanged = new EventEmitter<ModelOption>();
+  @Input() models: string[] = ['gpt-4-turbo', 'gpt-5'];
+  @Output() modelChanged = new EventEmitter<string>();
   @Output() modelsRefreshed = new EventEmitter<void>();
 
-  models: ModelOption[] = [
-    { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', status: 'active' },
-    { id: 'claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', status: 'active' },
-    { id: 'gemini-pro', name: 'Gemini Pro', status: 'active' },
-    { id: 'llama-3.1-70b', name: 'LLaMA 3.1 70B', status: 'beta' },
-    { id: 'gpt-5', name: 'GPT-5', status: 'soon' }
-  ];
-
-  selectedModel: ModelOption | null = null;
+  selectedModel: string | null = null;
   isDropdownOpen = false;
   isRefreshing = false;
 
   ngOnInit(): void {
-    // Set default selection
-    this.selectedModel = this.models[0];
+    // Set default selection to first model
+    if (this.models.length > 0) {
+      this.selectedModel = this.models[0];
+    }
   }
 
   toggleDropdown(): void {
     this.isDropdownOpen = !this.isDropdownOpen;
   }
 
-  selectModel(model: ModelOption): void {
-    if (model.status === 'soon') {
-      // Optionally prevent selection of "soon" models
-      return;
-    }
-
+  selectModel(model: string): void {
     this.selectedModel = model;
     this.isDropdownOpen = false;
     this.modelChanged.emit(model);
@@ -317,8 +268,8 @@ export class ModelSelectorComponent implements OnInit {
     }, 1000);
   }
 
-  trackByModelId(index: number, model: ModelOption): string {
-    return model.id;
+  trackByModel(index: number, model: string): string {
+    return model;
   }
 
   // Close dropdown when clicking outside
@@ -345,7 +296,6 @@ export class ModelSelectorComponent implements OnInit {
 
 /*
 import { Component } from '@angular/core';
-import { ModelOption } from './model-selector/model-selector.component';
 
 @Component({
   selector: 'app-root',
@@ -354,14 +304,17 @@ import { ModelOption } from './model-selector/model-selector.component';
       <div class="logo">AI Assistant</div>
       
       <app-model-selector 
+        [models]="availableModels"
         (modelChanged)="onModelChanged($event)"
         (modelsRefreshed)="onModelsRefreshed()">
       </app-model-selector>
     </div>
     
     <div class="app-content">
-      <h2>Selected Model: {{ currentModel?.name || 'None' }}</h2>
-      <p>Model ID: {{ currentModel?.id || 'None' }}</p>
+      <h2>Selected Model: {{ currentModel || 'None' }}</h2>
+      <p>Available Models: {{ availableModels.length }}</p>
+      
+      <button (click)="addModel()" class="add-btn">Add Random Model</button>
     </div>
   `,
   styles: [`
@@ -387,6 +340,21 @@ import { ModelOption } from './model-selector/model-selector.component';
       text-align: center;
     }
 
+    .add-btn {
+      margin-top: 20px;
+      padding: 8px 16px;
+      background: #667eea;
+      border: none;
+      border-radius: 6px;
+      color: white;
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }
+
+    .add-btn:hover {
+      background: #5a6fd8;
+    }
+
     :host {
       display: block;
       background: #111113;
@@ -395,60 +363,71 @@ import { ModelOption } from './model-selector/model-selector.component';
   `]
 })
 export class AppComponent {
-  currentModel: ModelOption | null = null;
+  availableModels: string[] = ['gpt-4-turbo', 'gpt-5'];
+  currentModel: string | null = null;
 
-  onModelChanged(model: ModelOption): void {
+  onModelChanged(model: string): void {
     this.currentModel = model;
     console.log('Model changed to:', model);
     
     // Add your model change logic here
-    // For example: this.apiService.setModel(model.id);
+    // For example: this.apiService.setModel(model);
   }
 
   onModelsRefreshed(): void {
     console.log('Models refreshed');
     
     // Add your refresh logic here
-    // For example: this.apiService.refreshModels();
+    // For example: this.loadModelsFromAPI();
+  }
+
+  addModel(): void {
+    const randomModels = ['claude-3.5-sonnet', 'gemini-pro', 'llama-3.1-70b'];
+    const randomModel = randomModels[Math.floor(Math.random() * randomModels.length)];
+    
+    if (!this.availableModels.includes(randomModel)) {
+      this.availableModels.push(randomModel);
+    }
   }
 }
 */
 
 // ========================================
-// MODULE SETUP - app.module.ts
+// SERVICE EXAMPLE - model.service.ts
 // ========================================
 
 /*
-import { NgModule } from '@angular/core';
-import { BrowserModule } from '@angular/platform-browser';
-import { CommonModule } from '@angular/common';
+import { Injectable } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Observable, BehaviorSubject } from 'rxjs';
 
-import { AppComponent } from './app.component';
-import { ModelSelectorComponent } from './model-selector/model-selector.component';
-
-@NgModule({
-  declarations: [
-    AppComponent,
-    ModelSelectorComponent
-  ],
-  imports: [
-    BrowserModule,
-    CommonModule
-  ],
-  providers: [],
-  bootstrap: [AppComponent]
+@Injectable({
+  providedIn: 'root'
 })
-export class AppModule { }
+export class ModelService {
+  private modelsSubject = new BehaviorSubject<string[]>(['gpt-4-turbo', 'gpt-5']);
+  public models$ = this.modelsSubject.asObservable();
+
+  private selectedModelSubject = new BehaviorSubject<string | null>(null);
+  public selectedModel$ = this.selectedModelSubject.asObservable();
+
+  constructor(private http: HttpClient) {}
+
+  getModels(): Observable<string[]> {
+    return this.models$;
+  }
+
+  setSelectedModel(model: string): void {
+    this.selectedModelSubject.next(model);
+  }
+
+  refreshModels(): Observable<string[]> {
+    // Replace with actual API call
+    return this.http.get<string[]>('/api/models');
+  }
+
+  updateModels(models: string[]): void {
+    this.modelsSubject.next(models);
+  }
+}
 */
-
-
-
-
-
-
-
-
-<app-model-selector 
-  (modelChanged)="onModelChanged($event)"
-  (modelsRefreshed)="onModelsRefreshed()">
-</app-model-selector>
