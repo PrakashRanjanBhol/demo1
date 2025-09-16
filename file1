@@ -1,104 +1,86 @@
-private consolidateCode(): string {
-  return `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Live Preview</title>
-  <style>
-    body { margin: 0; padding: 20px; font-family: Arial, sans-serif; }
-    ${this.cssCode}
+updatePreview() {
+  if (!this.previewFrame?.nativeElement) return;
 
-    /* Loader styles */
-    #loader {
-      position: fixed;
-      inset: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: rgba(255, 255, 255, 0.9);
-      z-index: 9999;
-      font-size: 18px;
-      font-weight: bold;
-      color: #007bff;
-    }
+  const iframe = this.previewFrame.nativeElement;
+  const doc = iframe.contentDocument || iframe.contentWindow?.document;
+  if (!doc) return;
 
-    .spinner {
-      border: 4px solid #f3f3f3;
-      border-top: 4px solid #007bff;
-      border-radius: 50%;
-      width: 40px;
-      height: 40px;
-      animation: spin 1s linear infinite;
-      margin-right: 10px;
-    }
+  doc.open();
+  doc.write(`
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <title>Live Preview</title>
+      <style>
+        body { margin: 0; padding: 20px; font-family: Arial, sans-serif; }
+        ${this.cssCode}
+      </style>
+    </head>
+    <body>
+      <div id="preview-loader" style="padding:10px;font-size:14px;color:#555;">Loading external resources...</div>
+    </body>
+    </html>
+  `);
+  doc.close();
 
-    @keyframes spin {
-      100% { transform: rotate(360deg); }
-    }
-  </style>
-</head>
-<body>
-  <div id="loader">
-    <div class="spinner"></div>
-    Loading preview...
-  </div>
+  // Parse HTML for external resources
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = this.htmlCode;
 
-  <div id="content" style="display:none;">
-    ${this.htmlCode}
-  </div>
+  const bodyContent = tempDiv.innerHTML;
+  const links = tempDiv.querySelectorAll('link[rel="stylesheet"]');
+  const scripts = tempDiv.querySelectorAll('script[src]');
 
-  <script>
-    function waitForResources() {
-      const links = Array.from(document.querySelectorAll("link[rel='stylesheet']"));
-      const scripts = Array.from(document.querySelectorAll("script[src]"));
+  let resourcesToLoad = links.length + scripts.length;
+  let loadedCount = 0;
 
-      const promises = [];
+  const checkIfDone = () => {
+    loadedCount++;
+    if (loadedCount >= resourcesToLoad) {
+      // Replace loader with actual content
+      const previewLoader = doc.getElementById('preview-loader');
+      if (previewLoader) previewLoader.remove();
 
-      // Wait for stylesheets
-      links.forEach(link => {
-        promises.push(new Promise((resolve, reject) => {
-          link.addEventListener("load", resolve);
-          link.addEventListener("error", reject);
-        }));
-      });
+      doc.body.innerHTML = bodyContent;
 
-      // Wait for external scripts
-      scripts.forEach(script => {
-        if (script.src) {
-          promises.push(new Promise((resolve, reject) => {
-            script.addEventListener("load", resolve);
-            script.addEventListener("error", reject);
-          }));
-        }
-      });
-
-      return Promise.allSettled(promises);
-    }
-
-    async function init() {
-      try {
-        await waitForResources();
-
-        // Run user JS
+      // Inline JS (not from src) + user JS
+      const inlineScript = doc.createElement('script');
+      inlineScript.textContent = `
+        window.onerror = function(msg) {
+          document.body.innerHTML += '<div style="color:red;padding:5px;">Error: ' + msg + '</div>';
+        };
         try {
           ${this.jsCode}
-        } catch (err) {
-          document.body.insertAdjacentHTML('beforeend',
-            '<div style="color:red;background:#ffe6e6;padding:10px;margin:10px 0;border:1px solid red;border-radius:4px;"><strong>JavaScript Error:</strong> ' + err.message + '</div>'
-          );
+        } catch(e) {
+          document.body.innerHTML += '<div style="color:red;padding:5px;">Error: ' + e.message + '</div>';
         }
-
-      } finally {
-        // Hide loader & show content
-        document.getElementById("loader").style.display = "none";
-        document.getElementById("content").style.display = "block";
-      }
+      `;
+      doc.body.appendChild(inlineScript);
     }
+  };
 
-    window.addEventListener("load", init);
-  </script>
-</body>
-</html>`;
+  if (resourcesToLoad === 0) {
+    checkIfDone();
+  } else {
+    // Append CSS links
+    links.forEach(link => {
+      const newLink = doc.createElement('link');
+      newLink.rel = 'stylesheet';
+      newLink.href = link.getAttribute('href')!;
+      newLink.onload = checkIfDone;
+      newLink.onerror = checkIfDone;
+      doc.head.appendChild(newLink);
+    });
+
+    // Append JS scripts
+    scripts.forEach(script => {
+      const newScript = doc.createElement('script');
+      newScript.src = script.getAttribute('src')!;
+      newScript.onload = checkIfDone;
+      newScript.onerror = checkIfDone;
+      doc.body.appendChild(newScript);
+    });
+  }
 }
