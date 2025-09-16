@@ -1,86 +1,566 @@
-updatePreview() {
-  if (!this.previewFrame?.nativeElement) return;
+import { Component, Input, OnChanges, SimpleChanges, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 
-  const iframe = this.previewFrame.nativeElement;
-  const doc = iframe.contentDocument || iframe.contentWindow?.document;
-  if (!doc) return;
-
-  doc.open();
-  doc.write(`
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8" />
-      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-      <title>Live Preview</title>
-      <style>
-        body { margin: 0; padding: 20px; font-family: Arial, sans-serif; }
-        ${this.cssCode}
-      </style>
-    </head>
-    <body>
-      <div id="preview-loader" style="padding:10px;font-size:14px;color:#555;">Loading external resources...</div>
-    </body>
-    </html>
-  `);
-  doc.close();
-
-  // Parse HTML for external resources
-  const tempDiv = document.createElement('div');
-  tempDiv.innerHTML = this.htmlCode;
-
-  const bodyContent = tempDiv.innerHTML;
-  const links = tempDiv.querySelectorAll('link[rel="stylesheet"]');
-  const scripts = tempDiv.querySelectorAll('script[src]');
-
-  let resourcesToLoad = links.length + scripts.length;
-  let loadedCount = 0;
-
-  const checkIfDone = () => {
-    loadedCount++;
-    if (loadedCount >= resourcesToLoad) {
-      // Replace loader with actual content
-      const previewLoader = doc.getElementById('preview-loader');
-      if (previewLoader) previewLoader.remove();
-
-      doc.body.innerHTML = bodyContent;
-
-      // Inline JS (not from src) + user JS
-      const inlineScript = doc.createElement('script');
-      inlineScript.textContent = `
-        window.onerror = function(msg) {
-          document.body.innerHTML += '<div style="color:red;padding:5px;">Error: ' + msg + '</div>';
-        };
-        try {
-          ${this.jsCode}
-        } catch(e) {
-          document.body.innerHTML += '<div style="color:red;padding:5px;">Error: ' + e.message + '</div>';
-        }
-      `;
-      doc.body.appendChild(inlineScript);
+@Component({
+  selector: 'app-code-preview',
+  template: `
+    <div class="code-preview-container">
+      <!-- Code Input Section -->
+      <div class="code-inputs">
+        <div class="input-group">
+          <label>HTML Code:</label>
+          <textarea 
+            [(ngModel)]="htmlCode" 
+            (input)="updatePreview()"
+            placeholder="Enter HTML code here..."
+            class="code-textarea">
+          </textarea>
+        </div>
+        
+        <div class="input-group">
+          <label>CSS Code:</label>
+          <textarea 
+            [(ngModel)]="cssCode" 
+            (input)="updatePreview()"
+            placeholder="Enter CSS code here..."
+            class="code-textarea">
+          </textarea>
+        </div>
+        
+        <div class="input-group">
+          <label>JavaScript Code:</label>
+          <textarea 
+            [(ngModel)]="jsCode" 
+            (input)="updatePreview()"
+            placeholder="Enter JavaScript code here..."
+            class="code-textarea">
+          </textarea>
+        </div>
+      </div>
+      
+      <!-- Preview Section -->
+      <div class="preview-section">
+        <div class="preview-header">
+          <h3>Live Preview</h3>
+          <button (click)="refreshPreview()" class="refresh-btn">Refresh</button>
+        </div>
+        <div class="preview-container">
+          <iframe 
+            #previewFrame
+            class="preview-iframe"
+            sandbox="allow-scripts allow-same-origin">
+          </iframe>
+        </div>
+      </div>
+    </div>
+  `,
+   styles: [`
+    .code-preview-container {
+      display: flex;
+      gap: 20px;
+      height: 100vh;
+      padding: 20px;
     }
-  };
+    
+    .code-inputs {
+      width: 350px;
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+    
+    .input-group {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+    }
+    
+    .input-group label {
+      font-weight: bold;
+      margin-bottom: 5px;
+      color: #333;
+    }
+    
+    .code-textarea {
+      flex: 1;
+      font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+      font-size: 14px;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      resize: none;
+      background: #f8f9fa;
+    }
+    
+    .code-textarea:focus {
+      outline: none;
+      border-color: #007bff;
+      box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+    }
+    
+    .preview-section {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .preview-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    
+    .preview-header h3 {
+      margin: 0;
+      color: #333;
+    }
+    
+    .refresh-btn {
+      padding: 8px 16px;
+      background: #007bff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    
+    .refresh-btn:hover {
+      background: #0056b3;
+    }
+    
+    .preview-container {
+      flex: 1;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    
+    .preview-iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      background: white;
+    }
+    
+    @media (max-width: 768px) {
+      .code-preview-container {
+        flex-direction: column;
+        height: auto;
+      }
+      
+      .code-inputs {
+        width: 100%;
+        height: 60vh;
+      }
+      
+      .preview-section {
+        width: 100%;
+        height: 40vh;
+      }
+    }
+  `]
+})
+export class CodePreviewComponent implements OnChanges, AfterViewInit {
+  @Input() htmlCode: string = '';
+  @Input() cssCode: string = '';
+  @Input() jsCode: string = '';
 
-  if (resourcesToLoad === 0) {
-    checkIfDone();
-  } else {
-    // Append CSS links
-    links.forEach(link => {
-      const newLink = doc.createElement('link');
-      newLink.rel = 'stylesheet';
-      newLink.href = link.getAttribute('href')!;
-      newLink.onload = checkIfDone;
-      newLink.onerror = checkIfDone;
-      doc.head.appendChild(newLink);
-    });
+  @ViewChild('previewFrame') previewFrame!: ElementRef<HTMLIFrameElement>;
 
-    // Append JS scripts
-    scripts.forEach(script => {
-      const newScript = doc.createElement('script');
-      newScript.src = script.getAttribute('src')!;
-      newScript.onload = checkIfDone;
-      newScript.onerror = checkIfDone;
-      doc.body.appendChild(newScript);
-    });
+  constructor(private sanitizer: DomSanitizer) { }
+
+  ngAfterViewInit() {
+    this.updatePreview();
+  }
+
+  ngOnChanges(changes: SimpleChanges) {
+    if (this.previewFrame) {
+      this.updatePreview();
+    }
+  }
+
+  updatePreview() {
+    if (!this.previewFrame?.nativeElement) return;
+
+    const iframe = this.previewFrame.nativeElement;
+    const doc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (!doc) return;
+
+    doc.open();
+    doc.write(`
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Live Preview</title>
+        <style>
+          body { 
+            margin: 0; 
+            padding: 20px; 
+            font-family: Arial, sans-serif; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+          }
+          
+          /* Animated Loading Styles */
+          .preview-loader {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+          }
+          
+          .loader-content {
+            text-align: center;
+            color: white;
+          }
+          
+          .loader-title {
+            font-size: 28px;
+            font-weight: 300;
+            margin-bottom: 30px;
+            opacity: 0;
+            animation: fadeInUp 0.8s ease-out 0.2s forwards;
+          }
+          
+          .spinner-container {
+            position: relative;
+            width: 120px;
+            height: 120px;
+            margin: 0 auto 30px;
+          }
+          
+          .spinner {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            border-top: 3px solid #fff;
+            animation: spin 1.2s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite;
+          }
+          
+          .spinner:nth-child(2) {
+            width: 80%;
+            height: 80%;
+            top: 10%;
+            left: 10%;
+            border-top-color: #ff6b9d;
+            animation-delay: -0.4s;
+            animation-duration: 1.8s;
+          }
+          
+          .spinner:nth-child(3) {
+            width: 60%;
+            height: 60%;
+            top: 20%;
+            left: 20%;
+            border-top-color: #4ecdc4;
+            animation-delay: -0.8s;
+            animation-duration: 2.4s;
+          }
+          
+          .loading-text {
+            font-size: 18px;
+            font-weight: 300;
+            opacity: 0;
+            animation: fadeInUp 0.8s ease-out 0.6s forwards;
+          }
+          
+          .loading-dots {
+            display: inline-block;
+            width: 4px;
+            animation: loadingDots 1.5s infinite;
+          }
+          
+          .progress-bar {
+            width: 200px;
+            height: 3px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+            margin: 20px auto 0;
+            overflow: hidden;
+            opacity: 0;
+            animation: fadeInUp 0.8s ease-out 1s forwards;
+          }
+          
+          .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ff6b9d, #4ecdc4, #45b7d1);
+            background-size: 200% 100%;
+            border-radius: 3px;
+            animation: progressFill 2s ease-in-out, shimmer 1.5s ease-in-out infinite;
+            transform: translateX(-100%);
+          }
+          
+          .floating-particles {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            pointer-events: none;
+          }
+          
+          .particle {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.6);
+            border-radius: 50%;
+            animation: float 3s ease-in-out infinite;
+          }
+          
+          .particle:nth-child(1) { left: 10%; animation-delay: 0s; }
+          .particle:nth-child(2) { left: 20%; animation-delay: -0.5s; }
+          .particle:nth-child(3) { left: 30%; animation-delay: -1s; }
+          .particle:nth-child(4) { left: 40%; animation-delay: -1.5s; }
+          .particle:nth-child(5) { left: 50%; animation-delay: -2s; }
+          .particle:nth-child(6) { left: 60%; animation-delay: -2.5s; }
+          .particle:nth-child(7) { left: 70%; animation-delay: -3s; }
+          .particle:nth-child(8) { left: 80%; animation-delay: -3.5s; }
+          .particle:nth-child(9) { left: 90%; animation-delay: -4s; }
+          
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+          
+          @keyframes fadeInUp {
+            0% {
+              opacity: 0;
+              transform: translateY(30px);
+            }
+            100% {
+              opacity: 1;
+              transform: translateY(0);
+            }
+          }
+          
+          @keyframes loadingDots {
+            0%, 20% { content: ''; }
+            40% { content: '.'; }
+            60% { content: '..'; }
+            80%, 100% { content: '...'; }
+          }
+          
+          @keyframes progressFill {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(0); }
+          }
+          
+          @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+          }
+          
+          @keyframes float {
+            0%, 100% {
+              transform: translateY(0px) rotate(0deg);
+              opacity: 1;
+            }
+            50% {
+              transform: translateY(-100px) rotate(180deg);
+              opacity: 0.5;
+            }
+          }
+          
+          /* Content styles after loading */
+          .content-loaded {
+            background: white;
+            animation: contentFadeIn 0.8s ease-out forwards;
+          }
+          
+          @keyframes contentFadeIn {
+            0% {
+              opacity: 0;
+              transform: scale(0.95);
+            }
+            100% {
+              opacity: 1;
+              transform: scale(1);
+            }
+          }
+          
+          ${this.cssCode}
+        </style>
+      </head>
+      <body>
+        <div id="preview-loader" class="preview-loader">
+          <div class="floating-particles">
+            <div class="particle"></div>
+            <div class="particle"></div>
+            <div class="particle"></div>
+            <div class="particle"></div>
+            <div class="particle"></div>
+            <div class="particle"></div>
+            <div class="particle"></div>
+            <div class="particle"></div>
+            <div class="particle"></div>
+          </div>
+          <div class="loader-content">
+            <h2 class="loader-title">Loading Resources</h2>
+            <div class="spinner-container">
+              <div class="spinner"></div>
+              <div class="spinner"></div>
+              <div class="spinner"></div>
+            </div>
+            <p class="loading-text">Please wait while we fetch external resources<span class="loading-dots"></span></p>
+            <div class="progress-bar">
+              <div class="progress-fill"></div>
+            </div>
+          </div>
+        </div>
+      </body>
+      </html>
+    `);
+    doc.close();
+
+    // Parse HTML for external resources
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = this.htmlCode;
+
+    const bodyContent = tempDiv.innerHTML;
+    const links = tempDiv.querySelectorAll('link[rel="stylesheet"]');
+    const scripts = tempDiv.querySelectorAll('script[src]');
+
+    let resourcesToLoad = links.length + scripts.length;
+    let loadedCount = 0;
+
+    const checkIfDone = () => {
+      loadedCount++;
+      if (loadedCount >= resourcesToLoad) {
+        // Add a slight delay for better UX
+        setTimeout(() => {
+          const previewLoader = doc.getElementById('preview-loader');
+          if (previewLoader) {
+            previewLoader.style.animation = 'fadeOut 0.5s ease-out forwards';
+            setTimeout(() => {
+              previewLoader.remove();
+              doc.body.className = 'content-loaded';
+              doc.body.style.background = 'white';
+              doc.body.innerHTML = bodyContent;
+
+              // Inline JS (not from src) + user JS
+              const inlineScript = doc.createElement('script');
+              inlineScript.textContent = `
+                window.onerror = function(msg) {
+                  document.body.innerHTML += '<div style="color:red;padding:5px;background:#ffe6e6;border:1px solid red;margin:10px 0;border-radius:4px;">Error: ' + msg + '</div>';
+                };
+                try {
+                  ${this.jsCode}
+                } catch(e) {
+                  document.body.innerHTML += '<div style="color:red;padding:5px;background:#ffe6e6;border:1px solid red;margin:10px 0;border-radius:4px;">Error: ' + e.message + '</div>';
+                }
+              `;
+              doc.body.appendChild(inlineScript);
+            }, 500);
+          }
+        }, 1500); // Minimum loading time for better UX
+      }
+    };
+
+    // Add fadeOut animation to CSS
+    const style = doc.createElement('style');
+    style.textContent = `
+      @keyframes fadeOut {
+        0% { opacity: 1; transform: scale(1); }
+        100% { opacity: 0; transform: scale(1.05); }
+      }
+    `;
+    doc.head.appendChild(style);
+
+    if (resourcesToLoad === 0) {
+      checkIfDone();
+    } else {
+      // Append CSS links
+      links.forEach(link => {
+        const newLink = doc.createElement('link');
+        newLink.rel = 'stylesheet';
+        newLink.href = link.getAttribute('href')!;
+        newLink.onload = checkIfDone;
+        newLink.onerror = checkIfDone;
+        doc.head.appendChild(newLink);
+      });
+
+      // Append JS scripts
+      scripts.forEach(script => {
+        const newScript = doc.createElement('script');
+        newScript.src = script.getAttribute('src')!;
+        newScript.onload = checkIfDone;
+        newScript.onerror = checkIfDone;
+        doc.body.appendChild(newScript);
+      });
+    }
+  }
+
+  refreshPreview() {
+    this.updatePreview();
+  }
+
+  private consolidateCode(): string {
+    return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Preview</title>
+    <style>
+        /* Reset some default styles */
+        body { margin: 0; padding: 20px; font-family: Arial, sans-serif; }
+        
+        /* User CSS */
+        ${this.cssCode}
+    </style>
+</head>
+<body>
+    ${this.htmlCode}
+    
+    <script>
+        // Error handling for JavaScript
+        window.onerror = function(msg, url, lineNo, columnNo, error) {
+            document.body.innerHTML += '<div style="color: red; background: #ffe6e6; padding: 10px; margin: 10px 0; border: 1px solid red; border-radius: 4px;"><strong>JavaScript Error:</strong> ' + msg + '</div>';
+            return false;
+        };
+        
+        // User JavaScript
+        try {
+            ${this.jsCode}
+        } catch (error) {
+            document.body.innerHTML += '<div style="color: red; background: #ffe6e6; padding: 10px; margin: 10px 0; border: 1px solid red; border-radius: 4px;"><strong>JavaScript Error:</strong> ' + error.message + '</div>';
+        }
+    </script>
+</body>
+</html>`;
+  }
+
+  // Method to set code from external source (like LLM response)
+  setCodeFromLLMResponse(htmlBlock: string, cssBlock: string, jsBlock: string) {
+    this.htmlCode = htmlBlock;
+    this.cssCode = cssBlock;
+    this.jsCode = jsBlock;
+    this.updatePreview();
+  }
+
+  // Method to extract code blocks from markdown-style response
+  extractCodeFromMarkdown(llmResponse: string) {
+    const htmlMatch = llmResponse.match(/```html\n([\s\S]*?)\n```/i);
+    const cssMatch = llmResponse.match(/```css\n([\s\S]*?)\n```/i);
+    const jsMatch = llmResponse.match(/```(?:javascript|js)\n([\s\S]*?)\n```/i);
+
+    this.htmlCode = htmlMatch ? htmlMatch[1].trim() : '';
+    this.cssCode = cssMatch ? cssMatch[1].trim() : '';
+    this.jsCode = jsMatch ? jsMatch[1].trim() : '';
+
+    this.updatePreview();
   }
 }
