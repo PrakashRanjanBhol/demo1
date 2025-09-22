@@ -1,49 +1,230 @@
-// app.component.ts
-import { Component, OnInit, AfterViewInit, ElementRef, ViewChild, HostListener } from '@angular/core';
-import { MarkdownService } from './services/markdown.service';
+<!DOCTYPE html>
+<html lang="en">
 
-@Component({
-  selector: 'app-root',
-  template: `
-    <div class="container">
-      <div class="sidebar" #sidebar>
-        <h3>Table of Contents</h3>
-        <ul class="toc">
-          <li *ngFor="let item of tocItems; let i = index">
-            <a 
-              [href]="'#' + item.id" 
-              [class]="'level-' + item.level + (activeSection === i ? ' active' : '')"
-              (click)="scrollToSection($event, item.id)">
-              {{ item.text }}
-            </a>
-          </li>
-        </ul>
-      </div>
-      
-      <div class="resizer" #resizer></div>
-      
-      <div class="main-content" #mainContent>
-        <div class="content" [innerHTML]="htmlContent" #content></div>
-      </div>
-    </div>
-  `,
-  styleUrls: ['./app.component.css']
-})
-export class AppComponent implements OnInit, AfterViewInit {
-  @ViewChild('sidebar') sidebar!: ElementRef;
-  @ViewChild('resizer') resizer!: ElementRef;
-  @ViewChild('content') content!: ElementRef;
-  @ViewChild('mainContent') mainContent!: ElementRef;
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Best Practices Documentation</title>
 
-  htmlContent: string = '';
-  tocItems: Array<{id: string, text: string, level: number}> = [];
-  activeSection: number = 0;
-  private isResizing: boolean = false;
+  <!-- Highlight.js CSS -->
+  <link rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/atom-one-dark.min.css">
 
-  constructor(private markdownService: MarkdownService) {}
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
 
-  ngOnInit() {
-    const markdownContent = `# Application Development Best Practices
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #111113;
+      color: #e4e4e7;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Input section */
+    .input-section {
+      height: 40%;
+      border-bottom: 2px solid #2a2a2f;
+      background: #1a1a1d;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .input-section h3 {
+      padding: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      color: #60a5fa;
+      border-bottom: 1px solid #2a2a2f;
+    }
+
+    textarea {
+      flex: 1;
+      width: 100%;
+      resize: none;
+      padding: 12px;
+      background: #111113;
+      color: #e4e4e7;
+      border: none;
+      outline: none;
+      font-family: monospace;
+      font-size: 14px;
+    }
+
+    /* Preview section */
+    .preview-section {
+      flex: 1;
+      display: flex;
+      height: 60%;
+    }
+
+    .sidebar {
+      width: 300px;
+      background: rgba(20, 20, 23, 0.8);
+      backdrop-filter: blur(10px);
+      border-right: 1px solid #2a2a2f;
+      overflow-y: auto;
+      padding: 20px;
+    }
+
+    .sidebar h3 {
+      color: #60a5fa;
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .sidebar h3::before {
+      content: "📚";
+      font-size: 14px;
+    }
+
+    .toc {
+      list-style: none;
+    }
+
+    .toc li {
+      margin-bottom: 8px;
+    }
+
+    .toc a {
+      color: #a1a1aa;
+      text-decoration: none;
+      display: block;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 14px;
+      transition: all 0.2s ease;
+      border-left: 3px solid transparent;
+    }
+
+    .toc a:hover {
+      background: rgba(96, 165, 250, 0.1);
+      color: #60a5fa;
+      border-left-color: #60a5fa;
+      transform: translateX(4px);
+    }
+
+    .toc a.active {
+      background: linear-gradient(135deg, rgba(96, 165, 250, 0.2), rgba(167, 139, 250, 0.15));
+      color: #60a5fa;
+      border-left-color: #60a5fa;
+      box-shadow: 0 2px 8px rgba(96, 165, 250, 0.2);
+      transform: translateX(4px);
+      font-weight: 600;
+    }
+
+    .toc .level-2 {
+      margin-left: 16px;
+      font-size: 13px;
+    }
+
+    .toc .level-3 {
+      margin-left: 32px;
+      font-size: 12px;
+      opacity: 0.8;
+    }
+
+    .main-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 40px;
+      background: rgba(17, 17, 19, 0.5);
+    }
+
+    .content {
+      max-width: 800px;
+      margin: 0 auto;
+      line-height: 1.7;
+    }
+
+    .content h1 {
+      color: #f4f4f5;
+      font-size: 2.5rem;
+      font-weight: 700;
+      margin-bottom: 16px;
+      background: linear-gradient(135deg, #60a5fa, #a78bfa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .content h2 {
+      color: #60a5fa;
+      font-size: 1.75rem;
+      font-weight: 600;
+      margin: 32px 0 16px 0;
+      padding-bottom: 8px;
+      border-bottom: 2px solid rgba(96, 165, 250, 0.2);
+    }
+
+    .content h3 {
+      color: #a78bfa;
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin: 24px 0 12px 0;
+    }
+
+    .content p,
+    .content ul,
+    .content ol {
+      color: #d4d4d8;
+      margin-bottom: 16px;
+    }
+
+    .content ul,
+    .content ol {
+      margin-left: 24px;
+    }
+
+    .content li {
+      margin-bottom: 8px;
+      padding-left: 8px;
+    }
+
+    .content code {
+      background: rgba(39, 39, 42, 0.8);
+      color: #fbbf24;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: 'Fira Code', monospace;
+      font-size: 0.9em;
+    }
+
+    .content pre {
+      background: rgba(39, 39, 42, 0.9);
+      border: 1px solid #3f3f46;
+      border-radius: 12px;
+      padding: 20px;
+      margin: 20px 0;
+      overflow-x: auto;
+      position: relative;
+    }
+
+    .content blockquote {
+      border-left: 4px solid #60a5fa;
+      padding-left: 20px;
+      margin: 20px 0;
+      font-style: italic;
+      background: rgba(96, 165, 250, 0.05);
+      border-radius: 0 8px 8px 0;
+    }
+  </style>
+</head>
+
+<body>
+  <!-- Row 1: Input -->
+  <div class="input-section">
+    <h3>Markdown Input</h3>
+    <textarea id="markdown-input"># Application Development Best Practices
 
 A comprehensive guide to building robust, scalable, and maintainable applications.
 
@@ -52,467 +233,102 @@ A comprehensive guide to building robust, scalable, and maintainable application
 ### Directory Structure
 Organize your codebase with a clear and logical directory structure:
 
-\`\`\`
-src/
-├── components/
-│   ├── common/
-│   └── pages/
-├── services/
-├── utils/
-├── hooks/
-├── styles/
-└── tests/
-\`\`\`
-
-### File Naming Conventions
-- Use **kebab-case** for file names: \`user-profile.component.js\`
-- Use **PascalCase** for component files: \`UserProfile.jsx\`
-- Use **camelCase** for utility files: \`apiHelper.js\`
-
-## Error Handling <span class="badge warning-badge">Important</span>
-
-### Try-Catch Blocks
-Always wrap potentially failing operations in try-catch blocks:
-
 \`\`\`javascript
-async function fetchUserData(userId) {
-    try {
-        const response = await api.get(\`/users/\${userId}\`);
-        return response.data;
-    } catch (error) {
-        console.error('Failed to fetch user data:', error);
-        throw new Error('User data unavailable');
-    }
+function hello() {
+  console.log("Hello World");
 }
 \`\`\`
+</textarea>
+  </div>
 
-### Global Error Handlers
-Implement global error handlers to catch unhandled exceptions:
+  <!-- Row 2: Preview -->
+  <div class="preview-section">
+    <div class="sidebar">
+      <h3>Table of Contents</h3>
+      <ul class="toc" id="toc"></ul>
+    </div>
+    <div class="main-content" id="main-content">
+      <div class="content" id="content"></div>
+    </div>
+  </div>
 
-> **Note**: Always log errors with sufficient context for debugging while avoiding exposure of sensitive information.
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
 
-## Performance Optimization
+  <script>
+    let ignoreScroll = false;
 
-### Code Splitting
-Implement code splitting to reduce initial bundle size:
+    function renderMarkdown() {
+      const input = document.getElementById('markdown-input').value;
+      const content = document.getElementById('content');
 
-- Use dynamic imports for route-based splitting
-- Implement component-level lazy loading
-- Optimize third-party library imports
+      content.innerHTML = marked.parse(input);
+      document.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
 
-### Caching Strategies
-1. **Browser Caching**: Set appropriate cache headers
-2. **Memory Caching**: Cache expensive computations
-3. **Database Caching**: Use Redis or similar solutions
+      generateTOC();
+      setupScrollSpy();
+    }
 
-## Security Best Practices <span class="badge error-badge">Critical</span>
+    function generateTOC() {
+      const content = document.getElementById('content');
+      const toc = document.getElementById('toc');
+      toc.innerHTML = '';
 
-### Input Validation
-- Validate all user inputs on both client and server side
-- Use whitelist validation over blacklist
-- Sanitize data before database operations
+      const headers = content.querySelectorAll('h1,h2,h3');
 
-### Authentication & Authorization
-- Implement proper session management
-- Use secure password hashing (bcrypt, Argon2)
-- Apply principle of least privilege
+      headers.forEach((header, index) => {
+        const id = 'heading-' + index;
+        header.id = id;
 
-## Testing Strategy
+        const li = document.createElement('li');
+        const a = document.createElement('a');
+        a.href = '#' + id;
+        a.textContent = header.textContent;
+        a.className = 'level-' + header.tagName.charAt(1);
 
-### Testing Pyramid
-1. **Unit Tests** (70%): Test individual functions and components
-2. **Integration Tests** (20%): Test component interactions
-3. **E2E Tests** (10%): Test complete user workflows
+        a.addEventListener('click', e => {
+          e.preventDefault();
+          ignoreScroll = true;
+          setActiveLink(a);
+          document.getElementById(id).scrollIntoView({ behavior: 'smooth', block: 'start' });
+          setTimeout(() => { ignoreScroll = false; }, 500);
+        });
 
-### Code Coverage
-Maintain at least 80% code coverage while focusing on critical business logic.
-
-## Documentation
-
-### Code Comments
-Write clear, concise comments that explain **why**, not **what**:
-
-\`\`\`javascript
-// Calculate tax based on regional regulations
-// Different regions have varying tax structures
-const tax = calculateRegionalTax(amount, region);
-\`\`\`
-
-### README Files
-Every project should include:
-- Setup instructions
-- Development workflow
-- Deployment process
-- Contributing guidelines`;
-
-    this.htmlContent = this.markdownService.parseMarkdown(markdownContent);
-  }
-
-  ngAfterViewInit() {
-    setTimeout(() => {
-      this.generateTOC();
-      this.setupResizer();
-    });
-  }
-
-  generateTOC() {
-    const headers = this.content.nativeElement.querySelectorAll('h1, h2, h3');
-    this.tocItems = [];
-    
-    headers.forEach((header: HTMLElement, index: number) => {
-      const level = parseInt(header.tagName.charAt(1));
-      const text = header.textContent || '';
-      const id = 'heading-' + index;
-      
-      // Add ID to header for linking
-      header.id = id;
-      
-      this.tocItems.push({ id, text, level });
-    });
-  }
-
-  scrollToSection(event: Event, id: string) {
-    event.preventDefault();
-    const element = document.getElementById(id);
-    if (element) {
-      element.scrollIntoView({
-        behavior: 'smooth',
-        block: 'start'
+        li.appendChild(a);
+        toc.appendChild(li);
       });
     }
-  }
 
-  setupResizer() {
-    const resizer = this.resizer.nativeElement;
-    
-    resizer.addEventListener('mousedown', (e: MouseEvent) => {
-      this.isResizing = true;
-      e.preventDefault();
-    });
-  }
-
-  @HostListener('document:mousemove', ['$event'])
-  onMouseMove(event: MouseEvent) {
-    if (!this.isResizing) return;
-    
-    const newWidth = event.clientX;
-    if (newWidth > 200 && newWidth < 500) {
-      this.sidebar.nativeElement.style.width = newWidth + 'px';
+    function setActiveLink(link) {
+      document.querySelectorAll('.toc a').forEach(a => a.classList.remove('active'));
+      link.classList.add('active');
     }
-  }
 
-  @HostListener('document:mouseup')
-  onMouseUp() {
-    this.isResizing = false;
-  }
+    function setupScrollSpy() {
+      const headers = document.querySelectorAll('h1,h2,h3');
+      const links = document.querySelectorAll('.toc a');
+      const container = document.getElementById('main-content');
 
-  @HostListener('window:scroll')
-  onScroll() {
-    const headers = this.content.nativeElement.querySelectorAll('h1, h2, h3');
-    let currentSection = 0;
-    const scrollPos = window.scrollY + 100;
-    
-    headers.forEach((header: HTMLElement, index: number) => {
-      if (header.offsetTop <= scrollPos) {
-        currentSection = index;
+      function updateActiveLink() {
+        if (ignoreScroll) return;
+        let currentIndex = 0;
+        const scrollTop = container.scrollTop;
+        headers.forEach((h, i) => {
+          const offset = h.offsetTop - container.offsetTop;
+          if (offset <= scrollTop + 10) currentIndex = i;
+        });
+        links.forEach((l, i) => l.classList.toggle('active', i === currentIndex));
       }
-    });
-    
-    this.activeSection = currentSection;
-  }
-}
 
-// services/markdown.service.ts
-import { Injectable } from '@angular/core';
-import { marked } from 'marked';
+      container.addEventListener('scroll', updateActiveLink);
+      window.addEventListener('resize', updateActiveLink);
+    }
 
-@Injectable({
-  providedIn: 'root'
-})
-export class MarkdownService {
+    // Initial render
+    renderMarkdown();
+    document.getElementById('markdown-input').addEventListener('input', renderMarkdown);
+  </script>
+</body>
 
-  constructor() {
-    // Configure marked options
-    marked.setOptions({
-      gfm: true,
-      breaks: false,
-      pedantic: false,
-      sanitize: false,
-      smartLists: true,
-      smartypants: false
-    });
-  }
-
-  parseMarkdown(md: string): string {
-    return marked(md);
-  }
-}
-
-// app.component.css
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background-color: #111113;
-  color: #e4e4e7;
-  height: 100vh;
-  overflow: hidden;
-}
-
-.container {
-  display: flex;
-  height: 100vh;
-  background: linear-gradient(135deg, #111113 0%, #1a1a1d 100%);
-}
-
-.sidebar {
-  width: 300px;
-  background: rgba(20, 20, 23, 0.8);
-  backdrop-filter: blur(10px);
-  border-right: 1px solid #2a2a2f;
-  overflow-y: auto;
-  padding: 20px;
-}
-
-.sidebar h3 {
-  color: #60a5fa;
-  font-size: 16px;
-  font-weight: 600;
-  margin-bottom: 16px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.sidebar h3::before {
-  content: "📚";
-  font-size: 14px;
-}
-
-.toc {
-  list-style: none;
-}
-
-.toc li {
-  margin-bottom: 8px;
-}
-
-.toc a {
-  color: #a1a1aa;
-  text-decoration: none;
-  display: block;
-  padding: 8px 12px;
-  border-radius: 8px;
-  font-size: 14px;
-  transition: all 0.2s ease;
-  border-left: 3px solid transparent;
-}
-
-.toc a:hover {
-  background: rgba(96, 165, 250, 0.1);
-  color: #60a5fa;
-  border-left-color: #60a5fa;
-  transform: translateX(4px);
-}
-
-.toc a.active {
-  background: linear-gradient(135deg, rgba(96, 165, 250, 0.2), rgba(167, 139, 250, 0.15));
-  color: #60a5fa;
-  border-left-color: #60a5fa;
-  box-shadow: 0 2px 8px rgba(96, 165, 250, 0.2);
-  transform: translateX(4px);
-  font-weight: 600;
-}
-
-.toc a.level-2 {
-  margin-left: 16px;
-  font-size: 13px;
-}
-
-.toc a.level-3 {
-  margin-left: 32px;
-  font-size: 12px;
-  opacity: 0.8;
-}
-
-.main-content {
-  flex: 1;
-  overflow-y: auto;
-  padding: 40px;
-  background: rgba(17, 17, 19, 0.5);
-}
-
-.content {
-  max-width: 800px;
-  margin: 0 auto;
-  line-height: 1.7;
-}
-
-.content h1 {
-  color: #f4f4f5;
-  font-size: 2.5rem;
-  font-weight: 700;
-  margin-bottom: 16px;
-  background: linear-gradient(135deg, #60a5fa, #a78bfa);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.content h2 {
-  color: #60a5fa;
-  font-size: 1.75rem;
-  font-weight: 600;
-  margin: 32px 0 16px 0;
-  padding-bottom: 8px;
-  border-bottom: 2px solid rgba(96, 165, 250, 0.2);
-}
-
-.content h3 {
-  color: #a78bfa;
-  font-size: 1.25rem;
-  font-weight: 600;
-  margin: 24px 0 12px 0;
-}
-
-.content p {
-  margin-bottom: 16px;
-  color: #d4d4d8;
-}
-
-.content ul,
-.content ol {
-  margin: 16px 0 16px 24px;
-  color: #d4d4d8;
-}
-
-.content li {
-  margin-bottom: 8px;
-  padding-left: 8px;
-}
-
-.content code {
-  background: rgba(39, 39, 42, 0.8);
-  color: #fbbf24;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-family: 'Fira Code', 'Courier New', monospace;
-  font-size: 0.9em;
-}
-
-.content pre {
-  background: rgba(39, 39, 42, 0.9);
-  border: 1px solid #3f3f46;
-  border-radius: 12px;
-  padding: 20px;
-  margin: 20px 0;
-  overflow-x: auto;
-  position: relative;
-}
-
-.content pre code {
-  background: none;
-  padding: 0;
-  color: #e4e4e7;
-}
-
-.content blockquote {
-  border-left: 4px solid #60a5fa;
-  padding-left: 20px;
-  margin: 20px 0;
-  font-style: italic;
-  background: rgba(96, 165, 250, 0.05);
-  padding: 16px 20px;
-  border-radius: 0 8px 8px 0;
-}
-
-.badge {
-  display: inline-block;
-  background: linear-gradient(135deg, #10b981, #059669);
-  color: white;
-  padding: 4px 12px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 600;
-  margin-left: 8px;
-}
-
-.warning-badge {
-  background: linear-gradient(135deg, #f59e0b, #d97706);
-}
-
-.error-badge {
-  background: linear-gradient(135deg, #ef4444, #dc2626);
-}
-
-.resizer {
-  width: 4px;
-  background: #2a2a2f;
-  cursor: ew-resize;
-  transition: background 0.2s ease;
-}
-
-.resizer:hover {
-  background: #60a5fa;
-}
-
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: rgba(39, 39, 42, 0.3);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(96, 165, 250, 0.3);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(96, 165, 250, 0.5);
-}
-
-@media (max-width: 768px) {
-  .container {
-    flex-direction: column;
-  }
-  
-  .sidebar {
-    width: 100%;
-    height: 200px;
-  }
-  
-  .resizer {
-    display: none;
-  }
-}
-
-// app.module.ts
-import { NgModule } from '@angular/core';
-import { BrowserModule } from '@angular/platform-browser';
-import { CommonModule } from '@angular/common';
-
-import { AppComponent } from './app.component';
-import { MarkdownService } from './services/markdown.service';
-
-@NgModule({
-  declarations: [
-    AppComponent
-  ],
-  imports: [
-    BrowserModule,
-    CommonModule
-  ],
-  providers: [
-    MarkdownService
-  ],
-  bootstrap: [AppComponent]
-})
-export class AppModule { }
+</html>
