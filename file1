@@ -1,217 +1,606 @@
-import { Component, OnInit, AfterViewInit, ElementRef, ViewChild, HostListener } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { marked } from 'marked';
-import hljs from 'highlight.js';
-import { forkJoin, Observable } from 'rxjs';
-import { map, catchError } from 'rxjs/operators';
-import { of } from 'rxjs';
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documentation</title>
+    
+    <!-- External Dependencies -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/5.1.1/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/default.min.css">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-interface MarkdownFile {
-  folderName: string;
-  fileName: string;
-  content: string;
-  path: string;
-}
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f5f5f5;
+        }
 
-@Component({
-  selector: 'app-documentation',
-  templateUrl: './documentation.component.html',
-  styleUrls: ['./documentation.component.scss']
-})
-export class DocumentationComponent implements OnInit, AfterViewInit {
-  @ViewChild('sidebar') sidebar!: ElementRef;
-  @ViewChild('content') content!: ElementRef;
-  @ViewChild('mainContent') mainContent!: ElementRef;
+        .documentation-container {
+            display: flex;
+            height: 100vh;
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+        }
 
-  htmlContent: string = '';
-  tocItems: Array<{ id: string, text: string, level: number }> = [];
-  activeSection: number = 0;
-  isLoading: boolean = true;
-  loadingError: string = '';
+        /* Sidebar Styles */
+        .sidebar {
+            width: 300px;
+            background: #f8f9fa;
+            border-right: 1px solid #e9ecef;
+            overflow-y: auto;
+            padding: 20px;
+        }
 
-  // Define your markdown file structure
-  private markdownFiles = [
-    { folder: 'Page1', file: 'page1.md' },
-    { folder: 'Page2', file: 'page2.md' },
-    { folder: 'Page3', file: 'page3.md' },
-    { folder: 'Page4', file: 'page4.md' }
-  ];
+        .sidebar h3 {
+            margin-bottom: 15px;
+            color: #495057;
+            font-size: 18px;
+            font-weight: 600;
+        }
 
-  constructor(private http: HttpClient) {
-    marked.setOptions({
-      gfm: true,
-      breaks: false,
-      pedantic: false
-    });
-  }
+        .toc-item {
+            display: block;
+            padding: 8px 0;
+            text-decoration: none;
+            color: #6c757d;
+            border-left: 3px solid transparent;
+            padding-left: 15px;
+            transition: all 0.2s ease;
+            font-size: 14px;
+        }
 
-  ngOnInit() {
-    this.loadAllMarkdownFiles();
-  }
+        .toc-item:hover {
+            color: #007bff;
+            border-left-color: #007bff;
+            background: rgba(0,123,255,0.05);
+        }
 
-  ngAfterViewInit() {
-    // Wait for content to load before generating TOC
-  }
+        .toc-item.active {
+            color: #007bff;
+            border-left-color: #007bff;
+            background: rgba(0,123,255,0.1);
+            font-weight: 500;
+        }
 
-  private loadAllMarkdownFiles() {
-    this.isLoading = true;
-    this.loadingError = '';
+        .toc-item.level-1 {
+            font-weight: 600;
+            margin-top: 10px;
+        }
 
-    const fileRequests: Observable<MarkdownFile>[] = this.markdownFiles.map(({ folder, file }) => {
-      const path = `assets/markdown/${folder}/${file}`;
-      return this.http.get(path, { responseType: 'text' }).pipe(
-        map(content => ({
-          folderName: folder,
-          fileName: file,
-          content,
-          path
-        })),
-        catchError(error => {
-          console.warn(`Failed to load ${path}:`, error);
-          return of({
-            folderName: folder,
-            fileName: file,
-            content: `# Error Loading Content\n\nFailed to load content from ${path}`,
-            path
-          });
-        })
-      );
-    });
+        .toc-item.level-2 {
+            padding-left: 30px;
+            font-size: 13px;
+        }
 
-    forkJoin(fileRequests).subscribe({
-      next: (markdownFiles) => {
-        this.processMarkdownFiles(markdownFiles);
-        this.isLoading = false;
-      },
-      error: (error) => {
-        console.error('Error loading markdown files:', error);
-        this.loadingError = 'Failed to load documentation files';
-        this.isLoading = false;
-      }
-    });
-  }
+        .toc-item.level-3 {
+            padding-left: 45px;
+            font-size: 13px;
+        }
 
-  private processMarkdownFiles(markdownFiles: MarkdownFile[]) {
-    let combinedMarkdown = '';
+        .toc-item.level-4 {
+            padding-left: 60px;
+            font-size: 12px;
+        }
 
-    markdownFiles.forEach((file, index) => {
-      // Simply add the markdown content as-is, using existing headers from .md files
-      let content = file.content.trim();
-      
-      // Add some spacing between files
-      if (index > 0) {
-        combinedMarkdown += '\n\n';
-      }
-      
-      combinedMarkdown += content;
-    });
+        .toc-item.level-5,
+        .toc-item.level-6 {
+            padding-left: 75px;
+            font-size: 12px;
+        }
 
-    this.htmlContent = this.parseMarkdown(combinedMarkdown);
+        /* Main Content Styles */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
 
-    // Generate TOC after content is processed
-    setTimeout(() => {
-      this.generateTOC();
-      this.applySyntaxHighlighting();
-      this.setupScrollListener();
-    }, 100);
-  }
+        .content-header {
+            padding: 20px 30px;
+            background: white;
+            border-bottom: 1px solid #e9ecef;
+        }
 
-  private applySyntaxHighlighting() {
-    if (this.content?.nativeElement) {
-      this.content.nativeElement.querySelectorAll('pre code').forEach((block: HTMLElement) => {
-        hljs.highlightElement(block);
-      });
-    }
-  }
+        .content-header h1 {
+            color: #343a40;
+            font-size: 28px;
+            font-weight: 700;
+        }
 
-  private setupScrollListener() {
-    if (this.content?.nativeElement) {
-      this.content.nativeElement.addEventListener('scroll', () => {
-        this.updateActiveSection();
-      });
-    }
-  }
+        .content-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 30px;
+            background: white;
+        }
 
-  generateTOC() {
-    if (!this.content?.nativeElement) return;
+        /* Loading States */
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 200px;
+            font-size: 18px;
+            color: #6c757d;
+        }
 
-    const headers = this.content.nativeElement.querySelectorAll('h1, h2, h3, h4, h5, h6');
-    this.tocItems = [];
+        .loading::after {
+            content: '';
+            width: 20px;
+            height: 20px;
+            border: 2px solid #007bff;
+            border-top: 2px solid transparent;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+        }
 
-    headers.forEach((header: HTMLElement, index: number) => {
-      const level = parseInt(header.tagName.charAt(1));
-      const text = header.textContent?.replace(/\s+/g, ' ').trim() || '';
-      const id = 'heading-' + index;
+        .error {
+            color: #dc3545;
+            text-align: center;
+            padding: 20px;
+            font-size: 16px;
+        }
 
-      header.id = id;
-      this.tocItems.push({ id, text, level });
-    });
-  }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
 
-  updateActiveSection() {
-    if (!this.content?.nativeElement) return;
+        /* Markdown Content Styles */
+        .content-body h1,
+        .content-body h2,
+        .content-body h3,
+        .content-body h4,
+        .content-body h5,
+        .content-body h6 {
+            margin-top: 30px;
+            margin-bottom: 15px;
+            color: #343a40;
+            line-height: 1.3;
+        }
 
-    const headers = this.content.nativeElement.querySelectorAll('h1, h2, h3, h4, h5, h6');
-    let currentSection = 0;
+        .content-body h1 {
+            font-size: 32px;
+            border-bottom: 2px solid #e9ecef;
+            padding-bottom: 10px;
+        }
 
-    const scrollContainer = this.content.nativeElement;
-    const scrollPos = scrollContainer.scrollTop + 50; // Adjust offset as needed
+        .content-body h2 {
+            font-size: 26px;
+            border-bottom: 1px solid #e9ecef;
+            padding-bottom: 8px;
+        }
 
-    headers.forEach((header: HTMLElement, index: number) => {
-      const headerTop = header.offsetTop;
-      if (headerTop <= scrollPos) {
-        currentSection = index;
-      }
-    });
+        .content-body h3 {
+            font-size: 22px;
+        }
 
-    if (this.activeSection !== currentSection) {
-      this.activeSection = currentSection;
-      this.updateSidebarScroll();
-    }
-  }
+        .content-body h4 {
+            font-size: 18px;
+        }
 
-  private updateSidebarScroll() {
-    if (!this.sidebar?.nativeElement) return;
+        .content-body p {
+            margin-bottom: 15px;
+            color: #495057;
+        }
 
-    const activeLink = this.sidebar.nativeElement.querySelectorAll('a')[this.activeSection];
-    if (activeLink) {
-      activeLink.scrollIntoView({
-        block: 'nearest',
-        behavior: 'smooth'
-      });
-    }
-  }
+        .content-body ul,
+        .content-body ol {
+            margin: 15px 0;
+            padding-left: 30px;
+        }
 
-  scrollToSection(event: Event, id: string, index: number) {
-    event.preventDefault();
+        .content-body li {
+            margin-bottom: 5px;
+            color: #495057;
+        }
 
-    const element = document.getElementById(id);
-    if (element && this.content?.nativeElement) {
-      // Scroll within the content container
-      const containerTop = this.content.nativeElement.offsetTop;
-      const elementTop = element.offsetTop;
+        .content-body pre {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 20px 0;
+            overflow-x: auto;
+        }
 
-      this.content.nativeElement.scrollTo({
-        top: elementTop - containerTop - 20, // Add small offset
-        behavior: 'smooth'
-      });
-    }
+        .content-body code {
+            background: #f8f9fa;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+            font-size: 90%;
+        }
 
-    this.activeSection = index;
-  }
+        .content-body pre code {
+            background: none;
+            padding: 0;
+        }
 
-  @HostListener('window:resize')
-  onResize() {
-    // Recalculate positions on window resize
-    setTimeout(() => this.updateActiveSection(), 100);
-  }
+        .content-body blockquote {
+            border-left: 4px solid #007bff;
+            margin: 20px 0;
+            padding: 10px 20px;
+            background: #f8f9fa;
+            color: #6c757d;
+        }
 
-  parseMarkdown(md: string): string {
-    return marked.parse(md, { async: false }) as string;
-  }
+        .content-body table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
 
-  // Utility method to reload content if needed
-  reloadContent() {
-    this.loadAllMarkdownFiles();
-  }
-}
+        .content-body th,
+        .content-body td {
+            border: 1px solid #dee2e6;
+            padding: 12px;
+            text-align: left;
+        }
+
+        .content-body th {
+            background: #f8f9fa;
+            font-weight: 600;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .documentation-container {
+                flex-direction: column;
+                height: auto;
+            }
+
+            .sidebar {
+                width: 100%;
+                height: auto;
+                max-height: 200px;
+            }
+
+            .content-body {
+                padding: 20px;
+            }
+        }
+
+        /* Reload Button */
+        .reload-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 16px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            transition: all 0.2s ease;
+        }
+
+        .reload-btn:hover {
+            background: #0056b3;
+            transform: translateY(-2px);
+        }
+    </style>
+</head>
+<body>
+    <div class="documentation-container">
+        <!-- Sidebar -->
+        <div class="sidebar" id="sidebar">
+            <h3>Table of Contents</h3>
+            <div id="toc-container">
+                <div class="loading">Loading TOC...</div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <div class="content-header">
+                <h1>Documentation</h1>
+            </div>
+            <div class="content-body" id="content">
+                <div class="loading">Loading documentation...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Reload Button -->
+    <button class="reload-btn" onclick="documentationApp.reloadContent()" title="Reload Content">
+        ↻
+    </button>
+
+    <script>
+        class DocumentationApp {
+            constructor() {
+                this.htmlContent = '';
+                this.tocItems = [];
+                this.activeSection = 0;
+                this.isLoading = true;
+                this.loadingError = '';
+
+                // Define your markdown file structure
+                this.markdownFiles = [
+                    { folder: 'Page1', file: 'page1.md' },
+                    { folder: 'Page2', file: 'page2.md' },
+                    { folder: 'Page3', file: 'page3.md' },
+                    { folder: 'Page4', file: 'page4.md' }
+                ];
+
+                this.contentElement = null;
+                this.sidebarElement = null;
+
+                this.init();
+            }
+
+            init() {
+                // Configure marked options
+                if (typeof marked !== 'undefined') {
+                    marked.setOptions({
+                        gfm: true,
+                        breaks: false,
+                        pedantic: false
+                    });
+                }
+
+                // Get DOM elements
+                this.contentElement = document.getElementById('content');
+                this.sidebarElement = document.getElementById('sidebar');
+
+                // Load markdown files
+                this.loadAllMarkdownFiles();
+
+                // Setup event listeners
+                this.setupEventListeners();
+            }
+
+            setupEventListeners() {
+                // Scroll listener for content
+                if (this.contentElement) {
+                    this.contentElement.addEventListener('scroll', () => {
+                        this.updateActiveSection();
+                    });
+                }
+
+                // Window resize listener
+                window.addEventListener('resize', () => {
+                    setTimeout(() => this.updateActiveSection(), 100);
+                });
+            }
+
+            async loadAllMarkdownFiles() {
+                this.isLoading = true;
+                this.loadingError = '';
+                this.updateLoadingState();
+
+                try {
+                    const filePromises = this.markdownFiles.map(({ folder, file }) => 
+                        this.loadMarkdownFile(folder, file)
+                    );
+
+                    const markdownFiles = await Promise.all(filePromises);
+                    this.processMarkdownFiles(markdownFiles);
+                    this.isLoading = false;
+                    
+                    // Generate TOC and setup highlighting after content is loaded
+                    setTimeout(() => {
+                        this.generateTOC();
+                        this.applySyntaxHighlighting();
+                    }, 100);
+                    
+                } catch (error) {
+                    console.error('Error loading markdown files:', error);
+                    this.loadingError = 'Failed to load documentation files';
+                    this.isLoading = false;
+                    this.updateLoadingState();
+                }
+            }
+
+            async loadMarkdownFile(folder, file) {
+                const path = `assets/markdown/${folder}/${file}`;
+                
+                try {
+                    const response = await fetch(path);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    const content = await response.text();
+                    
+                    return {
+                        folderName: folder,
+                        fileName: file,
+                        content,
+                        path
+                    };
+                } catch (error) {
+                    console.warn(`Failed to load ${path}:`, error);
+                    return {
+                        folderName: folder,
+                        fileName: file,
+                        content: `# Error Loading Content\n\nFailed to load content from ${path}`,
+                        path
+                    };
+                }
+            }
+
+            processMarkdownFiles(markdownFiles) {
+                let combinedMarkdown = '';
+
+                markdownFiles.forEach((file, index) => {
+                    // Simply add the markdown content as-is, using existing headers from .md files
+                    let content = file.content.trim();
+                    
+                    // Add some spacing between files
+                    if (index > 0) {
+                        combinedMarkdown += '\n\n';
+                    }
+                    
+                    combinedMarkdown += content;
+                });
+
+                this.htmlContent = this.parseMarkdown(combinedMarkdown);
+                this.updateContent();
+            }
+
+            parseMarkdown(md) {
+                if (typeof marked !== 'undefined') {
+                    return marked.parse(md);
+                } else {
+                    console.error('Marked library not loaded');
+                    return `<p>Error: Markdown parser not available</p><pre>${md}</pre>`;
+                }
+            }
+
+            updateContent() {
+                if (this.contentElement) {
+                    this.contentElement.innerHTML = this.htmlContent;
+                }
+            }
+
+            updateLoadingState() {
+                const tocContainer = document.getElementById('toc-container');
+                
+                if (this.isLoading) {
+                    if (this.contentElement) {
+                        this.contentElement.innerHTML = '<div class="loading">Loading documentation...</div>';
+                    }
+                    if (tocContainer) {
+                        tocContainer.innerHTML = '<div class="loading">Loading TOC...</div>';
+                    }
+                } else if (this.loadingError) {
+                    if (this.contentElement) {
+                        this.contentElement.innerHTML = `<div class="error">${this.loadingError}</div>`;
+                    }
+                    if (tocContainer) {
+                        tocContainer.innerHTML = `<div class="error">Failed to load TOC</div>`;
+                    }
+                }
+            }
+
+            generateTOC() {
+                if (!this.contentElement) return;
+
+                const headers = this.contentElement.querySelectorAll('h1, h2, h3, h4, h5, h6');
+                this.tocItems = [];
+
+                headers.forEach((header, index) => {
+                    const level = parseInt(header.tagName.charAt(1));
+                    const text = header.textContent?.replace(/\s+/g, ' ').trim() || '';
+                    const id = 'heading-' + index;
+
+                    header.id = id;
+                    this.tocItems.push({ id, text, level });
+                });
+
+                this.renderTOC();
+            }
+
+            renderTOC() {
+                const tocContainer = document.getElementById('toc-container');
+                if (!tocContainer) return;
+
+                let tocHTML = '';
+                
+                this.tocItems.forEach((item, index) => {
+                    const activeClass = index === this.activeSection ? 'active' : '';
+                    tocHTML += `
+                        <a href="#${item.id}" 
+                           class="toc-item level-${item.level} ${activeClass}" 
+                           onclick="documentationApp.scrollToSection(event, '${item.id}', ${index})">
+                            ${item.text}
+                        </a>
+                    `;
+                });
+
+                tocContainer.innerHTML = tocHTML;
+            }
+
+            applySyntaxHighlighting() {
+                if (this.contentElement && typeof hljs !== 'undefined') {
+                    this.contentElement.querySelectorAll('pre code').forEach((block) => {
+                        hljs.highlightElement(block);
+                    });
+                }
+            }
+
+            updateActiveSection() {
+                if (!this.contentElement) return;
+
+                const headers = this.contentElement.querySelectorAll('h1, h2, h3, h4, h5, h6');
+                let currentSection = 0;
+
+                const scrollPos = this.contentElement.scrollTop + 50;
+
+                headers.forEach((header, index) => {
+                    const headerTop = header.offsetTop;
+                    if (headerTop <= scrollPos) {
+                        currentSection = index;
+                    }
+                });
+
+                if (this.activeSection !== currentSection) {
+                    this.activeSection = currentSection;
+                    this.updateSidebarScroll();
+                    this.renderTOC(); // Re-render TOC to update active states
+                }
+            }
+
+            updateSidebarScroll() {
+                const tocContainer = document.getElementById('toc-container');
+                if (!tocContainer) return;
+
+                const activeLink = tocContainer.querySelectorAll('a')[this.activeSection];
+                if (activeLink) {
+                    activeLink.scrollIntoView({
+                        block: 'nearest',
+                        behavior: 'smooth'
+                    });
+                }
+            }
+
+            scrollToSection(event, id, index) {
+                event.preventDefault();
+
+                const element = document.getElementById(id);
+                if (element && this.contentElement) {
+                    const elementTop = element.offsetTop;
+
+                    this.contentElement.scrollTo({
+                        top: elementTop - 20, // Add small offset
+                        behavior: 'smooth'
+                    });
+                }
+
+                this.activeSection = index;
+                this.renderTOC(); // Update active states immediately
+            }
+
+            reloadContent() {
+                this.loadAllMarkdownFiles();
+            }
+        }
+
+        // Initialize the app when DOM is loaded
+        let documentationApp;
+        
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                documentationApp = new DocumentationApp();
+            });
+        } else {
+            documentationApp = new DocumentationApp();
+        }
+    </script>
+</body>
+</html>
