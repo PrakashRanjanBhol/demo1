@@ -1,795 +1,862 @@
-import { Component, OnInit, AfterViewInit, ElementRef, ViewChild, HostListener } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { marked } from 'marked';
-import hljs from 'highlight.js';
-import { forkJoin, Observable } from 'rxjs';
-import { map, catchError } from 'rxjs/operators';
-import { of } from 'rxjs';
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Template Portal</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-interface MarkdownFile {
-  folderName: string;
-  fileName: string;
-  content: string;
-  path: string;
-}
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
 
-@Component({
-  selector: 'app-documentation',
-  templateUrl: './documentation.component.html',
-  styleUrls: ['./documentation.component.scss']
-})
-export class DocumentationComponent implements OnInit, AfterViewInit {
-  @ViewChild('sidebar') sidebar!: ElementRef;
-  @ViewChild('content') content!: ElementRef;
-  @ViewChild('mainContent') mainContent!: ElementRef;
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
 
-  htmlContent: string = '';
-  tocItems: Array<{ id: string, text: string, level: number }> = [];
-  activeSection: number = 0;
-  isLoading: boolean = true;
-  loadingError: string = '';
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 20px 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
 
-  // Define your markdown file structure
-  private markdownFiles = [
-    { folder: 'Page1', file: 'page1.md' },
-    { folder: 'Page2', file: 'page2.md' },
-    { folder: 'Page3', file: 'page3.md' },
-    { folder: 'Page4', file: 'page4.md' }
-  ];
+        .header h1 {
+            font-size: 2.5rem;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 10px;
+        }
 
-  constructor(private http: HttpClient) {
-    marked.setOptions({
-      gfm: true,
-      breaks: false,
-      pedantic: false
-    });
-  }
+        .header p {
+            color: #666;
+            font-size: 1.1rem;
+        }
 
-  ngOnInit() {
-    this.loadAllMarkdownFiles();
-  }
+        .nav-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+        }
 
-  ngAfterViewInit() {
-    // Wait for content to load before generating TOC
-  }
+        .nav-tab {
+            padding: 12px 24px;
+            background: rgba(255, 255, 255, 0.9);
+            border: none;
+            border-radius: 15px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
 
-  private loadAllMarkdownFiles() {
-    this.isLoading = true;
-    this.loadingError = '';
+        .nav-tab.active {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
 
-    const fileRequests: Observable<MarkdownFile>[] = this.markdownFiles.map(({ folder, file }) => {
-      const path = `assets/markdown/${folder}/${file}`;
-      return this.http.get(path, { responseType: 'text' }).pipe(
-        map(content => ({
-          folderName: folder,
-          fileName: file,
-          content,
-          path
-        })),
-        catchError(error => {
-          console.warn(`Failed to load ${path}:`, error);
-          return of({
-            folderName: folder,
-            fileName: file,
-            content: `# ${folder}\n\nError loading content from ${path}`,
-            path
-          });
-        })
-      );
-    });
+        .nav-tab:hover:not(.active) {
+            background: rgba(255, 255, 255, 1);
+            transform: translateY(-1px);
+        }
 
-    forkJoin(fileRequests).subscribe({
-      next: (markdownFiles) => {
-        this.processMarkdownFiles(markdownFiles);
-        this.isLoading = false;
-      },
-      error: (error) => {
-        console.error('Error loading markdown files:', error);
-        this.loadingError = 'Failed to load documentation files';
-        this.isLoading = false;
-      }
-    });
-  }
+        .tab-content {
+            display: none;
+        }
 
-  private processMarkdownFiles(markdownFiles: MarkdownFile[]) {
-    let combinedMarkdown = '';
+        .tab-content.active {
+            display: block;
+        }
 
-    markdownFiles.forEach((file, index) => {
-      // Add folder name as main header
-      const folderHeader = `# ${this.formatFolderName(file.folderName)}\n\n`;
+        .search-section {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 25px;
+            margin-bottom: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
 
-      // Process the markdown content
-      let content = file.content;
+        .search-bar {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
 
-      // If the content doesn't start with a header, add the folder name as header
-      if (!content.trim().startsWith('#')) {
-        content = folderHeader + content;
-      } else {
-        // If content has headers, adjust their levels to be under the main folder header
-        content = folderHeader + this.adjustHeaderLevels(content);
-      }
+        .search-input {
+            flex: 1;
+            padding: 15px 20px;
+            border: 2px solid #e0e0e0;
+            border-radius: 15px;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
 
-      combinedMarkdown += content + '\n\n';
-    });
+        .search-input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
 
-    this.htmlContent = this.parseMarkdown(combinedMarkdown);
+        .search-btn {
+            padding: 15px 30px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            border-radius: 15px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
 
-    // Generate TOC after content is processed
-    setTimeout(() => {
-      this.generateTOC();
-      this.applySyntaxHighlighting();
-      this.setupScrollListener();
-    }, 100);
-  }
+        .search-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
 
-  private formatFolderName(folderName: string): string {
-    // Convert folder name to readable format
-    // e.g., 'Page1' -> 'Page 1', 'MyFolder' -> 'My Folder'
-    return folderName.replace(/([A-Z])/g, ' $1').trim();
-  }
+        .filters {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
 
-  private adjustHeaderLevels(content: string): string {
-    // Increase header levels by 1 (h1 -> h2, h2 -> h3, etc.)
-    return content.replace(/^(#{1,5})\s/gm, '#$1 ');
-  }
+        .filter-tag {
+            padding: 8px 16px;
+            background: #f0f0f0;
+            border: 2px solid transparent;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
 
-  private applySyntaxHighlighting() {
-    if (this.content?.nativeElement) {
-      this.content.nativeElement.querySelectorAll('pre code').forEach((block: HTMLElement) => {
-        hljs.highlightElement(block);
-      });
-    }
-  }
+        .filter-tag:hover, .filter-tag.active {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            transform: translateY(-1px);
+        }
 
-  private setupScrollListener() {
-    if (this.content?.nativeElement) {
-      this.content.nativeElement.addEventListener('scroll', () => {
-        this.updateActiveSection();
-      });
-    }
-  }
+        .templates-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 25px;
+            margin-bottom: 30px;
+        }
 
-  generateTOC() {
-    if (!this.content?.nativeElement) return;
+        .template-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 25px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+            cursor: pointer;
+            border: 2px solid transparent;
+        }
 
-    const headers = this.content.nativeElement.querySelectorAll('h1, h2, h3, h4, h5, h6');
-    this.tocItems = [];
+        .template-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15);
+            border-color: #667eea;
+        }
 
-    headers.forEach((header: HTMLElement, index: number) => {
-      const level = parseInt(header.tagName.charAt(1));
-      const text = header.textContent?.replace(/\s+/g, ' ').trim() || '';
-      const id = 'heading-' + index;
+        .template-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 15px;
+        }
 
-      header.id = id;
-      this.tocItems.push({ id, text, level });
-    });
-  }
+        .template-title {
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+        }
 
-  updateActiveSection() {
-    if (!this.content?.nativeElement) return;
+        .template-category {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 5px 12px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
 
-    const headers = this.content.nativeElement.querySelectorAll('h1, h2, h3, h4, h5, h6');
-    let currentSection = 0;
+        .template-description {
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 15px;
+        }
 
-    const scrollContainer = this.content.nativeElement;
-    const scrollPos = scrollContainer.scrollTop + 50; // Adjust offset as needed
+        .template-stats {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+            font-size: 0.9rem;
+            color: #888;
+        }
 
-    headers.forEach((header: HTMLElement, index: number) => {
-      const headerTop = header.offsetTop;
-      if (headerTop <= scrollPos) {
-        currentSection = index;
-      }
-    });
+        .template-actions {
+            display: flex;
+            gap: 10px;
+        }
 
-    if (this.activeSection !== currentSection) {
-      this.activeSection = currentSection;
-      this.updateSidebarScroll();
-    }
-  }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
 
-  private updateSidebarScroll() {
-    if (!this.sidebar?.nativeElement) return;
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+        }
 
-    const activeLink = this.sidebar.nativeElement.querySelectorAll('a')[this.activeSection];
-    if (activeLink) {
-      activeLink.scrollIntoView({
-        block: 'nearest',
-        behavior: 'smooth'
-      });
-    }
-  }
+        .btn-secondary {
+            background: #f8f9fa;
+            color: #333;
+            border: 2px solid #e0e0e0;
+        }
 
-  scrollToSection(event: Event, id: string, index: number) {
-    event.preventDefault();
+        .btn:hover {
+            transform: translateY(-2px);
+        }
 
-    const element = document.getElementById(id);
-    if (element && this.content?.nativeElement) {
-      // Scroll within the content container
-      const containerTop = this.content.nativeElement.offsetTop;
-      const elementTop = element.offsetTop;
+        .create-template-form {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
 
-      this.content.nativeElement.scrollTo({
-        top: elementTop - containerTop - 20, // Add small offset
-        behavior: 'smooth'
-      });
-    }
+        .form-group {
+            margin-bottom: 25px;
+        }
 
-    this.activeSection = index;
-  }
+        .form-label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
 
-  @HostListener('window:resize')
-  onResize() {
-    // Recalculate positions on window resize
-    setTimeout(() => this.updateActiveSection(), 100);
-  }
+        .form-input, .form-select, .form-textarea {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 15px;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
 
-  parseMarkdown(md: string): string {
-    return marked.parse(md, { async: false }) as string;
-  }
+        .form-input:focus, .form-select:focus, .form-textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
 
-  // Utility method to reload content if needed
-  reloadContent() {
-    this.loadAllMarkdownFiles();
-  }
-}
+        .form-textarea {
+            min-height: 120px;
+            resize: vertical;
+        }
 
+        .variable-builder {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 20px;
+            margin-top: 15px;
+        }
 
+        .variable-item {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+            align-items: center;
+        }
 
+        .variable-item input {
+            flex: 1;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+        }
 
+        .remove-variable {
+            background: #ff4757;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 8px 12px;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
 
+        .add-variable {
+            background: #2ed573;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            padding: 10px 20px;
+            cursor: pointer;
+            font-weight: 500;
+        }
 
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(5px);
+            z-index: 1000;
+        }
 
+        .modal-content {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
 
+        .close {
+            position: absolute;
+            top: 15px;
+            right: 20px;
+            font-size: 28px;
+            cursor: pointer;
+            color: #aaa;
+        }
 
+        .close:hover {
+            color: #333;
+        }
 
-
-
-<div class="container">
-    <div class="sidebar" #sidebar>
-        <h3 class="sidebar-header">
-            🚀 Best Practices
-            <span class="sparkle">✨</span>
-        </h3>
-
-        <!-- Loading state for TOC -->
-        <div *ngIf="isLoading" class="loading-toc">
-            <div class="loading-spinner"></div>
-            <p>Loading documentation...</p>
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+            
+            .templates-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .search-bar {
+                flex-direction: column;
+            }
+            
+            .nav-tabs {
+                flex-wrap: wrap;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>LLM Template Portal</h1>
+            <p>Create, discover, and manage your AI templates with ease</p>
         </div>
 
-        <!-- Error state -->
-        <div *ngIf="loadingError && !isLoading" class="error-message">
-            <p>{{ loadingError }}</p>
-            <button (click)="reloadContent()" class="retry-btn">Retry</button>
+        <div class="nav-tabs">
+            <button class="nav-tab active" data-tab="discover">Discover Templates</button>
+            <button class="nav-tab" data-tab="create">Create Template</button>
+            <button class="nav-tab" data-tab="my-templates">My Templates</button>
         </div>
 
-        <!-- Table of Contents -->
-        <ul *ngIf="!isLoading && !loadingError" class="toc">
-            <li *ngFor="let item of tocItems; let i = index">
-                <a [href]="'#' + item.id" [class]="'level-' + item.level" [class.active]="activeSection === i"
-                    (click)="scrollToSection($event, item.id, i)">
-                    <span class="bullet"></span>
-                    {{ item.text }}
-                </a>
-            </li>
-        </ul>
+        <!-- Discover Templates Tab -->
+        <div id="discover" class="tab-content active">
+            <div class="search-section">
+                <div class="search-bar">
+                    <input type="text" class="search-input" placeholder="Search templates..." id="searchInput">
+                    <button class="search-btn" onclick="searchTemplates()">Search</button>
+                </div>
+                <div class="filters">
+                    <div class="filter-tag active" data-filter="all">All</div>
+                    <div class="filter-tag" data-filter="code">Code Generation</div>
+                    <div class="filter-tag" data-filter="documentation">Documentation</div>
+                    <div class="filter-tag" data-filter="analysis">Analysis</div>
+                    <div class="filter-tag" data-filter="testing">Testing</div>
+                    <div class="filter-tag" data-filter="api">API</div>
+                </div>
+            </div>
+
+            <div class="templates-grid" id="templatesGrid">
+                <!-- Templates will be populated here -->
+            </div>
+        </div>
+
+        <!-- Create Template Tab -->
+        <div id="create" class="tab-content">
+            <div class="create-template-form">
+                <h2 style="margin-bottom: 25px; color: #333;">Create New Template</h2>
+                <form id="createTemplateForm">
+                    <div class="form-group">
+                        <label class="form-label">Template Name</label>
+                        <input type="text" class="form-input" id="templateName" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Category</label>
+                        <select class="form-select" id="templateCategory" required>
+                            <option value="">Select a category</option>
+                            <option value="code">Code Generation</option>
+                            <option value="documentation">Documentation</option>
+                            <option value="analysis">Analysis</option>
+                            <option value="testing">Testing</option>
+                            <option value="api">API</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Description</label>
+                        <textarea class="form-textarea" id="templateDescription" placeholder="Describe what this template does..." required></textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Template Content</label>
+                        <textarea class="form-textarea" id="templateContent" placeholder="Write your template here. Use {{variable_name}} for variables..." required style="min-height: 200px;"></textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Variables</label>
+                        <div class="variable-builder">
+                            <div id="variablesList">
+                                <!-- Variables will be added here -->
+                            </div>
+                            <button type="button" class="add-variable" onclick="addVariable()">+ Add Variable</button>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Tags (comma-separated)</label>
+                        <input type="text" class="form-input" id="templateTags" placeholder="api, rest, backend, nodejs">
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary" style="width: 100%; padding: 15px;">Create Template</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- My Templates Tab -->
+        <div id="my-templates" class="tab-content">
+            <div class="templates-grid" id="myTemplatesGrid">
+                <!-- User's templates will be populated here -->
+            </div>
+        </div>
     </div>
 
-    <div class="main-content" #content>
-        <!-- Loading state for content -->
-        <div *ngIf="isLoading" class="loading-content">
-            <div class="loading-spinner large"></div>
-            <h2>Loading Documentation</h2>
-            <p>Please wait while we load all documentation files...</p>
+    <!-- Template Preview Modal -->
+    <div id="templateModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <div id="modalContent">
+                <!-- Template details will be loaded here -->
+            </div>
         </div>
-
-        <!-- Error state for content -->
-        <div *ngIf="loadingError && !isLoading" class="error-content">
-            <h2>Error Loading Documentation</h2>
-            <p>{{ loadingError }}</p>
-            <button (click)="reloadContent()" class="retry-btn primary">Reload Documentation</button>
-        </div>
-
-        <!-- Main Content -->
-        <div *ngIf="!isLoading && !loadingError" class="content" [innerHTML]="htmlContent"></div>
     </div>
-</div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-.container {
-    display: flex;
-    height: 100vh;
-    background: linear-gradient(135deg, #0a0a0b 0%, #1a1a1d 50%, #0f0f10 100%);
-    position: relative;
-}
-
-.container::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: linear-gradient(135deg,
-            rgba(99, 102, 241, 0.03) 0%,
-            rgba(139, 92, 246, 0.02) 50%,
-            rgba(168, 85, 247, 0.03) 100%);
-    pointer-events: none;
-}
-
-.sidebar {
-    width: 18.75rem;
-    background: linear-gradient(180deg,
-            rgba(26, 26, 29, 0.95) 0%,
-            rgba(17, 17, 19, 0.98) 50%,
-            rgba(10, 10, 11, 0.95) 100%);
-    backdrop-filter: blur(20px) saturate(180%);
-    border-right: 1px solid transparent;
-    background-clip: padding-box;
-    position: relative;
-    overflow-y: auto;
-    padding: 1.5rem 1.25rem;
-    position: sticky;
-    top: 0;
-    height: 100vh;
-}
-
-.sidebar::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    width: 1px;
-    background: linear-gradient(180deg,
-            transparent 0%,
-            rgba(99, 102, 241, 0.4) 10%,
-            rgba(139, 92, 246, 0.6) 35%,
-            rgba(168, 85, 247, 0.7) 65%,
-            rgba(139, 92, 246, 0.5) 90%,
-            transparent 100%);
-    animation: borderGlow 3s ease-in-out infinite alternate;
-}
-
-@keyframes borderGlow {
-    0% {
-        opacity: 0.5;
-    }
-
-    100% {
-        opacity: 1;
-    }
-}
-
-.sidebar-header {
-    color: #ffffff;
-    font-size: 1.25rem;
-    font-weight: 800;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    letter-spacing: 0.5px;
-    position: relative;
-    margin-bottom: 2rem;
-    padding: 1rem 1.5rem;
-    border-radius: 1rem;
-    background: linear-gradient(135deg,
-            rgba(99, 102, 241, 0.12) 0%,
-            rgba(139, 92, 246, 0.10) 50%,
-            rgba(168, 85, 247, 0.12) 100%);
-    border: 1px solid rgba(99, 102, 241, 0.25);
-    backdrop-filter: blur(12px);
-    box-shadow:
-        0 8px 32px rgba(99, 102, 241, 0.15),
-        0 4px 16px rgba(168, 85, 247, 0.1),
-        inset 0 1px 0 rgba(255, 255, 255, 0.1);
-    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-    overflow: hidden;
-}
-
-.sidebar-header::before {
-    content: '';
-    position: absolute;
-    top: -50%;
-    left: -50%;
-    width: 200%;
-    height: 200%;
-    background: linear-gradient(45deg,
-            transparent 30%,
-            rgba(139, 92, 246, 0.05) 50%,
-            transparent 70%);
-    transform: translateX(-100%) translateY(-100%) rotate(45deg);
-    transition: transform 0.6s ease;
-}
-
-.sidebar-header:hover::before {
-    transform: translateX(100%) translateY(100%) rotate(45deg);
-}
-
-.sidebar-header:hover {
-    transform: translateY(-2px);
-    background: linear-gradient(135deg,
-            rgba(99, 102, 241, 0.18) 0%,
-            rgba(139, 92, 246, 0.15) 50%,
-            rgba(168, 85, 247, 0.18) 100%);
-    border-color: rgba(99, 102, 241, 0.4);
-    box-shadow:
-        0 16px 48px rgba(99, 102, 241, 0.25),
-        0 8px 24px rgba(139, 92, 246, 0.2),
-        0 4px 12px rgba(168, 85, 247, 0.15),
-        inset 0 1px 0 rgba(255, 255, 255, 0.2);
-}
-
-.sidebar-header .sparkle {
-    display: inline-block;
-    margin-left: 0.75rem;
-    font-size: 1.1em;
-    animation: advancedSparkle 2.5s infinite ease-in-out;
-    filter: drop-shadow(0 0 4px rgba(251, 191, 36, 0.6));
-}
-
-@keyframes advancedSparkle {
-    0% {
-        transform: translateY(0) rotate(0deg) scale(1);
-        opacity: 0.7;
-        filter: drop-shadow(0 0 4px rgba(168, 85, 247, 0.6)) hue-rotate(0deg);
-    }
-
-    25% {
-        transform: translateY(-3px) rotate(90deg) scale(1.1);
-        opacity: 1;
-        filter: drop-shadow(0 0 8px rgba(99, 102, 241, 0.8)) hue-rotate(90deg);
-    }
-
-    50% {
-        transform: translateY(-1px) rotate(180deg) scale(0.95);
-        opacity: 0.8;
-        filter: drop-shadow(0 0 6px rgba(139, 92, 246, 0.7)) hue-rotate(180deg);
-    }
-
-    75% {
-        transform: translateY(-4px) rotate(270deg) scale(1.05);
-        opacity: 1;
-        filter: drop-shadow(0 0 10px rgba(168, 85, 247, 0.9)) hue-rotate(270deg);
-    }
-
-    100% {
-        transform: translateY(0) rotate(360deg) scale(1);
-        opacity: 0.7;
-        filter: drop-shadow(0 0 4px rgba(99, 102, 241, 0.6)) hue-rotate(360deg);
-    }
-}
-
-.toc {
-    list-style: none;
-    padding-left: 0;
-}
-
-.toc li {
-    margin-bottom: 0.5rem;
-    position: relative;
-}
-
-.toc a {
-    color: #a1a1aa;
-    text-decoration: none;
-    display: flex;
-    align-items: center;
-    padding: 0.875rem 1rem;
-    border-radius: 0.75rem;
-    font-size: 0.875rem;
-    font-weight: 500;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    border: 1px solid transparent;
-    position: relative;
-    overflow: hidden;
-    backdrop-filter: blur(8px);
-}
-
-.toc a::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: linear-gradient(135deg,
-            rgba(99, 102, 241, 0.06) 0%,
-            rgba(139, 92, 246, 0.04) 50%,
-            rgba(168, 85, 247, 0.06) 100%);
-    opacity: 0;
-    transition: opacity 0.3s ease;
-    z-index: -1;
-}
-
-.toc a::after {
-    content: "→";
-    position: absolute;
-    right: 1rem;
-    opacity: 0;
-    transform: translateX(-10px);
-    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-    color: #8b5cf6;
-    font-weight: 600;
-}
-
-.toc a .bullet {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: currentColor;
-    margin-right: 0.75rem;
-    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-    opacity: 0.6;
-}
-
-.toc a:hover {
-    background: linear-gradient(135deg,
-            rgba(99, 102, 241, 0.12) 0%,
-            rgba(139, 92, 246, 0.08) 50%,
-            rgba(168, 85, 247, 0.12) 100%);
-    color: #ffffff;
-    border-color: rgba(99, 102, 241, 0.3);
-    transform: translateX(8px) scale(1.02);
-    box-shadow:
-        0 8px 24px rgba(99, 102, 241, 0.2),
-        0 4px 12px rgba(139, 92, 246, 0.15),
-        0 2px 8px rgba(168, 85, 247, 0.1),
-        inset 0 1px 0 rgba(255, 255, 255, 0.1);
-}
-
-.toc a:hover::before {
-    opacity: 1;
-}
-
-.toc a:hover::after {
-    opacity: 1;
-    transform: translateX(0);
-}
-
-.toc a:hover .bullet {
-    background: linear-gradient(135deg, #6366f1, #8b5cf6, #a855f7);
-    box-shadow:
-        0 0 12px rgba(99, 102, 241, 0.6),
-        0 0 6px rgba(139, 92, 246, 0.4);
-    transform: scale(1.5);
-    opacity: 1;
-}
-
-.toc a.active {
-    background: linear-gradient(135deg,
-            rgba(99, 102, 241, 0.2) 0%,
-            rgba(139, 92, 246, 0.15) 50%,
-            rgba(168, 85, 247, 0.2) 100%);
-    color: #ffffff;
-    font-weight: 600;
-    border-color: rgba(99, 102, 241, 0.4);
-    box-shadow:
-        0 12px 32px rgba(99, 102, 241, 0.25),
-        0 8px 20px rgba(139, 92, 246, 0.2),
-        0 4px 12px rgba(168, 85, 247, 0.15),
-        inset 0 2px 0 rgba(255, 255, 255, 0.2),
-        inset 0 -1px 0 rgba(99, 102, 241, 0.3);
-    transform: translateX(8px);
-    position: relative;
-}
-
-.toc a.active::before {
-    opacity: 1;
-}
-
-.toc a.active::after {
-    opacity: 1;
-    transform: translateX(0);
-    color: #a855f7;
-    content: "✦";
-    animation: activeGlow 2s ease-in-out infinite alternate;
-}
-
-@keyframes activeGlow {
-    0% {
-        opacity: 0.7;
-        transform: translateX(0) scale(1);
-    }
-
-    100% {
-        opacity: 1;
-        transform: translateX(0) scale(1.1);
-    }
-}
-
-.toc a.active .bullet {
-    background: linear-gradient(135deg, #6366f1, #8b5cf6, #a855f7);
-    box-shadow:
-        0 0 16px rgba(99, 102, 241, 0.8),
-        0 0 8px rgba(139, 92, 246, 0.6),
-        0 0 4px rgba(168, 85, 247, 0.4);
-    transform: scale(1.8);
-    opacity: 1;
-    animation: bulletPulse 2s ease-in-out infinite alternate;
-}
-
-@keyframes bulletPulse {
-    0% {
-        box-shadow:
-            0 0 16px rgba(99, 102, 241, 0.8),
-            0 0 8px rgba(139, 92, 246, 0.6),
-            0 0 4px rgba(168, 85, 247, 0.4);
-    }
-
-    100% {
-        box-shadow:
-            0 0 24px rgba(99, 102, 241, 1),
-            0 0 16px rgba(139, 92, 246, 0.8),
-            0 0 8px rgba(168, 85, 247, 0.6);
-    }
-}
-
-.toc a.level-2 {
-    margin-left: 1.5rem;
-    font-size: 0.8125rem;
-    padding-left: 2rem;
-}
-
-.toc a.level-3 {
-    margin-left: 2.5rem;
-    font-size: 0.75rem;
-    padding-left: 2.5rem;
-    opacity: 0.9;
-}
-
-.main-content {
-    flex: 1;
-    overflow-y: auto;
-    padding: 2.5rem;
-    background: rgba(17, 17, 19, 0.5);
-}
-
-.content {
-    max-width: 50rem;
-    margin: 0 auto;
-    line-height: 1.7;
-}
-
-.content h1 {
-    color: #f4f4f5;
-    font-size: 2.5rem;
-    font-weight: 700;
-    margin-bottom: 1rem;
-    background: linear-gradient(135deg, #6366f1, #8b5cf6, #a855f7);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-}
-
-.content h2 {
-    color: #8b5cf6;
-    font-size: 1.75rem;
-    font-weight: 600;
-    margin: 2rem 0 1rem 0;
-    padding-bottom: 0.5rem;
-    border-bottom: 0.125rem solid rgba(139, 92, 246, 0.3);
-}
-
-.content h3 {
-    color: #a855f7;
-    font-size: 1.25rem;
-    font-weight: 600;
-    margin: 1.5rem 0 0.75rem 0;
-}
-
-.content p {
-    margin-bottom: 1rem;
-    color: #d4d4d8;
-}
-
-.content ul,
-.content ol {
-    margin: 1rem 0 1rem 1.5rem;
-    color: #d4d4d8;
-}
-
-.content li {
-    margin-bottom: 0.5rem;
-    padding-left: 0.5rem;
-}
-
-.content code {
-    background: rgba(39, 39, 42, 0.8);
-    color: #fbbf24;
-    padding: 0.125rem 0.375rem;
-    border-radius: 0.25rem;
-    font-family: 'Fira Code', 'Courier New', monospace;
-    font-size: 0.9rem;
-}
-
-.content pre {
-    background: rgba(39, 39, 42, 0.9);
-    border: 0.0625rem solid #3f3f46;
-    border-radius: 0.75rem;
-    padding: 1.25rem;
-    margin: 1.25rem 0;
-    overflow-x: auto;
-    position: relative;
-}
-
-.content pre code {
-    background: none;
-    padding: 0;
-    color: #e4e4e7;
-}
-
-.content blockquote {
-    border-left: 0.25rem solid #8b5cf6;
-    padding-left: 1.25rem;
-    margin: 1.25rem 0;
-    font-style: italic;
-    background: linear-gradient(135deg,
-            rgba(99, 102, 241, 0.05) 0%,
-            rgba(139, 92, 246, 0.03) 50%,
-            rgba(168, 85, 247, 0.05) 100%);
-    padding: 1rem 1.25rem;
-    border-radius: 0 0.5rem 0.5rem 0;
-}
-
-.badge {
-    display: inline-block;
-    background: linear-gradient(135deg, #10b981, #059669);
-    color: white;
-    padding: 0.25rem 0.75rem;
-    border-radius: 1.25rem;
-    font-size: 0.75rem;
-    font-weight: 600;
-    margin-left: 0.5rem;
-}
-
-.warning-badge {
-    background: linear-gradient(135deg, #f59e0b, #d97706);
-}
-
-.error-badge {
-    background: linear-gradient(135deg, #ef4444, #dc2626);
-}
-
-/* Custom scrollbar */
-::-webkit-scrollbar {
-    width: 0.5rem;
-}
-
-::-webkit-scrollbar-track {
-    background: rgba(39, 39, 42, 0.3);
-    border-radius: 0.25rem;
-}
-
-::-webkit-scrollbar-thumb {
-    background: linear-gradient(180deg, #6366f1, #8b5cf6, #a855f7);
-    border-radius: 0.25rem;
-}
-
-::-webkit-scrollbar-thumb:hover {
-    background: linear-gradient(180deg, #5b5cd6, #7c3aed, #9333ea);
-}
-
-@media (max-width: 768px) {
-    .container {
-        flex-direction: column;
-    }
-
-    .sidebar {
-        width: 100%;
-        height: 12.5rem;
-    }
-}
 
+    <script>
+        // Sample template data
+        let templates = [
+            {
+                id: 1,
+                name: "REST API Generator",
+                category: "code",
+                description: "Generate a complete REST API with CRUD operations, middleware, and error handling.",
+                content: "// Generate {{entity_name}} API\nconst express = require('express');\nconst router = express.Router();\n\n// GET /{{entity_name}}\nrouter.get('/', async (req, res) => {\n  // Implementation here\n});",
+                variables: [{name: "entity_name", description: "Name of the entity"}],
+                tags: ["api", "rest", "express", "nodejs"],
+                author: "System",
+                uses: 1234,
+                rating: 4.8,
+                isPublic: true
+            },
+            {
+                id: 2,
+                name: "API Documentation Template",
+                category: "documentation",
+                description: "Create comprehensive API documentation with examples and response formats.",
+                content: "# {{api_name}} API Documentation\n\n## Overview\n{{api_description}}\n\n## Endpoints\n\n### {{endpoint_name}}\n- **Method:** {{method}}\n- **URL:** {{url}}\n- **Description:** {{description}}",
+                variables: [
+                    {name: "api_name", description: "Name of the API"},
+                    {name: "api_description", description: "Brief description of the API"},
+                    {name: "endpoint_name", description: "Name of the endpoint"},
+                    {name: "method", description: "HTTP method"},
+                    {name: "url", description: "Endpoint URL"},
+                    {name: "description", description: "Endpoint description"}
+                ],
+                tags: ["documentation", "api", "markdown"],
+                author: "System",
+                uses: 892,
+                rating: 4.6,
+                isPublic: true
+            },
+            {
+                id: 3,
+                name: "Unit Test Generator",
+                category: "testing",
+                description: "Generate comprehensive unit tests for your functions with edge cases.",
+                content: "describe('{{function_name}}', () => {\n  it('should {{test_description}}', () => {\n    // Arrange\n    const {{input_var}} = {{input_value}};\n    const expected = {{expected_result}};\n    \n    // Act\n    const result = {{function_name}}({{input_var}});\n    \n    // Assert\n    expect(result).toEqual(expected);\n  });\n});",
+                variables: [
+                    {name: "function_name", description: "Name of the function to test"},
+                    {name: "test_description", description: "What the test should verify"},
+                    {name: "input_var", description: "Input variable name"},
+                    {name: "input_value", description: "Test input value"},
+                    {name: "expected_result", description: "Expected test result"}
+                ],
+                tags: ["testing", "jest", "unit-test"],
+                author: "System",
+                uses: 567,
+                rating: 4.7,
+                isPublic: true
+            }
+        ];
+
+        let userTemplates = [];
+        let currentFilter = 'all';
+
+        // Initialize the app
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeTabs();
+            renderTemplates();
+            renderUserTemplates();
+        });
+
+        function initializeTabs() {
+            const tabs = document.querySelectorAll('.nav-tab');
+            const contents = document.querySelectorAll('.tab-content');
+            
+            tabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    const targetTab = tab.getAttribute('data-tab');
+                    
+                    // Remove active class from all tabs and contents
+                    tabs.forEach(t => t.classList.remove('active'));
+                    contents.forEach(c => c.classList.remove('active'));
+                    
+                    // Add active class to clicked tab and corresponding content
+                    tab.classList.add('active');
+                    document.getElementById(targetTab).classList.add('active');
+                });
+            });
+
+            // Filter tags functionality
+            const filterTags = document.querySelectorAll('.filter-tag');
+            filterTags.forEach(tag => {
+                tag.addEventListener('click', () => {
+                    filterTags.forEach(t => t.classList.remove('active'));
+                    tag.classList.add('active');
+                    currentFilter = tag.getAttribute('data-filter');
+                    renderTemplates();
+                });
+            });
+        }
+
+        function renderTemplates() {
+            const grid = document.getElementById('templatesGrid');
+            let filteredTemplates = templates;
+
+            if (currentFilter !== 'all') {
+                filteredTemplates = templates.filter(template => template.category === currentFilter);
+            }
+
+            grid.innerHTML = filteredTemplates.map(template => `
+                <div class="template-card" onclick="openTemplateModal(${template.id})">
+                    <div class="template-header">
+                        <div>
+                            <div class="template-title">${template.name}</div>
+                            <div class="template-category">${getCategoryDisplayName(template.category)}</div>
+                        </div>
+                    </div>
+                    <div class="template-description">${template.description}</div>
+                    <div class="template-stats">
+                        <span>👤 ${template.author}</span>
+                        <span>📊 ${template.uses} uses</span>
+                        <span>⭐ ${template.rating}</span>
+                    </div>
+                    <div class="template-actions">
+                        <button class="btn btn-primary" onclick="event.stopPropagation(); useTemplate(${template.id})">Use Template</button>
+                        <button class="btn btn-secondary" onclick="event.stopPropagation(); addToCollection(${template.id})">Add to Collection</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderUserTemplates() {
+            const grid = document.getElementById('myTemplatesGrid');
+            
+            if (userTemplates.length === 0) {
+                grid.innerHTML = `
+                    <div style="text-align: center; padding: 50px; color: #666;">
+                        <h3>No templates created yet</h3>
+                        <p>Create your first template to get started!</p>
+                    </div>
+                `;
+                return;
+            }
+
+            grid.innerHTML = userTemplates.map(template => `
+                <div class="template-card" onclick="openTemplateModal(${template.id}, true)">
+                    <div class="template-header">
+                        <div>
+                            <div class="template-title">${template.name}</div>
+                            <div class="template-category">${getCategoryDisplayName(template.category)}</div>
+                        </div>
+                    </div>
+                    <div class="template-description">${template.description}</div>
+                    <div class="template-stats">
+                        <span>👤 You</span>
+                        <span>📊 ${template.uses || 0} uses</span>
+                        <span>⭐ ${template.rating || 'N/A'}</span>
+                    </div>
+                    <div class="template-actions">
+                        <button class="btn btn-primary" onclick="event.stopPropagation(); useTemplate(${template.id}, true)">Use Template</button>
+                        <button class="btn btn-secondary" onclick="event.stopPropagation(); editTemplate(${template.id})">Edit</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function getCategoryDisplayName(category) {
+            const categories = {
+                'code': 'Code Generation',
+                'documentation': 'Documentation',
+                'analysis': 'Analysis',
+                'testing': 'Testing',
+                'api': 'API'
+            };
+            return categories[category] || category;
+        }
+
+        function searchTemplates() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const grid = document.getElementById('templatesGrid');
+            
+            let filteredTemplates = templates.filter(template => 
+                template.name.toLowerCase().includes(searchTerm) ||
+                template.description.toLowerCase().includes(searchTerm) ||
+                template.tags.some(tag => tag.toLowerCase().includes(searchTerm))
+            );
+
+            if (currentFilter !== 'all') {
+                filteredTemplates = filteredTemplates.filter(template => template.category === currentFilter);
+            }
+
+            grid.innerHTML = filteredTemplates.map(template => `
+                <div class="template-card" onclick="openTemplateModal(${template.id})">
+                    <div class="template-header">
+                        <div>
+                            <div class="template-title">${template.name}</div>
+                            <div class="template-category">${getCategoryDisplayName(template.category)}</div>
+                        </div>
+                    </div>
+                    <div class="template-description">${template.description}</div>
+                    <div class="template-stats">
+                        <span>👤 ${template.author}</span>
+                        <span>📊 ${template.uses} uses</span>
+                        <span>⭐ ${template.rating}</span>
+                    </div>
+                    <div class="template-actions">
+                        <button class="btn btn-primary" onclick="event.stopPropagation(); useTemplate(${template.id})">Use Template</button>
+                        <button class="btn btn-secondary" onclick="event.stopPropagation(); addToCollection(${template.id})">Add to Collection</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function openTemplateModal(templateId, isUserTemplate = false) {
+            const template = isUserTemplate ? 
+                userTemplates.find(t => t.id === templateId) : 
+                templates.find(t => t.id === templateId);
+            
+            if (!template) return;
+
+            const modal = document.getElementById('templateModal');
+            const modalContent = document.getElementById('modalContent');
+            
+            modalContent.innerHTML = `
+                <h2 style="margin-bottom: 20px; color: #333;">${template.name}</h2>
+                <div class="template-category" style="margin-bottom: 15px;">${getCategoryDisplayName(template.category)}</div>
+                <p style="margin-bottom: 20px; color: #666;">${template.description}</p>
+                
+                <h3 style="margin-bottom: 15px; color: #333;">Template Content:</h3>
+                <pre style="background: #f8f9fa; padding: 15px; border-radius: 10px; overflow-x: auto; margin-bottom: 20px;">${template.content}</pre>
+                
+                <h3 style="margin-bottom: 15px; color: #333;">Variables:</h3>
+                <div style="margin-bottom: 20px;">
+                    ${template.variables.map(variable => `
+                        <div style="background: #f0f0f0; padding: 10px; border-radius: 8px; margin-bottom: 10px;">
+                            <strong>{{${variable.name}}}</strong> - ${variable.description}
+                        </div>
+                    `).join('')}
+                </div>
+                
+                <h3 style="margin-bottom: 15px; color: #333;">Tags:</h3>
+                <div style="margin-bottom: 20px;">
+                    ${template.tags.map(tag => `<span style="background: #e0e0e0; padding: 5px 10px; border-radius: 15px; margin-right: 5px; font-size: 0.9rem;">${tag}</span>`).join('')}
+                </div>
+                
+                <div style="display: flex; gap: 10px; margin-top: 20px;">
+                    <button class="btn btn-primary" onclick="useTemplate(${template.id}, ${isUserTemplate})">Use This Template</button>
+                    <button class="btn btn-secondary" onclick="closeModal()">Close</button>
+                </div>
+            `;
+            
+            modal.style.display = 'block';
+        }
+
+        function closeModal() {
+            document.getElementById('templateModal').style.display = 'none';
+        }
+
+        function useTemplate(templateId, isUserTemplate = false) {
+            const template = isUserTemplate ? 
+                userTemplates.find(t => t.id === templateId) : 
+                templates.find(t => t.id === templateId);
+            
+            if (!template) return;
+
+            alert(`Using template: ${template.name}\n\nThis would redirect to the LLM interface with the template loaded.`);
+            closeModal();
+        }
+
+        function addToCollection(templateId) {
+            const template = templates.find(t => t.id === templateId);
+            if (!template) return;
+
+            // Check if already in collection
+            const existingTemplate = userTemplates.find(t => t.name === template.name);
+            if (existingTemplate) {
+                alert('Template already in your collection!');
+                return;
+            }
+
+            // Add to user's collection
+            const userTemplate = {
+                ...template,
+                id: Date.now(), // Generate new ID
+                author: 'You',
+                uses: 0,
+                rating: null
+            };
+            
+            userTemplates.push(userTemplate);
+            renderUserTemplates();
+            alert('Template added to your collection!');
+        }
+
+        function editTemplate(templateId) {
+            alert(`Edit template functionality would be implemented here for template ID: ${templateId}`);
+        }
+
+        // Create template form handling
+        document.getElementById('createTemplateForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const variables = [];
+            
+            // Get variables from the builder
+            const variableItems = document.querySelectorAll('.variable-item');
+            variableItems.forEach(item => {
+                const nameInput = item.querySelector('.variable-name');
+                const descInput = item.querySelector('.variable-desc');
+                if (nameInput && descInput && nameInput.value && descInput.value) {
+                    variables.push({
+                        name: nameInput.value,
+                        description: descInput.value
+                    });
+                }
+            });
+            
+            const newTemplate = {
+                id: Date.now(),
+                name: document.getElementById('templateName').value,
+                category: document.getElementById('templateCategory').value,
+                description: document.getElementById('templateDescription').value,
+                content: document.getElementById('templateContent').value,
+                variables: variables,
+                tags: document.getElementById('templateTags').value.split(',').map(tag => tag.trim()),
+                author: 'You',
+                uses: 0,
+                rating: null,
+                isPublic: false
+            };
+            
+            userTemplates.push(newTemplate);
+            renderUserTemplates();
+            
+            // Reset form
+            this.reset();
+            document.getElementById('variablesList').innerHTML = '';
+            
+            // Switch to My Templates tab
+            document.querySelector('[data-tab="my-templates"]').click();
+            
+            alert('Template created successfully!');
+        });
+
+        function addVariable() {
+            const variablesList = document.getElementById('variablesList');
+            const variableItem = document.createElement('div');
+            variableItem.className = 'variable-item';
+            variableItem.innerHTML = `
+                <input type="text" class="variable-name" placeholder="Variable name (e.g., entity_name)">
+                <input type="text" class="variable-desc" placeholder="Variable description">
+                <button type="button" class="remove-variable" onclick="removeVariable(this)">Remove</button>
+            `;
+            variablesList.appendChild(variableItem);
+        }
+
+        function removeVariable(button) {
+            button.parentElement.remove();
+        }
+
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const modal = document.getElementById('templateModal');
+            if (event.target === modal) {
+                closeModal();
+            }
+        }
+
+        // Search on Enter key
+        document.getElementById('searchInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                searchTemplates();
+            }
+        });
+    </script>
+</body>
+</html>
