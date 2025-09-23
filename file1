@@ -1,201 +1,776 @@
-import { Component, ElementRef, OnInit, Renderer2, ViewChild } from '@angular/core';
-import { marked } from 'marked';
-import hljs from 'highlight.js';
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documentation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-interface TocItem {
-  id: string;
-  text: string;
-  level: number;
-}
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #eaeaea;
+            background-color: #111113;
+        }
 
-@Component({
-  selector: 'app-documentation',
-  templateUrl: './documentation.component.html',
-  styleUrls: ['./documentation.component.scss']
-})
-export class DocumentationComponent implements OnInit {
-  @ViewChild('content', { static: true }) contentElement!: ElementRef;
-  @ViewChild('tocContainer', { static: true }) tocContainer!: ElementRef;
+        /* Container */
+        .documentation-container {
+            display: flex;
+            height: 100vh;
+            max-width: 1400px;
+            margin: 0 auto;
+            background: #18181b;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.6);
+            border-radius: 8px;
+            overflow: hidden;
+        }
 
-  htmlContent: any = '';
-  tocItems: TocItem[] = [];
-  activeSection = 0;
-  isLoading = true;
-  loadingError = '';
+        /* Sidebar */
+        .sidebar {
+            width: 300px;
+            background: #1a1a1d;
+            border-right: 1px solid #2a2a2f;
+            overflow-y: auto;
+            padding: 20px;
+        }
 
-  markdownFiles = [
-    { folder: 'Page1', file: 'page1.md' },
-    { folder: 'Page2', file: 'page2.md' },
-    { folder: 'Page3', file: 'page3.md' },
-    { folder: 'Page4', file: 'page4.md' }
-  ];
+        .sidebar h3 {
+            margin-bottom: 15px;
+            color: #ffffff;
+            font-size: 18px;
+            font-weight: 600;
+        }
 
-  private isProgrammaticScroll = false;
-  private HEADER_SELECTOR = 'header'; // adjust if your header has a different selector
+        /* TOC Items */
+        .toc-item {
+            display: block;
+            padding: 8px 0;
+            text-decoration: none;
+            color: #9a9aa0;
+            border-left: 3px solid transparent;
+            padding-left: 15px;
+            transition: all 0.2s ease;
+            font-size: 14px;
+            cursor: pointer;
+        }
 
-  constructor(private renderer: Renderer2) {}
+        .toc-item:hover {
+            color: #3b82f6;
+            border-left-color: #3b82f6;
+            background: rgba(59, 130, 246, 0.1);
+        }
 
-  ngOnInit(): void {
-    marked.setOptions({
-      gfm: true,
-      breaks: false,
-      pedantic: false
-    });
+        .toc-item.active {
+            color: #3b82f6;
+            border-left-color: #3b82f6;
+            background: rgba(59, 130, 246, 0.15);
+            font-weight: 500;
+        }
 
-    this.loadAllMarkdownFiles();
+        .toc-item.level-1 {
+            font-weight: 600;
+            margin-top: 10px;
+        }
 
-    // Scroll listener
-    this.renderer.listen(this.contentElement.nativeElement, 'scroll', () => {
-      this.updateActiveSection();
-    });
+        .toc-item.level-2 {
+            padding-left: 30px;
+            font-size: 13px;
+        }
 
-    // Resize listener
-    window.addEventListener('resize', () => {
-      setTimeout(() => this.updateActiveSection(), 100);
-    });
-  }
+        .toc-item.level-3 {
+            padding-left: 45px;
+            font-size: 13px;
+        }
 
-  async loadAllMarkdownFiles() {
-    this.isLoading = true;
-    this.loadingError = '';
-    this.updateLoadingState();
+        .toc-item.level-4 {
+            padding-left: 60px;
+            font-size: 12px;
+        }
 
-    try {
-      const filePromises = this.markdownFiles.map(({ folder, file }) =>
-        this.loadMarkdownFile(folder, file)
-      );
+        .toc-item.level-5,
+        .toc-item.level-6 {
+            padding-left: 75px;
+            font-size: 12px;
+        }
 
-      const markdownFiles = await Promise.all(filePromises);
-      this.processMarkdownFiles(markdownFiles);
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 20px 30px;
+            border-bottom: 1px solid #2a2a2f;
+            background: #18181b;
+        }
 
-      this.isLoading = false;
+        .content-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 30px;
+            background: #18181b;
+            border-top: none;
+        }
 
-      setTimeout(() => {
-        this.generateTOC();
-        this.applySyntaxHighlighting();
-      }, 100);
-    } catch (error) {
-      console.error('Error loading markdown files:', error);
-      this.loadingError = 'Failed to load documentation files';
-      this.isLoading = false;
-      this.updateLoadingState();
-    }
-  }
+        /* Loading */
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 200px;
+            font-size: 18px;
+            color: #9a9aa0;
+        }
 
-  async loadMarkdownFile(folder: string, file: string) {
-    const path = `assets/markdown/${folder}/${file}`;
-    try {
-      const response = await fetch(path);
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      const content = await response.text();
-      return { folderName: folder, fileName: file, content, path };
-    } catch (error) {
-      console.warn(`Failed to load ${path}:`, error);
-      return {
-        folderName: folder,
-        fileName: file,
-        content: `# Error Loading Content\n\nFailed to load content from ${path}`,
-        path
-      };
-    }
-  }
+        .loading::after {
+            content: '';
+            width: 20px;
+            height: 20px;
+            border: 2px solid #3b82f6;
+            border-top: 2px solid transparent;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+        }
 
-  processMarkdownFiles(markdownFiles: any[]) {
-    let combinedMarkdown = '';
-    markdownFiles.forEach((file, index) => {
-      if (index > 0) combinedMarkdown += '\n\n';
-      combinedMarkdown += file.content.trim();
-    });
-    this.htmlContent = marked.parse(combinedMarkdown);
-  }
+        .error {
+            color: #f87171;
+            text-align: center;
+            padding: 20px;
+            font-size: 16px;
+        }
 
-  updateLoadingState() {
-    if (this.isLoading) {
-      this.htmlContent = '<div class="loading">Loading documentation...</div>';
-      this.tocContainer.nativeElement.innerHTML = '<div class="loading">Loading TOC...</div>';
-    } else if (this.loadingError) {
-      this.htmlContent = `<div class="error">${this.loadingError}</div>`;
-      this.tocContainer.nativeElement.innerHTML = `<div class="error">Failed to load TOC</div>`;
-    }
-  }
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+            100% {
+                transform: rotate(360deg);
+            }
+        }
 
-  generateTOC() {
-    const headers = this.contentElement.nativeElement.querySelectorAll('h1, h2, h3, h4, h5, h6');
-    this.tocItems = [];
-    headers.forEach((header: HTMLElement, index: number) => {
-      const level = parseInt(header.tagName.charAt(1));
-      const text = (header.textContent || '').trim();
-      const id = 'heading-' + index;
-      header.id = id;
-      this.tocItems.push({ id, text, level });
-    });
-  }
+        /* Markdown Content */
+        .content-body h1,
+        .content-body h2,
+        .content-body h3,
+        .content-body h4,
+        .content-body h5,
+        .content-body h6 {
+            margin-top: 30px;
+            margin-bottom: 15px;
+            color: #ffffff;
+            line-height: 1.3;
+        }
 
-  applySyntaxHighlighting() {
-    this.contentElement.nativeElement.querySelectorAll('pre code').forEach((block: HTMLElement) => {
-      hljs.highlightElement(block);
-    });
-  }
+        .content-body h1 {
+            font-size: 32px;
+            border-bottom: 2px solid #2a2a2f;
+            padding-bottom: 10px;
+        }
 
-  private getHeaderHeight(): number {
-    const headerEl = document.querySelector(this.HEADER_SELECTOR);
-    return headerEl ? headerEl.clientHeight : 0;
-  }
+        .content-body h2 {
+            font-size: 26px;
+            border-bottom: 1px solid #2a2a2f;
+            padding-bottom: 8px;
+        }
 
-  private getElementTopRelativeToContainer(element: HTMLElement): number {
-    const container = this.contentElement.nativeElement as HTMLElement;
-    const elementRect = element.getBoundingClientRect();
-    const containerRect = container.getBoundingClientRect();
-    return elementRect.top - containerRect.top + container.scrollTop;
-  }
+        .content-body h3 {
+            font-size: 22px;
+        }
 
-  updateActiveSection() {
-    if (this.isProgrammaticScroll) return;
+        .content-body h4 {
+            font-size: 18px;
+        }
 
-    const headers = this.contentElement.nativeElement.querySelectorAll('h1, h2, h3, h4, h5, h6');
-    let currentSection = 0;
-    const container = this.contentElement.nativeElement as HTMLElement;
-    const scrollPos = container.scrollTop + this.getHeaderHeight() + 10; // small margin
+        .content-body p {
+            margin-bottom: 15px;
+            color: #d1d1d6;
+        }
 
-    headers.forEach((header: HTMLElement, index: number) => {
-      const headerTop = this.getElementTopRelativeToContainer(header);
-      if (headerTop <= scrollPos) {
-        currentSection = index;
-      }
-    });
+        .content-body ul,
+        .content-body ol {
+            margin: 15px 0;
+            padding-left: 30px;
+        }
 
-    if (this.activeSection !== currentSection) {
-      this.activeSection = currentSection;
-    }
-  }
+        .content-body li {
+            margin-bottom: 5px;
+            color: #d1d1d6;
+        }
 
-  scrollToSection(id: string, index: number, event: Event) {
-    event.preventDefault();
-    const container = this.contentElement.nativeElement as HTMLElement;
-    const element = document.getElementById(id);
+        /* Code blocks */
+        .content-body pre {
+            background: #1f1f23;
+            border: 1px solid #2a2a2f;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 20px 0;
+            overflow-x: auto;
+        }
 
-    if (element && container) {
-      const targetTop = Math.max(
-        0,
-        this.getElementTopRelativeToContainer(element) - this.getHeaderHeight() - 10 // small margin
-      );
+        .content-body code {
+            background: #27272a;
+            color: #93c5fd;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'JetBrains Mono', 'Monaco', 'Menlo', 'Consolas', monospace;
+            font-size: 90%;
+        }
 
-      this.isProgrammaticScroll = true;
-      this.activeSection = index;
+        .content-body pre code {
+            background: none;
+            padding: 0;
+        }
 
-      container.scrollTo({
-        top: targetTop,
-        behavior: 'smooth'
-      });
+        /* Blockquote */
+        .content-body blockquote {
+            border-left: 4px solid #3b82f6;
+            margin: 20px 0;
+            padding: 10px 20px;
+            background: #1f1f23;
+            color: #9a9aa0;
+            border-radius: 6px;
+        }
 
-      setTimeout(() => {
-        this.isProgrammaticScroll = false;
-        this.updateActiveSection();
-      }, 600);
-    }
-  }
+        /* Tables */
+        .content-body table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
 
-  reloadContent() {
-    this.loadAllMarkdownFiles();
-  }
-}
+        .content-body th,
+        .content-body td {
+            border: 1px solid #2a2a2f;
+            padding: 12px;
+            text-align: left;
+        }
+
+        .content-body th {
+            background: #1f1f23;
+            font-weight: 600;
+            color: #ffffff;
+        }
+
+        .content-body td {
+            color: #d1d1d6;
+        }
+
+        /* Links */
+        .content-body a {
+            color: #3b82f6;
+            text-decoration: none;
+        }
+
+        .content-body a:hover {
+            text-decoration: underline;
+        }
+
+        /* Images */
+        .content-body img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            margin: 20px 0;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .content-body img:hover {
+            transform: scale(1.02);
+            box-shadow: 0 8px 24px rgba(59, 130, 246, 0.2);
+        }
+
+        /* Image containers */
+        .image-container {
+            margin: 30px 0;
+            text-align: center;
+        }
+
+        .image-container.left {
+            text-align: left;
+        }
+
+        .image-container.right {
+            text-align: right;
+        }
+
+        .image-container.float-left {
+            float: left;
+            margin: 0 20px 20px 0;
+            max-width: 45%;
+        }
+
+        .image-container.float-right {
+            float: right;
+            margin: 0 0 20px 20px;
+            max-width: 45%;
+        }
+
+        .image-caption {
+            font-size: 14px;
+            color: #9a9aa0;
+            font-style: italic;
+            margin-top: 8px;
+            padding: 0 10px;
+        }
+
+        /* Image gallery */
+        .image-gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .image-gallery img {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            cursor: pointer;
+        }
+
+        /* Image with text wrapper */
+        .image-text-wrapper {
+            display: flex;
+            align-items: flex-start;
+            gap: 20px;
+            margin: 25px 0;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 8px;
+            border: 1px solid #2a2a2f;
+        }
+
+        .image-text-wrapper.reverse {
+            flex-direction: row-reverse;
+        }
+
+        .image-text-wrapper .image-side {
+            flex: 0 0 300px;
+        }
+
+        .image-text-wrapper .text-side {
+            flex: 1;
+        }
+
+        .image-text-wrapper img {
+            margin: 0;
+            width: 100%;
+        }
+
+        /* Full width image sections */
+        .full-width-image {
+            margin: 40px -30px;
+            position: relative;
+        }
+
+        .full-width-image img {
+            width: 100%;
+            margin: 0;
+            border-radius: 0;
+        }
+
+        .full-width-image .overlay-text {
+            position: absolute;
+            bottom: 20px;
+            left: 30px;
+            right: 30px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 15px;
+            border-radius: 6px;
+        }
+
+        /* Lightbox for images */
+        .lightbox {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            cursor: pointer;
+        }
+
+        .lightbox img {
+            max-width: 90%;
+            max-height: 90%;
+            box-shadow: 0 0 50px rgba(0, 0, 0, 0.8);
+        }
+
+        .lightbox.active {
+            display: flex;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .documentation-container {
+                flex-direction: column;
+                height: auto;
+            }
+
+            .sidebar {
+                width: 100%;
+                height: auto;
+                max-height: 200px;
+            }
+
+            .content-body {
+                padding: 20px;
+            }
+
+            .image-text-wrapper {
+                flex-direction: column;
+            }
+
+            .image-text-wrapper.reverse {
+                flex-direction: column;
+            }
+
+            .image-text-wrapper .image-side {
+                flex: none;
+            }
+
+            .image-container.float-left,
+            .image-container.float-right {
+                float: none;
+                max-width: 100%;
+                margin: 20px 0;
+                text-align: center;
+            }
+
+            .full-width-image {
+                margin: 40px -20px;
+            }
+
+            .full-width-image .overlay-text {
+                left: 20px;
+                right: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="documentation-container">
+        <nav class="sidebar">
+            <h3>Table of Contents</h3>
+            <div id="toc"></div>
+        </nav>
+        
+        <main class="main-content">
+            <div class="content-body" id="content">
+                <div class="loading">Loading content...</div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Lightbox for image viewing -->
+    <div class="lightbox" id="lightbox">
+        <img src="" alt="" id="lightbox-img">
+    </div>
+
+    <script>
+        // Sample markdown content with images
+        const sampleMarkdown = `# Welcome to Our Documentation
+
+## Getting Started
+
+This comprehensive guide will help you get started with our platform. Below you'll see our modern dashboard interface.
+
+<div class="image-container">
+<img src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800&h=400&fit=crop" alt="Modern Dashboard Interface">
+<div class="image-caption">Our intuitive dashboard provides real-time analytics and easy navigation</div>
+</div>
+
+### Installation
+
+To get started, you'll need to install the required dependencies:
+
+\`\`\`bash
+npm install @example/package
+# or
+yarn add @example/package
+\`\`\`
+
+<div class="image-text-wrapper">
+<div class="image-side">
+<img src="https://images.unsplash.com/photo-1629904853716-f0bc54eea481?w=300&h=200&fit=crop" alt="Terminal Installation">
+</div>
+<div class="text-side">
+
+### Quick Setup Process
+
+1. **Create a new project** - Initialize your workspace
+2. **Install dependencies** - Add required packages  
+3. **Configure environment** - Set up your API keys
+4. **Start developing** - Begin building your application
+
+The installation process is streamlined and takes just a few minutes to complete.
+
+</div>
+</div>
+
+> **Note**: Make sure you have Node.js version 16 or higher installed on your system.
+
+## Architecture Overview
+
+<div class="full-width-image">
+<img src="https://images.unsplash.com/photo-1518709268805-4e9042af2176?w=1200&h=300&fit=crop" alt="System Architecture">
+<div class="overlay-text">
+<h3>Scalable Cloud Architecture</h3>
+<p>Our system is built on modern cloud infrastructure ensuring 99.9% uptime and global scalability.</p>
+</div>
+</div>
+
+## Configuration
+
+### Basic Configuration
+
+<div class="image-text-wrapper reverse">
+<div class="image-side">
+<img src="https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=300&h=200&fit=crop" alt="Configuration Settings">
+</div>
+<div class="text-side">
+
+The basic configuration is straightforward and user-friendly:
+
+\`\`\`javascript
+const config = {
+  apiKey: 'your-api-key',
+  endpoint: 'https://api.example.com',
+  timeout: 5000
+};
+\`\`\`
+
+Our configuration interface provides real-time validation and helpful suggestions.
+
+</div>
+</div>
+
+### Advanced Options
+
+For more advanced use cases, you can customize additional settings:
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| retries | number | 3 | Number of retry attempts |
+| cache | boolean | true | Enable response caching |
+| debug | boolean | false | Enable debug mode |
+
+## Visual Examples
+
+Here are some screenshots showing the platform in action:
+
+<div class="image-gallery">
+<img src="https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=400&h=300&fit=crop" alt="Analytics Dashboard">
+<img src="https://images.unsplash.com/photo-1551650975-87deedd944c3?w=400&h=300&fit=crop" alt="User Interface">
+<img src="https://images.unsplash.com/photo-1504868584819-f8e8b4b6d7e3?w=400&h=300&fit=crop" alt="Mobile View">
+</div>
+
+## API Reference
+
+### Authentication
+
+<div class="image-container float-right">
+<img src="https://images.unsplash.com/photo-1555949963-aa79dcee981c?w=250&h=150&fit=crop" alt="Security">
+<div class="image-caption">Enterprise-grade security</div>
+</div>
+
+All API requests require authentication using your API key. Our security system uses industry-standard encryption and provides detailed audit logs.
+
+\`\`\`javascript
+const client = new APIClient({
+  apiKey: process.env.API_KEY
+});
+\`\`\`
+
+Security is our top priority, with multiple layers of protection including rate limiting, IP whitelisting, and real-time threat detection.
+
+### Making Requests
+
+#### GET Requests
+
+\`\`\`javascript
+const response = await client.get('/users');
+console.log(response.data);
+\`\`\`
+
+## Performance Metrics
+
+<div class="image-container">
+<img src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=600&h=300&fit=crop" alt="Performance Dashboard">
+<div class="image-caption">Real-time performance monitoring with detailed metrics and alerts</div>
+</div>
+
+Our platform delivers exceptional performance:
+
+- **Response Time**: < 100ms average
+- **Uptime**: 99.9% guaranteed SLA  
+- **Throughput**: 10,000+ requests/second
+- **Global CDN**: 150+ edge locations
+
+## Support & Community
+
+<div class="image-text-wrapper">
+<div class="image-side">
+<img src="https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=300&h=200&fit=crop" alt="Community Support">
+</div>
+<div class="text-side">
+
+### Get Help When You Need It
+
+Our community and support team are here to help:
+
+- 📚 **Documentation**: Comprehensive guides and tutorials
+- 💬 **Discord Community**: Active community of developers  
+- 📧 **Email Support**: Direct line to our technical team
+- 🐛 **GitHub Issues**: Report bugs and feature requests
+
+Join thousands of developers building amazing applications with our platform.
+
+</div>
+</div>
+
+---
+
+*Last updated: September 2025*`;
+
+        // Enhanced markdown parser with image support
+        function parseMarkdown(markdown) {
+            return markdown
+                // Headers
+                .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+                .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+                .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+                
+                // Code blocks
+                .replace(/```(\w+)?\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
+                
+                // Inline code
+                .replace(/`([^`]+)`/g, '<code>$1</code>')
+                
+                // Bold
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                
+                // Links
+                .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
+                
+                // Blockquotes
+                .replace(/^> (.*$)/gim, '<blockquote>$1</blockquote>')
+                
+                // Lists
+                .replace(/^\d+\. (.*$)/gim, '<li>$1</li>')
+                .replace(/^- (.*$)/gim, '<li>$1</li>')
+                
+                // Line breaks
+                .replace(/\n\n/g, '</p><p>')
+                .replace(/\n/g, '<br>')
+                
+                // Wrap in paragraphs (but skip HTML elements)
+                .replace(/^(?!<[h|li|blockquote|pre|div])(.+)$/gim, '<p>$1</p>');
+        }
+
+        // Setup lightbox functionality
+        function setupLightbox() {
+            const lightbox = document.getElementById('lightbox');
+            const lightboxImg = document.getElementById('lightbox-img');
+            
+            // Add click handlers to all images
+            document.querySelectorAll('.content-body img').forEach(img => {
+                img.style.cursor = 'pointer';
+                img.addEventListener('click', () => {
+                    lightboxImg.src = img.src;
+                    lightboxImg.alt = img.alt;
+                    lightbox.classList.add('active');
+                });
+            });
+            
+            // Close lightbox on click
+            lightbox.addEventListener('click', () => {
+                lightbox.classList.remove('active');
+            });
+            
+            // Close on escape key
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    lightbox.classList.remove('active');
+                }
+            });
+        }
+
+        // Generate table of contents
+        function generateTOC(content) {
+            const headers = content.match(/^#{1,6} .+$/gm) || [];
+            const toc = document.getElementById('toc');
+            
+            headers.forEach((header, index) => {
+                const level = header.match(/^#+/)[0].length;
+                const text = header.replace(/^#+\s/, '');
+                const id = text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-');
+                
+                const tocItem = document.createElement('a');
+                tocItem.className = `toc-item level-${level}`;
+                tocItem.textContent = text;
+                tocItem.href = `#${id}`;
+                tocItem.onclick = (e) => {
+                    e.preventDefault();
+                    
+                    // Update active state
+                    document.querySelectorAll('.toc-item').forEach(item => 
+                        item.classList.remove('active')
+                    );
+                    tocItem.classList.add('active');
+                    
+                    // Scroll to section
+                    const target = document.getElementById(id);
+                    if (target) {
+                        target.scrollIntoView({ behavior: 'smooth' });
+                    }
+                };
+                
+                toc.appendChild(tocItem);
+            });
+        }
+
+        // Initialize the documentation viewer
+        function initDocumentation() {
+            const contentDiv = document.getElementById('content');
+            
+            // Parse markdown and render
+            const htmlContent = parseMarkdown(sampleMarkdown);
+            contentDiv.innerHTML = htmlContent;
+            
+            // Add IDs to headers for navigation
+            const headers = contentDiv.querySelectorAll('h1, h2, h3, h4, h5, h6');
+            headers.forEach(header => {
+                const id = header.textContent.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-');
+                header.id = id;
+            });
+            
+            // Generate table of contents
+            generateTOC(sampleMarkdown);
+            
+            // Set first item as active
+            const firstTocItem = document.querySelector('.toc-item');
+            if (firstTocItem) {
+                firstTocItem.classList.add('active');
+            }
+            
+            // Setup image lightbox functionality
+            setupLightbox();
+        }
+
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', initDocumentation);
+    </script>
+</body>
+</html>
