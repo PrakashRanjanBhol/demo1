@@ -70,7 +70,6 @@ export class DocumentationComponent implements OnInit, AfterViewInit, OnDestroy 
   }
 
   ngAfterViewInit(): void {
-    // Setup event listeners after view initialization
     setTimeout(() => {
       this.setupEventListeners();
     }, 100);
@@ -82,10 +81,8 @@ export class DocumentationComponent implements OnInit, AfterViewInit, OnDestroy 
   }
 
   private setupEventListeners(): void {
-    // Setup scroll listener with takeUntil for proper cleanup
     if (this.content?.nativeElement || this.contentBodyRef?.nativeElement) {
       const scrollElement = this.content?.nativeElement || this.contentBodyRef?.nativeElement;
-
       if (scrollElement) {
         scrollElement.addEventListener('scroll', () => {
           this.updateActiveSection();
@@ -113,7 +110,7 @@ export class DocumentationComponent implements OnInit, AfterViewInit, OnDestroy 
             return of({
               folderName: folder,
               fileName: file,
-              content: `# ${folder}\n\nError loading content from ${path}`,
+              content: `# ${file}\n\nError loading content from ${path}`,
               path
             });
           }),
@@ -144,49 +141,32 @@ export class DocumentationComponent implements OnInit, AfterViewInit, OnDestroy 
   private processMarkdownFiles(markdownFiles: ProcessedFile[]): void {
     let combinedMarkdown = '';
 
-    markdownFiles.forEach((file, index) => {
-      // Add folder name as main header
-      const folderHeader = `# ${this.formatFolderName(file.folderName)}\n\n`;
-
-      // Process the markdown content
+    markdownFiles.forEach((file) => {
       let content = file.content;
 
-      // If the content doesn't start with a header, add the folder name as header
-      if (!content.trim().startsWith('#')) {
-        content = folderHeader + content;
-      } else {
-        // If content has headers, adjust their levels to be under the main folder header
-        content = folderHeader + this.adjustHeaderLevels(content);
+      // 🔹 If no heading exists in the file, fallback to filename as header
+      if (!/^#{1,6}\s/m.test(content.trim())) {
+        content = `# ${this.formatFileName(file.fileName)}\n\n` + content;
       }
 
       combinedMarkdown += content + '\n\n';
     });
 
-    // Parse markdown to HTML and sanitize it
     const rawHtml = this.parseMarkdown(combinedMarkdown);
     this.htmlContent = this.sanitizer.bypassSecurityTrustHtml(rawHtml);
 
-    // Generate TOC after content is processed
     setTimeout(() => {
       this.generateTOC();
       this.applySyntaxHighlighting();
     }, 100);
   }
 
-  private formatFolderName(folderName: string): string {
-    // Convert folder name to readable format
-    // e.g., 'Page1' -> 'Page 1', 'MyFolder' -> 'My Folder'
-    return folderName.replace(/([A-Z])/g, ' $1').trim();
-  }
-
-  private adjustHeaderLevels(content: string): string {
-    // Increase header levels by 1 (h1 -> h2, h2 -> h3, etc.)
-    return content.replace(/^(#{1,5})\s/gm, '#$1 ');
+  private formatFileName(fileName: string): string {
+    return fileName.replace(/\.md$/, '').replace(/([a-z])([0-9])/gi, '$1 $2');
   }
 
   private applySyntaxHighlighting(): void {
     const contentElement = this.content?.nativeElement || this.contentBodyRef?.nativeElement;
-
     if (contentElement) {
       const codeBlocks = contentElement.querySelectorAll('pre code');
       codeBlocks.forEach((block: any) => {
@@ -197,7 +177,6 @@ export class DocumentationComponent implements OnInit, AfterViewInit, OnDestroy 
 
   generateTOC(): void {
     const contentElement = this.content?.nativeElement || this.contentBodyRef?.nativeElement;
-
     if (!contentElement) return;
 
     const headers = contentElement.querySelectorAll('h1, h2, h3, h4, h5, h6');
@@ -215,13 +194,11 @@ export class DocumentationComponent implements OnInit, AfterViewInit, OnDestroy 
 
   updateActiveSection(): void {
     const contentElement = this.content?.nativeElement || this.contentBodyRef?.nativeElement;
-
     if (!contentElement) return;
 
     const headers = contentElement.querySelectorAll('h1, h2, h3, h4, h5, h6');
     let currentSection = 0;
-
-    const scrollPos = contentElement.scrollTop + 50; // Adjust offset as needed
+    const scrollPos = contentElement.scrollTop + 50;
 
     headers.forEach((header: any, index: number) => {
       const headerTop = header.offsetTop;
@@ -261,12 +238,11 @@ export class DocumentationComponent implements OnInit, AfterViewInit, OnDestroy 
     const contentElement = this.content?.nativeElement || this.contentBodyRef?.nativeElement;
 
     if (element && contentElement) {
-      // Scroll within the content container
       const containerTop = contentElement.offsetTop;
       const elementTop = element.offsetTop;
 
       contentElement.scrollTo({
-        top: elementTop - containerTop - 20, // Add small offset
+        top: elementTop - containerTop - 20,
         behavior: 'smooth'
       });
     }
@@ -280,7 +256,6 @@ export class DocumentationComponent implements OnInit, AfterViewInit, OnDestroy 
 
   @HostListener('window:resize')
   onResize(): void {
-    // Recalculate positions on window resize
     setTimeout(() => this.updateActiveSection(), 100);
   }
 
@@ -288,616 +263,7 @@ export class DocumentationComponent implements OnInit, AfterViewInit, OnDestroy 
     return marked.parse(md, { async: false }) as string;
   }
 
-  // Utility method to reload content if needed
   reloadContent(): void {
     this.loadAllMarkdownFiles();
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<div class="container">
-    <div class="sidebar" #sidebar>
-        <h3 class="sidebar-header">
-            🚀 Best Practices
-            <span class="sparkle">✨</span>
-        </h3>
-
-        <!-- Loading state for TOC -->
-        <div *ngIf="isLoading" class="loading-toc">
-            <div class="loading-spinner"></div>
-            <p>Loading documentation...</p>
-        </div>
-
-        <!-- Error state -->
-        <div *ngIf="loadingError && !isLoading" class="error-message">
-            <p>{{ loadingError }}</p>
-            <button (click)="reloadContent()" class="retry-btn">Retry</button>
-        </div>
-
-        <!-- Table of Contents -->
-        <ul *ngIf="!isLoading && !loadingError" class="toc">
-            <li *ngFor="let item of tocItems; let i = index">
-                <a [href]="'#' + item.id" [class]="'level-' + item.level" [class.active]="activeSection === i"
-                    (click)="scrollToSection($event, item.id, i)">
-                    <span class="bullet"></span>
-                    {{ item.text }}
-                </a>
-            </li>
-        </ul>
-    </div>
-
-    <div class="main-content" #content>
-        <!-- Loading state for content -->
-        <div *ngIf="isLoading" class="loading-content">
-            <div class="loading-spinner large"></div>
-            <h2>Loading Documentation</h2>
-            <p>Please wait while we load all documentation files...</p>
-        </div>
-
-        <!-- Error state for content -->
-        <div *ngIf="loadingError && !isLoading" class="error-content">
-            <h2>Error Loading Documentation</h2>
-            <p>{{ loadingError }}</p>
-            <button (click)="reloadContent()" class="retry-btn primary">Reload Documentation</button>
-        </div>
-
-        <!-- Main Content -->
-        <div *ngIf="!isLoading && !loadingError" class="content" [innerHTML]="htmlContent"></div>
-    </div>
-</div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-.container {
-    display: flex;
-    height: 100vh;
-    background: linear-gradient(135deg, #0a0a0b 0%, #1a1a1d 50%, #0f0f10 100%);
-    position: relative;
-}
-
-.container::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: linear-gradient(135deg,
-            rgba(99, 102, 241, 0.03) 0%,
-            rgba(139, 92, 246, 0.02) 50%,
-            rgba(168, 85, 247, 0.03) 100%);
-    pointer-events: none;
-}
-
-.sidebar {
-    width: 18.75rem;
-    background: linear-gradient(180deg,
-            rgba(26, 26, 29, 0.95) 0%,
-            rgba(17, 17, 19, 0.98) 50%,
-            rgba(10, 10, 11, 0.95) 100%);
-    backdrop-filter: blur(20px) saturate(180%);
-    border-right: 1px solid transparent;
-    background-clip: padding-box;
-    position: relative;
-    overflow-y: auto;
-    padding: 1.5rem 1.25rem;
-    position: sticky;
-    top: 0;
-    height: 100vh;
-}
-
-.sidebar::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    width: 1px;
-    background: linear-gradient(180deg,
-            transparent 0%,
-            rgba(99, 102, 241, 0.4) 10%,
-            rgba(139, 92, 246, 0.6) 35%,
-            rgba(168, 85, 247, 0.7) 65%,
-            rgba(139, 92, 246, 0.5) 90%,
-            transparent 100%);
-    animation: borderGlow 3s ease-in-out infinite alternate;
-}
-
-@keyframes borderGlow {
-    0% {
-        opacity: 0.5;
-    }
-
-    100% {
-        opacity: 1;
-    }
-}
-
-.sidebar-header {
-    color: #ffffff;
-    font-size: 1.25rem;
-    font-weight: 800;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    letter-spacing: 0.5px;
-    position: relative;
-    margin-bottom: 2rem;
-    padding: 1rem 1.5rem;
-    border-radius: 1rem;
-    background: linear-gradient(135deg,
-            rgba(99, 102, 241, 0.12) 0%,
-            rgba(139, 92, 246, 0.10) 50%,
-            rgba(168, 85, 247, 0.12) 100%);
-    border: 1px solid rgba(99, 102, 241, 0.25);
-    backdrop-filter: blur(12px);
-    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-    overflow: hidden;
-}
-
-.sidebar-header::before {
-    content: '';
-    position: absolute;
-    top: -50%;
-    left: -50%;
-    width: 200%;
-    height: 200%;
-    background: linear-gradient(45deg,
-            transparent 30%,
-            rgba(139, 92, 246, 0.05) 50%,
-            transparent 70%);
-    transform: translateX(-100%) translateY(-100%) rotate(45deg);
-    transition: transform 0.6s ease;
-}
-
-.sidebar-header:hover::before {
-    transform: translateX(100%) translateY(100%) rotate(45deg);
-}
-
-.sidebar-header:hover {
-    transform: translateY(-2px);
-    background: linear-gradient(135deg,
-            rgba(99, 102, 241, 0.18) 0%,
-            rgba(139, 92, 246, 0.15) 50%,
-            rgba(168, 85, 247, 0.18) 100%);
-    border-color: rgba(99, 102, 241, 0.4);
-}
-
-.sidebar-header .sparkle {
-    display: inline-block;
-    margin-left: 0.75rem;
-    font-size: 1.1em;
-    animation: advancedSparkle 2.5s infinite ease-in-out;
-    filter: drop-shadow(0 0 4px rgba(251, 191, 36, 0.6));
-}
-
-@keyframes advancedSparkle {
-    0% {
-        transform: translateY(0) rotate(0deg) scale(1);
-        opacity: 0.7;
-        filter: drop-shadow(0 0 4px rgba(168, 85, 247, 0.6)) hue-rotate(0deg);
-    }
-
-    25% {
-        transform: translateY(-3px) rotate(90deg) scale(1.1);
-        opacity: 1;
-        filter: drop-shadow(0 0 8px rgba(99, 102, 241, 0.8)) hue-rotate(90deg);
-    }
-
-    50% {
-        transform: translateY(-1px) rotate(180deg) scale(0.95);
-        opacity: 0.8;
-        filter: drop-shadow(0 0 6px rgba(139, 92, 246, 0.7)) hue-rotate(180deg);
-    }
-
-    75% {
-        transform: translateY(-4px) rotate(270deg) scale(1.05);
-        opacity: 1;
-        filter: drop-shadow(0 0 10px rgba(168, 85, 247, 0.9)) hue-rotate(270deg);
-    }
-
-    100% {
-        transform: translateY(0) rotate(360deg) scale(1);
-        opacity: 0.7;
-        filter: drop-shadow(0 0 4px rgba(99, 102, 241, 0.6)) hue-rotate(360deg);
-    }
-}
-
-/* Loading and Error States */
-.loading-toc,
-.loading-content {
-    text-align: center;
-    padding: 2rem;
-    color: #9ca3af;
-}
-
-.loading-spinner {
-    width: 32px;
-    height: 32px;
-    border: 3px solid #2a2a2c;
-    border-top: 3px solid #6366f1;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-    margin: 0 auto 1rem;
-}
-
-.loading-spinner.large {
-    width: 48px;
-    height: 48px;
-}
-
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-
-.error-message,
-.error-content {
-    text-align: center;
-    padding: 2rem;
-    color: #ef4444;
-}
-
-.retry-btn {
-    background: #374151;
-    color: #f9fafb;
-    border: 1px solid #4b5563;
-    padding: 0.5rem 1rem;
-    border-radius: 6px;
-    cursor: pointer;
-    margin-top: 1rem;
-    transition: background 0.2s;
-}
-
-.retry-btn:hover {
-    background: #4b5563;
-}
-
-.retry-btn.primary {
-    background: #6366f1;
-    border-color: #6366f1;
-}
-
-.retry-btn.primary:hover {
-    background: #5855eb;
-}
-
-.toc {
-    list-style: none;
-    padding-left: 0;
-}
-
-.toc li {
-    margin-bottom: 0.5rem;
-    position: relative;
-}
-
-.toc a {
-    color: #a1a1aa;
-    text-decoration: none;
-    display: flex;
-    align-items: center;
-    padding: 0.875rem 1rem;
-    border-radius: 0.75rem;
-    font-size: 0.875rem;
-    font-weight: 500;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    border: 1px solid transparent;
-    position: relative;
-    overflow: hidden;
-    backdrop-filter: blur(8px);
-}
-
-.toc a::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: linear-gradient(135deg,
-            rgba(99, 102, 241, 0.06) 0%,
-            rgba(139, 92, 246, 0.04) 50%,
-            rgba(168, 85, 247, 0.06) 100%);
-    opacity: 0;
-    transition: opacity 0.3s ease;
-    z-index: -1;
-}
-
-.toc a::after {
-    content: "→";
-    position: absolute;
-    right: 1rem;
-    opacity: 0;
-    transform: translateX(-10px);
-    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-    color: #8b5cf6;
-    font-weight: 600;
-}
-
-.toc a .bullet {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: currentColor;
-    margin-right: 0.75rem;
-    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-    opacity: 0.6;
-}
-
-.toc a:hover {
-    background: linear-gradient(135deg,
-            rgba(99, 102, 241, 0.12) 0%,
-            rgba(139, 92, 246, 0.08) 50%,
-            rgba(168, 85, 247, 0.12) 100%);
-    color: #ffffff;
-    border-color: rgba(99, 102, 241, 0.3);
-    transform: translateX(8px) scale(1.02);
-}
-
-.toc a:hover::before {
-    opacity: 1;
-}
-
-.toc a:hover::after {
-    opacity: 1;
-    transform: translateX(0);
-}
-
-.toc a:hover .bullet {
-    background: linear-gradient(135deg, #6366f1, #8b5cf6, #a855f7);
-    transform: scale(1.5);
-    opacity: 1;
-}
-
-.toc a.active {
-    background: linear-gradient(135deg,
-            rgba(99, 102, 241, 0.2) 0%,
-            rgba(139, 92, 246, 0.15) 50%,
-            rgba(168, 85, 247, 0.2) 100%);
-    color: #ffffff;
-    font-weight: 600;
-    border-color: rgba(99, 102, 241, 0.4);
-    transform: translateX(8px);
-    position: relative;
-}
-
-.toc a.active::before {
-    opacity: 1;
-}
-
-.toc a.active::after {
-    opacity: 1;
-    transform: translateX(0);
-    color: #a855f7;
-    content: "✦";
-    animation: activeGlow 2s ease-in-out infinite alternate;
-}
-
-@keyframes activeGlow {
-    0% {
-        opacity: 0.7;
-        transform: translateX(0) scale(1);
-    }
-
-    100% {
-        opacity: 1;
-        transform: translateX(0) scale(1.1);
-    }
-}
-
-.toc a.active .bullet {
-    background: linear-gradient(135deg, #6366f1, #8b5cf6, #a855f7);
-    transform: scale(1.8);
-    opacity: 1;
-    animation: bulletPulse 2s ease-in-out infinite alternate;
-}
-
-@keyframes bulletPulse {
-    0% {
-        opacity: 1;
-    }
-
-    100% {
-        opacity: 0.7;
-    }
-}
-
-/* Level indentation */
-.toc a.level-2 {
-    margin-left: 1.5rem;
-    font-size: 0.8125rem;
-    padding-left: 2rem;
-}
-
-.toc a.level-3 {
-    margin-left: 2.5rem;
-    font-size: 0.75rem;
-    padding-left: 2.5rem;
-    opacity: 0.9;
-}
-
-/* Main Content */
-.main-content {
-    flex: 1;
-    overflow-y: auto;
-    padding: 2.5rem;
-    background: rgba(17, 17, 19, 0.5);
-}
-
-.content {
-    max-width: 50rem;
-    margin: 0 auto;
-    line-height: 1.7;
-}
-
-/* Typography */
-.content h1 {
-    color: #f4f4f5;
-    font-size: 2.5rem;
-    font-weight: 700;
-    margin-bottom: 1rem;
-    background: linear-gradient(135deg, #6366f1, #8b5cf6, #a855f7);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-}
-
-.content h2 {
-    color: #8b5cf6;
-    font-size: 1.75rem;
-    font-weight: 600;
-    margin: 2rem 0 1rem 0;
-    padding-bottom: 0.5rem;
-    border-bottom: 0.125rem solid rgba(139, 92, 246, 0.3);
-}
-
-.content h3 {
-    color: #a855f7;
-    font-size: 1.25rem;
-    font-weight: 600;
-    margin: 1.5rem 0 0.75rem 0;
-}
-
-.content p {
-    margin-bottom: 1rem;
-    color: #d4d4d8;
-}
-
-.content ul,
-.content ol {
-    margin: 1rem 0 1rem 1.5rem;
-    color: #d4d4d8;
-}
-
-.content li {
-    margin-bottom: 0.5rem;
-    padding-left: 0.5rem;
-}
-
-/* Code styling */
-.content code {
-    background: rgba(39, 39, 42, 0.8);
-    color: #fbbf24;
-    padding: 0.125rem 0.375rem;
-    border-radius: 0.25rem;
-    font-family: 'Fira Code', 'Courier New', monospace;
-    font-size: 0.9rem;
-}
-
-.content pre {
-    background: rgba(39, 39, 42, 0.9);
-    border: 0.0625rem solid #3f3f46;
-    border-radius: 0.75rem;
-    padding: 1.25rem;
-    margin: 1.25rem 0;
-    overflow-x: auto;
-    position: relative;
-}
-
-.content pre code {
-    background: none;
-    border: none;
-    padding: 0;
-    color: #e4e4e7;
-}
-
-.content blockquote {
-    border-left: 0.25rem solid #8b5cf6;
-    padding-left: 1.25rem;
-    margin: 1.25rem 0;
-    font-style: italic;
-    background: linear-gradient(135deg,
-            rgba(99, 102, 241, 0.05) 0%,
-            rgba(139, 92, 246, 0.03) 50%,
-            rgba(168, 85, 247, 0.05) 100%);
-    padding: 1rem 1.25rem;
-    border-radius: 0 0.5rem 0.5rem 0;
-}
-
-/* Badges */
-.badge {
-    display: inline-block;
-    background: linear-gradient(135deg, #10b981, #059669);
-    color: white;
-    padding: 0.25rem 0.75rem;
-    border-radius: 1.25rem;
-    font-size: 0.75rem;
-    font-weight: 600;
-    margin-left: 0.5rem;
-}
-
-.warning-badge {
-    background: linear-gradient(135deg, #f59e0b, #d97706);
-}
-
-.error-badge {
-    background: linear-gradient(135deg, #ef4444, #dc2626);
-}
-
-/* Custom scrollbar */
-::-webkit-scrollbar {
-    width: 0.5rem;
-}
-
-::-webkit-scrollbar-track {
-    background: rgba(39, 39, 42, 0.3);
-    border-radius: 0.25rem;
-}
-
-::-webkit-scrollbar-thumb {
-    background: linear-gradient(180deg, #6366f1, #8b5cf6, #a855f7);
-    border-radius: 0.25rem;
-}
-
-::-webkit-scrollbar-thumb:hover {
-    background: linear-gradient(180deg, #5b5cd6, #7c3aed, #9333ea);
-}
-
-@media (max-width: 768px) {
-    .container {
-        flex-direction: column;
-    }
-
-    .sidebar {
-        width: 100%;
-        height: 12.5rem;
-    }
-}
-
