@@ -1,58 +1,201 @@
-private readonly HEADER_OFFSET = 60; // adjust this to your header’s height
+import { Component, ElementRef, OnInit, Renderer2, ViewChild } from '@angular/core';
+import { marked } from 'marked';
+import hljs from 'highlight.js';
 
-
-
-private getElementTopRelativeToContainer(element: HTMLElement): number {
-  const container = this.contentElement.nativeElement as HTMLElement;
-  const elementRect = element.getBoundingClientRect();
-  const containerRect = container.getBoundingClientRect();
-  return elementRect.top - containerRect.top + container.scrollTop;
+interface TocItem {
+  id: string;
+  text: string;
+  level: number;
 }
 
-updateActiveSection() {
-  if (this.isProgrammaticScroll) return;
+@Component({
+  selector: 'app-documentation',
+  templateUrl: './documentation.component.html',
+  styleUrls: ['./documentation.component.scss']
+})
+export class DocumentationComponent implements OnInit {
+  @ViewChild('content', { static: true }) contentElement!: ElementRef;
+  @ViewChild('tocContainer', { static: true }) tocContainer!: ElementRef;
 
-  const headers = this.contentElement.nativeElement.querySelectorAll('h1, h2, h3, h4, h5, h6');
-  let currentSection = 0;
-  const container = this.contentElement.nativeElement as HTMLElement;
+  htmlContent: any = '';
+  tocItems: TocItem[] = [];
+  activeSection = 0;
+  isLoading = true;
+  loadingError = '';
 
-  // Include header offset
-  const scrollPos = container.scrollTop + this.SCROLL_MARGIN + this.HEADER_OFFSET;
+  markdownFiles = [
+    { folder: 'Page1', file: 'page1.md' },
+    { folder: 'Page2', file: 'page2.md' },
+    { folder: 'Page3', file: 'page3.md' },
+    { folder: 'Page4', file: 'page4.md' }
+  ];
 
-  headers.forEach((header: HTMLElement, index: number) => {
-    const headerTop = this.getElementTopRelativeToContainer(header);
-    if (headerTop <= scrollPos) {
-      currentSection = index;
-    }
-  });
+  private isProgrammaticScroll = false;
+  private HEADER_SELECTOR = 'header'; // adjust if your header has a different selector
 
-  if (this.activeSection !== currentSection) {
-    this.activeSection = currentSection;
-  }
-}
+  constructor(private renderer: Renderer2) {}
 
-scrollToSection(id: string, index: number, event: Event) {
-  event.preventDefault();
-  const container = this.contentElement.nativeElement as HTMLElement;
-  const element = document.getElementById(id);
-
-  if (element && container) {
-    const targetTop = Math.max(
-      0,
-      this.getElementTopRelativeToContainer(element) - this.SCROLL_MARGIN - this.HEADER_OFFSET
-    );
-
-    this.isProgrammaticScroll = true;
-    this.activeSection = index;
-
-    container.scrollTo({
-      top: targetTop,
-      behavior: 'smooth'
+  ngOnInit(): void {
+    marked.setOptions({
+      gfm: true,
+      breaks: false,
+      pedantic: false
     });
 
-    setTimeout(() => {
-      this.isProgrammaticScroll = false;
+    this.loadAllMarkdownFiles();
+
+    // Scroll listener
+    this.renderer.listen(this.contentElement.nativeElement, 'scroll', () => {
       this.updateActiveSection();
-    }, 600);
+    });
+
+    // Resize listener
+    window.addEventListener('resize', () => {
+      setTimeout(() => this.updateActiveSection(), 100);
+    });
+  }
+
+  async loadAllMarkdownFiles() {
+    this.isLoading = true;
+    this.loadingError = '';
+    this.updateLoadingState();
+
+    try {
+      const filePromises = this.markdownFiles.map(({ folder, file }) =>
+        this.loadMarkdownFile(folder, file)
+      );
+
+      const markdownFiles = await Promise.all(filePromises);
+      this.processMarkdownFiles(markdownFiles);
+
+      this.isLoading = false;
+
+      setTimeout(() => {
+        this.generateTOC();
+        this.applySyntaxHighlighting();
+      }, 100);
+    } catch (error) {
+      console.error('Error loading markdown files:', error);
+      this.loadingError = 'Failed to load documentation files';
+      this.isLoading = false;
+      this.updateLoadingState();
+    }
+  }
+
+  async loadMarkdownFile(folder: string, file: string) {
+    const path = `assets/markdown/${folder}/${file}`;
+    try {
+      const response = await fetch(path);
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      const content = await response.text();
+      return { folderName: folder, fileName: file, content, path };
+    } catch (error) {
+      console.warn(`Failed to load ${path}:`, error);
+      return {
+        folderName: folder,
+        fileName: file,
+        content: `# Error Loading Content\n\nFailed to load content from ${path}`,
+        path
+      };
+    }
+  }
+
+  processMarkdownFiles(markdownFiles: any[]) {
+    let combinedMarkdown = '';
+    markdownFiles.forEach((file, index) => {
+      if (index > 0) combinedMarkdown += '\n\n';
+      combinedMarkdown += file.content.trim();
+    });
+    this.htmlContent = marked.parse(combinedMarkdown);
+  }
+
+  updateLoadingState() {
+    if (this.isLoading) {
+      this.htmlContent = '<div class="loading">Loading documentation...</div>';
+      this.tocContainer.nativeElement.innerHTML = '<div class="loading">Loading TOC...</div>';
+    } else if (this.loadingError) {
+      this.htmlContent = `<div class="error">${this.loadingError}</div>`;
+      this.tocContainer.nativeElement.innerHTML = `<div class="error">Failed to load TOC</div>`;
+    }
+  }
+
+  generateTOC() {
+    const headers = this.contentElement.nativeElement.querySelectorAll('h1, h2, h3, h4, h5, h6');
+    this.tocItems = [];
+    headers.forEach((header: HTMLElement, index: number) => {
+      const level = parseInt(header.tagName.charAt(1));
+      const text = (header.textContent || '').trim();
+      const id = 'heading-' + index;
+      header.id = id;
+      this.tocItems.push({ id, text, level });
+    });
+  }
+
+  applySyntaxHighlighting() {
+    this.contentElement.nativeElement.querySelectorAll('pre code').forEach((block: HTMLElement) => {
+      hljs.highlightElement(block);
+    });
+  }
+
+  private getHeaderHeight(): number {
+    const headerEl = document.querySelector(this.HEADER_SELECTOR);
+    return headerEl ? headerEl.clientHeight : 0;
+  }
+
+  private getElementTopRelativeToContainer(element: HTMLElement): number {
+    const container = this.contentElement.nativeElement as HTMLElement;
+    const elementRect = element.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    return elementRect.top - containerRect.top + container.scrollTop;
+  }
+
+  updateActiveSection() {
+    if (this.isProgrammaticScroll) return;
+
+    const headers = this.contentElement.nativeElement.querySelectorAll('h1, h2, h3, h4, h5, h6');
+    let currentSection = 0;
+    const container = this.contentElement.nativeElement as HTMLElement;
+    const scrollPos = container.scrollTop + this.getHeaderHeight() + 10; // small margin
+
+    headers.forEach((header: HTMLElement, index: number) => {
+      const headerTop = this.getElementTopRelativeToContainer(header);
+      if (headerTop <= scrollPos) {
+        currentSection = index;
+      }
+    });
+
+    if (this.activeSection !== currentSection) {
+      this.activeSection = currentSection;
+    }
+  }
+
+  scrollToSection(id: string, index: number, event: Event) {
+    event.preventDefault();
+    const container = this.contentElement.nativeElement as HTMLElement;
+    const element = document.getElementById(id);
+
+    if (element && container) {
+      const targetTop = Math.max(
+        0,
+        this.getElementTopRelativeToContainer(element) - this.getHeaderHeight() - 10 // small margin
+      );
+
+      this.isProgrammaticScroll = true;
+      this.activeSection = index;
+
+      container.scrollTo({
+        top: targetTop,
+        behavior: 'smooth'
+      });
+
+      setTimeout(() => {
+        this.isProgrammaticScroll = false;
+        this.updateActiveSection();
+      }, 600);
+    }
+  }
+
+  reloadContent() {
+    this.loadAllMarkdownFiles();
   }
 }
