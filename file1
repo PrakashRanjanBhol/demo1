@@ -1,13 +1,11 @@
-import { Component, OnInit, OnDestroy, ElementRef, ViewChild, AfterViewInit } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { HttpClient, HttpClientModule } from '@angular/common/http';
+import { Component, OnInit, OnDestroy, ElementRef, ViewChild, AfterViewInit, HostListener } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
-import { Subject } from 'rxjs';
-import { takeUntil } from 'rxjs/operators';
-
-// Declare external libraries
-declare var marked: any;
-declare var hljs: any;
+import { marked } from 'marked';
+import hljs from 'highlight.js';
+import { forkJoin, Observable, Subject } from 'rxjs';
+import { map, catchError, takeUntil } from 'rxjs/operators';
+import { of } from 'rxjs';
 
 interface MarkdownFile {
   folder: string;
@@ -29,765 +27,14 @@ interface TocItem {
 
 @Component({
   selector: 'app-documentation',
-  standalone: true,
-  imports: [CommonModule, HttpClientModule],
-  template: `
-    <div class="documentation-container">
-      <!-- Sidebar -->
-      <div class="sidebar" #sidebar>
-        <div class="sidebar-header">
-          <div class="header-icon">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M9 12L11 14L15 10M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </div>
-          <div class="header-content">
-            <h2>Best Practices</h2>
-            <p>Documentation Guide</p>
-          </div>
-        </div>
-        
-        <div class="toc-container" #tocContainer>
-          <div *ngIf="isLoading" class="loading">Loading TOC...</div>
-          <div *ngIf="loadingError" class="error">Failed to load TOC</div>
-          <div *ngIf="!isLoading && !loadingError" class="toc-content">
-            <a 
-              *ngFor="let item of tocItems; let i = index"
-              [href]="'#' + item.id"
-              [class]="'toc-item level-' + item.level + (i === activeSection ? ' active' : '')"
-              (click)="scrollToSection($event, item.id, i)">
-              <span class="toc-bullet"></span>
-              <span class="toc-text">{{ item.text }}</span>
-            </a>
-          </div>
-        </div>
-      </div>
-
-      <!-- Main Content -->
-      <div class="main-content">
-        <div class="content-header">
-          <div class="header-left">
-            <h1>Documentation</h1>
-            <div class="header-meta">
-              <span class="meta-item">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M12 2L13.09 8.26L22 9L13.09 9.74L12 16L10.91 9.74L2 9L10.91 8.26L12 2Z" fill="currentColor"/>
-                </svg>
-                Updated Today
-              </span>
-              <span class="meta-item">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M13 2L3 14H12L11 22L21 10H12L13 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                {{ tocItems.length }} Sections
-              </span>
-            </div>
-          </div>
-          <div class="header-actions">
-            <button class="action-btn search-btn" title="Search Documentation">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="2"/>
-                <path d="m21 21-4.35-4.35" stroke="currentColor" stroke-width="2"/>
-              </svg>
-            </button>
-            <button class="action-btn" (click)="reloadContent()" title="Reload Content">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M1 4V10H7M23 20V14H17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10M23 14L18.36 18.36A9 9 0 0 1 3.51 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </button>
-          </div>
-        </div>
-        
-        <div class="content-body" #contentBody (scroll)="onScroll()">
-          <div *ngIf="isLoading" class="loading-content">
-            <div class="loading-spinner"></div>
-            <p>Loading documentation...</p>
-          </div>
-          <div *ngIf="loadingError" class="error-content">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
-              <line x1="12" y1="8" x2="12" y2="12" stroke="currentColor" stroke-width="2"/>
-              <line x1="12" y1="16" x2="12.01" y2="16" stroke="currentColor" stroke-width="2"/>
-            </svg>
-            <h3>Error Loading Content</h3>
-            <p>{{ loadingError }}</p>
-          </div>
-          <div *ngIf="!isLoading && !loadingError" class="markdown-content" [innerHTML]="htmlContent"></div>
-        </div>
-      </div>
-    </div>
-  `,
-  styles: [`
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    :host {
-      display: block;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-      line-height: 1.7;
-      color: #e4e4e7;
-      background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 100%);
-      min-height: 100vh;
-    }
-
-    .documentation-container {
-      display: flex;
-      min-height: 100vh;
-      max-width: 1600px;
-      margin: 0 auto;
-      background: rgba(26, 26, 45, 0.8);
-      backdrop-filter: blur(10px);
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-    }
-
-    /* Enhanced Sidebar Styles */
-    .sidebar {
-      width: 350px;
-      background: linear-gradient(180deg, #16213e 0%, #1a1a2e 100%);
-      border-right: 1px solid rgba(59, 130, 246, 0.1);
-      overflow-y: auto;
-      position: relative;
-    }
-
-    .sidebar::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 1px;
-      background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.5), transparent);
-    }
-
-    .sidebar-header {
-      padding: 30px 25px;
-      background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
-      border-bottom: 3px solid rgba(59, 130, 246, 0.3);
-      position: relative;
-      overflow: hidden;
-    }
-
-    .sidebar-header::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: 
-        radial-gradient(circle at 20% 80%, rgba(255, 255, 255, 0.1) 0%, transparent 50%),
-        radial-gradient(circle at 80% 20%, rgba(255, 255, 255, 0.05) 0%, transparent 50%);
-    }
-
-    .sidebar-header .header-icon {
-      margin-bottom: 15px;
-      color: rgba(255, 255, 255, 0.9);
-      position: relative;
-      z-index: 1;
-    }
-
-    .sidebar-header .header-content {
-      position: relative;
-      z-index: 1;
-    }
-
-    .sidebar-header h2 {
-      font-size: 24px;
-      font-weight: 700;
-      color: #ffffff;
-      margin-bottom: 5px;
-      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-    }
-
-    .sidebar-header p {
-      font-size: 14px;
-      color: rgba(255, 255, 255, 0.8);
-      font-weight: 400;
-    }
-
-    .toc-container {
-      padding: 20px 0;
-      height: calc(100vh - 140px);
-      overflow-y: auto;
-    }
-
-    .toc-container::-webkit-scrollbar {
-      width: 6px;
-    }
-
-    .toc-container::-webkit-scrollbar-track {
-      background: rgba(59, 130, 246, 0.1);
-    }
-
-    .toc-container::-webkit-scrollbar-thumb {
-      background: rgba(59, 130, 246, 0.3);
-      border-radius: 3px;
-    }
-
-    .toc-container::-webkit-scrollbar-thumb:hover {
-      background: rgba(59, 130, 246, 0.5);
-    }
-
-    .toc-content {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-    }
-
-    .toc-item {
-      display: flex;
-      align-items: center;
-      padding: 12px 25px;
-      text-decoration: none;
-      color: #a1a1aa;
-      border-left: 3px solid transparent;
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-      font-size: 14px;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .toc-item::before {
-      content: '';
-      position: absolute;
-      left: 0;
-      top: 0;
-      bottom: 0;
-      width: 0;
-      background: linear-gradient(90deg, rgba(59, 130, 246, 0.1), transparent);
-      transition: width 0.3s ease;
-    }
-
-    .toc-item:hover::before {
-      width: 100%;
-    }
-
-    .toc-item:hover {
-      color: #60a5fa;
-      border-left-color: #60a5fa;
-      background: rgba(59, 130, 246, 0.05);
-      transform: translateX(5px);
-    }
-
-    .toc-item.active {
-      color: #60a5fa;
-      border-left-color: #3b82f6;
-      background: linear-gradient(90deg, rgba(59, 130, 246, 0.15), rgba(59, 130, 246, 0.05));
-      font-weight: 500;
-      transform: translateX(8px);
-    }
-
-    .toc-item.active .toc-bullet {
-      background: #3b82f6;
-      transform: scale(1.2);
-    }
-
-    .toc-bullet {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: #52525b;
-      margin-right: 12px;
-      transition: all 0.3s ease;
-      flex-shrink: 0;
-    }
-
-    .toc-item:hover .toc-bullet {
-      background: #60a5fa;
-      transform: scale(1.1);
-    }
-
-    .toc-text {
-      line-height: 1.4;
-    }
-
-    .toc-item.level-1 {
-      font-weight: 600;
-      padding-left: 25px;
-      margin-top: 5px;
-    }
-
-    .toc-item.level-1 .toc-bullet {
-      width: 8px;
-      height: 8px;
-    }
-
-    .toc-item.level-2 {
-      padding-left: 45px;
-      font-size: 13px;
-    }
-
-    .toc-item.level-3 {
-      padding-left: 60px;
-      font-size: 13px;
-    }
-
-    .toc-item.level-4 {
-      padding-left: 75px;
-      font-size: 12px;
-    }
-
-    .toc-item.level-5,
-    .toc-item.level-6 {
-      padding-left: 90px;
-      font-size: 12px;
-    }
-
-    /* Enhanced Main Content */
-    .main-content {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-    }
-
-    .content-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 30px 40px;
-      background: rgba(26, 26, 45, 0.8);
-      backdrop-filter: blur(10px);
-      border-bottom: 1px solid rgba(59, 130, 246, 0.1);
-      position: relative;
-    }
-
-    .content-header::after {
-      content: '';
-      position: absolute;
-      bottom: 0;
-      left: 40px;
-      right: 40px;
-      height: 1px;
-      background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.3), transparent);
-    }
-
-    .header-left h1 {
-      color: #f4f4f5;
-      font-size: 32px;
-      font-weight: 700;
-      margin-bottom: 8px;
-      background: linear-gradient(135deg, #60a5fa, #3b82f6);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-
-    .header-meta {
-      display: flex;
-      gap: 20px;
-    }
-
-    .meta-item {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      color: #a1a1aa;
-      font-size: 14px;
-      font-weight: 500;
-    }
-
-    .meta-item svg {
-      color: #60a5fa;
-    }
-
-    .header-actions {
-      display: flex;
-      gap: 12px;
-    }
-
-    .action-btn {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 44px;
-      height: 44px;
-      background: rgba(59, 130, 246, 0.1);
-      border: 1px solid rgba(59, 130, 246, 0.2);
-      border-radius: 10px;
-      color: #60a5fa;
-      cursor: pointer;
-      transition: all 0.3s ease;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .action-btn::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(59, 130, 246, 0.1);
-      opacity: 0;
-      transition: opacity 0.3s ease;
-    }
-
-    .action-btn:hover::before {
-      opacity: 1;
-    }
-
-    .action-btn:hover {
-      background: rgba(59, 130, 246, 0.2);
-      border-color: rgba(59, 130, 246, 0.4);
-      transform: translateY(-2px);
-      box-shadow: 0 8px 25px rgba(59, 130, 246, 0.15);
-    }
-
-    .content-body {
-      flex: 1;
-      overflow-y: auto;
-      padding: 40px;
-      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-    }
-
-    .content-body::-webkit-scrollbar {
-      width: 8px;
-    }
-
-    .content-body::-webkit-scrollbar-track {
-      background: rgba(59, 130, 246, 0.1);
-    }
-
-    .content-body::-webkit-scrollbar-thumb {
-      background: rgba(59, 130, 246, 0.3);
-      border-radius: 4px;
-    }
-
-    .content-body::-webkit-scrollbar-thumb:hover {
-      background: rgba(59, 130, 246, 0.5);
-    }
-
-    /* Enhanced Loading States */
-    .loading-content {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 400px;
-      color: #a1a1aa;
-    }
-
-    .loading-spinner {
-      width: 40px;
-      height: 40px;
-      border: 3px solid rgba(59, 130, 246, 0.1);
-      border-top: 3px solid #3b82f6;
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-      margin-bottom: 20px;
-    }
-
-    .error-content {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 400px;
-      color: #ef4444;
-      text-align: center;
-    }
-
-    .error-content svg {
-      margin-bottom: 20px;
-      color: #ef4444;
-    }
-
-    .error-content h3 {
-      margin-bottom: 10px;
-      font-size: 20px;
-    }
-
-    /* Enhanced Markdown Content Styles */
-    .markdown-content {
-      max-width: none;
-      background: rgba(26, 26, 45, 0.3);
-      padding: 40px;
-      border-radius: 16px;
-      border: 1px solid rgba(59, 130, 246, 0.1);
-      backdrop-filter: blur(10px);
-    }
-
-    :host ::ng-deep .markdown-content h1,
-    :host ::ng-deep .markdown-content h2,
-    :host ::ng-deep .markdown-content h3,
-    :host ::ng-deep .markdown-content h4,
-    :host ::ng-deep .markdown-content h5,
-    :host ::ng-deep .markdown-content h6 {
-      margin-top: 40px;
-      margin-bottom: 20px;
-      color: #f4f4f5;
-      line-height: 1.3;
-      position: relative;
-    }
-
-    :host ::ng-deep .markdown-content h1:first-child {
-      margin-top: 0;
-    }
-
-    :host ::ng-deep .markdown-content h1 {
-      font-size: 36px;
-      font-weight: 800;
-      background: linear-gradient(135deg, #60a5fa, #3b82f6);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-      border-bottom: 2px solid rgba(59, 130, 246, 0.2);
-      padding-bottom: 15px;
-      margin-bottom: 25px;
-    }
-
-    :host ::ng-deep .markdown-content h2 {
-      font-size: 28px;
-      font-weight: 700;
-      color: #e2e8f0;
-      border-bottom: 1px solid rgba(59, 130, 246, 0.2);
-      padding-bottom: 10px;
-      margin-bottom: 20px;
-    }
-
-    :host ::ng-deep .markdown-content h3 {
-      font-size: 24px;
-      font-weight: 600;
-      color: #cbd5e1;
-    }
-
-    :host ::ng-deep .markdown-content h4 {
-      font-size: 20px;
-      font-weight: 600;
-      color: #94a3b8;
-    }
-
-    :host ::ng-deep .markdown-content h5 {
-      font-size: 18px;
-      font-weight: 500;
-      color: #94a3b8;
-    }
-
-    :host ::ng-deep .markdown-content h6 {
-      font-size: 16px;
-      font-weight: 500;
-      color: #94a3b8;
-    }
-
-    :host ::ng-deep .markdown-content p {
-      margin-bottom: 20px;
-      color: #e2e8f0;
-      font-size: 16px;
-      line-height: 1.8;
-    }
-
-    :host ::ng-deep .markdown-content strong {
-      color: #f1f5f9;
-      font-weight: 600;
-    }
-
-    :host ::ng-deep .markdown-content em {
-      color: #cbd5e1;
-      font-style: italic;
-    }
-
-    :host ::ng-deep .markdown-content ul,
-    :host ::ng-deep .markdown-content ol {
-      margin: 20px 0;
-      padding-left: 40px;
-    }
-
-    :host ::ng-deep .markdown-content li {
-      margin-bottom: 8px;
-      color: #e2e8f0;
-      line-height: 1.7;
-    }
-
-    :host ::ng-deep .markdown-content li::marker {
-      color: #60a5fa;
-    }
-
-    :host ::ng-deep .markdown-content pre {
-      background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 100%);
-      border: 1px solid rgba(59, 130, 246, 0.2);
-      border-radius: 12px;
-      padding: 24px;
-      margin: 25px 0;
-      overflow-x: auto;
-      position: relative;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-    }
-
-    :host ::ng-deep .markdown-content pre::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 1px;
-      background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.5), transparent);
-    }
-
-    :host ::ng-deep .markdown-content code {
-      background: rgba(59, 130, 246, 0.1);
-      border: 1px solid rgba(59, 130, 246, 0.2);
-      padding: 4px 8px;
-      border-radius: 6px;
-      font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
-      font-size: 14px;
-      color: #fbbf24;
-      font-weight: 500;
-    }
-
-    :host ::ng-deep .markdown-content pre code {
-      background: none;
-      border: none;
-      padding: 0;
-      color: #e2e8f0;
-      font-size: 14px;
-    }
-
-    :host ::ng-deep .markdown-content blockquote {
-      border-left: 4px solid #3b82f6;
-      margin: 25px 0;
-      padding: 20px 24px;
-      background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(59, 130, 246, 0.05) 100%);
-      color: #cbd5e1;
-      border-radius: 8px;
-      position: relative;
-    }
-
-    :host ::ng-deep .markdown-content blockquote::before {
-      content: '"';
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      font-size: 48px;
-      color: rgba(59, 130, 246, 0.3);
-      font-weight: bold;
-      line-height: 1;
-    }
-
-    :host ::ng-deep .markdown-content blockquote p {
-      margin: 0;
-      padding-left: 30px;
-    }
-
-    :host ::ng-deep .markdown-content table {
-      width: 100%;
-      border-collapse: collapse;
-      margin: 25px 0;
-      background: rgba(26, 26, 45, 0.5);
-      border-radius: 12px;
-      overflow: hidden;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-    }
-
-    :host ::ng-deep .markdown-content th,
-    :host ::ng-deep .markdown-content td {
-      padding: 16px 20px;
-      text-align: left;
-      border-bottom: 1px solid rgba(59, 130, 246, 0.1);
-    }
-
-    :host ::ng-deep .markdown-content th {
-      background: linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(59, 130, 246, 0.1) 100%);
-      font-weight: 600;
-      color: #f1f5f9;
-      font-size: 14px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    :host ::ng-deep .markdown-content td {
-      color: #e2e8f0;
-    }
-
-    :host ::ng-deep .markdown-content tr:hover {
-      background: rgba(59, 130, 246, 0.05);
-    }
-
-    :host ::ng-deep .markdown-content a {
-      color: #60a5fa;
-      text-decoration: none;
-      font-weight: 500;
-      position: relative;
-      transition: all 0.3s ease;
-    }
-
-    :host ::ng-deep .markdown-content a:hover {
-      color: #3b82f6;
-      text-decoration: underline;
-    }
-
-    :host ::ng-deep .markdown-content hr {
-      border: none;
-      height: 2px;
-      background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.3), transparent);
-      margin: 40px 0;
-    }
-
-    /* Responsive Design */
-    @media (max-width: 1024px) {
-      .sidebar {
-        width: 300px;
-      }
-      
-      .content-header {
-        padding: 25px 30px;
-      }
-      
-      .content-body,
-      .markdown-content {
-        padding: 30px;
-      }
-    }
-
-    @media (max-width: 768px) {
-      .documentation-container {
-        flex-direction: column;
-      }
-
-      .sidebar {
-        width: 100%;
-        max-height: 60vh;
-      }
-
-      .content-header {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 15px;
-        padding: 20px;
-      }
-
-      .header-actions {
-        align-self: flex-end;
-      }
-
-      .content-body,
-      .markdown-content {
-        padding: 20px;
-      }
-
-      .sidebar-header {
-        padding: 20px;
-      }
-
-      .sidebar-header h2 {
-        font-size: 20px;
-      }
-    }
-
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-  `]
+  templateUrl: './documentation.component.html',
+  styleUrls: ['./documentation.component.scss']
 })
 export class DocumentationComponent implements OnInit, AfterViewInit, OnDestroy {
+  @ViewChild('sidebar', { static: false }) sidebar!: ElementRef<HTMLDivElement>;
+  @ViewChild('content', { static: false }) content!: ElementRef<HTMLDivElement>;
+  @ViewChild('mainContent', { static: false }) mainContent!: ElementRef<HTMLDivElement>;
   @ViewChild('contentBody', { static: false }) contentBodyRef!: ElementRef<HTMLDivElement>;
-  @ViewChild('sidebar', { static: false }) sidebarRef!: ElementRef<HTMLDivElement>;
   @ViewChild('tocContainer', { static: false }) tocContainerRef!: ElementRef<HTMLDivElement>;
 
   private destroy$ = new Subject<void>();
@@ -809,18 +56,16 @@ export class DocumentationComponent implements OnInit, AfterViewInit, OnDestroy 
   constructor(
     private http: HttpClient,
     private sanitizer: DomSanitizer
-  ) {}
+  ) {
+    // Configure marked options
+    marked.setOptions({
+      gfm: true,
+      breaks: false,
+      pedantic: false
+    });
+  }
 
   ngOnInit(): void {
-    // Configure marked options if available
-    if (typeof marked !== 'undefined') {
-      marked.setOptions({
-        gfm: true,
-        breaks: false,
-        pedantic: false
-      });
-    }
-
     this.loadAllMarkdownFiles();
   }
 
@@ -837,10 +82,822 @@ export class DocumentationComponent implements OnInit, AfterViewInit, OnDestroy 
   }
 
   private setupEventListeners(): void {
-    // Window resize listener
-    window.addEventListener('resize', () => {
-      setTimeout(() => this.updateActiveSection(), 100);
+    // Setup scroll listener with takeUntil for proper cleanup
+    if (this.content?.nativeElement || this.contentBodyRef?.nativeElement) {
+      const scrollElement = this.content?.nativeElement || this.contentBodyRef?.nativeElement;
+
+      if (scrollElement) {
+        scrollElement.addEventListener('scroll', () => {
+          this.updateActiveSection();
+        });
+      }
+    }
+  }
+
+  private async loadAllMarkdownFiles(): Promise<void> {
+    this.isLoading = true;
+    this.loadingError = '';
+
+    try {
+      const fileRequests: Observable<ProcessedFile>[] = this.markdownFiles.map(({ folder, file }) => {
+        const path = `assets/markdown/${folder}/${file}`;
+        return this.http.get(path, { responseType: 'text' }).pipe(
+          map(content => ({
+            folderName: folder,
+            fileName: file,
+            content,
+            path
+          })),
+          catchError(error => {
+            console.warn(`Failed to load ${path}:`, error);
+            return of({
+              folderName: folder,
+              fileName: file,
+              content: `# ${folder}\n\nError loading content from ${path}`,
+              path
+            });
+          }),
+          takeUntil(this.destroy$)
+        );
+      });
+
+      forkJoin(fileRequests)
+        .pipe(takeUntil(this.destroy$))
+        .subscribe({
+          next: (markdownFiles) => {
+            this.processMarkdownFiles(markdownFiles);
+            this.isLoading = false;
+          },
+          error: (error) => {
+            console.error('Error loading markdown files:', error);
+            this.loadingError = 'Failed to load documentation files';
+            this.isLoading = false;
+          }
+        });
+    } catch (error) {
+      console.error('Error in loadAllMarkdownFiles:', error);
+      this.loadingError = 'Failed to initialize documentation loading';
+      this.isLoading = false;
+    }
+  }
+
+  private processMarkdownFiles(markdownFiles: ProcessedFile[]): void {
+    let combinedMarkdown = '';
+
+    markdownFiles.forEach((file, index) => {
+      // Add folder name as main header
+      const folderHeader = `# ${this.formatFolderName(file.folderName)}\n\n`;
+
+      // Process the markdown content
+      let content = file.content;
+
+      // If the content doesn't start with a header, add the folder name as header
+      if (!content.trim().startsWith('#')) {
+        content = folderHeader + content;
+      } else {
+        // If content has headers, adjust their levels to be under the main folder header
+        content = folderHeader + this.adjustHeaderLevels(content);
+      }
+
+      combinedMarkdown += content + '\n\n';
+    });
+
+    // Parse markdown to HTML and sanitize it
+    const rawHtml = this.parseMarkdown(combinedMarkdown);
+    this.htmlContent = this.sanitizer.bypassSecurityTrustHtml(rawHtml);
+
+    // Generate TOC after content is processed
+    setTimeout(() => {
+      this.generateTOC();
+      this.applySyntaxHighlighting();
+    }, 100);
+  }
+
+  private formatFolderName(folderName: string): string {
+    // Convert folder name to readable format
+    // e.g., 'Page1' -> 'Page 1', 'MyFolder' -> 'My Folder'
+    return folderName.replace(/([A-Z])/g, ' $1').trim();
+  }
+
+  private adjustHeaderLevels(content: string): string {
+    // Increase header levels by 1 (h1 -> h2, h2 -> h3, etc.)
+    return content.replace(/^(#{1,5})\s/gm, '#$1 ');
+  }
+
+  private applySyntaxHighlighting(): void {
+    const contentElement = this.content?.nativeElement || this.contentBodyRef?.nativeElement;
+
+    if (contentElement) {
+      const codeBlocks = contentElement.querySelectorAll('pre code');
+      codeBlocks.forEach((block: any) => {
+        hljs.highlightElement(block);
+      });
+    }
+  }
+
+  generateTOC(): void {
+    const contentElement = this.content?.nativeElement || this.contentBodyRef?.nativeElement;
+
+    if (!contentElement) return;
+
+    const headers = contentElement.querySelectorAll('h1, h2, h3, h4, h5, h6');
+    this.tocItems = [];
+
+    headers.forEach((header: any, index: number) => {
+      const level = parseInt(header.tagName.charAt(1));
+      const text = header.textContent?.replace(/\s+/g, ' ').trim() || '';
+      const id = 'heading-' + index;
+
+      header.id = id;
+      this.tocItems.push({ id, text, level });
     });
   }
 
-  async loadAllMarkdownFiles(): Promise<voi
+  updateActiveSection(): void {
+    const contentElement = this.content?.nativeElement || this.contentBodyRef?.nativeElement;
+
+    if (!contentElement) return;
+
+    const headers = contentElement.querySelectorAll('h1, h2, h3, h4, h5, h6');
+    let currentSection = 0;
+
+    const scrollPos = contentElement.scrollTop + 50; // Adjust offset as needed
+
+    headers.forEach((header: any, index: number) => {
+      const headerTop = header.offsetTop;
+      if (headerTop <= scrollPos) {
+        currentSection = index;
+      }
+    });
+
+    if (this.activeSection !== currentSection) {
+      this.activeSection = currentSection;
+      this.updateSidebarScroll();
+    }
+  }
+
+  private updateSidebarScroll(): void {
+    const sidebarElement = this.sidebar?.nativeElement;
+    const tocElement = this.tocContainerRef?.nativeElement;
+
+    if (!sidebarElement && !tocElement) return;
+
+    const container = tocElement || sidebarElement;
+    const activeLinks = container.querySelectorAll('a');
+    const activeLink = activeLinks[this.activeSection];
+
+    if (activeLink) {
+      activeLink.scrollIntoView({
+        block: 'nearest',
+        behavior: 'smooth'
+      });
+    }
+  }
+
+  scrollToSection(event: Event, id: string, index: number): void {
+    event.preventDefault();
+
+    const element = document.getElementById(id);
+    const contentElement = this.content?.nativeElement || this.contentBodyRef?.nativeElement;
+
+    if (element && contentElement) {
+      // Scroll within the content container
+      const containerTop = contentElement.offsetTop;
+      const elementTop = element.offsetTop;
+
+      contentElement.scrollTo({
+        top: elementTop - containerTop - 20, // Add small offset
+        behavior: 'smooth'
+      });
+    }
+
+    this.activeSection = index;
+  }
+
+  onScroll(): void {
+    this.updateActiveSection();
+  }
+
+  @HostListener('window:resize')
+  onResize(): void {
+    // Recalculate positions on window resize
+    setTimeout(() => this.updateActiveSection(), 100);
+  }
+
+  parseMarkdown(md: string): string {
+    return marked.parse(md, { async: false }) as string;
+  }
+
+  // Utility method to reload content if needed
+  reloadContent(): void {
+    this.loadAllMarkdownFiles();
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="container">
+    <div class="sidebar" #sidebar>
+        <h3 class="sidebar-header">
+            🚀 Best Practices
+            <span class="sparkle">✨</span>
+        </h3>
+
+        <!-- Loading state for TOC -->
+        <div *ngIf="isLoading" class="loading-toc">
+            <div class="loading-spinner"></div>
+            <p>Loading documentation...</p>
+        </div>
+
+        <!-- Error state -->
+        <div *ngIf="loadingError && !isLoading" class="error-message">
+            <p>{{ loadingError }}</p>
+            <button (click)="reloadContent()" class="retry-btn">Retry</button>
+        </div>
+
+        <!-- Table of Contents -->
+        <ul *ngIf="!isLoading && !loadingError" class="toc">
+            <li *ngFor="let item of tocItems; let i = index">
+                <a [href]="'#' + item.id" [class]="'level-' + item.level" [class.active]="activeSection === i"
+                    (click)="scrollToSection($event, item.id, i)">
+                    <span class="bullet"></span>
+                    {{ item.text }}
+                </a>
+            </li>
+        </ul>
+    </div>
+
+    <div class="main-content" #content>
+        <!-- Loading state for content -->
+        <div *ngIf="isLoading" class="loading-content">
+            <div class="loading-spinner large"></div>
+            <h2>Loading Documentation</h2>
+            <p>Please wait while we load all documentation files...</p>
+        </div>
+
+        <!-- Error state for content -->
+        <div *ngIf="loadingError && !isLoading" class="error-content">
+            <h2>Error Loading Documentation</h2>
+            <p>{{ loadingError }}</p>
+            <button (click)="reloadContent()" class="retry-btn primary">Reload Documentation</button>
+        </div>
+
+        <!-- Main Content -->
+        <div *ngIf="!isLoading && !loadingError" class="content" [innerHTML]="htmlContent"></div>
+    </div>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+.container {
+    display: flex;
+    height: 100vh;
+    background: linear-gradient(135deg, #0a0a0b 0%, #1a1a1d 50%, #0f0f10 100%);
+    position: relative;
+}
+
+.container::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg,
+            rgba(99, 102, 241, 0.03) 0%,
+            rgba(139, 92, 246, 0.02) 50%,
+            rgba(168, 85, 247, 0.03) 100%);
+    pointer-events: none;
+}
+
+.sidebar {
+    width: 18.75rem;
+    background: linear-gradient(180deg,
+            rgba(26, 26, 29, 0.95) 0%,
+            rgba(17, 17, 19, 0.98) 50%,
+            rgba(10, 10, 11, 0.95) 100%);
+    backdrop-filter: blur(20px) saturate(180%);
+    border-right: 1px solid transparent;
+    background-clip: padding-box;
+    position: relative;
+    overflow-y: auto;
+    padding: 1.5rem 1.25rem;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+}
+
+.sidebar::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 1px;
+    background: linear-gradient(180deg,
+            transparent 0%,
+            rgba(99, 102, 241, 0.4) 10%,
+            rgba(139, 92, 246, 0.6) 35%,
+            rgba(168, 85, 247, 0.7) 65%,
+            rgba(139, 92, 246, 0.5) 90%,
+            transparent 100%);
+    animation: borderGlow 3s ease-in-out infinite alternate;
+}
+
+@keyframes borderGlow {
+    0% {
+        opacity: 0.5;
+    }
+
+    100% {
+        opacity: 1;
+    }
+}
+
+.sidebar-header {
+    color: #ffffff;
+    font-size: 1.25rem;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    letter-spacing: 0.5px;
+    position: relative;
+    margin-bottom: 2rem;
+    padding: 1rem 1.5rem;
+    border-radius: 1rem;
+    background: linear-gradient(135deg,
+            rgba(99, 102, 241, 0.12) 0%,
+            rgba(139, 92, 246, 0.10) 50%,
+            rgba(168, 85, 247, 0.12) 100%);
+    border: 1px solid rgba(99, 102, 241, 0.25);
+    backdrop-filter: blur(12px);
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+}
+
+.sidebar-header::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(45deg,
+            transparent 30%,
+            rgba(139, 92, 246, 0.05) 50%,
+            transparent 70%);
+    transform: translateX(-100%) translateY(-100%) rotate(45deg);
+    transition: transform 0.6s ease;
+}
+
+.sidebar-header:hover::before {
+    transform: translateX(100%) translateY(100%) rotate(45deg);
+}
+
+.sidebar-header:hover {
+    transform: translateY(-2px);
+    background: linear-gradient(135deg,
+            rgba(99, 102, 241, 0.18) 0%,
+            rgba(139, 92, 246, 0.15) 50%,
+            rgba(168, 85, 247, 0.18) 100%);
+    border-color: rgba(99, 102, 241, 0.4);
+}
+
+.sidebar-header .sparkle {
+    display: inline-block;
+    margin-left: 0.75rem;
+    font-size: 1.1em;
+    animation: advancedSparkle 2.5s infinite ease-in-out;
+    filter: drop-shadow(0 0 4px rgba(251, 191, 36, 0.6));
+}
+
+@keyframes advancedSparkle {
+    0% {
+        transform: translateY(0) rotate(0deg) scale(1);
+        opacity: 0.7;
+        filter: drop-shadow(0 0 4px rgba(168, 85, 247, 0.6)) hue-rotate(0deg);
+    }
+
+    25% {
+        transform: translateY(-3px) rotate(90deg) scale(1.1);
+        opacity: 1;
+        filter: drop-shadow(0 0 8px rgba(99, 102, 241, 0.8)) hue-rotate(90deg);
+    }
+
+    50% {
+        transform: translateY(-1px) rotate(180deg) scale(0.95);
+        opacity: 0.8;
+        filter: drop-shadow(0 0 6px rgba(139, 92, 246, 0.7)) hue-rotate(180deg);
+    }
+
+    75% {
+        transform: translateY(-4px) rotate(270deg) scale(1.05);
+        opacity: 1;
+        filter: drop-shadow(0 0 10px rgba(168, 85, 247, 0.9)) hue-rotate(270deg);
+    }
+
+    100% {
+        transform: translateY(0) rotate(360deg) scale(1);
+        opacity: 0.7;
+        filter: drop-shadow(0 0 4px rgba(99, 102, 241, 0.6)) hue-rotate(360deg);
+    }
+}
+
+/* Loading and Error States */
+.loading-toc,
+.loading-content {
+    text-align: center;
+    padding: 2rem;
+    color: #9ca3af;
+}
+
+.loading-spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid #2a2a2c;
+    border-top: 3px solid #6366f1;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 1rem;
+}
+
+.loading-spinner.large {
+    width: 48px;
+    height: 48px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.error-message,
+.error-content {
+    text-align: center;
+    padding: 2rem;
+    color: #ef4444;
+}
+
+.retry-btn {
+    background: #374151;
+    color: #f9fafb;
+    border: 1px solid #4b5563;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    margin-top: 1rem;
+    transition: background 0.2s;
+}
+
+.retry-btn:hover {
+    background: #4b5563;
+}
+
+.retry-btn.primary {
+    background: #6366f1;
+    border-color: #6366f1;
+}
+
+.retry-btn.primary:hover {
+    background: #5855eb;
+}
+
+.toc {
+    list-style: none;
+    padding-left: 0;
+}
+
+.toc li {
+    margin-bottom: 0.5rem;
+    position: relative;
+}
+
+.toc a {
+    color: #a1a1aa;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    padding: 0.875rem 1rem;
+    border-radius: 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border: 1px solid transparent;
+    position: relative;
+    overflow: hidden;
+    backdrop-filter: blur(8px);
+}
+
+.toc a::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg,
+            rgba(99, 102, 241, 0.06) 0%,
+            rgba(139, 92, 246, 0.04) 50%,
+            rgba(168, 85, 247, 0.06) 100%);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    z-index: -1;
+}
+
+.toc a::after {
+    content: "→";
+    position: absolute;
+    right: 1rem;
+    opacity: 0;
+    transform: translateX(-10px);
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    color: #8b5cf6;
+    font-weight: 600;
+}
+
+.toc a .bullet {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    margin-right: 0.75rem;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    opacity: 0.6;
+}
+
+.toc a:hover {
+    background: linear-gradient(135deg,
+            rgba(99, 102, 241, 0.12) 0%,
+            rgba(139, 92, 246, 0.08) 50%,
+            rgba(168, 85, 247, 0.12) 100%);
+    color: #ffffff;
+    border-color: rgba(99, 102, 241, 0.3);
+    transform: translateX(8px) scale(1.02);
+}
+
+.toc a:hover::before {
+    opacity: 1;
+}
+
+.toc a:hover::after {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.toc a:hover .bullet {
+    background: linear-gradient(135deg, #6366f1, #8b5cf6, #a855f7);
+    transform: scale(1.5);
+    opacity: 1;
+}
+
+.toc a.active {
+    background: linear-gradient(135deg,
+            rgba(99, 102, 241, 0.2) 0%,
+            rgba(139, 92, 246, 0.15) 50%,
+            rgba(168, 85, 247, 0.2) 100%);
+    color: #ffffff;
+    font-weight: 600;
+    border-color: rgba(99, 102, 241, 0.4);
+    transform: translateX(8px);
+    position: relative;
+}
+
+.toc a.active::before {
+    opacity: 1;
+}
+
+.toc a.active::after {
+    opacity: 1;
+    transform: translateX(0);
+    color: #a855f7;
+    content: "✦";
+    animation: activeGlow 2s ease-in-out infinite alternate;
+}
+
+@keyframes activeGlow {
+    0% {
+        opacity: 0.7;
+        transform: translateX(0) scale(1);
+    }
+
+    100% {
+        opacity: 1;
+        transform: translateX(0) scale(1.1);
+    }
+}
+
+.toc a.active .bullet {
+    background: linear-gradient(135deg, #6366f1, #8b5cf6, #a855f7);
+    transform: scale(1.8);
+    opacity: 1;
+    animation: bulletPulse 2s ease-in-out infinite alternate;
+}
+
+@keyframes bulletPulse {
+    0% {
+        opacity: 1;
+    }
+
+    100% {
+        opacity: 0.7;
+    }
+}
+
+/* Level indentation */
+.toc a.level-2 {
+    margin-left: 1.5rem;
+    font-size: 0.8125rem;
+    padding-left: 2rem;
+}
+
+.toc a.level-3 {
+    margin-left: 2.5rem;
+    font-size: 0.75rem;
+    padding-left: 2.5rem;
+    opacity: 0.9;
+}
+
+/* Main Content */
+.main-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 2.5rem;
+    background: rgba(17, 17, 19, 0.5);
+}
+
+.content {
+    max-width: 50rem;
+    margin: 0 auto;
+    line-height: 1.7;
+}
+
+/* Typography */
+.content h1 {
+    color: #f4f4f5;
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 1rem;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6, #a855f7);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.content h2 {
+    color: #8b5cf6;
+    font-size: 1.75rem;
+    font-weight: 600;
+    margin: 2rem 0 1rem 0;
+    padding-bottom: 0.5rem;
+    border-bottom: 0.125rem solid rgba(139, 92, 246, 0.3);
+}
+
+.content h3 {
+    color: #a855f7;
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin: 1.5rem 0 0.75rem 0;
+}
+
+.content p {
+    margin-bottom: 1rem;
+    color: #d4d4d8;
+}
+
+.content ul,
+.content ol {
+    margin: 1rem 0 1rem 1.5rem;
+    color: #d4d4d8;
+}
+
+.content li {
+    margin-bottom: 0.5rem;
+    padding-left: 0.5rem;
+}
+
+/* Code styling */
+.content code {
+    background: rgba(39, 39, 42, 0.8);
+    color: #fbbf24;
+    padding: 0.125rem 0.375rem;
+    border-radius: 0.25rem;
+    font-family: 'Fira Code', 'Courier New', monospace;
+    font-size: 0.9rem;
+}
+
+.content pre {
+    background: rgba(39, 39, 42, 0.9);
+    border: 0.0625rem solid #3f3f46;
+    border-radius: 0.75rem;
+    padding: 1.25rem;
+    margin: 1.25rem 0;
+    overflow-x: auto;
+    position: relative;
+}
+
+.content pre code {
+    background: none;
+    border: none;
+    padding: 0;
+    color: #e4e4e7;
+}
+
+.content blockquote {
+    border-left: 0.25rem solid #8b5cf6;
+    padding-left: 1.25rem;
+    margin: 1.25rem 0;
+    font-style: italic;
+    background: linear-gradient(135deg,
+            rgba(99, 102, 241, 0.05) 0%,
+            rgba(139, 92, 246, 0.03) 50%,
+            rgba(168, 85, 247, 0.05) 100%);
+    padding: 1rem 1.25rem;
+    border-radius: 0 0.5rem 0.5rem 0;
+}
+
+/* Badges */
+.badge {
+    display: inline-block;
+    background: linear-gradient(135deg, #10b981, #059669);
+    color: white;
+    padding: 0.25rem 0.75rem;
+    border-radius: 1.25rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-left: 0.5rem;
+}
+
+.warning-badge {
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+}
+
+.error-badge {
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+    width: 0.5rem;
+}
+
+::-webkit-scrollbar-track {
+    background: rgba(39, 39, 42, 0.3);
+    border-radius: 0.25rem;
+}
+
+::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #6366f1, #8b5cf6, #a855f7);
+    border-radius: 0.25rem;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, #5b5cd6, #7c3aed, #9333ea);
+}
+
+@media (max-width: 768px) {
+    .container {
+        flex-direction: column;
+    }
+
+    .sidebar {
+        width: 100%;
+        height: 12.5rem;
+    }
+}
+
