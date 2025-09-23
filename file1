@@ -1,15 +1,58 @@
+private readonly HEADER_OFFSET = 60; // adjust this to your header’s height
+
+
+
+private getElementTopRelativeToContainer(element: HTMLElement): number {
+  const container = this.contentElement.nativeElement as HTMLElement;
+  const elementRect = element.getBoundingClientRect();
+  const containerRect = container.getBoundingClientRect();
+  return elementRect.top - containerRect.top + container.scrollTop;
+}
+
+updateActiveSection() {
+  if (this.isProgrammaticScroll) return;
+
+  const headers = this.contentElement.nativeElement.querySelectorAll('h1, h2, h3, h4, h5, h6');
+  let currentSection = 0;
+  const container = this.contentElement.nativeElement as HTMLElement;
+
+  // Include header offset
+  const scrollPos = container.scrollTop + this.SCROLL_MARGIN + this.HEADER_OFFSET;
+
+  headers.forEach((header: HTMLElement, index: number) => {
+    const headerTop = this.getElementTopRelativeToContainer(header);
+    if (headerTop <= scrollPos) {
+      currentSection = index;
+    }
+  });
+
+  if (this.activeSection !== currentSection) {
+    this.activeSection = currentSection;
+  }
+}
+
 scrollToSection(id: string, index: number, event: Event) {
   event.preventDefault();
-  const container = this.contentElement.nativeElement;
+  const container = this.contentElement.nativeElement as HTMLElement;
   const element = document.getElementById(id);
 
   if (element && container) {
-    const offsetTop = element.offsetTop - container.offsetTop;
+    const targetTop = Math.max(
+      0,
+      this.getElementTopRelativeToContainer(element) - this.SCROLL_MARGIN - this.HEADER_OFFSET
+    );
+
+    this.isProgrammaticScroll = true;
+    this.activeSection = index;
+
     container.scrollTo({
-      top: offsetTop - 20, // add some top padding for readability
+      top: targetTop,
       behavior: 'smooth'
     });
-  }
 
-  this.activeSection = index;
+    setTimeout(() => {
+      this.isProgrammaticScroll = false;
+      this.updateActiveSection();
+    }, 600);
+  }
 }
