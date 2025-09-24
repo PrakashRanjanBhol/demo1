@@ -1,782 +1,196 @@
-// llm-response-status.component.ts
-import { Component, OnInit, OnDestroy } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { interval, Subscription } from 'rxjs';
+<!DOCTYPE html>
+<html lang="en">
 
-export interface LogEntry {
-  timestamp: string;
-  level: 'info' | 'warn' | 'error' | 'debug';
-  message: string;
-}
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Download Icon</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 50px;
+            background-color: #f5f5f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
 
-export interface Stage {
-  name: string;
-  description: string;
-  status: 'completed' | 'running' | 'pending' | 'failed';
-  startTime?: string;
-  duration?: string;
-}
+        .download-icon {
+            font-size: 24px;
+            color: #007bff;
+            cursor: pointer;
+            transition: color 0.3s ease;
+        }
 
-export interface Metrics {
-  tokensGenerated: number;
-  responseTime: string;
-  memoryUsage: string;
-  temperature: number;
-}
+        .download-icon:hover {
+            color: #0056b3;
+        }
 
-export interface JobInfo {
-  id: string;
-  title: string;
-  status: 'queued' | 'running' | 'completed' | 'failed';
-  progress: number;
-}
+        .download-icon.loading {
+            cursor: not-allowed;
+        }
 
-@Component({
-  selector: 'app-llm-response-status',
-  templateUrl: './llm-response-status.component.html',
-  styleUrls: ['./llm-response-status.component.scss']
-})
-export class LlmResponseStatusComponent implements OnInit, OnDestroy {
-  jobInfo: JobInfo = {
-    id: 'llm_req_20250924_143217',
-    title: 'LLM Response Generation',
-    status: 'running',
-    progress: 75
-  };
+        .spinner {
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #007bff;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
 
-  stages: Stage[] = [
-    {
-      name: 'Request Processing',
-      description: 'Parsing and validating input prompt',
-      status: 'completed',
-      startTime: '14:32:18',
-      duration: '0.3s'
-    },
-    {
-      name: 'Context Analysis',
-      description: 'Analyzing conversation context and history',
-      status: 'completed',
-      startTime: '14:32:18',
-      duration: '1.2s'
-    },
-    {
-      name: 'Token Generation',
-      description: 'Generating response tokens (Token 1,247/1,650)',
-      status: 'running',
-      startTime: '14:32:20',
-      duration: '15.7s'
-    },
-    {
-      name: 'Response Formatting',
-      description: 'Formatting and structuring final response',
-      status: 'pending'
-    },
-    {
-      name: 'Quality Check',
-      description: 'Validating response quality and safety',
-      status: 'pending'
-    },
-    {
-      name: 'Response Delivery',
-      description: 'Sending response to client',
-      status: 'pending'
-    }
-  ];
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
 
-  metrics: Metrics = {
-    tokensGenerated: 1247,
-    responseTime: '15.7s',
-    memoryUsage: '1.8GB',
-    temperature: 0.7
-  };
+            100% {
+                transform: rotate(360deg);
+            }
+        }
 
-  logs: LogEntry[] = [
-    {
-      timestamp: '14:33:45',
-      level: 'info',
-      message: 'Token 1247/1650 - generating coherent response'
-    },
-    {
-      timestamp: '14:33:43',
-      level: 'debug',
-      message: 'Attention weights calculated for context window'
-    },
-    {
-      timestamp: '14:33:40',
-      level: 'info',
-      message: 'Processing semantic relationships in prompt'
-    },
-    {
-      timestamp: '14:33:35',
-      level: 'warn',
-      message: 'Context window approaching limit (3,800/4,096 tokens)'
-    },
-    {
-      timestamp: '14:33:30',
-      level: 'info',
-      message: 'Applying safety filters and content moderation'
-    },
-    {
-      timestamp: '14:33:25',
-      level: 'debug',
-      message: 'Temperature scaling applied: 0.7'
-    },
-    {
-      timestamp: '14:33:20',
-      level: 'info',
-      message: 'Starting token generation with top-p sampling'
-    }
-  ];
+        .success-icon {
+            color: #28a745;
+            font-size: 24px;
+        }
 
-  systemInfo: LogEntry[] = [
-    {
-      timestamp: '',
-      level: 'info',
-      message: 'Model: Claude Sonnet 4'
-    },
-    {
-      timestamp: '',
-      level: 'info',
-      message: 'Context Window: 4,096 tokens'
-    },
-    {
-      timestamp: '',
-      level: 'info',
-      message: 'Max Response: 1,650 tokens'
-    },
-    {
-      timestamp: '',
-      level: 'info',
-      message: 'Provider: Anthropic API'
-    }
-  ];
+        .error-icon {
+            color: #dc3545;
+            font-size: 24px;
+        }
 
-  expandedSections: { [key: string]: boolean } = {
-    stages: true,
-    metrics: true,
-    logs: true,
-    system: false
-  };
+        .status-message {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+        }
 
-  private updateSubscription?: Subscription;
+        .status-message.success {
+            color: #28a745;
+        }
 
-  ngOnInit(): void {
-    // Simulate real-time updates
-    this.updateSubscription = interval(2000).subscribe(() => {
-      this.updateMetrics();
-      this.addNewLog();
-    });
-  }
+        .status-message.error {
+            color: #dc3545;
+        }
+    </style>
+</head>
 
-  ngOnDestroy(): void {
-    if (this.updateSubscription) {
-      this.updateSubscription.unsubscribe();
-    }
-  }
-
-  toggleSection(section: string): void {
-    this.expandedSections[section] = !this.expandedSections[section];
-  }
-
-  private updateMetrics(): void {
-    if (this.jobInfo.status === 'running') {
-      // Simulate token generation progress
-      this.metrics.tokensGenerated = Math.min(1650, this.metrics.tokensGenerated + Math.floor(Math.random() * 20 + 5));
-
-      // Update progress based on token generation
-      this.jobInfo.progress = Math.floor((this.metrics.tokensGenerated / 1650) * 100);
-
-      // Update response time
-      const currentSeconds = parseFloat(this.metrics.responseTime.replace('s', ''));
-      this.metrics.responseTime = (currentSeconds + 2).toFixed(1) + 's';
-
-      // Update stage description with current token count
-      const tokenStage = this.stages.find(s => s.name === 'Token Generation');
-      if (tokenStage) {
-        tokenStage.description = `Generating response tokens (Token ${this.metrics.tokensGenerated}/1,650)`;
-      }
-
-      // Check if generation is complete
-      if (this.metrics.tokensGenerated >= 1650) {
-        this.completeGeneration();
-      }
-    }
-  }
-
-  private addNewLog(): void {
-    if (this.jobInfo.status === 'running' && Math.random() > 0.3) {
-      const newTimestamp = new Date().toLocaleTimeString('en-GB', {
-        hour12: false,
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
-      });
-
-      const messages = [
-        'Processing semantic coherence in response',
-        'Applying contextual understanding',
-        'Evaluating response relevance',
-        'Checking for factual consistency',
-        'Optimizing response structure'
-      ];
-
-      const newLog: LogEntry = {
-        timestamp: newTimestamp,
-        level: Math.random() > 0.8 ? 'debug' : 'info',
-        message: messages[Math.floor(Math.random() * messages.length)]
-      };
-
-      this.logs.unshift(newLog);
-
-      // Keep only last 10 logs
-      if (this.logs.length > 10) {
-        this.logs = this.logs.slice(0, 10);
-      }
-    }
-  }
-
-  private completeGeneration(): void {
-    this.jobInfo.status = 'completed';
-    this.jobInfo.progress = 100;
-
-    // Update stages
-    const tokenStage = this.stages.find(s => s.name === 'Token Generation');
-    if (tokenStage) {
-      tokenStage.status = 'completed';
-      tokenStage.duration = this.metrics.responseTime;
-    }
-
-    const formatStage = this.stages.find(s => s.name === 'Response Formatting');
-    if (formatStage) {
-      formatStage.status = 'running';
-      formatStage.startTime = new Date().toLocaleTimeString('en-GB', {
-        hour12: false,
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
-      });
-    }
-
-    // Add completion log
-    const completionLog: LogEntry = {
-      timestamp: new Date().toLocaleTimeString('en-GB', {
-        hour12: false,
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
-      }),
-      level: 'info',
-      message: 'Token generation completed successfully'
-    };
-
-    this.logs.unshift(completionLog);
-  }
-
-  getStatusClass(status: string): string {
-    return `status-badge ${status}`;
-  }
-
-  getStageStatusClass(status: string): string {
-    return `stage-status ${status}`;
-  }
-
-  getLogLevelClass(level: string): string {
-    return `log-level ${level}`;
-  }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<!-- llm-response-status.component.html -->
-<div class="sidebar">
-    <div class="sidebar-header">
-        <div class="job-title">{{ jobInfo.title }}</div>
-        <div class="job-info">
-            <span class="job-id">{{ jobInfo.id }}</span>
-            <div class="job-status">
-                <span [class]="getStatusClass(jobInfo.status)">{{ jobInfo.status | titlecase }}</span>
-            </div>
-        </div>
+<body>
+    <div id="downloadIcon" class="download-icon">
+        <i class="fas fa-download"></i>
     </div>
 
-    <div class="progress-section">
-        <div class="progress-label">
-            <span>Overall Progress</span>
-            <span>{{ jobInfo.progress }}%</span>
-        </div>
-        <div class="progress-bar">
-            <div class="progress-fill" [style.width.%]="jobInfo.progress"></div>
-        </div>
-    </div>
-
-    <div class="log-container">
-        <!-- Pipeline Stages Section -->
-        <div class="log-section">
-            <div class="section-header" (click)="toggleSection('stages')">
-                <span>Pipeline Stages</span>
-                <span [class]="'toggle-icon' + (expandedSections['stages'] ? ' expanded' : '')">▼</span>
-            </div>
-            <div class="section-content" [style.display]="expandedSections['stages'] ? 'block' : 'none'">
-                <div class="stage-item" *ngFor="let stage of stages">
-                    <div [class]="getStageStatusClass(stage.status)">
-                        <span *ngIf="stage.status === 'completed'" class="status-icon">✓</span>
-                        <span *ngIf="stage.status === 'failed'" class="status-icon">✗</span>
-                    </div>
-                    <div class="stage-content">
-                        <div class="stage-name">{{ stage.name }}</div>
-                        <div class="stage-description">{{ stage.description }}</div>
-                        <div class="stage-meta">
-                            <span class="stage-time">{{ stage.startTime || 'Pending' }}</span>
-                            <span class="stage-duration" *ngIf="stage.duration">{{ stage.duration }}</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Current Metrics Section -->
-        <div class="log-section">
-            <div class="section-header" (click)="toggleSection('metrics')">
-                <span>Current Metrics</span>
-                <span [class]="'toggle-icon' + (expandedSections['metrics'] ? ' expanded' : '')">▼</span>
-            </div>
-            <div class="section-content" [style.display]="expandedSections['metrics'] ? 'block' : 'none'">
-                <div class="metrics-grid">
-                    <div class="metric-item">
-                        <div class="metric-value">{{ metrics.tokensGenerated }}</div>
-                        <div class="metric-label">Tokens</div>
-                    </div>
-                    <div class="metric-item">
-                        <div class="metric-value">{{ metrics.responseTime }}</div>
-                        <div class="metric-label">Response Time</div>
-                    </div>
-                    <div class="metric-item">
-                        <div class="metric-value">{{ metrics.temperature }}</div>
-                        <div class="metric-label">Temperature</div>
-                    </div>
-                    <div class="metric-item">
-                        <div class="metric-value">{{ metrics.memoryUsage }}</div>
-                        <div class="metric-label">Memory</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Live Logs Section -->
-        <div class="log-section">
-            <div class="section-header" (click)="toggleSection('logs')">
-                <span>Live Logs</span>
-                <span [class]="'toggle-icon' + (expandedSections['logs'] ? ' expanded' : '')">▼</span>
-            </div>
-            <div class="section-content" [style.display]="expandedSections['logs'] ? 'block' : 'none'">
-                <div class="log-entry" *ngFor="let log of logs">
-                    <span class="log-timestamp">{{ log.timestamp }}</span>
-                    <span [class]="getLogLevelClass(log.level)">[{{ log.level | uppercase }}]</span>
-                    <span class="log-message">{{ log.message }}</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- System Info Section -->
-        <div class="log-section">
-            <div class="section-header" (click)="toggleSection('system')">
-                <span>System Info</span>
-                <span [class]="'toggle-icon' + (expandedSections['system'] ? ' expanded' : '')">▼</span>
-            </div>
-            <div class="section-content" [style.display]="expandedSections['system'] ? 'block' : 'none'">
-                <div class="log-entry" *ngFor="let info of systemInfo">
-                    <span [class]="getLogLevelClass(info.level)">[{{ info.level | uppercase }}]</span>
-                    <span class="log-message">{{ info.message }}</span>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* llm-response-status.component.css */
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
-
-.sidebar {
-    width: 320px;
-    height: 100vh;
-    background-color: #111113;
-    border-right: 1px solid #2a2a2a;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-}
-
-.sidebar-header {
-    padding: 16px 20px;
-    border-bottom: 1px solid #2a2a2a;
-    background-color: #0f0f10;
-}
-
-.sidebar-header .job-title {
-    color: #ffffff;
-    font-size: 16px;
-    font-weight: 600;
-    margin-bottom: 8px;
-}
-
-.sidebar-header .job-info {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    font-size: 13px;
-    margin-bottom: 8px;
-}
-
-.sidebar-header .job-id {
-    color: #9ca3af;
-    font-family: 'Courier New', monospace;
-    font-size: 12px;
-}
-
-.sidebar-header .job-status {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.status-badge {
-    background-color: #f59e0b;
-    color: #ffffff;
-    padding: 2px 8px;
-    border-radius: 12px;
-    font-weight: 600;
-    font-size: 11px;
-    text-transform: uppercase;
-    animation: pulse 2s infinite;
-}
-
-.status-badge.queued {
-    background-color: #6b7280;
-    animation: none;
-}
-
-.status-badge.running {
-    background-color: #3b82f6;
-}
-
-.status-badge.completed {
-    background-color: #10b981;
-    animation: none;
-}
-
-.status-badge.failed {
-    background-color: #ef4444;
-    animation: none;
-}
-
-@keyframes pulse {
-
-    0%,
-    100% {
-        opacity: 1;
-    }
-
-    50% {
-        opacity: 0.7;
-    }
-}
-
-.progress-section {
-    padding: 12px 20px;
-    border-bottom: 1px solid #1f1f1f;
-    background-color: #0d0d0e;
-}
-
-.progress-section .progress-label {
-    color: #d1d5db;
-    font-size: 12px;
-    margin-bottom: 6px;
-    display: flex;
-    justify-content: space-between;
-}
-
-.progress-section .progress-bar {
-    width: 100%;
-    height: 6px;
-    background-color: #2a2a2a;
-    border-radius: 3px;
-    overflow: hidden;
-}
-
-.progress-section .progress-bar .progress-fill {
-    height: 100%;
-    background: linear-gradient(90deg, #3b82f6, #10b981);
-    transition: width 0.3s ease;
-    border-radius: 3px;
-}
-
-.log-container {
-    flex: 1;
-    overflow-y: auto;
-    padding: 0;
-}
-
-.log-container::-webkit-scrollbar {
-    width: 6px;
-}
-
-.log-container::-webkit-scrollbar-track {
-    background: #111113;
-}
-
-.log-container::-webkit-scrollbar-thumb {
-    background: #2a2a2a;
-    border-radius: 3px;
-}
-
-.log-container::-webkit-scrollbar-thumb:hover {
-    background: #404040;
-}
-
-.log-section {
-    border-bottom: 1px solid #1f1f1f;
-}
-
-.log-section .section-header {
-    padding: 12px 20px;
-    background-color: #0d0d0e;
-    color: #d1d5db;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    transition: background-color 0.2s ease;
-}
-
-.log-section .section-header:hover {
-    background-color: #151517;
-}
-
-.log-section .section-content {
-    padding: 0;
-    background-color: #111113;
-}
-
-.stage-item {
-    padding: 12px 20px;
-    border-bottom: 1px solid #1a1a1a;
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
-}
-
-.stage-item:last-child {
-    border-bottom: none;
-}
-
-.stage-status {
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    margin-top: 2px;
-    flex-shrink: 0;
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.stage-status.completed {
-    background-color: #10b981;
-}
-
-.stage-status.completed .status-icon {
-    color: white;
-    font-size: 10px;
-    font-weight: bold;
-}
-
-.stage-status.running {
-    background-color: #3b82f6;
-    animation: pulse 1.5s infinite;
-}
-
-.stage-status.pending {
-    background-color: #374151;
-    border: 2px solid #6b7280;
-}
-
-.stage-status.failed {
-    background-color: #ef4444;
-}
-
-.stage-status.failed .status-icon {
-    color: white;
-    font-size: 10px;
-    font-weight: bold;
-}
-
-.stage-content {
-    flex: 1;
-}
-
-.stage-content .stage-name {
-    color: #ffffff;
-    font-weight: 500;
-    font-size: 14px;
-    margin-bottom: 4px;
-}
-
-.stage-content .stage-description {
-    color: #9ca3af;
-    font-size: 12px;
-    margin-bottom: 6px;
-}
-
-.stage-content .stage-meta {
-    display: flex;
-    gap: 16px;
-    font-size: 11px;
-}
-
-.stage-content .stage-meta .stage-time {
-    color: #6b7280;
-}
-
-.stage-content .stage-meta .stage-duration {
-    color: #10b981;
-    font-weight: 500;
-}
-
-.log-entry {
-    padding: 8px 20px;
-    font-family: 'Courier New', monospace;
-    font-size: 12px;
-    border-bottom: 1px solid #1a1a1a;
-    line-height: 1.4;
-}
-
-.log-entry:last-child {
-    border-bottom: none;
-}
-
-.log-level {
-    font-weight: bold;
-    margin-right: 8px;
-}
-
-.log-level.info {
-    color: #3b82f6;
-}
-
-.log-level.warn {
-    color: #f59e0b;
-}
-
-.log-level.error {
-    color: #ef4444;
-}
-
-.log-level.debug {
-    color: #6b7280;
-}
-
-.log-timestamp {
-    color: #6b7280;
-    margin-right: 8px;
-}
-
-.log-message {
-    color: #e5e7eb;
-}
-
-.metrics-grid {
-    padding: 16px 20px;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-}
-
-.metrics-grid .metric-item {
-    text-align: center;
-}
-
-.metrics-grid .metric-item .metric-value {
-    color: #ffffff;
-    font-size: 18px;
-    font-weight: 600;
-    margin-bottom: 4px;
-}
-
-.metrics-grid .metric-item .metric-label {
-    color: #9ca3af;
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.toggle-icon {
-    transition: transform 0.2s ease;
-    color: #6b7280;
-}
-
-.toggle-icon.expanded {
-    transform: rotate(180deg);
-}
-
-/* Responsive adjustments */
-@media (max-width: 768px) {
-    .sidebar {
-        width: 100%;
-        height: auto;
-        max-height: 100vh;
-    }
-
-    .metrics-grid {
-        grid-template-columns: 1fr;
-        gap: 8px;
-    }
-}
-
+    <script>
+        function createDownloadIcon() {
+            const iconElement = document.getElementById('downloadIcon');
+
+            iconElement.addEventListener('click', async function () {
+                // Don't allow clicking while loading
+                if (this.classList.contains('loading')) return;
+
+                // Add loading class and show spinner
+                this.classList.add('loading');
+                showSpinner(this);
+
+                try {
+                    // Simulate download (replace with your actual download logic)
+                    await simulateDownload();
+
+                    // Show success message
+                    showSuccess(this);
+
+                    // Restore icon after 10 seconds
+                    setTimeout(() => {
+                        restoreOriginalIcon(this);
+                        this.classList.remove('loading');
+                    }, 10000);
+
+                } catch (error) {
+                    // Show error message
+                    showError(this);
+
+                    // Restore icon after 10 seconds
+                    setTimeout(() => {
+                        restoreOriginalIcon(this);
+                        this.classList.remove('loading');
+                    }, 10000);
+                }
+            });
+        }
+
+        function showSpinner(element) {
+            // Store original content
+            element.dataset.originalContent = element.innerHTML;
+
+            // Create and show spinner
+            const spinner = document.createElement('div');
+            spinner.className = 'spinner';
+
+            element.innerHTML = '';
+            element.appendChild(spinner);
+        }
+
+        function showSuccess(element) {
+            // Create success message
+            const statusDiv = document.createElement('div');
+            statusDiv.className = 'status-message success';
+
+            const tickIcon = document.createElement('i');
+            tickIcon.className = 'fas fa-check success-icon';
+
+            const message = document.createElement('span');
+            message.textContent = 'Downloaded Successfully';
+
+            statusDiv.appendChild(tickIcon);
+            statusDiv.appendChild(message);
+
+            element.innerHTML = '';
+            element.appendChild(statusDiv);
+        }
+
+        function showError(element) {
+            // Create error message
+            const statusDiv = document.createElement('div');
+            statusDiv.className = 'status-message error';
+
+            const errorIcon = document.createElement('i');
+            errorIcon.className = 'fas fa-times error-icon';
+
+            const message = document.createElement('span');
+            message.textContent = 'Download Failed';
+
+            statusDiv.appendChild(errorIcon);
+            statusDiv.appendChild(message);
+
+            element.innerHTML = '';
+            element.appendChild(statusDiv);
+        }
+
+        function restoreOriginalIcon(element) {
+            // Restore original icon
+            element.innerHTML = element.dataset.originalContent;
+        }
+
+        // Simulate download - replace with your actual download function
+        async function simulateDownload() {
+            return new Promise((resolve, reject) => {
+                setTimeout(() => {
+                    // Simulate 30% chance of failure for demo
+                    if (Math.random() < 0.3) {
+                        reject(new Error('Download failed'));
+                    } else {
+                        resolve();
+                    }
+                }, 2000); // 2 second delay for demo
+            });
+        }
+
+        // Initialize
+        createDownloadIcon();
+    </script>
+</body>
+
+</html>
