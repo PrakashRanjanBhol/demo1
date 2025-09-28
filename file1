@@ -1,117 +1,541 @@
-import { Injectable, OnDestroy } from '@angular/core';
-import { webSocket, WebSocketSubject } from 'rxjs/webSocket';
-import { Observable, Subject } from 'rxjs';
+<!DOCTYPE html>
+<html lang="en">
 
-@Injectable({
-  providedIn: 'root'
-})
-export class WebsocketService implements OnDestroy {
-  private socket$?: WebSocketSubject<any>;
-  private connectionUrl: string = '';
-  private messagesSubject$ = new Subject<any>();
-  public messages$: Observable<any> = this.messagesSubject$.asObservable();
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Assistant</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-  // Establish WebSocket connection
-  connect(url: string): void {
-    if (this.socket$) {
-      console.warn('WebSocket is already connected.');
-      return;
-    }
-    this.connectionUrl = url;
-    this.socket$ = webSocket({
-      url: url,
-      deserializer: e => JSON.parse(e.data),
-      serializer: value => JSON.stringify(value)
-    });
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
 
-    this.socket$.subscribe({
-      next: (msg) => this.messagesSubject$.next(msg),
-      error: (err) => console.error('WebSocket error:', err),
-      complete: () => console.log('WebSocket connection closed.')
-    });
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
 
-    console.log('Connected to WebSocket:', url);
-  }
+        .header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
 
-  // Send message to server
-  sendMessage(msg: any): void {
-    if (!this.socket$) {
-      console.error('WebSocket is not connected.');
-      return;
-    }
-    this.socket$.next(msg);
-  }
+        .header-actions {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
 
-  // Close WebSocket connection
-  close(): void {
-    if (this.socket$) {
-      this.socket$.complete();
-      this.socket$ = undefined;
-      console.log('WebSocket connection closed manually.');
-    }
-  }
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
 
-  ngOnDestroy(): void {
-    this.close();
-  }
-}
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
 
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
 
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            display: flex;
+            gap: 0;
+            overflow: hidden;
+        }
 
+        /* Left Sidebar - Chat History */
+        .sidebar {
+            width: 300px;
+            background: white;
+            border-right: 1px solid #e1e5e9;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.05);
+        }
 
+        .sidebar-header {
+            padding: 1.5rem;
+            border-bottom: 1px solid #e1e5e9;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
 
+        .sidebar-header h3 {
+            color: white;
+            font-size: 1.1rem;
+            margin-bottom: 0.5rem;
+        }
 
+        .new-chat-btn {
+            width: 100%;
+            padding: 0.75rem;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
 
+        .new-chat-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
 
+        .chat-history {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem;
+        }
 
-import { Component, OnDestroy } from '@angular/core';
-import { WebsocketService } from './websocket.service';
-import { Subscription } from 'rxjs';
+        .chat-item {
+            padding: 1rem;
+            margin-bottom: 0.5rem;
+            background: #f8f9fa;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border-left: 3px solid transparent;
+        }
 
-@Component({
-  selector: 'app-websocket-demo',
-  template: `
-    <div>
-      <h3>WebSocket Demo</h3>
-      <button (click)="connect()">Connect</button>
-      <button (click)="send()">Send Message</button>
-      <button (click)="disconnect()">Disconnect</button>
+        .chat-item:hover {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-left-color: #667eea;
+            transform: translateX(4px);
+        }
 
-      <h4>Messages:</h4>
-      <ul>
-        <li *ngFor="let msg of messages">{{ msg | json }}</li>
-      </ul>
+        .chat-item.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-left-color: #764ba2;
+        }
+
+        .chat-item.active .chat-title,
+        .chat-item:hover .chat-title {
+            color: white;
+        }
+
+        .chat-item.active .chat-preview,
+        .chat-item:hover .chat-preview {
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .chat-item.active .chat-time,
+        .chat-item:hover .chat-time {
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .chat-title {
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 0.25rem;
+        }
+
+        .chat-preview {
+            font-size: 0.85rem;
+            color: #7f8c8d;
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+        }
+
+        .chat-time {
+            font-size: 0.75rem;
+            color: #95a5a6;
+            margin-top: 0.5rem;
+        }
+
+        /* Right Section - Chat Area */
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: white;
+        }
+
+        .chat-header {
+            padding: 1.5rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-bottom: 1px solid #e1e5e9;
+        }
+
+        .chat-header h2 {
+            color: white;
+            font-size: 1.2rem;
+        }
+
+        .chat-messages {
+            flex: 1;
+            padding: 2rem;
+            overflow-y: auto;
+            background: linear-gradient(135deg, #f8f9ff 0%, #e8ebf7 100%);
+            position: relative;
+        }
+
+        .chat-messages::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background:
+                radial-gradient(circle at 20% 20%, rgba(102, 126, 234, 0.05) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(118, 75, 162, 0.05) 0%, transparent 50%),
+                radial-gradient(circle at 40% 60%, rgba(102, 126, 234, 0.03) 0%, transparent 50%);
+            pointer-events: none;
+        }
+
+        .message {
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: flex-start;
+            gap: 1rem;
+            position: relative;
+            z-index: 1;
+        }
+
+        .message.user {
+            flex-direction: row-reverse;
+        }
+
+        .message-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            color: white;
+            flex-shrink: 0;
+        }
+
+        .message.ai .message-avatar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .message.user .message-avatar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .message-content {
+            max-width: 70%;
+            padding: 1rem 1.5rem;
+            border-radius: 18px;
+            line-height: 1.6;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .message.ai .message-content {
+            background: white;
+            color: #2c3e50;
+            border-bottom-left-radius: 6px;
+            border: 1px solid rgba(102, 126, 234, 0.1);
+        }
+
+        .message.user .message-content {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-bottom-right-radius: 6px;
+        }
+
+        /* Chat Input */
+        .chat-input-container {
+            padding: 1.5rem;
+            background: white;
+            border-top: 1px solid #e1e5e9;
+        }
+
+        .chat-input-wrapper {
+            display: flex;
+            gap: 1rem;
+            align-items: flex-end;
+            max-width: 100%;
+        }
+
+        .chat-input {
+            flex: 1;
+            min-height: 50px;
+            max-height: 120px;
+            padding: 1rem 1.5rem;
+            border: 2px solid #e1e5e9;
+            border-radius: 25px;
+            font-family: inherit;
+            font-size: 1rem;
+            line-height: 1.5;
+            resize: none;
+            transition: all 0.3s ease;
+            background: #f8f9fa;
+        }
+
+        .chat-input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+            background: white;
+        }
+
+        .send-btn {
+            width: 50px;
+            height: 50px;
+            border: none;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            flex-shrink: 0;
+        }
+
+        .send-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        /* Footer */
+        .footer {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1rem 2rem;
+            text-align: center;
+            font-size: 0.9rem;
+        }
+
+        /* Scrollbar Styling */
+        .chat-history::-webkit-scrollbar,
+        .chat-messages::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .chat-history::-webkit-scrollbar-track,
+        .chat-messages::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 3px;
+        }
+
+        .chat-history::-webkit-scrollbar-thumb,
+        .chat-messages::-webkit-scrollbar-thumb {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 3px;
+        }
+
+        .chat-history::-webkit-scrollbar-thumb:hover,
+        .chat-messages::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 250px;
+            }
+
+            .main-content {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                height: 40vh;
+            }
+
+            .message-content {
+                max-width: 85%;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Header -->
+    <header class="header">
+        <h1>🤖 AI Assistant</h1>
+        <div class="header-actions">
+            <button class="btn btn-secondary">Settings</button>
+            <button class="btn btn-secondary">Profile</button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <!-- Left Sidebar - Chat History -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h3>Chat History</h3>
+                <button class="new-chat-btn">+ New Chat</button>
+            </div>
+            <div class="chat-history">
+                <div class="chat-item active">
+                    <div class="chat-title">Website Design Help</div>
+                    <div class="chat-preview">Can you help me create a modern website design with...</div>
+                    <div class="chat-time">2 hours ago</div>
+                </div>
+                <div class="chat-item">
+                    <div class="chat-title">Python Data Analysis</div>
+                    <div class="chat-preview">I need help analyzing this dataset using pandas...</div>
+                    <div class="chat-time">1 day ago</div>
+                </div>
+                <div class="chat-item">
+                    <div class="chat-title">Recipe Suggestions</div>
+                    <div class="chat-preview">What are some healthy dinner recipes for...</div>
+                    <div class="chat-time">3 days ago</div>
+                </div>
+                <div class="chat-item">
+                    <div class="chat-title">Travel Planning</div>
+                    <div class="chat-preview">Help me plan a 7-day trip to Japan including...</div>
+                    <div class="chat-time">1 week ago</div>
+                </div>
+                <div class="chat-item">
+                    <div class="chat-title">Code Review</div>
+                    <div class="chat-preview">Can you review this JavaScript function and...</div>
+                    <div class="chat-time">2 weeks ago</div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Right Section - Chat Area -->
+        <main class="chat-container">
+            <div class="chat-header">
+                <h2>Current Conversation</h2>
+            </div>
+
+            <div class="chat-messages">
+                <div class="message ai">
+                    <div class="message-avatar">AI</div>
+                    <div class="message-content">
+                        Hello! I'm your AI assistant. How can I help you today? I can assist with coding, writing,
+                        analysis, creative projects, and much more!
+                    </div>
+                </div>
+
+                <div class="message user">
+                    <div class="message-avatar">U</div>
+                    <div class="message-content">
+                        I need help creating a beautiful light mode design for my LLM application with header, footer,
+                        and a body with left sidebar and right chat section.
+                    </div>
+                </div>
+
+                <div class="message ai">
+                    <div class="message-avatar">AI</div>
+                    <div class="message-content">
+                        I'd be happy to help you create a beautiful light mode design! I can create an HTML and CSS
+                        layout with modern styling, nice colors, and gradients. Would you like me to include features
+                        like responsive design, smooth animations, and a clean user interface?
+                    </div>
+                </div>
+            </div>
+
+            <div class="chat-input-container">
+                <div class="chat-input-wrapper">
+                    <textarea class="chat-input" placeholder="Type your message here..." rows="1"></textarea>
+                    <button class="send-btn">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M22 2L11 13" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                stroke-linejoin="round" />
+                            <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </main>
     </div>
-  `
-})
-export class WebsocketDemoComponent implements OnDestroy {
-  messages: any[] = [];
-  private sub?: Subscription;
 
-  constructor(private wsService: WebsocketService) {}
+    <!-- Footer -->
+    <footer class="footer">
+        <p>&copy; 2024 AI Assistant. Built with ❤️ for better conversations.</p>
+    </footer>
 
-  connect() {
-    this.wsService.connect('wss://echo.websocket.events'); // Example test server
-    this.sub = this.wsService.messages$.subscribe(msg => {
-      this.messages.push(msg);
-    });
-  }
+    <script>
+        // Auto-resize textarea
+        const chatInput = document.querySelector('.chat-input');
+        chatInput.addEventListener('input', function () {
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+        });
 
-  send() {
-    this.wsService.sendMessage({ text: 'Hello from Angular!' });
-  }
+        // Send message functionality
+        const sendBtn = document.querySelector('.send-btn');
+        const messagesContainer = document.querySelector('.chat-messages');
 
-  disconnect() {
-    this.wsService.close();
-    this.sub?.unsubscribe();
-  }
+        function addMessage(content, isUser = true) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isUser ? 'user' : 'ai'}`;
 
-  ngOnDestroy(): void {
-    this.disconnect();
-  }
-}
+            messageDiv.innerHTML = `
+                <div class="message-avatar">${isUser ? 'U' : 'AI'}</div>
+                <div class="message-content">${content}</div>
+            `;
 
+            messagesContainer.appendChild(messageDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
 
+        sendBtn.addEventListener('click', function () {
+            const message = chatInput.value.trim();
+            if (message) {
+                addMessage(message, true);
+                chatInput.value = '';
+                chatInput.style.height = 'auto';
 
+                // Simulate AI response
+                setTimeout(() => {
+                    addMessage("Thank you for your message! This is a demo response from the AI assistant.", false);
+                }, 1000);
+            }
+        });
 
+        // Send on Enter key
+        chatInput.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendBtn.click();
+            }
+        });
 
+        // Chat history item selection
+        document.querySelectorAll('.chat-item').forEach(item => {
+            item.addEventListener('click', function () {
+                document.querySelectorAll('.chat-item').forEach(i => i.classList.remove('active'));
+                this.classList.add('active');
+            });
+        });
+    </script>
+</body>
+
+</html>
