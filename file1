@@ -34,6 +34,34 @@ export class TemplateSidebarComponent {
   showDetailView: boolean = false;
   selectedTemplate: Template | null = null;
   formData: { [key: string]: any } = {};
+  showCreateTemplate: boolean = false;
+  
+  // Template Builder State
+  newTemplate = {
+    title: '',
+    description: '',
+    detailDescription: '',
+    formFields: [] as FormField[]
+  };
+  
+  currentField: FormField = {
+    id: '',
+    label: '',
+    type: 'text',
+    placeholder: '',
+    required: false
+  };
+  
+  fieldTypes: Array<{value: FormField['type'], label: string}> = [
+    { value: 'text', label: 'Text Input' },
+    { value: 'textarea', label: 'Text Area' },
+    { value: 'email', label: 'Email' },
+    { value: 'number', label: 'Number' },
+    { value: 'date', label: 'Date' },
+    { value: 'select', label: 'Dropdown' }
+  ];
+  
+  selectOptions: string = '';
 
   predefinedTemplates: Template[] = [
     {
@@ -330,6 +358,160 @@ export class TemplateSidebarComponent {
 
           <button type="submit" class="submit-btn">Ask</button>
         </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Template View -->
+  <div *ngIf="showCreateTemplate" class="detail-view-container">
+    <div class="detail-top-section">
+      <button class="back-btn" (click)="cancelTemplateCreation()">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="19" y1="12" x2="5" y2="12"></line>
+          <polyline points="12 19 5 12 12 5"></polyline>
+        </svg>
+      </button>
+      <h2 class="detail-title">Create Custom Template</h2>
+    </div>
+
+    <div class="detail-content">
+      <!-- Template Info Section -->
+      <div class="builder-section">
+        <h3 class="builder-section-title">Template Information</h3>
+        
+        <div class="form-group">
+          <label for="templateTitle">Template Title <span class="required">*</span></label>
+          <input 
+            type="text" 
+            id="templateTitle" 
+            [(ngModel)]="newTemplate.title"
+            placeholder="e.g., Customer Feedback Form"
+            class="form-input">
+        </div>
+
+        <div class="form-group">
+          <label for="templateDesc">Short Description <span class="required">*</span></label>
+          <input 
+            type="text" 
+            id="templateDesc" 
+            [(ngModel)]="newTemplate.description"
+            placeholder="Brief description for the card"
+            class="form-input">
+        </div>
+
+        <div class="form-group">
+          <label for="templateDetailDesc">Detailed Description</label>
+          <textarea 
+            id="templateDetailDesc" 
+            [(ngModel)]="newTemplate.detailDescription"
+            placeholder="Detailed description shown in the template view"
+            rows="3"
+            class="form-input form-textarea"></textarea>
+        </div>
+      </div>
+
+      <!-- Form Builder Section -->
+      <div class="builder-section">
+        <h3 class="builder-section-title">Form Fields</h3>
+        
+        <div class="field-builder">
+          <div class="form-group">
+            <label for="fieldLabel">Field Label <span class="required">*</span></label>
+            <input 
+              type="text" 
+              id="fieldLabel" 
+              [(ngModel)]="currentField.label"
+              placeholder="e.g., Customer Name"
+              class="form-input">
+          </div>
+
+          <div class="form-row">
+            <div class="form-group" style="flex: 1;">
+              <label for="fieldType">Field Type</label>
+              <select 
+                id="fieldType" 
+                [(ngModel)]="currentField.type"
+                class="form-input">
+                <option *ngFor="let type of fieldTypes" [value]="type.value">{{ type.label }}</option>
+              </select>
+            </div>
+
+            <div class="form-group" style="flex: 0 0 auto;">
+              <label for="fieldRequired">Required?</label>
+              <div class="checkbox-wrapper">
+                <input 
+                  type="checkbox" 
+                  id="fieldRequired" 
+                  [(ngModel)]="currentField.required"
+                  class="form-checkbox">
+                <label for="fieldRequired" class="checkbox-label">Required</label>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="fieldPlaceholder">Placeholder Text</label>
+            <input 
+              type="text" 
+              id="fieldPlaceholder" 
+              [(ngModel)]="currentField.placeholder"
+              placeholder="Hint text for the field"
+              class="form-input">
+          </div>
+
+          <div class="form-group" *ngIf="currentField.type === 'select'">
+            <label for="selectOptions">Dropdown Options <span class="required">*</span></label>
+            <input 
+              type="text" 
+              id="selectOptions" 
+              [(ngModel)]="selectOptions"
+              placeholder="Comma separated values (e.g., Option 1, Option 2, Option 3)"
+              class="form-input">
+            <small class="field-hint">Separate options with commas</small>
+          </div>
+
+          <button type="button" class="add-field-btn" (click)="addFieldToTemplate()">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            Add Field
+          </button>
+        </div>
+
+        <!-- Added Fields List -->
+        <div *ngIf="newTemplate.formFields.length > 0" class="added-fields">
+          <h4 class="added-fields-title">Added Fields ({{ newTemplate.formFields.length }})</h4>
+          <div class="field-item" *ngFor="let field of newTemplate.formFields; let i = index">
+            <div class="field-item-content">
+              <div class="field-item-header">
+                <span class="field-item-label">{{ field.label }}</span>
+                <span class="field-item-type">{{ field.type }}</span>
+              </div>
+              <div class="field-item-meta">
+                <span *ngIf="field.required" class="field-badge">Required</span>
+                <span *ngIf="field.placeholder" class="field-placeholder">{{ field.placeholder }}</span>
+              </div>
+            </div>
+            <button type="button" class="remove-field-btn" (click)="removeField(i)">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div class="builder-actions">
+        <button type="button" class="cancel-btn" (click)="cancelTemplateCreation()">Cancel</button>
+        <button type="button" class="save-template-btn" (click)="saveTemplate()">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+          Save Template
+        </button>
       </div>
     </div>
   </div>
@@ -736,4 +918,241 @@ export class TemplateSidebarComponent {
 
 .detail-content::-webkit-scrollbar-thumb:hover {
   background: #b0b0b0;
+}
+
+/* Template Builder Styles */
+.builder-section {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: #1c1c1f;
+  border-radius: 0.5rem;
+  border: 1px solid #2a2a2d;
+}
+
+.builder-section-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #e8e8e8;
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.field-builder {
+  background: #111113;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid #2a2a2d;
+}
+
+.form-row {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-end;
+}
+
+.checkbox-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 0;
+}
+
+.form-checkbox {
+  width: 1.125rem;
+  height: 1.125rem;
+  border-radius: 0.25rem;
+  border: 1px solid #2a2a2d;
+  background: #1c1c1f;
+  cursor: pointer;
+  accent-color: #8b5cf6;
+}
+
+.checkbox-label {
+  font-size: 0.8125rem;
+  color: #9ca3af;
+  cursor: pointer;
+  margin: 0;
+}
+
+.field-hint {
+  display: block;
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-top: 0.375rem;
+}
+
+.add-field-btn {
+  width: 100%;
+  background: #252528;
+  color: #e8e8e8;
+  border: 1px solid #2a2a2d;
+  padding: 0.625rem 1rem;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.add-field-btn:hover {
+  background: #2a2a2d;
+  border-color: #8b5cf6;
+  color: #8b5cf6;
+}
+
+.added-fields {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #2a2a2d;
+}
+
+.added-fields-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #e8e8e8;
+  margin-bottom: 0.75rem;
+}
+
+.field-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  background: #111113;
+  border: 1px solid #2a2a2d;
+  border-radius: 0.375rem;
+  margin-bottom: 0.5rem;
+  transition: all 0.2s ease;
+}
+
+.field-item:hover {
+  border-color: #3a3a3d;
+  background: #1a1a1d;
+}
+
+.field-item-content {
+  flex: 1;
+}
+
+.field-item-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.field-item-label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #e8e8e8;
+}
+
+.field-item-type {
+  font-size: 0.6875rem;
+  padding: 0.125rem 0.5rem;
+  background: #252528;
+  color: #9ca3af;
+  border-radius: 0.25rem;
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+.field-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.field-badge {
+  font-size: 0.6875rem;
+  padding: 0.125rem 0.5rem;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.2));
+  color: #c4b5fd;
+  border-radius: 0.25rem;
+  border: 1px solid rgba(139, 92, 246, 0.3);
+}
+
+.field-placeholder {
+  font-size: 0.75rem;
+  color: #6b7280;
+  font-style: italic;
+}
+
+.remove-field-btn {
+  background: transparent;
+  border: 1px solid #2a2a2d;
+  color: #9ca3af;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.375rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.remove-field-btn:hover {
+  background: #ef4444;
+  border-color: #ef4444;
+  color: white;
+}
+
+.builder-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #2a2a2d;
+}
+
+.cancel-btn {
+  flex: 1;
+  background: #252528;
+  color: #e8e8e8;
+  border: 1px solid #2a2a2d;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.cancel-btn:hover {
+  background: #2a2a2d;
+}
+
+.save-template-btn {
+  flex: 1;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6, #a855f7);
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.save-template-btn:hover {
+  transform: translateY(-0.0625rem);
+  box-shadow: 0 0.25rem 1rem rgba(139, 92, 246, 0.4);
+  filter: brightness(1.1);
 }
