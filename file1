@@ -1,54 +1,360 @@
-<div class="toggle-flex-container">
-  <div
-    *ngFor="let option of options"
-    class="toggle-button"
-    [class.active]="selectedOption === option"
-    (click)="toggleOption(option)"
-  >
-    {{ option }}
+// login.component.ts
+import { Component, OnInit } from '@angular/core';
+import { FormBuilder, FormGroup, Validators } from '@angular/forms';
+
+@Component({
+  selector: 'app-login',
+  templateUrl: './login.component.html',
+  styleUrls: ['./login.component.css']
+})
+export class LoginComponent implements OnInit {
+  loginForm: FormGroup;
+  isLoading = false;
+  usernameError = '';
+  passwordError = '';
+
+  constructor(private fb: FormBuilder) {
+    this.loginForm = this.fb.group({
+      username: ['', Validators.required],
+      password: ['', Validators.required],
+      rememberMe: [false]
+    });
+  }
+
+  ngOnInit(): void {
+    // Load remembered username if exists
+    const rememberedUsername = localStorage.getItem('rememberedUsername');
+    if (rememberedUsername) {
+      this.loginForm.patchValue({
+        username: rememberedUsername,
+        rememberMe: true
+      });
+    }
+  }
+
+  get isFormValid(): boolean {
+    return this.loginForm.valid;
+  }
+
+  onLogin(): void {
+    if (!this.isFormValid) return;
+
+    this.isLoading = true;
+    this.usernameError = '';
+    this.passwordError = '';
+
+    const { username, password, rememberMe } = this.loginForm.value;
+
+    // Simulate API call
+    this.mockLoginApiCall(username, password).then(
+      (response) => {
+        this.isLoading = false;
+        
+        // Handle remember me
+        if (rememberMe) {
+          localStorage.setItem('rememberedUsername', username);
+        } else {
+          localStorage.removeItem('rememberedUsername');
+        }
+
+        console.log('Login successful:', response);
+        // Handle successful login (e.g., navigate to dashboard)
+      },
+      (error) => {
+        this.isLoading = false;
+        
+        if (error.type === 'username') {
+          this.usernameError = 'Invalid username';
+        } else if (error.type === 'password') {
+          this.passwordError = 'Invalid password';
+        }
+      }
+    );
+  }
+
+  onSSOLogin(): void {
+    console.log('SSO Login clicked');
+    // Implement SSO login logic here
+    // Typically redirects to SSO provider
+  }
+
+  // Mock API call - Replace with actual HTTP service
+  private mockLoginApiCall(username: string, password: string): Promise<any> {
+    return new Promise((resolve, reject) => {
+      setTimeout(() => {
+        // Simulate API response
+        if (username !== 'admin') {
+          reject({ type: 'username', message: 'Invalid username' });
+        } else if (password !== 'password123') {
+          reject({ type: 'password', message: 'Invalid password' });
+        } else {
+          resolve({ success: true, token: 'mock-jwt-token' });
+        }
+      }, 1500);
+    });
+  }
+
+  clearUsernameError(): void {
+    this.usernameError = '';
+  }
+
+  clearPasswordError(): void {
+    this.passwordError = '';
+  }
+}
+
+// ============================================
+// login.component.html
+// ============================================
+<div class="login-container">
+  <div class="login-card">
+    <h1 class="login-title">Welcome Back</h1>
+    <p class="login-subtitle">Please login to your account</p>
+
+    <form [formGroup]="loginForm" (ngSubmit)="onLogin()">
+      <!-- Username Field -->
+      <div class="form-group">
+        <label for="username">Username</label>
+        <input
+          type="text"
+          id="username"
+          formControlName="username"
+          [class.error]="usernameError"
+          (input)="clearUsernameError()"
+          placeholder="Enter your username"
+        />
+        <span class="error-text" *ngIf="usernameError">{{ usernameError }}</span>
+      </div>
+
+      <!-- Password Field -->
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input
+          type="password"
+          id="password"
+          formControlName="password"
+          [class.error]="passwordError"
+          (input)="clearPasswordError()"
+          placeholder="Enter your password"
+        />
+        <span class="error-text" *ngIf="passwordError">{{ passwordError }}</span>
+      </div>
+
+      <!-- Remember Me Checkbox -->
+      <div class="remember-me">
+        <label class="checkbox-label">
+          <input type="checkbox" formControlName="rememberMe" />
+          <span>Remember me</span>
+        </label>
+      </div>
+
+      <!-- Login Button -->
+      <button
+        type="submit"
+        class="login-btn"
+        [disabled]="!isFormValid || isLoading"
+      >
+        <span class="spinner" *ngIf="isLoading"></span>
+        {{ isLoading ? 'Logging In...' : 'Login' }}
+      </button>
+    </form>
+
+    <!-- Divider -->
+    <div class="divider">
+      <span>or</span>
+    </div>
+
+    <!-- SSO Login Button -->
+    <button type="button" class="sso-btn" (click)="onSSOLogin()">
+      <svg class="sso-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/>
+      </svg>
+      SSO Login
+    </button>
   </div>
 </div>
 
-
-
-.toggle-flex-container {
+// ============================================
+// login.component.css
+// ============================================
+.login-container {
   display: flex;
-  flex-wrap: wrap; /* 👈 allows wrapping into multiple rows */
   justify-content: center;
   align-items: center;
-  background-color: #1e1e1e;
-  border-radius: 2rem;
-  padding: 6px;
-  width: 100%; /* 👈 takes full available width */
-  max-width: 900px;
-  margin: 1rem auto;
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
-  gap: 6px; /* 👈 adds spacing between buttons */
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 20px;
 }
 
-.toggle-button {
-  flex: 1 1 auto; /* 👈 grows/shrinks as needed */
-  min-width: 120px; /* 👈 ensures buttons stay readable */
+.login-card {
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+  padding: 40px;
+  width: 100%;
+  max-width: 420px;
+}
+
+.login-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: #2d3748;
+  margin: 0 0 8px 0;
   text-align: center;
-  padding: 0.6rem 0.8rem;
-  color: #eee;
-  border-radius: 2rem;
-  cursor: pointer;
-  transition: background-color 0.3s, color 0.3s, transform 0.2s;
-  user-select: none;
-  font-size: 0.9rem;
-  background-color: transparent;
-  border: 1px solid transparent;
 }
 
-.toggle-button:hover {
-  background-color: rgba(255, 255, 255, 0.1);
+.login-subtitle {
+  font-size: 14px;
+  color: #718096;
+  margin: 0 0 32px 0;
+  text-align: center;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: #4a5568;
+  margin-bottom: 8px;
+}
+
+.form-group input[type="text"],
+.form-group input[type="password"] {
+  width: 100%;
+  padding: 12px 16px;
+  font-size: 14px;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+  box-sizing: border-box;
+}
+
+.form-group input[type="text"]:focus,
+.form-group input[type="password"]:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.form-group input.error {
+  border-color: #f56565;
+}
+
+.error-text {
+  display: block;
+  color: #f56565;
+  font-size: 12px;
+  margin-top: 6px;
+}
+
+.remember-me {
+  margin-bottom: 24px;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-size: 14px;
+  color: #4a5568;
+}
+
+.checkbox-label input[type="checkbox"] {
+  margin-right: 8px;
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
+}
+
+.login-btn {
+  width: 100%;
+  padding: 14px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #ffffff;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.login-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+}
+
+.login-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #ffffff;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  margin: 28px 0;
+  color: #a0aec0;
+  font-size: 14px;
+}
+
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.divider span {
+  padding: 0 12px;
+}
+
+.sso-btn {
+  width: 100%;
+  padding: 14px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #4a5568;
+  background: #ffffff;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.sso-btn:hover {
+  border-color: #cbd5e0;
+  background: #f7fafc;
   transform: translateY(-2px);
 }
 
-.toggle-button.active {
-  background-color: #ffcc00;
-  color: #222;
-  font-weight: 600;
-  border: 1px solid #ffcc00;
+.sso-icon {
+  width: 20px;
+  height: 20px;
 }
