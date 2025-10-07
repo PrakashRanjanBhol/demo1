@@ -1,212 +1,298 @@
-// login.component.ts
+// signup.component.ts
 import { Component, OnInit } from '@angular/core';
-import { FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { FormBuilder, FormGroup, Validators, AbstractControl, ValidationErrors } from '@angular/forms';
 
 @Component({
-  selector: 'app-login',
-  templateUrl: './login.component.html',
-  styleUrls: ['./login.component.css']
+  selector: 'app-signup',
+  templateUrl: './signup.component.html',
+  styleUrls: ['./signup.component.css']
 })
-export class LoginComponent implements OnInit {
-  loginForm: FormGroup;
+export class SignupComponent implements OnInit {
+  signupForm: FormGroup;
   isLoading = false;
-  usernameError = '';
-  passwordError = '';
+  secretQuestions = [
+    'What is your mother\'s maiden name?',
+    'What was the name of your first pet?',
+    'What city were you born in?',
+    'What is your favorite book?',
+    'What was your childhood nickname?'
+  ];
 
   constructor(private fb: FormBuilder) {
-    this.loginForm = this.fb.group({
-      username: ['', Validators.required],
-      password: ['', Validators.required],
-      rememberMe: [false]
-    });
+    this.signupForm = this.fb.group({
+      email: ['', [Validators.required, this.emailValidator]],
+      username: [{ value: '', disabled: true }, Validators.required],
+      password: ['', [Validators.required, Validators.minLength(6), Validators.maxLength(12)]],
+      confirmPassword: ['', Validators.required],
+      secretQuestion: ['', Validators.required],
+      secretAnswer: ['', Validators.required]
+    }, { validators: this.passwordMatchValidator });
   }
 
   ngOnInit(): void {
-    // Load remembered username if exists
-    const rememberedUsername = localStorage.getItem('rememberedUsername');
-    if (rememberedUsername) {
-      this.loginForm.patchValue({
-        username: rememberedUsername,
-        rememberMe: true
-      });
-    }
+    // Watch email changes to auto-fill username
+    this.signupForm.get('email')?.valueChanges.subscribe(email => {
+      if (email) {
+        const username = email.split('@')[0];
+        this.signupForm.get('username')?.setValue(username, { emitEvent: false });
+      } else {
+        this.signupForm.get('username')?.setValue('', { emitEvent: false });
+      }
+    });
+  }
+
+  // Custom email validator for specific domains
+  emailValidator(control: AbstractControl): ValidationErrors | null {
+    const email = control.value;
+    if (!email) return null;
+
+    const validDomains = ['@test.com', '@sample.test.com'];
+    const isValid = validDomains.some(domain => email.endsWith(domain));
+    
+    return isValid ? null : { invalidDomain: true };
+  }
+
+  // Password match validator
+  passwordMatchValidator(control: AbstractControl): ValidationErrors | null {
+    const password = control.get('password')?.value;
+    const confirmPassword = control.get('confirmPassword')?.value;
+
+    if (!password || !confirmPassword) return null;
+
+    return password === confirmPassword ? null : { passwordMismatch: true };
   }
 
   get isFormValid(): boolean {
-    return this.loginForm.valid;
+    return this.signupForm.valid;
   }
 
-  onLogin(): void {
+  get emailErrors(): string {
+    const emailControl = this.signupForm.get('email');
+    if (emailControl?.hasError('required') && emailControl.touched) {
+      return 'Email is required';
+    }
+    if (emailControl?.hasError('invalidDomain') && emailControl.touched) {
+      return 'Email must be @test.com or @sample.test.com';
+    }
+    return '';
+  }
+
+  get passwordErrors(): string {
+    const passwordControl = this.signupForm.get('password');
+    if (passwordControl?.hasError('required') && passwordControl.touched) {
+      return 'Password is required';
+    }
+    if (passwordControl?.hasError('minlength') && passwordControl.touched) {
+      return 'Password must be at least 6 characters';
+    }
+    if (passwordControl?.hasError('maxlength') && passwordControl.touched) {
+      return 'Password must not exceed 12 characters';
+    }
+    return '';
+  }
+
+  get confirmPasswordErrors(): string {
+    const confirmPasswordControl = this.signupForm.get('confirmPassword');
+    if (confirmPasswordControl?.hasError('required') && confirmPasswordControl.touched) {
+      return 'Confirm password is required';
+    }
+    if (this.signupForm.hasError('passwordMismatch') && confirmPasswordControl?.touched) {
+      return 'Passwords do not match';
+    }
+    return '';
+  }
+
+  onSignup(): void {
     if (!this.isFormValid) return;
 
     this.isLoading = true;
-    this.usernameError = '';
-    this.passwordError = '';
 
-    const { username, password, rememberMe } = this.loginForm.value;
+    const formData = {
+      email: this.signupForm.get('email')?.value,
+      username: this.signupForm.get('username')?.value,
+      password: this.signupForm.get('password')?.value,
+      secretQuestion: this.signupForm.get('secretQuestion')?.value,
+      secretAnswer: this.signupForm.get('secretAnswer')?.value
+    };
 
     // Simulate API call
-    this.mockLoginApiCall(username, password).then(
+    this.mockSignupApiCall(formData).then(
       (response) => {
         this.isLoading = false;
-        
-        // Handle remember me
-        if (rememberMe) {
-          localStorage.setItem('rememberedUsername', username);
-        } else {
-          localStorage.removeItem('rememberedUsername');
-        }
-
-        console.log('Login successful:', response);
-        // Handle successful login (e.g., navigate to dashboard)
+        console.log('Signup successful:', response);
+        // Handle successful signup (e.g., navigate to login or dashboard)
       },
       (error) => {
         this.isLoading = false;
-        
-        if (error.type === 'username') {
-          this.usernameError = 'Invalid username';
-        } else if (error.type === 'password') {
-          this.passwordError = 'Invalid password';
-        }
+        console.error('Signup failed:', error);
+        // Handle error
       }
     );
   }
 
-  onSSOLogin(): void {
-    console.log('SSO Login clicked');
-    // Implement SSO login logic here
-    // Typically redirects to SSO provider
-  }
-
   // Mock API call - Replace with actual HTTP service
-  private mockLoginApiCall(username: string, password: string): Promise<any> {
+  private mockSignupApiCall(data: any): Promise<any> {
     return new Promise((resolve, reject) => {
       setTimeout(() => {
-        // Simulate API response
-        if (username !== 'admin') {
-          reject({ type: 'username', message: 'Invalid username' });
-        } else if (password !== 'password123') {
-          reject({ type: 'password', message: 'Invalid password' });
-        } else {
-          resolve({ success: true, token: 'mock-jwt-token' });
-        }
-      }, 1500);
+        // Simulate successful signup
+        resolve({ success: true, message: 'Account created successfully' });
+      }, 2000);
     });
-  }
-
-  clearUsernameError(): void {
-    this.usernameError = '';
-  }
-
-  clearPasswordError(): void {
-    this.passwordError = '';
   }
 }
 
 // ============================================
-// login.component.html
+// signup.component.html
 // ============================================
-<div class="login-container">
-  <div class="login-card">
-    <h1 class="login-title">
+<div class="signup-container">
+  <div class="signup-card">
+    <h1 class="signup-title">
       <span class="app-name">Test</span>
     </h1>
-    <p class="login-subtitle">Please login to your account</p>
+    <p class="signup-subtitle">Create your account</p>
 
-    <div class="login-methods">
-      <!-- Username/Password Login -->
-      <div class="login-section">
-        <h3 class="section-title">Login with Credentials</h3>
-        <form [formGroup]="loginForm" (ngSubmit)="onLogin()">
-          <!-- Username Field -->
-          <div class="form-group">
-            <label for="username">Username</label>
-            <input
-              type="text"
-              id="username"
-              formControlName="username"
-              [class.error]="usernameError"
-              (input)="clearUsernameError()"
-              placeholder="Enter username"
-            />
-            <span class="error-text" *ngIf="usernameError">{{ usernameError }}</span>
-          </div>
+    <form [formGroup]="signupForm" (ngSubmit)="onSignup()">
+      <div class="form-row">
+        <!-- Email Field -->
+        <div class="form-group">
+          <label for="email">
+            Email
+            <span class="required">*</span>
+          </label>
+          <input
+            type="email"
+            id="email"
+            formControlName="email"
+            [class.error]="emailErrors"
+            placeholder="user@test.com"
+          />
+          <span class="error-text" *ngIf="emailErrors">{{ emailErrors }}</span>
+        </div>
 
-          <!-- Password Field -->
-          <div class="form-group">
-            <label for="password">Password</label>
-            <input
-              type="password"
-              id="password"
-              formControlName="password"
-              [class.error]="passwordError"
-              (input)="clearPasswordError()"
-              placeholder="Enter password"
-            />
-            <span class="error-text" *ngIf="passwordError">{{ passwordError }}</span>
-          </div>
+        <!-- Username Field (Read-only) -->
+        <div class="form-group">
+          <label for="username">
+            Username
+            <span class="required">*</span>
+          </label>
+          <input
+            type="text"
+            id="username"
+            formControlName="username"
+            placeholder="Auto-filled from email"
+            readonly
+          />
+        </div>
+      </div>
 
-          <!-- Remember Me Checkbox -->
-          <div class="remember-me">
-            <label class="checkbox-label">
-              <input type="checkbox" formControlName="rememberMe" />
-              <span>Remember me</span>
-            </label>
-          </div>
+      <div class="form-row">
+        <!-- Password Field -->
+        <div class="form-group">
+          <label for="password">
+            Password
+            <span class="required">*</span>
+            <span class="info-icon" title="Password must be 6-12 characters">ℹ️</span>
+          </label>
+          <input
+            type="password"
+            id="password"
+            formControlName="password"
+            [class.error]="passwordErrors"
+            placeholder="Enter password"
+          />
+          <span class="error-text" *ngIf="passwordErrors">{{ passwordErrors }}</span>
+        </div>
 
-          <!-- Login Button -->
-          <button
-            type="submit"
-            class="login-btn"
-            [disabled]="!isFormValid || isLoading"
+        <!-- Confirm Password Field -->
+        <div class="form-group">
+          <label for="confirmPassword">
+            Confirm Password
+            <span class="required">*</span>
+          </label>
+          <input
+            type="password"
+            id="confirmPassword"
+            formControlName="confirmPassword"
+            [class.error]="confirmPasswordErrors"
+            placeholder="Re-enter password"
+          />
+          <span class="error-text" *ngIf="confirmPasswordErrors">{{ confirmPasswordErrors }}</span>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <!-- Secret Question Dropdown -->
+        <div class="form-group">
+          <label for="secretQuestion">
+            Secret Question
+            <span class="required">*</span>
+          </label>
+          <select
+            id="secretQuestion"
+            formControlName="secretQuestion"
+            [class.error]="signupForm.get('secretQuestion')?.invalid && signupForm.get('secretQuestion')?.touched"
           >
-            <span class="spinner" *ngIf="isLoading"></span>
-            {{ isLoading ? 'Logging In...' : 'Login' }}
-          </button>
-        </form>
+            <option value="" disabled selected>Select a question</option>
+            <option *ngFor="let question of secretQuestions" [value]="question">
+              {{ question }}
+            </option>
+          </select>
+        </div>
+
+        <!-- Secret Answer Field -->
+        <div class="form-group">
+          <label for="secretAnswer">
+            Secret Answer
+            <span class="required">*</span>
+          </label>
+          <input
+            type="text"
+            id="secretAnswer"
+            formControlName="secretAnswer"
+            [class.error]="signupForm.get('secretAnswer')?.invalid && signupForm.get('secretAnswer')?.touched"
+            placeholder="Enter your answer"
+          />
+        </div>
       </div>
 
-      <!-- Divider -->
-      <div class="vertical-divider">
-        <span>OR</span>
-      </div>
+      <!-- Signup Button -->
+      <button
+        type="submit"
+        class="signup-btn"
+        [disabled]="!isFormValid || isLoading"
+      >
+        <span class="spinner" *ngIf="isLoading"></span>
+        {{ isLoading ? 'Signing Up...' : 'Sign Up' }}
+      </button>
+    </form>
 
-      <!-- SSO Login -->
-      <div class="login-section sso-section">
-        <h3 class="section-title">Single Sign-On</h3>
-        <p class="sso-description">Login using your organization's SSO</p>
-        <button type="button" class="sso-btn" (click)="onSSOLogin()">
-          <svg class="sso-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/>
-          </svg>
-          SSO Login
-        </button>
-      </div>
-    </div>
+    <p class="login-link">
+      Already have an account? <a href="/login">Login here</a>
+    </p>
   </div>
 </div>
 
 // ============================================
-// login.component.css
+// signup.component.css
 // ============================================
-.login-container {
+.signup-container {
   display: flex;
   justify-content: center;
   align-items: center;
-  min-height: calc(100vh - 60px);
-  padding: 20px;
+  min-height: calc(100vh - 3.75rem);
+  padding: 1.25rem;
 }
 
-.login-card {
+.signup-card {
   background: #ffffff;
   border-radius: 0.75rem;
   border: 1px solid #cbd5e0;
   padding: 1.875rem;
   width: 100%;
-  max-width: 46.875rem;
+  max-width: 50rem;
 }
 
-.login-title {
+.signup-title {
   font-size: 1.5rem;
   font-weight: 700;
   color: #2d3748;
@@ -223,91 +309,50 @@ export class LoginComponent implements OnInit {
   display: inline-block;
 }
 
-.login-subtitle {
+.signup-subtitle {
   font-size: 0.8125rem;
   color: #718096;
   margin: 0 0 1.5rem 0;
   text-align: center;
 }
 
-.login-methods {
-  display: flex;
-  gap: 1.875rem;
-  align-items: stretch;
-}
-
-.login-section {
-  flex: 1;
-}
-
-.section-title {
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: #2d3748;
-  margin: 0 0 1rem 0;
-  text-align: center;
-}
-
-.vertical-divider {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  width: 2.5rem;
-  min-height: 15.625rem;
-}
-
-.vertical-divider::before {
-  content: '';
-  width: 0.0625rem;
-  flex: 1;
-  background: #e2e8f0;
-}
-
-.vertical-divider::after {
-  content: '';
-  width: 0.0625rem;
-  flex: 1;
-  background: #e2e8f0;
-}
-
-.vertical-divider span {
-  background: #ffffff;
-  padding: 0.75rem 0;
-  color: #a0aec0;
-  font-size: 0.75rem;
-  font-weight: 500;
-}
-
-.sso-section {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  text-align: center;
-}
-
-.sso-description {
-  font-size: 0.75rem;
-  color: #718096;
-  margin: 0 0 1.25rem 0;
-  text-align: center;
-}
-
-.form-group {
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
   margin-bottom: 1rem;
 }
 
+.form-group {
+  display: flex;
+  flex-direction: column;
+}
+
 .form-group label {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
   font-size: 0.875rem;
   font-weight: 500;
   color: #4a5568;
   margin-bottom: 0.5rem;
 }
 
+.required {
+  color: #f56565;
+  font-size: 0.875rem;
+}
+
+.info-icon {
+  font-size: 0.875rem;
+  cursor: help;
+  color: #667eea;
+}
+
 .form-group input[type="text"],
-.form-group input[type="password"] {
+.form-group input[type="email"],
+.form-group input[type="password"],
+.form-group select {
   width: 100%;
   padding: 0.625rem 0.875rem;
   font-size: 0.875rem;
@@ -315,16 +360,26 @@ export class LoginComponent implements OnInit {
   border-radius: 0.5rem;
   transition: all 0.3s ease;
   box-sizing: border-box;
+  background-color: #ffffff;
+}
+
+.form-group input[readonly] {
+  background-color: #f7fafc;
+  color: #718096;
+  cursor: not-allowed;
 }
 
 .form-group input[type="text"]:focus,
-.form-group input[type="password"]:focus {
+.form-group input[type="email"]:focus,
+.form-group input[type="password"]:focus,
+.form-group select:focus {
   outline: none;
   border-color: #667eea;
   border-width: 1.5px;
 }
 
-.form-group input.error {
+.form-group input.error,
+.form-group select.error {
   border-color: #f56565;
   border-width: 1.5px;
 }
@@ -334,28 +389,10 @@ export class LoginComponent implements OnInit {
   color: #f56565;
   font-size: 0.75rem;
   margin-top: 0.375rem;
+  min-height: 1.125rem;
 }
 
-.remember-me {
-  margin-bottom: 1.25rem;
-}
-
-.checkbox-label {
-  display: flex;
-  align-items: center;
-  cursor: pointer;
-  font-size: 0.8125rem;
-  color: #4a5568;
-}
-
-.checkbox-label input[type="checkbox"] {
-  margin-right: 0.5rem;
-  cursor: pointer;
-  width: 1rem;
-  height: 1rem;
-}
-
-.login-btn {
+.signup-btn {
   width: 100%;
   padding: 0.75rem;
   font-size: 0.9375rem;
@@ -370,14 +407,15 @@ export class LoginComponent implements OnInit {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
+  margin-top: 0.5rem;
 }
 
-.login-btn:hover:not(:disabled) {
+.signup-btn:hover:not(:disabled) {
   transform: translateY(-0.125rem);
   box-shadow: 0 0.375rem 1.25rem rgba(102, 126, 234, 0.4);
 }
 
-.login-btn:disabled {
+.signup-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
@@ -397,57 +435,30 @@ export class LoginComponent implements OnInit {
   }
 }
 
-.sso-btn {
-  width: 100%;
-  max-width: 12.5rem;
-  padding: 0.75rem 1.5rem;
-  font-size: 0.9375rem;
+.login-link {
+  text-align: center;
+  margin-top: 1.25rem;
+  font-size: 0.875rem;
+  color: #718096;
+}
+
+.login-link a {
+  color: #667eea;
+  text-decoration: none;
   font-weight: 600;
-  color: #4a5568;
-  background: #ffffff;
-  border: 1.5px solid #cbd5e0;
-  border-radius: 0.5rem;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.625rem;
 }
 
-.sso-btn:hover {
-  border-color: #a0aec0;
-  background: #f7fafc;
-  transform: translateY(-0.125rem);
+.login-link a:hover {
+  text-decoration: underline;
 }
 
-.sso-icon {
-  width: 1.25rem;
-  height: 1.25rem;
-}
-
-@media (max-width: 768px) {
-  .login-methods {
-    flex-direction: column;
-    gap: 20px;
+@media (max-width: 48rem) {
+  .form-row {
+    grid-template-columns: 1fr;
+    gap: 1rem;
   }
 
-  .vertical-divider {
-    width: 100%;
-    padding-top: 0;
-    height: 40px;
-  }
-
-  .vertical-divider::before {
-    left: 0;
-    right: 0;
-    top: 50%;
-    bottom: auto;
-    width: auto;
-    height: 1px;
-  }
-
-  .sso-section {
-    padding-top: 0;
+  .signup-card {
+    padding: 1.5rem;
   }
 }
