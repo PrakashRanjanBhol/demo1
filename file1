@@ -8,37 +8,43 @@ export class AuthService {
   private userSubject = new BehaviorSubject<any>(this.getStoredUser());
   user$ = this.userSubject.asObservable();
 
+  // 🔹 Global loader state
+  private loadingSubject = new BehaviorSubject<boolean>(false);
+  loading$ = this.loadingSubject.asObservable();
+
   constructor(private router: Router) {
-    // 🔹 Auto-reconnect SSO after page refresh if user was logged in via SSO
     const user = this.getStoredUser();
     if (user?.method === 'sso') {
       this.connectSSO(true);
     }
   }
 
-  // Get user from local storage
   private getStoredUser() {
     return JSON.parse(localStorage.getItem('user') || 'null');
   }
 
-  // ✅ Username/Password Login
   loginWithCredentials(username: string, password: string) {
-    // Replace with your backend API call
-    if (username === 'admin' && password === '1234') {
-      const user = { username, method: 'credentials' };
-      localStorage.setItem('user', JSON.stringify(user));
-      this.userSubject.next(user);
-      this.router.navigate(['/dashboard']);
-    } else {
-      alert('Invalid credentials');
-    }
+    this.loadingSubject.next(true);
+
+    setTimeout(() => {
+      if (username === 'admin' && password === '1234') {
+        const user = { username, method: 'credentials' };
+        localStorage.setItem('user', JSON.stringify(user));
+        this.userSubject.next(user);
+        this.router.navigate(['/dashboard']);
+      } else {
+        alert('Invalid credentials');
+      }
+
+      this.loadingSubject.next(false);
+    }, 800); // Simulated delay
   }
 
-  // ✅ SSO Login via WebSocket
   connectSSO(autoReconnect = false) {
-    if (this.ws) return; // Avoid duplicate connections
+    if (this.ws) return;
 
-    this.ws = new WebSocket('wss://official-app.com/sso'); // Replace with actual SSO endpoint
+    this.loadingSubject.next(true); // 🔹 Start loader
+    this.ws = new WebSocket('wss://official-app.com/sso');
 
     this.ws.onopen = () => {
       console.log('✅ SSO WebSocket connected');
@@ -51,24 +57,26 @@ export class AuthService {
         localStorage.setItem('user', JSON.stringify(user));
         this.userSubject.next(user);
 
-        // Redirect only if this was a fresh login, not a reconnect
         if (!autoReconnect) {
           this.router.navigate(['/dashboard']);
         }
       }
-    };
 
-    this.ws.onclose = () => {
-      console.warn('⚠️ SSO WebSocket closed');
-      this.logout(false); // logout but don't redirect repeatedly
+      this.loadingSubject.next(false); // 🔹 Stop loader
     };
 
     this.ws.onerror = (err) => {
       console.error('❌ WebSocket error:', err);
+      this.loadingSubject.next(false); // 🔹 Stop loader even on error
+    };
+
+    this.ws.onclose = () => {
+      console.warn('⚠️ SSO WebSocket closed');
+      this.loadingSubject.next(false);
+      this.logout(false);
     };
   }
 
-  // ✅ Logout (manual or on WebSocket close)
   logout(redirect = true) {
     localStorage.removeItem('user');
     this.userSubject.next(null);
@@ -83,114 +91,7 @@ export class AuthService {
     }
   }
 
-  // ✅ AuthGuard uses this
   isAuthenticated(): boolean {
     return !!this.getStoredUser();
   }
 }
-
-
-
-
-
-
-
-
-import { Injectable } from '@angular/core';
-import { CanActivate, Router } from '@angular/router';
-import { AuthService } from './auth.service';
-
-@Injectable({ providedIn: 'root' })
-export class AuthGuard implements CanActivate {
-  constructor(private auth: AuthService, private router: Router) {}
-
-  canActivate(): boolean {
-    if (this.auth.isAuthenticated()) {
-      return true;
-    } else {
-      this.router.navigate(['/login']);
-      return false;
-    }
-  }
-}
-
-
-
-
-
-
-
-
-
-import { Component } from '@angular/core';
-import { AuthService } from '../auth.service';
-
-@Component({
-  selector: 'app-login',
-  templateUrl: './login.component.html',
-  styleUrls: ['./login.component.css']
-})
-export class LoginComponent {
-  username = '';
-  password = '';
-  loading = false;
-
-  constructor(private auth: AuthService) {}
-
-  onLogin() {
-    this.loading = true;
-    setTimeout(() => {
-      this.auth.loginWithCredentials(this.username, this.password);
-      this.loading = false;
-    }, 500);
-  }
-
-  onSSOLogin() {
-    this.loading = true;
-    this.auth.connectSSO();
-    setTimeout(() => (this.loading = false), 500);
-  }
-}
-
-
-
-
-
-
-
-
-
-import { Component } from '@angular/core';
-import { AuthService } from '../auth.service';
-
-@Component({
-  selector: 'app-dashboard',
-  templateUrl: './dashboard.component.html',
-  styleUrls: ['./dashboard.component.css']
-})
-export class DashboardComponent {
-  user: any;
-
-  constructor(private auth: AuthService) {
-    this.user = this.auth.isAuthenticated() ? JSON.parse(localStorage.getItem('user') || '{}') : null;
-  }
-
-  logout() {
-    this.auth.logout();
-  }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
