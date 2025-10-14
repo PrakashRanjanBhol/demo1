@@ -1,10 +1,173 @@
-<button 
-  class="tab-btn" 
-  [class.active]="activeTab === 'custom'"
-  (click)="switchTab('custom')">
-  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-  </svg>
-  <span>Custom</span>
-</button>
+isInsideCodeBlock = false;
+currentBlockElement: HTMLElement | null = null;
+currentBlockContent = '';
+regularTextBuffer = '';
+chunkUniqueId: string | null = null;
+
+streamingResponse(chunk: string, AIDom: any) {
+    this.enqueueChunk(chunk, AIDom);
+}
+
+enqueueChunk(chunk: string, AIDom: any) {
+    this.processChunk(chunk, AIDom);
+}
+
+processChunk(chunk: string, AIDom: any) {
+    if (this.isInsideCodeBlock) {
+        this.processCodeBlockChunk(chunk, AIDom);
+    } else {
+        this.processRegularTextChunk(chunk, AIDom);
+    }
+}
+
+private processCodeBlockChunk(chunk: string, AIDom: any) {
+    const codeBlockMarker = '```';
+    const markerIndex = chunk.indexOf(codeBlockMarker);
+    
+    if (markerIndex !== -1) {
+        // Add content before the closing ```
+        this.currentBlockContent += chunk.substring(0, markerIndex);
+        this.finalizeCodeBlock();
+        
+        // Process remaining content after the closing ```
+        const remaining = chunk.substring(markerIndex + codeBlockMarker.length);
+        if (remaining) {
+            this.enqueueChunk(remaining, AIDom);
+        }
+    } else {
+        // No closing ```, continue adding to code block
+        this.currentBlockContent += chunk;
+        this.updateCodeBlock(this.currentBlockContent);
+    }
+}
+
+private processRegularTextChunk(chunk: string, AIDom: any) {
+    const codeBlockMarker = '```';
+    const markerIndex = chunk.indexOf(codeBlockMarker);
+    
+    if (markerIndex !== -1) {
+        // Add regular text before the opening ```
+        const textBefore = chunk.substring(0, markerIndex);
+        if (textBefore) {
+            this.regularTextBuffer += textBefore;
+            this.renderRegularText(AIDom);
+        }
+        
+        this.flushRegularTextBuffer(AIDom);
+        this.startCodeBlock(AIDom);
+        
+        // Process content after the opening ```
+        const remaining = chunk.substring(markerIndex + codeBlockMarker.length);
+        
+        // Extract language identifier (first line after ```)
+        const newlineIndex = remaining.indexOf('\n');
+        if (newlineIndex !== -1) {
+            // Skip language identifier, start code content from next line
+            this.currentBlockContent = remaining.substring(newlineIndex + 1);
+        } else {
+            // No newline yet, this might be the language identifier or start of code
+            this.currentBlockContent = remaining;
+        }
+        
+        // Check if there's another ``` in the remaining content (inline code block)
+        const nextMarkerIndex = remaining.indexOf(codeBlockMarker);
+        if (nextMarkerIndex !== -1) {
+            // There's a closing ``` in the same chunk
+            const codeContent = remaining.substring(0, nextMarkerIndex);
+            // Remove language identifier if present
+            const contentNewlineIndex = codeContent.indexOf('\n');
+            if (contentNewlineIndex !== -1) {
+                this.currentBlockContent = codeContent.substring(contentNewlineIndex + 1);
+            } else {
+                this.currentBlockContent = codeContent;
+            }
+            this.finalizeCodeBlock();
+            
+            // Process content after closing ```
+            const afterClosing = remaining.substring(nextMarkerIndex + codeBlockMarker.length);
+            if (afterClosing) {
+                this.enqueueChunk(afterClosing, AIDom);
+            }
+        }
+    } else {
+        // No code block marker, just regular text
+        this.regularTextBuffer += chunk;
+        this.renderRegularText(AIDom);
+    }
+}
+
+private flushRegularTextBuffer(AIDom: any) {
+    if (this.regularTextBuffer.trim()) {
+        const textElement: any = document.getElementById(this.chunkUniqueId);
+        if (textElement) {
+            textElement.innerHTML = marked(this.regularTextBuffer);
+            textElement.classList.add('regular-text');
+        }
+        this.regularTextBuffer = '';
+        this.chunkUniqueId = null;
+    }
+}
+
+renderRegularText(AIDom: any) {
+    if (!this.chunkUniqueId) {
+        const textElement: any = document.createElement('div');
+        this.chunkUniqueId = `chunk_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        textElement.setAttribute('id', this.chunkUniqueId);
+        AIDom?.appendChild(textElement);
+    }
+    const textElement: any = document.getElementById(this.chunkUniqueId);
+    if (textElement && this.regularTextBuffer.trim()) {
+        textElement.innerHTML = marked(this.regularTextBuffer);
+        textElement.classList.add('regular-text');
+    }
+}
+
+finalizeCodeBlock() {
+    this.isInsideCodeBlock = false;
+    if (this.currentBlockElement && this.currentBlockContent.trim()) {
+        const highlightedContent = hljs.highlightAuto(this.currentBlockContent.trim()).value;
+        const codeElement = this.currentBlockElement.querySelector('code');
+        if (!codeElement) {
+            const newCodeElement = document.createElement('code');
+            newCodeElement.innerHTML = highlightedContent;
+            this.currentBlockElement.appendChild(newCodeElement);
+        } else {
+            codeElement.innerHTML = highlightedContent;
+        }
+    }
+    this.currentBlockElement = null;
+    this.currentBlockContent = '';
+}
+
+startCodeBlock(AIDom: any) {
+    this.isInsideCodeBlock = true;
+    this.currentBlockElement = document.createElement('pre');
+    this.currentBlockElement.classList.add('code-block');
+    this.addCopyButton(this.currentBlockElement);
+    AIDom?.appendChild(this.currentBlockElement);
+}
+
+updateCodeBlock(content: string) {
+    if (this.currentBlockElement && content.trim()) {
+        const highlightedContent = hljs.highlightAuto(content.trim()).value;
+        const codeElement = this.currentBlockElement.querySelector('code');
+        if (!codeElement) {
+            const newCodeElement = document.createElement('code');
+            newCodeElement.innerHTML = highlightedContent;
+            this.currentBlockElement.appendChild(newCodeElement);
+        } else {
+            codeElement.innerHTML = highlightedContent;
+        }
+    }
+}
+
+private addCopyButton(element: HTMLElement) {
+    const copyButton = document.createElement('button');
+    copyButton.textContent = 'Copy';
+    copyButton.className = 'copy-button';
+    copyButton.onclick = () => {
+        const code = element.querySelector('code')?.textContent || '';
+        navigator.clipboard.writeText(code);
+    };
+    element.appendChild(copyButton);
+}
