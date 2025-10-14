@@ -1,6 +1,7 @@
 isInsideCodeBlock = false;
 currentBlockElement: HTMLElement | null = null;
 currentBlockContent = '';
+currentLanguage = '';
 regularTextBuffer = '';
 chunkUniqueId: string | null = null;
 
@@ -54,7 +55,6 @@ private processRegularTextChunk(chunk: string, AIDom: any) {
         }
         
         this.flushRegularTextBuffer(AIDom);
-        this.startCodeBlock(AIDom);
         
         // Process content after the opening ```
         const remaining = chunk.substring(markerIndex + codeBlockMarker.length);
@@ -62,24 +62,36 @@ private processRegularTextChunk(chunk: string, AIDom: any) {
         // Extract language identifier (first line after ```)
         const newlineIndex = remaining.indexOf('\n');
         if (newlineIndex !== -1) {
-            // Skip language identifier, start code content from next line
+            // Extract language from first line
+            this.currentLanguage = remaining.substring(0, newlineIndex).trim();
+            this.startCodeBlock(AIDom);
             this.currentBlockContent = remaining.substring(newlineIndex + 1);
         } else {
-            // No newline yet, this might be the language identifier or start of code
-            this.currentBlockContent = remaining;
+            // No newline yet, might be just the language identifier or start of code
+            const nextMarkerIndex = remaining.indexOf(codeBlockMarker);
+            if (nextMarkerIndex !== -1) {
+                // Inline code block in same chunk
+                this.currentLanguage = '';
+                this.startCodeBlock(AIDom);
+                this.currentBlockContent = remaining.substring(0, nextMarkerIndex);
+            } else {
+                // Waiting for more content, store as potential language
+                this.currentLanguage = remaining.trim();
+                this.startCodeBlock(AIDom);
+                this.currentBlockContent = '';
+            }
         }
         
         // Check if there's another ``` in the remaining content (inline code block)
         const nextMarkerIndex = remaining.indexOf(codeBlockMarker);
         if (nextMarkerIndex !== -1) {
-            // There's a closing ``` in the same chunk
-            const codeContent = remaining.substring(0, nextMarkerIndex);
-            // Remove language identifier if present
-            const contentNewlineIndex = codeContent.indexOf('\n');
+            const beforeClosing = remaining.substring(0, nextMarkerIndex);
+            const contentNewlineIndex = beforeClosing.indexOf('\n');
             if (contentNewlineIndex !== -1) {
-                this.currentBlockContent = codeContent.substring(contentNewlineIndex + 1);
+                this.currentLanguage = beforeClosing.substring(0, contentNewlineIndex).trim();
+                this.currentBlockContent = beforeClosing.substring(contentNewlineIndex + 1);
             } else {
-                this.currentBlockContent = codeContent;
+                this.currentBlockContent = beforeClosing;
             }
             this.finalizeCodeBlock();
             
@@ -127,47 +139,217 @@ finalizeCodeBlock() {
     if (this.currentBlockElement && this.currentBlockContent.trim()) {
         const highlightedContent = hljs.highlightAuto(this.currentBlockContent.trim()).value;
         const codeElement = this.currentBlockElement.querySelector('code');
-        if (!codeElement) {
-            const newCodeElement = document.createElement('code');
-            newCodeElement.innerHTML = highlightedContent;
-            this.currentBlockElement.appendChild(newCodeElement);
-        } else {
+        if (codeElement) {
             codeElement.innerHTML = highlightedContent;
         }
     }
     this.currentBlockElement = null;
     this.currentBlockContent = '';
+    this.currentLanguage = '';
 }
 
 startCodeBlock(AIDom: any) {
     this.isInsideCodeBlock = true;
+    
+    // Create main container
+    const container = document.createElement('div');
+    container.classList.add('code-block-container');
+    
+    // Create header with three dots, language, and copy button
+    const header = document.createElement('div');
+    header.classList.add('code-block-header');
+    
+    // Three dots menu
+    const dotsContainer = document.createElement('div');
+    dotsContainer.classList.add('code-block-dots');
+    for (let i = 0; i < 3; i++) {
+        const dot = document.createElement('span');
+        dot.classList.add('dot');
+        dotsContainer.appendChild(dot);
+    }
+    header.appendChild(dotsContainer);
+    
+    // Language label
+    const languageLabel = document.createElement('span');
+    languageLabel.classList.add('code-block-language');
+    languageLabel.textContent = this.currentLanguage || 'code';
+    header.appendChild(languageLabel);
+    
+    // Copy button
+    const copyButton = document.createElement('button');
+    copyButton.classList.add('code-block-copy');
+    copyButton.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M5.5 4.5V2.5C5.5 1.94772 5.94772 1.5 6.5 1.5H13.5C14.0523 1.5 14.5 1.94772 14.5 2.5V9.5C14.5 10.0523 14.0523 10.5 13.5 10.5H11.5M5.5 4.5H2.5C1.94772 4.5 1.5 4.94772 1.5 5.5V13.5C1.5 14.0523 1.94772 14.5 2.5 14.5H10.5C11.0523 14.5 11.5 14.0523 11.5 13.5V10.5M5.5 4.5H10.5C11.0523 4.5 11.5 4.94772 11.5 5.5V10.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>Copy</span>
+    `;
+    copyButton.onclick = () => this.copyCodeToClipboard(copyButton, container);
+    header.appendChild(copyButton);
+    
+    container.appendChild(header);
+    
+    // Create pre and code elements
     this.currentBlockElement = document.createElement('pre');
     this.currentBlockElement.classList.add('code-block');
-    this.addCopyButton(this.currentBlockElement);
-    AIDom?.appendChild(this.currentBlockElement);
+    
+    const codeElement = document.createElement('code');
+    this.currentBlockElement.appendChild(codeElement);
+    
+    container.appendChild(this.currentBlockElement);
+    AIDom?.appendChild(container);
 }
 
 updateCodeBlock(content: string) {
     if (this.currentBlockElement && content.trim()) {
         const highlightedContent = hljs.highlightAuto(content.trim()).value;
         const codeElement = this.currentBlockElement.querySelector('code');
-        if (!codeElement) {
-            const newCodeElement = document.createElement('code');
-            newCodeElement.innerHTML = highlightedContent;
-            this.currentBlockElement.appendChild(newCodeElement);
-        } else {
+        if (codeElement) {
             codeElement.innerHTML = highlightedContent;
         }
     }
 }
 
-private addCopyButton(element: HTMLElement) {
-    const copyButton = document.createElement('button');
-    copyButton.textContent = 'Copy';
-    copyButton.className = 'copy-button';
-    copyButton.onclick = () => {
-        const code = element.querySelector('code')?.textContent || '';
-        navigator.clipboard.writeText(code);
-    };
-    element.appendChild(copyButton);
+private copyCodeToClipboard(button: HTMLElement, container: HTMLElement) {
+    const code = container.querySelector('code')?.textContent || '';
+    navigator.clipboard.writeText(code).then(() => {
+        const originalHTML = button.innerHTML;
+        button.innerHTML = `
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M13.5 4.5L6.5 11.5L3 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span>Copied!</span>
+        `;
+        button.classList.add('copied');
+        
+        setTimeout(() => {
+            button.innerHTML = originalHTML;
+            button.classList.remove('copied');
+        }, 2000);
+    });
+}
+
+// Add these styles to your component's CSS or global styles
+getStyles() {
+    return `
+        .code-block-container {
+            margin: 16px 0;
+            border-radius: 8px;
+            background: #1e1e1e;
+            overflow: hidden;
+            border: 1px solid #333;
+        }
+        
+        .code-block-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 16px;
+            background: #2d2d2d;
+            border-bottom: 1px solid #333;
+        }
+        
+        .code-block-dots {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+        
+        .code-block-dots .dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #555;
+        }
+        
+        .code-block-dots .dot:nth-child(1) {
+            background: #ff5f56;
+        }
+        
+        .code-block-dots .dot:nth-child(2) {
+            background: #ffbd2e;
+        }
+        
+        .code-block-dots .dot:nth-child(3) {
+            background: #27c93f;
+        }
+        
+        .code-block-language {
+            flex: 1;
+            text-align: center;
+            color: #888;
+            font-size: 12px;
+            font-family: 'Courier New', monospace;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .code-block-copy {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            background: transparent;
+            border: 1px solid #444;
+            border-radius: 4px;
+            color: #aaa;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s ease;
+        }
+        
+        .code-block-copy:hover {
+            background: #3a3a3a;
+            border-color: #555;
+            color: #fff;
+        }
+        
+        .code-block-copy.copied {
+            background: #27c93f;
+            border-color: #27c93f;
+            color: #fff;
+        }
+        
+        .code-block-copy svg {
+            width: 16px;
+            height: 16px;
+        }
+        
+        .code-block {
+            margin: 0;
+            padding: 16px;
+            background: #1e1e1e;
+            overflow-x: auto;
+        }
+        
+        .code-block code {
+            font-family: 'Fira Code', 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            color: #d4d4d4;
+        }
+        
+        .regular-text {
+            line-height: 1.6;
+            color: #333;
+        }
+        
+        /* Scrollbar styling for code blocks */
+        .code-block::-webkit-scrollbar {
+            height: 8px;
+        }
+        
+        .code-block::-webkit-scrollbar-track {
+            background: #2d2d2d;
+        }
+        
+        .code-block::-webkit-scrollbar-thumb {
+            background: #555;
+            border-radius: 4px;
+        }
+        
+        .code-block::-webkit-scrollbar-thumb:hover {
+            background: #666;
+        }
+    `;
 }
