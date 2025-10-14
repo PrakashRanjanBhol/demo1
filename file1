@@ -1,355 +1,350 @@
-isInsideCodeBlock = false;
-currentBlockElement: HTMLElement | null = null;
-currentBlockContent = '';
-currentLanguage = '';
-regularTextBuffer = '';
-chunkUniqueId: string | null = null;
+// resizable-layout.component.ts
+import { Component, OnInit, OnDestroy, HostListener } from '@angular/core';
 
-streamingResponse(chunk: string, AIDom: any) {
-    this.enqueueChunk(chunk, AIDom);
-}
+@Component({
+  selector: 'app-resizable-layout',
+  templateUrl: './resizable-layout.component.html',
+  styleUrls: ['./resizable-layout.component.css']
+})
+export class ResizableLayoutComponent implements OnInit, OnDestroy {
+  leftSidebarWidth: number = 320;
+  rightSidebarWidth: number = 320;
+  
+  isResizing: boolean = false;
+  currentResizer: 'left' | 'right' | null = null;
+  startX: number = 0;
+  startWidth: number = 0;
+  
+  resizeIndicatorText: string = '';
+  showResizeIndicator: boolean = false;
+  
+  readonly MIN_WIDTH = 100;
+  readonly MAX_WIDTH = 600;
 
-enqueueChunk(chunk: string, AIDom: any) {
-    this.processChunk(chunk, AIDom);
-}
+  ngOnInit() {
+    this.setInitialWidths();
+  }
 
-processChunk(chunk: string, AIDom: any) {
-    if (this.isInsideCodeBlock) {
-        this.processCodeBlockChunk(chunk, AIDom);
+  ngOnDestroy() {
+    // Cleanup if needed
+  }
+
+  @HostListener('window:resize', ['$event'])
+  onWindowResize(event: any) {
+    this.setInitialWidths();
+  }
+
+  setInitialWidths() {
+    const screenWidth = window.innerWidth;
+    if (screenWidth > 1800) {
+      this.leftSidebarWidth = 380;
+      this.rightSidebarWidth = 380;
     } else {
-        this.processRegularTextChunk(chunk, AIDom);
+      this.leftSidebarWidth = 320;
+      this.rightSidebarWidth = 320;
     }
-}
+  }
 
-private processCodeBlockChunk(chunk: string, AIDom: any) {
-    const codeBlockMarker = '```';
-    const markerIndex = chunk.indexOf(codeBlockMarker);
+  startResize(event: MouseEvent, side: 'left' | 'right') {
+    event.preventDefault();
+    this.isResizing = true;
+    this.currentResizer = side;
+    this.startX = event.clientX;
     
-    if (markerIndex !== -1) {
-        // Add content before the closing ```
-        this.currentBlockContent += chunk.substring(0, markerIndex);
-        this.finalizeCodeBlock();
-        
-        // Process remaining content after the closing ```
-        const remaining = chunk.substring(markerIndex + codeBlockMarker.length);
-        if (remaining) {
-            this.enqueueChunk(remaining, AIDom);
-        }
+    if (side === 'left') {
+      this.startWidth = this.leftSidebarWidth;
     } else {
-        // No closing ```, continue adding to code block
-        this.currentBlockContent += chunk;
-        this.updateCodeBlock(this.currentBlockContent);
+      this.startWidth = this.rightSidebarWidth;
     }
+    
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }
+
+  @HostListener('document:mousemove', ['$event'])
+  onMouseMove(event: MouseEvent) {
+    if (!this.isResizing) return;
+
+    if (this.currentResizer === 'left') {
+      const deltaX = event.clientX - this.startX;
+      const newWidth = this.startWidth + deltaX;
+      this.leftSidebarWidth = Math.max(this.MIN_WIDTH, Math.min(this.MAX_WIDTH, newWidth));
+      this.resizeIndicatorText = `${Math.round(this.leftSidebarWidth)}px`;
+      this.showResizeIndicator = true;
+    } else if (this.currentResizer === 'right') {
+      const deltaX = this.startX - event.clientX;
+      const newWidth = this.startWidth + deltaX;
+      this.rightSidebarWidth = Math.max(this.MIN_WIDTH, Math.min(this.MAX_WIDTH, newWidth));
+      this.resizeIndicatorText = `${Math.round(this.rightSidebarWidth)}px`;
+      this.showResizeIndicator = true;
+    }
+  }
+
+  @HostListener('document:mouseup', ['$event'])
+  onMouseUp(event: MouseEvent) {
+    if (!this.isResizing) return;
+    
+    this.isResizing = false;
+    this.currentResizer = null;
+    
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    
+    this.showResizeIndicator = false;
+  }
+
+  @HostListener('document:selectstart', ['$event'])
+  onSelectStart(event: Event) {
+    if (this.isResizing) {
+      event.preventDefault();
+    }
+  }
+
+  isLeftResizerActive(): boolean {
+    return this.isResizing && this.currentResizer === 'left';
+  }
+
+  isRightResizerActive(): boolean {
+    return this.isResizing && this.currentResizer === 'right';
+  }
 }
 
-private processRegularTextChunk(chunk: string, AIDom: any) {
-    const codeBlockMarker = '```';
-    const markerIndex = chunk.indexOf(codeBlockMarker);
-    
-    if (markerIndex !== -1) {
-        // Add regular text before the opening ```
-        const textBefore = chunk.substring(0, markerIndex);
-        if (textBefore) {
-            this.regularTextBuffer += textBefore;
-            this.renderRegularText(AIDom);
-        }
-        
-        this.flushRegularTextBuffer(AIDom);
-        
-        // Process content after the opening ```
-        const remaining = chunk.substring(markerIndex + codeBlockMarker.length);
-        
-        // Extract language identifier (first line after ```)
-        const newlineIndex = remaining.indexOf('\n');
-        if (newlineIndex !== -1) {
-            // Extract language from first line
-            this.currentLanguage = remaining.substring(0, newlineIndex).trim();
-            this.startCodeBlock(AIDom);
-            this.currentBlockContent = remaining.substring(newlineIndex + 1);
-        } else {
-            // No newline yet, might be just the language identifier or start of code
-            const nextMarkerIndex = remaining.indexOf(codeBlockMarker);
-            if (nextMarkerIndex !== -1) {
-                // Inline code block in same chunk
-                this.currentLanguage = '';
-                this.startCodeBlock(AIDom);
-                this.currentBlockContent = remaining.substring(0, nextMarkerIndex);
-            } else {
-                // Waiting for more content, store as potential language
-                this.currentLanguage = remaining.trim();
-                this.startCodeBlock(AIDom);
-                this.currentBlockContent = '';
-            }
-        }
-        
-        // Check if there's another ``` in the remaining content (inline code block)
-        const nextMarkerIndex = remaining.indexOf(codeBlockMarker);
-        if (nextMarkerIndex !== -1) {
-            const beforeClosing = remaining.substring(0, nextMarkerIndex);
-            const contentNewlineIndex = beforeClosing.indexOf('\n');
-            if (contentNewlineIndex !== -1) {
-                this.currentLanguage = beforeClosing.substring(0, contentNewlineIndex).trim();
-                this.currentBlockContent = beforeClosing.substring(contentNewlineIndex + 1);
-            } else {
-                this.currentBlockContent = beforeClosing;
-            }
-            this.finalizeCodeBlock();
-            
-            // Process content after closing ```
-            const afterClosing = remaining.substring(nextMarkerIndex + codeBlockMarker.length);
-            if (afterClosing) {
-                this.enqueueChunk(afterClosing, AIDom);
-            }
-        }
-    } else {
-        // No code block marker, just regular text
-        this.regularTextBuffer += chunk;
-        this.renderRegularText(AIDom);
-    }
+
+// resizable-layout.component.html
+<div class="container">
+  <!-- Left Sidebar -->
+  <div class="left-sidebar" [style.width.px]="leftSidebarWidth">
+    <div class="sidebar-header">Left Sidebar</div>
+    <div class="sidebar-content">
+      <div class="sidebar-item">Menu Item 1</div>
+      <div class="sidebar-item">Menu Item 2</div>
+      <div class="sidebar-item">Menu Item 3</div>
+      <div class="sidebar-item">Menu Item 4</div>
+      <div class="sidebar-item">Menu Item 5</div>
+    </div>
+  </div>
+
+  <!-- Left Resizer -->
+  <div 
+    class="resizer" 
+    [class.active]="isLeftResizerActive()"
+    (mousedown)="startResize($event, 'left')">
+  </div>
+
+  <!-- Body Content -->
+  <div class="body-content">
+    <div class="body-header">Main Content Area</div>
+    <div class="body-text">
+      This is the main content area. The left and right sidebars can be resized by dragging the dividers.
+      The body content automatically adjusts to fill the remaining space.
+    </div>
+    <div class="body-text">
+      <strong>Features:</strong>
+      <ul style="margin-left: 20px; margin-top: 10px;">
+        <li>Left sidebar: Default 320px (380px on screens > 1800px), Min 100px, Max 600px</li>
+        <li>Right sidebar: Default 320px (380px on screens > 1800px), Min 100px, Max 600px</li>
+        <li>Body content: Fills remaining space</li>
+        <li>Smooth drag interactions with visual feedback</li>
+      </ul>
+    </div>
+    <div class="body-text">
+      Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. 
+      Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.
+    </div>
+  </div>
+
+  <!-- Right Resizer -->
+  <div 
+    class="resizer" 
+    [class.active]="isRightResizerActive()"
+    (mousedown)="startResize($event, 'right')">
+  </div>
+
+  <!-- Right Sidebar -->
+  <div class="right-sidebar" [style.width.px]="rightSidebarWidth">
+    <div class="sidebar-header">Right Sidebar</div>
+    <div class="sidebar-content">
+      <div class="sidebar-item">Info Panel 1</div>
+      <div class="sidebar-item">Info Panel 2</div>
+      <div class="sidebar-item">Info Panel 3</div>
+      <div class="sidebar-item">Info Panel 4</div>
+      <div class="sidebar-item">Info Panel 5</div>
+    </div>
+  </div>
+</div>
+
+<!-- Resize Indicator -->
+<div class="resize-indicator" [class.show]="showResizeIndicator">
+  {{ resizeIndicatorText }}
+</div>
+
+
+// resizable-layout.component.css
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
 
-private flushRegularTextBuffer(AIDom: any) {
-    if (this.regularTextBuffer.trim()) {
-        const textElement: any = document.getElementById(this.chunkUniqueId);
-        if (textElement) {
-            textElement.innerHTML = marked(this.regularTextBuffer);
-            textElement.classList.add('regular-text');
-        }
-        this.regularTextBuffer = '';
-        this.chunkUniqueId = null;
-    }
+.container {
+  display: flex;
+  height: 100vh;
+  width: 100%;
 }
 
-renderRegularText(AIDom: any) {
-    if (!this.chunkUniqueId) {
-        const textElement: any = document.createElement('div');
-        this.chunkUniqueId = `chunk_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        textElement.setAttribute('id', this.chunkUniqueId);
-        AIDom?.appendChild(textElement);
-    }
-    const textElement: any = document.getElementById(this.chunkUniqueId);
-    if (textElement && this.regularTextBuffer.trim()) {
-        textElement.innerHTML = marked(this.regularTextBuffer);
-        textElement.classList.add('regular-text');
-    }
+.left-sidebar {
+  min-width: 100px;
+  max-width: 600px;
+  background: #f5f5f5;
+  border-right: 1px solid #ddd;
+  overflow-y: auto;
+  position: relative;
 }
 
-finalizeCodeBlock() {
-    this.isInsideCodeBlock = false;
-    if (this.currentBlockElement && this.currentBlockContent.trim()) {
-        const highlightedContent = hljs.highlightAuto(this.currentBlockContent.trim()).value;
-        const codeElement = this.currentBlockElement.querySelector('code');
-        if (codeElement) {
-            codeElement.innerHTML = highlightedContent;
-        }
-    }
-    this.currentBlockElement = null;
-    this.currentBlockContent = '';
-    this.currentLanguage = '';
+.right-sidebar {
+  min-width: 100px;
+  max-width: 600px;
+  background: #f5f5f5;
+  border-left: 1px solid #ddd;
+  overflow-y: auto;
+  position: relative;
 }
 
-startCodeBlock(AIDom: any) {
-    this.isInsideCodeBlock = true;
-    
-    // Create main container
-    const container = document.createElement('div');
-    container.classList.add('code-block-container');
-    
-    // Create header with three dots, language, and copy button
-    const header = document.createElement('div');
-    header.classList.add('code-block-header');
-    
-    // Three dots menu
-    const dotsContainer = document.createElement('div');
-    dotsContainer.classList.add('code-block-dots');
-    for (let i = 0; i < 3; i++) {
-        const dot = document.createElement('span');
-        dot.classList.add('dot');
-        dotsContainer.appendChild(dot);
-    }
-    header.appendChild(dotsContainer);
-    
-    // Language label
-    const languageLabel = document.createElement('span');
-    languageLabel.classList.add('code-block-language');
-    languageLabel.textContent = this.currentLanguage || 'code';
-    header.appendChild(languageLabel);
-    
-    // Copy button
-    const copyButton = document.createElement('button');
-    copyButton.classList.add('code-block-copy');
-    copyButton.innerHTML = `
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <path d="M5.5 4.5V2.5C5.5 1.94772 5.94772 1.5 6.5 1.5H13.5C14.0523 1.5 14.5 1.94772 14.5 2.5V9.5C14.5 10.0523 14.0523 10.5 13.5 10.5H11.5M5.5 4.5H2.5C1.94772 4.5 1.5 4.94772 1.5 5.5V13.5C1.5 14.0523 1.94772 14.5 2.5 14.5H10.5C11.0523 14.5 11.5 14.0523 11.5 13.5V10.5M5.5 4.5H10.5C11.0523 4.5 11.5 4.94772 11.5 5.5V10.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        <span>Copy</span>
-    `;
-    copyButton.onclick = () => this.copyCodeToClipboard(copyButton, container);
-    header.appendChild(copyButton);
-    
-    container.appendChild(header);
-    
-    // Create pre and code elements
-    this.currentBlockElement = document.createElement('pre');
-    this.currentBlockElement.classList.add('code-block');
-    
-    const codeElement = document.createElement('code');
-    this.currentBlockElement.appendChild(codeElement);
-    
-    container.appendChild(this.currentBlockElement);
-    AIDom?.appendChild(container);
+.body-content {
+  flex: 1;
+  background: #ffffff;
+  overflow-y: auto;
+  padding: 20px;
 }
 
-updateCodeBlock(content: string) {
-    if (this.currentBlockElement && content.trim()) {
-        const highlightedContent = hljs.highlightAuto(content.trim()).value;
-        const codeElement = this.currentBlockElement.querySelector('code');
-        if (codeElement) {
-            codeElement.innerHTML = highlightedContent;
-        }
-    }
+.resizer {
+  width: 4px;
+  cursor: col-resize;
+  background: #ddd;
+  position: relative;
+  transition: background 0.2s ease;
 }
 
-private copyCodeToClipboard(button: HTMLElement, container: HTMLElement) {
-    const code = container.querySelector('code')?.textContent || '';
-    navigator.clipboard.writeText(code).then(() => {
-        const originalHTML = button.innerHTML;
-        button.innerHTML = `
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <path d="M13.5 4.5L6.5 11.5L3 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            <span>Copied!</span>
-        `;
-        button.classList.add('copied');
-        
-        setTimeout(() => {
-            button.innerHTML = originalHTML;
-            button.classList.remove('copied');
-        }, 2000);
-    });
+.resizer:hover {
+  background: #4a90e2;
 }
 
-// Add these styles to your component's CSS or global styles
-getStyles() {
-    return `
-        .code-block-container {
-            margin: 16px 0;
-            border-radius: 8px;
-            background: #1e1e1e;
-            overflow: hidden;
-            border: 1px solid #333;
-        }
-        
-        .code-block-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 8px 16px;
-            background: #2d2d2d;
-            border-bottom: 1px solid #333;
-        }
-        
-        .code-block-dots {
-            display: flex;
-            gap: 6px;
-            align-items: center;
-        }
-        
-        .code-block-dots .dot {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            background: #555;
-        }
-        
-        .code-block-dots .dot:nth-child(1) {
-            background: #ff5f56;
-        }
-        
-        .code-block-dots .dot:nth-child(2) {
-            background: #ffbd2e;
-        }
-        
-        .code-block-dots .dot:nth-child(3) {
-            background: #27c93f;
-        }
-        
-        .code-block-language {
-            flex: 1;
-            text-align: center;
-            color: #888;
-            font-size: 12px;
-            font-family: 'Courier New', monospace;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-        
-        .code-block-copy {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            padding: 6px 12px;
-            background: transparent;
-            border: 1px solid #444;
-            border-radius: 4px;
-            color: #aaa;
-            cursor: pointer;
-            font-size: 12px;
-            transition: all 0.2s ease;
-        }
-        
-        .code-block-copy:hover {
-            background: #3a3a3a;
-            border-color: #555;
-            color: #fff;
-        }
-        
-        .code-block-copy.copied {
-            background: #27c93f;
-            border-color: #27c93f;
-            color: #fff;
-        }
-        
-        .code-block-copy svg {
-            width: 16px;
-            height: 16px;
-        }
-        
-        .code-block {
-            margin: 0;
-            padding: 16px;
-            background: #1e1e1e;
-            overflow-x: auto;
-        }
-        
-        .code-block code {
-            font-family: 'Fira Code', 'Courier New', monospace;
-            font-size: 14px;
-            line-height: 1.6;
-            color: #d4d4d4;
-        }
-        
-        .regular-text {
-            line-height: 1.6;
-            color: #333;
-        }
-        
-        /* Scrollbar styling for code blocks */
-        .code-block::-webkit-scrollbar {
-            height: 8px;
-        }
-        
-        .code-block::-webkit-scrollbar-track {
-            background: #2d2d2d;
-        }
-        
-        .code-block::-webkit-scrollbar-thumb {
-            background: #555;
-            border-radius: 4px;
-        }
-        
-        .code-block::-webkit-scrollbar-thumb:hover {
-            background: #666;
-        }
-    `;
+.resizer.active {
+  background: #4a90e2;
 }
+
+.resizer::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -2px;
+  right: -2px;
+}
+
+/* Sidebar content styling */
+.sidebar-header {
+  padding: 20px;
+  background: #e0e0e0;
+  border-bottom: 1px solid #ccc;
+  font-weight: 600;
+  font-size: 18px;
+}
+
+.sidebar-content {
+  padding: 20px;
+}
+
+.sidebar-item {
+  padding: 12px;
+  margin-bottom: 8px;
+  background: white;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.sidebar-item:hover {
+  border-color: #4a90e2;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Body content styling */
+.body-header {
+  font-size: 24px;
+  font-weight: 700;
+  margin-bottom: 20px;
+  color: #333;
+}
+
+.body-text {
+  line-height: 1.8;
+  color: #555;
+  margin-bottom: 16px;
+}
+
+/* Resize indicator */
+.resize-indicator {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 12px 20px;
+  border-radius: 6px;
+  font-size: 14px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  z-index: 1000;
+}
+
+.resize-indicator.show {
+  opacity: 1;
+}
+
+/* Scrollbar styling */
+.left-sidebar::-webkit-scrollbar,
+.right-sidebar::-webkit-scrollbar,
+.body-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.left-sidebar::-webkit-scrollbar-track,
+.right-sidebar::-webkit-scrollbar-track,
+.body-content::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.left-sidebar::-webkit-scrollbar-thumb,
+.right-sidebar::-webkit-scrollbar-thumb,
+.body-content::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 4px;
+}
+
+.left-sidebar::-webkit-scrollbar-thumb:hover,
+.right-sidebar::-webkit-scrollbar-thumb:hover,
+.body-content::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+
+// app.module.ts (add to imports if needed)
+import { NgModule } from '@angular/core';
+import { BrowserModule } from '@angular/platform-browser';
+import { ResizableLayoutComponent } from './resizable-layout/resizable-layout.component';
+
+@NgModule({
+  declarations: [
+    ResizableLayoutComponent
+  ],
+  imports: [
+    BrowserModule
+  ],
+  providers: [],
+  bootstrap: [ResizableLayoutComponent]
+})
+export class AppModule { }
