@@ -1,350 +1,184 @@
-// resizable-layout.component.ts
-import { Component, OnInit, OnDestroy, HostListener } from '@angular/core';
+interface FormField {
+  id: string;
+  label: string;
+  type: 'text' | 'textarea' | 'email' | 'number' | 'select' | 'date' | 'radio';
+  placeholder?: string;
+  options?: string[];
+  required?: boolean;
+  disabled?: boolean;  // Add this line
+  value?: string;      // Add this line
+}
 
-@Component({
-  selector: 'app-resizable-layout',
-  templateUrl: './resizable-layout.component.html',
-  styleUrls: ['./resizable-layout.component.css']
-})
-export class ResizableLayoutComponent implements OnInit, OnDestroy {
-  leftSidebarWidth: number = 320;
-  rightSidebarWidth: number = 320;
+
+interface Template {
+  id: number;
+  title: string;
+  description: string;
+  badge?: string;
+  detailDescription?: string;
+  formFields?: FormField[];
+  category?: 'Code Generation' | 'Documentation' | 'Analysis' | 'Testing' | 'API';
+  outputFormat?: string;  // Add this line
+}
+
+
+
+newTemplate = {
+  title: '',
+  description: '',
+  detailDescription: '',
+  formFields: [] as FormField[],
+  outputFormat: ''  // Add this line
+};
+
+
+
+{ 
+  id: 'outputFormat', 
+  label: 'Output Format', 
+  type: 'text', 
+  placeholder: 'e.g., comma-separated, JSON, bullet points, etc.', 
+  required: true 
+}
+
+
+
+
+
+saveTemplate(): void {
+  if (!this.newTemplate.title.trim()) {
+    alert('Please enter a template title');
+    return;
+  }
   
-  isResizing: boolean = false;
-  currentResizer: 'left' | 'right' | null = null;
-  startX: number = 0;
-  startWidth: number = 0;
+  if (!this.newTemplate.description.trim()) {
+    alert('Please enter a template description');
+    return;
+  }
   
-  resizeIndicatorText: string = '';
-  showResizeIndicator: boolean = false;
+  if (this.newTemplate.formFields.length === 0) {
+    alert('Please add at least one field to the template');
+    return;
+  }
   
-  readonly MIN_WIDTH = 100;
-  readonly MAX_WIDTH = 600;
-
-  ngOnInit() {
-    this.setInitialWidths();
+  // Add this validation
+  if (!this.newTemplate.outputFormat.trim()) {
+    alert('Please enter an output format');
+    return;
   }
+  
+  // Create the output format field with disabled and value properties
+  const outputFormatField: FormField = {
+    id: 'outputFormat',
+    label: 'Output Format',
+    type: 'text',
+    placeholder: '',
+    required: true,
+    disabled: true,
+    value: this.newTemplate.outputFormat
+  };
+  
+  const template: Template = {
+    id: this.customTemplates.length + 1,
+    title: this.newTemplate.title,
+    description: this.newTemplate.description,
+    detailDescription: this.newTemplate.detailDescription || this.newTemplate.description,
+    formFields: [...this.newTemplate.formFields, outputFormatField],  // Add output format field
+    outputFormat: this.newTemplate.outputFormat  // Store it at template level too
+  };
+  
+  this.customTemplates.push(template);
+  this.hasCustomTemplates = true;
+  
+  console.log('Template created:', template);
+  alert('Template created successfully!');
+  
+  this.showCreateTemplateModal = false;
+  this.resetTemplateBuilder();
+}
 
-  ngOnDestroy() {
-    // Cleanup if needed
-  }
 
-  @HostListener('window:resize', ['$event'])
-  onWindowResize(event: any) {
-    this.setInitialWidths();
-  }
 
-  setInitialWidths() {
-    const screenWidth = window.innerWidth;
-    if (screenWidth > 1800) {
-      this.leftSidebarWidth = 380;
-      this.rightSidebarWidth = 380;
-    } else {
-      this.leftSidebarWidth = 320;
-      this.rightSidebarWidth = 320;
-    }
-  }
+resetTemplateBuilder(): void {
+  this.newTemplate = {
+    title: '',
+    description: '',
+    detailDescription: '',
+    formFields: [],
+    outputFormat: ''  // Add this line
+  };
+  this.currentField = {
+    id: '',
+    label: '',
+    type: 'text',
+    placeholder: '',
+    required: false
+  };
+  this.selectOptions = '';
+}
 
-  startResize(event: MouseEvent, side: 'left' | 'right') {
-    event.preventDefault();
-    this.isResizing = true;
-    this.currentResizer = side;
-    this.startX = event.clientX;
-    
-    if (side === 'left') {
-      this.startWidth = this.leftSidebarWidth;
-    } else {
-      this.startWidth = this.rightSidebarWidth;
-    }
-    
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-  }
 
-  @HostListener('document:mousemove', ['$event'])
-  onMouseMove(event: MouseEvent) {
-    if (!this.isResizing) return;
 
-    if (this.currentResizer === 'left') {
-      const deltaX = event.clientX - this.startX;
-      const newWidth = this.startWidth + deltaX;
-      this.leftSidebarWidth = Math.max(this.MIN_WIDTH, Math.min(this.MAX_WIDTH, newWidth));
-      this.resizeIndicatorText = `${Math.round(this.leftSidebarWidth)}px`;
-      this.showResizeIndicator = true;
-    } else if (this.currentResizer === 'right') {
-      const deltaX = this.startX - event.clientX;
-      const newWidth = this.startWidth + deltaX;
-      this.rightSidebarWidth = Math.max(this.MIN_WIDTH, Math.min(this.MAX_WIDTH, newWidth));
-      this.resizeIndicatorText = `${Math.round(this.rightSidebarWidth)}px`;
-      this.showResizeIndicator = true;
-    }
-  }
-
-  @HostListener('document:mouseup', ['$event'])
-  onMouseUp(event: MouseEvent) {
-    if (!this.isResizing) return;
-    
-    this.isResizing = false;
-    this.currentResizer = null;
-    
-    document.body.style.cursor = '';
-    document.body.style.userSelect = '';
-    
-    this.showResizeIndicator = false;
-  }
-
-  @HostListener('document:selectstart', ['$event'])
-  onSelectStart(event: Event) {
-    if (this.isResizing) {
-      event.preventDefault();
-    }
-  }
-
-  isLeftResizerActive(): boolean {
-    return this.isResizing && this.currentResizer === 'left';
-  }
-
-  isRightResizerActive(): boolean {
-    return this.isResizing && this.currentResizer === 'right';
+selectTemplate(template: Template): void {
+  this.selectedTemplate = template;
+  this.showDetailView = true;
+  this.formData = {};
+  
+  // Pre-fill disabled fields with their values
+  if (template.formFields) {
+    template.formFields.forEach(field => {
+      if (field.disabled && field.value) {
+        this.formData[field.id] = field.value;
+      }
+    });
   }
 }
 
 
-// resizable-layout.component.html
-<div class="container">
-  <!-- Left Sidebar -->
-  <div class="left-sidebar" [style.width.px]="leftSidebarWidth">
-    <div class="sidebar-header">Left Sidebar</div>
-    <div class="sidebar-content">
-      <div class="sidebar-item">Menu Item 1</div>
-      <div class="sidebar-item">Menu Item 2</div>
-      <div class="sidebar-item">Menu Item 3</div>
-      <div class="sidebar-item">Menu Item 4</div>
-      <div class="sidebar-item">Menu Item 5</div>
-    </div>
-  </div>
 
-  <!-- Left Resizer -->
-  <div 
-    class="resizer" 
-    [class.active]="isLeftResizerActive()"
-    (mousedown)="startResize($event, 'left')">
-  </div>
 
-  <!-- Body Content -->
-  <div class="body-content">
-    <div class="body-header">Main Content Area</div>
-    <div class="body-text">
-      This is the main content area. The left and right sidebars can be resized by dragging the dividers.
-      The body content automatically adjusts to fill the remaining space.
-    </div>
-    <div class="body-text">
-      <strong>Features:</strong>
-      <ul style="margin-left: 20px; margin-top: 10px;">
-        <li>Left sidebar: Default 320px (380px on screens > 1800px), Min 100px, Max 600px</li>
-        <li>Right sidebar: Default 320px (380px on screens > 1800px), Min 100px, Max 600px</li>
-        <li>Body content: Fills remaining space</li>
-        <li>Smooth drag interactions with visual feedback</li>
-      </ul>
-    </div>
-    <div class="body-text">
-      Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. 
-      Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.
-    </div>
-  </div>
 
-  <!-- Right Resizer -->
-  <div 
-    class="resizer" 
-    [class.active]="isRightResizerActive()"
-    (mousedown)="startResize($event, 'right')">
-  </div>
 
-  <!-- Right Sidebar -->
-  <div class="right-sidebar" [style.width.px]="rightSidebarWidth">
-    <div class="sidebar-header">Right Sidebar</div>
-    <div class="sidebar-content">
-      <div class="sidebar-item">Info Panel 1</div>
-      <div class="sidebar-item">Info Panel 2</div>
-      <div class="sidebar-item">Info Panel 3</div>
-      <div class="sidebar-item">Info Panel 4</div>
-      <div class="sidebar-item">Info Panel 5</div>
-    </div>
-  </div>
+<input 
+  *ngIf="field.type === 'text' || field.type === 'email' || field.type === 'number' || field.type === 'date'"
+  [type]="field.type"
+  [id]="field.id"
+  [placeholder]="field.placeholder || ''"
+  [(ngModel)]="formData[field.id]"
+  [name]="field.id"
+  [required]="field.required"
+  [disabled]="field.disabled"
+  class="form-input">
+
+
+
+
+<div class="form-group">
+  <label for="templateDetailDesc">Detailed Description</label>
+  <textarea 
+    id="templateDetailDesc" 
+    [(ngModel)]="newTemplate.detailDescription"
+    placeholder="Detailed description shown in the template view"
+    rows="3"
+    class="form-input form-textarea"></textarea>
 </div>
 
-<!-- Resize Indicator -->
-<div class="resize-indicator" [class.show]="showResizeIndicator">
-  {{ resizeIndicatorText }}
+<!-- Add this new section -->
+<div class="form-group">
+  <label for="outputFormat">Output Format <span class="required">*</span></label>
+  <input 
+    type="text" 
+    id="outputFormat" 
+    [(ngModel)]="newTemplate.outputFormat"
+    placeholder="e.g., comma-separated, JSON, bullet points, numbered list, etc."
+    class="form-input">
+  <small class="field-hint">Specify how you want the output to be formatted</small>
 </div>
 
 
-// resizable-layout.component.css
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+.form-input:disabled {
+  background: var(--prompt-template-bg-hover);
+  color: var(--prompt-template-text-secondary);
+  cursor: not-allowed;
+  opacity: 0.7;
 }
-
-.container {
-  display: flex;
-  height: 100vh;
-  width: 100%;
-}
-
-.left-sidebar {
-  min-width: 100px;
-  max-width: 600px;
-  background: #f5f5f5;
-  border-right: 1px solid #ddd;
-  overflow-y: auto;
-  position: relative;
-}
-
-.right-sidebar {
-  min-width: 100px;
-  max-width: 600px;
-  background: #f5f5f5;
-  border-left: 1px solid #ddd;
-  overflow-y: auto;
-  position: relative;
-}
-
-.body-content {
-  flex: 1;
-  background: #ffffff;
-  overflow-y: auto;
-  padding: 20px;
-}
-
-.resizer {
-  width: 4px;
-  cursor: col-resize;
-  background: #ddd;
-  position: relative;
-  transition: background 0.2s ease;
-}
-
-.resizer:hover {
-  background: #4a90e2;
-}
-
-.resizer.active {
-  background: #4a90e2;
-}
-
-.resizer::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: -2px;
-  right: -2px;
-}
-
-/* Sidebar content styling */
-.sidebar-header {
-  padding: 20px;
-  background: #e0e0e0;
-  border-bottom: 1px solid #ccc;
-  font-weight: 600;
-  font-size: 18px;
-}
-
-.sidebar-content {
-  padding: 20px;
-}
-
-.sidebar-item {
-  padding: 12px;
-  margin-bottom: 8px;
-  background: white;
-  border-radius: 6px;
-  border: 1px solid #ddd;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.sidebar-item:hover {
-  border-color: #4a90e2;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-
-/* Body content styling */
-.body-header {
-  font-size: 24px;
-  font-weight: 700;
-  margin-bottom: 20px;
-  color: #333;
-}
-
-.body-text {
-  line-height: 1.8;
-  color: #555;
-  margin-bottom: 16px;
-}
-
-/* Resize indicator */
-.resize-indicator {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  background: rgba(0, 0, 0, 0.8);
-  color: white;
-  padding: 12px 20px;
-  border-radius: 6px;
-  font-size: 14px;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.2s ease;
-  z-index: 1000;
-}
-
-.resize-indicator.show {
-  opacity: 1;
-}
-
-/* Scrollbar styling */
-.left-sidebar::-webkit-scrollbar,
-.right-sidebar::-webkit-scrollbar,
-.body-content::-webkit-scrollbar {
-  width: 8px;
-}
-
-.left-sidebar::-webkit-scrollbar-track,
-.right-sidebar::-webkit-scrollbar-track,
-.body-content::-webkit-scrollbar-track {
-  background: #f1f1f1;
-}
-
-.left-sidebar::-webkit-scrollbar-thumb,
-.right-sidebar::-webkit-scrollbar-thumb,
-.body-content::-webkit-scrollbar-thumb {
-  background: #888;
-  border-radius: 4px;
-}
-
-.left-sidebar::-webkit-scrollbar-thumb:hover,
-.right-sidebar::-webkit-scrollbar-thumb:hover,
-.body-content::-webkit-scrollbar-thumb:hover {
-  background: #555;
-}
-
-
-// app.module.ts (add to imports if needed)
-import { NgModule } from '@angular/core';
-import { BrowserModule } from '@angular/platform-browser';
-import { ResizableLayoutComponent } from './resizable-layout/resizable-layout.component';
-
-@NgModule({
-  declarations: [
-    ResizableLayoutComponent
-  ],
-  imports: [
-    BrowserModule
-  ],
-  providers: [],
-  bootstrap: [ResizableLayoutComponent]
-})
-export class AppModule { }
