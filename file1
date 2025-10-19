@@ -1,39 +1,371 @@
-/* sdlc-loader.component.css */
+import { Component, OnInit } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 
-/* Dark Mode Variables (Default) */
-:host {
-  --sdlc-loader-bg: #111113;
-  --sdlc-loader-card-bg: transparent;
-  --sdlc-loader-text-primary: #ffffff;
-  --sdlc-loader-text-secondary: #9ca3af;
-  --sdlc-loader-grid-color: rgba(102, 126, 234, 0.03);
-  --sdlc-loader-ring-1: #667eea;
-  --sdlc-loader-ring-2: #a855f7;
-  --sdlc-loader-ring-3: #ec4899;
-  --sdlc-loader-icon-fill: #667eea;
-  --sdlc-loader-dot-1: #667eea;
-  --sdlc-loader-dot-2: #a855f7;
-  --sdlc-loader-dot-3: #ec4899;
-  --sdlc-loader-card-shadow: none;
-  --sdlc-loader-card-border: none;
+interface Ticket {
+  id: number;
+  title: string;
+  jira_ticket: string | null;
+  description: string;
+  delete: boolean;
 }
 
-/* Light Mode Variables */
-:host(.light-mode) {
-  --sdlc-loader-bg: #ffffff;
-  --sdlc-loader-card-bg: #f9fafb;
-  --sdlc-loader-text-primary: #1e293b;
-  --sdlc-loader-text-secondary: #64748b;
-  --sdlc-loader-grid-color: rgba(102, 126, 234, 0.05);
-  --sdlc-loader-ring-1: #667eea;
-  --sdlc-loader-ring-2: #a855f7;
-  --sdlc-loader-ring-3: #ec4899;
-  --sdlc-loader-icon-fill: #667eea;
-  --sdlc-loader-dot-1: #667eea;
-  --sdlc-loader-dot-2: #a855f7;
-  --sdlc-loader-dot-3: #ec4899;
-  --sdlc-loader-card-shadow: 0 20px 60px rgba(0, 0, 0, 0.1);
-  --sdlc-loader-card-border: 1px solid rgba(0, 0, 0, 0.05);
+type FilterType = 'all' | 'draft' | 'assigned';
+
+@Component({
+  selector: 'app-jira-tickets',
+  standalone: true,
+  imports: [CommonModule, FormsModule],
+  template: `
+    <!-- Template content will be in separate file -->
+  `,
+  styleUrls: ['./jira-tickets.component.css']
+})
+export class JiraTicketsComponent implements OnInit {
+  tickets: Ticket[] = [
+    {
+      id: 1,
+      title: 'Implement user authentication',
+      jira_ticket: 'PROJ-123',
+      description: 'Add JWT-based authentication system with login and registration flows',
+      delete: true
+    },
+    {
+      id: 2,
+      title: 'Fix dashboard loading issue',
+      jira_ticket: null,
+      description: 'Dashboard takes too long to load when there are multiple widgets. We need to optimize the loading process, implement lazy loading for widgets, add caching mechanisms, and improve the overall performance of the dashboard to ensure a better user experience.',
+      delete: true
+    },
+    {
+      id: 3,
+      title: 'Update API documentation',
+      jira_ticket: 'PROJ-456',
+      description: 'Complete API documentation for all endpoints with examples',
+      delete: true
+    }
+  ];
+
+  readonly MAX_DESCRIPTION_LENGTH = 120;
+  selectedTicketId: number | null = null;
+  isLoading = true;
+  currentFilter: FilterType = 'all';
+  searchQuery = '';
+
+  ngOnInit(): void {
+    // Simulate loading tickets
+    setTimeout(() => {
+      this.isLoading = false;
+    }, 2000);
+  }
+
+  get filteredTickets(): Ticket[] {
+    let filtered = [...this.tickets];
+
+    // Apply filter
+    if (this.currentFilter === 'draft') {
+      filtered = filtered.filter(t => !t.jira_ticket);
+    } else if (this.currentFilter === 'assigned') {
+      filtered = filtered.filter(t => t.jira_ticket);
+    }
+
+    // Apply search
+    if (this.searchQuery) {
+      const query = this.searchQuery.toLowerCase();
+      filtered = filtered.filter(t =>
+        t.title.toLowerCase().includes(query) ||
+        t.description.toLowerCase().includes(query) ||
+        (t.jira_ticket && t.jira_ticket.toLowerCase().includes(query))
+      );
+    }
+
+    // Sort: drafts first, then assigned
+    return filtered.sort((a, b) => {
+      const aDraft = !a.jira_ticket;
+      const bDraft = !b.jira_ticket;
+
+      if (aDraft && !bDraft) return -1;
+      if (!aDraft && bDraft) return 1;
+      return 0;
+    });
+  }
+
+  get ticketCountText(): string {
+    if (this.isLoading) {
+      return 'Loading...';
+    }
+
+    const totalCount = this.tickets.length;
+    const filteredCount = this.filteredTickets.length;
+
+    if (this.searchQuery || this.currentFilter !== 'all') {
+      return `${filteredCount} of ${totalCount} ticket${totalCount !== 1 ? 's' : ''}`;
+    }
+    return `${totalCount} ticket${totalCount !== 1 ? 's' : ''}`;
+  }
+
+  setFilter(filter: FilterType): void {
+    this.currentFilter = filter;
+  }
+
+  truncateDescription(description: string): string {
+    if (description.length <= this.MAX_DESCRIPTION_LENGTH) {
+      return description;
+    }
+    return description.substring(0, this.MAX_DESCRIPTION_LENGTH).trim() + '...';
+  }
+
+  selectTicket(id: number, event: Event): void {
+    // Prevent selection when clicking on action buttons
+    if ((event.target as HTMLElement).closest('.action-btn')) {
+      return;
+    }
+    this.selectedTicketId = id;
+  }
+
+  deleteTicket(id: number): void {
+    const index = this.tickets.findIndex(t => t.id === id);
+    if (index > -1) {
+      this.tickets.splice(index, 1);
+    }
+  }
+
+  enhanceTicket(id: number): void {
+    console.log('Enhance ticket:', id);
+    alert('Enhance ticket: ' + id);
+  }
+
+  uploadTicket(id: number): void {
+    console.log('Upload ticket:', id);
+    alert('Upload ticket: ' + id);
+  }
+
+  isDraft(ticket: Ticket): boolean {
+    return !ticket.jira_ticket;
+  }
+
+  trackByTicketId(index: number, ticket: Ticket): number {
+    return ticket.id;
+  }
+}
+
+
+
+
+
+
+
+
+
+
+<div class="sidebar">
+  <div class="sidebar-header">
+    <h2>Jira Tickets</h2>
+    <p id="ticket-count">{{ ticketCountText }}</p>
+
+    <div class="search-container">
+      <svg class="search-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+      </svg>
+      <input 
+        type="text" 
+        class="search-input" 
+        placeholder="Search tickets..."
+        [(ngModel)]="searchQuery">
+    </div>
+
+    <div class="filter-container">
+      <button 
+        class="filter-btn" 
+        [class.active]="currentFilter === 'all'"
+        (click)="setFilter('all')">
+        All
+      </button>
+      <button 
+        class="filter-btn draft-filter" 
+        [class.active]="currentFilter === 'draft'"
+        (click)="setFilter('draft')">
+        Draft
+      </button>
+      <button 
+        class="filter-btn" 
+        [class.active]="currentFilter === 'assigned'"
+        (click)="setFilter('assigned')">
+        Assigned
+      </button>
+    </div>
+  </div>
+
+  <div class="tickets-container">
+    <!-- Loading skeletons -->
+    <ng-container *ngIf="isLoading">
+      <div class="skeleton-card" *ngFor="let i of [1, 2, 3]">
+        <div class="skeleton-line title"></div>
+        <div class="skeleton-line badge"></div>
+        <div class="skeleton-line description"></div>
+        <div class="skeleton-line description"></div>
+      </div>
+    </ng-container>
+
+    <!-- No tickets found -->
+    <div class="loader-container" *ngIf="!isLoading && filteredTickets.length === 0">
+      <div class="loader-text" style="color: var(--sdlc-ticket-text-tertiary);">No tickets found</div>
+    </div>
+
+    <!-- Tickets list -->
+    <ng-container *ngIf="!isLoading && filteredTickets.length > 0">
+      <div 
+        *ngFor="let ticket of filteredTickets; trackBy: trackByTicketId"
+        class="ticket-card"
+        [class.draft]="isDraft(ticket)"
+        [class.selected]="selectedTicketId === ticket.id"
+        (click)="selectTicket(ticket.id, $event)">
+        
+        <h3 class="ticket-title">{{ ticket.title }}</h3>
+        
+        <span 
+          class="ticket-badge"
+          [class.draft]="isDraft(ticket)"
+          [class.assigned]="!isDraft(ticket)">
+          {{ ticket.jira_ticket || 'Draft' }}
+        </span>
+        
+        <p class="ticket-description">{{ truncateDescription(ticket.description) }}</p>
+        
+        <div class="ticket-actions">
+          <button 
+            *ngIf="ticket.delete"
+            class="action-btn delete" 
+            (click)="deleteTicket(ticket.id)" 
+            title="Delete ticket">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+            </svg>
+          </button>
+          
+          <button 
+            class="action-btn enhance" 
+            (click)="enhanceTicket(ticket.id)" 
+            title="Enhance ticket">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/>
+            </svg>
+          </button>
+          
+          <button 
+            *ngIf="ticket.jira_ticket"
+            class="action-btn upload" 
+            (click)="uploadTicket(ticket.id)" 
+            title="Upload ticket">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </ng-container>
+  </div>
+</div>
+
+
+
+
+
+
+
+
+/* CSS Variables for Dark Mode (Default) */
+:host {
+  /* Background colors */
+  --sdlc-ticket-bg-primary: #1a1a1d;
+  --sdlc-ticket-bg-secondary: #27272a;
+  --sdlc-ticket-bg-tertiary: #2d2d30;
+  --sdlc-ticket-bg-selected: #2d2d35;
+  
+  /* Border colors */
+  --sdlc-ticket-border-primary: #27272a;
+  --sdlc-ticket-border-secondary: #3f3f46;
+  --sdlc-ticket-border-hover: #52525b;
+  
+  /* Text colors */
+  --sdlc-ticket-text-primary: #fafafa;
+  --sdlc-ticket-text-secondary: #e4e4e7;
+  --sdlc-ticket-text-tertiary: #a1a1aa;
+  --sdlc-ticket-text-muted: #71717a;
+  
+  /* Draft colors */
+  --sdlc-ticket-draft-bg: linear-gradient(135deg, rgba(251, 191, 36, 0.08) 0%, rgba(245, 158, 11, 0.05) 100%);
+  --sdlc-ticket-draft-bg-hover: linear-gradient(135deg, rgba(251, 191, 36, 0.12) 0%, rgba(245, 158, 11, 0.08) 100%);
+  --sdlc-ticket-draft-bg-selected: linear-gradient(135deg, rgba(251, 191, 36, 0.15) 0%, rgba(245, 158, 11, 0.1) 100%);
+  --sdlc-ticket-draft-border: rgba(245, 158, 11, 0.3);
+  --sdlc-ticket-draft-border-hover: rgba(245, 158, 11, 0.5);
+  --sdlc-ticket-draft-border-left: #f59e0b;
+  --sdlc-ticket-draft-text: #d4d4d8;
+  --sdlc-ticket-draft-badge-bg: linear-gradient(135deg, #f59e0b, #d97706);
+  
+  /* Accent colors */
+  --sdlc-ticket-accent-purple: #8b5cf6;
+  --sdlc-ticket-accent-purple-gradient: linear-gradient(135deg, #6366f1, #8b5cf6);
+  --sdlc-ticket-accent-green: #10b981;
+  --sdlc-ticket-accent-red: #ef4444;
+  --sdlc-ticket-accent-purple-alt: #a855f7;
+  
+  /* Box shadows */
+  --sdlc-ticket-shadow-default: 0 2px 8px rgba(0, 0, 0, 0.2);
+  --sdlc-ticket-shadow-draft: 0 2px 12px rgba(245, 158, 11, 0.15);
+  --sdlc-ticket-shadow-selected: 0 0 0 2px rgba(139, 92, 246, 0.2);
+  --sdlc-ticket-shadow-draft-selected: 0 0 0 2px rgba(245, 158, 11, 0.3);
+  --sdlc-ticket-shadow-focus: 0 0 0 2px rgba(139, 92, 246, 0.1);
+  --sdlc-ticket-shadow-badge: 0 1px 3px rgba(245, 158, 11, 0.3);
+}
+
+/* CSS Variables for Light Mode */
+:host-context(.light-mode) {
+  /* Background colors */
+  --sdlc-ticket-bg-primary: #ffffff;
+  --sdlc-ticket-bg-secondary: #f9fafb;
+  --sdlc-ticket-bg-tertiary: #f3f4f6;
+  --sdlc-ticket-bg-selected: #f5f3ff;
+  
+  /* Border colors */
+  --sdlc-ticket-border-primary: #e5e7eb;
+  --sdlc-ticket-border-secondary: #d1d5db;
+  --sdlc-ticket-border-hover: #9ca3af;
+  
+  /* Text colors */
+  --sdlc-ticket-text-primary: #111827;
+  --sdlc-ticket-text-secondary: #1f2937;
+  --sdlc-ticket-text-tertiary: #6b7280;
+  --sdlc-ticket-text-muted: #9ca3af;
+  
+  /* Draft colors */
+  --sdlc-ticket-draft-bg: linear-gradient(135deg, rgba(251, 191, 36, 0.12) 0%, rgba(245, 158, 11, 0.08) 100%);
+  --sdlc-ticket-draft-bg-hover: linear-gradient(135deg, rgba(251, 191, 36, 0.18) 0%, rgba(245, 158, 11, 0.12) 100%);
+  --sdlc-ticket-draft-bg-selected: linear-gradient(135deg, rgba(251, 191, 36, 0.22) 0%, rgba(245, 158, 11, 0.15) 100%);
+  --sdlc-ticket-draft-border: rgba(245, 158, 11, 0.4);
+  --sdlc-ticket-draft-border-hover: rgba(245, 158, 11, 0.6);
+  --sdlc-ticket-draft-border-left: #f59e0b;
+  --sdlc-ticket-draft-text: #374151;
+  --sdlc-ticket-draft-badge-bg: linear-gradient(135deg, #f59e0b, #d97706);
+  
+  /* Accent colors remain the same */
+  --sdlc-ticket-accent-purple: #8b5cf6;
+  --sdlc-ticket-accent-purple-gradient: linear-gradient(135deg, #6366f1, #8b5cf6);
+  --sdlc-ticket-accent-green: #10b981;
+  --sdlc-ticket-accent-red: #ef4444;
+  --sdlc-ticket-accent-purple-alt: #a855f7;
+  
+  /* Box shadows */
+  --sdlc-ticket-shadow-default: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --sdlc-ticket-shadow-draft: 0 2px 12px rgba(245, 158, 11, 0.2);
+  --sdlc-ticket-shadow-selected: 0 0 0 2px rgba(139, 92, 246, 0.15);
+  --sdlc-ticket-shadow-draft-selected: 0 0 0 2px rgba(245, 158, 11, 0.25);
+  --sdlc-ticket-shadow-focus: 0 0 0 2px rgba(139, 92, 246, 0.1);
+  --sdlc-ticket-shadow-badge: 0 1px 3px rgba(245, 158, 11, 0.3);
 }
 
 * {
@@ -42,223 +374,361 @@
   box-sizing: border-box;
 }
 
-.main-content {
-  width: 100vw;
+:host {
+  display: block;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  background-color: var(--sdlc-ticket-bg-primary);
+  color: var(--sdlc-ticket-text-secondary);
+}
+
+.sidebar {
+  width: 320px;
+  background-color: var(--sdlc-ticket-bg-primary);
+  border-right: 1px solid var(--sdlc-ticket-border-primary);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
   height: 100vh;
-  background: var(--sdlc-loader-bg);
+}
+
+.sidebar-header {
+  padding: 20px;
+  border-bottom: 1px solid var(--sdlc-ticket-border-primary);
+}
+
+.sidebar-header h2 {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--sdlc-ticket-text-primary);
+  margin-bottom: 12px;
+}
+
+.sidebar-header p {
+  font-size: 13px;
+  color: var(--sdlc-ticket-text-muted);
+  margin-bottom: 16px;
+}
+
+.search-container {
+  position: relative;
+  margin-bottom: 12px;
+}
+
+.search-input {
+  width: 100%;
+  padding: 8px 12px 8px 36px;
+  background-color: var(--sdlc-ticket-bg-secondary);
+  border: 1px solid var(--sdlc-ticket-border-secondary);
+  border-radius: 6px;
+  color: var(--sdlc-ticket-text-secondary);
+  font-size: 13px;
+  transition: all 0.2s ease;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: var(--sdlc-ticket-accent-purple);
+  box-shadow: var(--sdlc-ticket-shadow-focus);
+}
+
+.search-input::placeholder {
+  color: var(--sdlc-ticket-text-muted);
+}
+
+.search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--sdlc-ticket-text-muted);
+  pointer-events: none;
+}
+
+.filter-container {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.filter-btn {
+  flex: 1;
+  padding: 6px 12px;
+  background-color: var(--sdlc-ticket-bg-secondary);
+  border: 1px solid var(--sdlc-ticket-border-secondary);
+  border-radius: 6px;
+  color: var(--sdlc-ticket-text-tertiary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.filter-btn:hover {
+  background-color: var(--sdlc-ticket-bg-tertiary);
+  border-color: var(--sdlc-ticket-border-hover);
+}
+
+.filter-btn.active {
+  background-color: var(--sdlc-ticket-accent-purple);
+  border-color: var(--sdlc-ticket-accent-purple);
+  color: #ffffff;
+}
+
+.filter-btn.active.draft-filter {
+  background-color: #f59e0b;
+  border-color: #f59e0b;
+}
+
+.tickets-container {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ticket-card {
+  background-color: var(--sdlc-ticket-bg-secondary);
+  border: 1px solid var(--sdlc-ticket-border-secondary);
+  border-radius: 4px;
+  padding: 12px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  position: relative;
+}
+
+/* Enhanced draft card styling */
+.ticket-card.draft {
+  background: var(--sdlc-ticket-draft-bg);
+  border-left: 3px solid var(--sdlc-ticket-draft-border-left);
+  border-color: var(--sdlc-ticket-draft-border);
+}
+
+.ticket-card.draft::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #f59e0b, transparent);
+  opacity: 0.5;
+}
+
+.ticket-card:hover {
+  background-color: var(--sdlc-ticket-bg-tertiary);
+  border-color: var(--sdlc-ticket-border-hover);
+  box-shadow: var(--sdlc-ticket-shadow-default);
+}
+
+.ticket-card.draft:hover {
+  background: var(--sdlc-ticket-draft-bg-hover);
+  border-color: var(--sdlc-ticket-draft-border-hover);
+  box-shadow: var(--sdlc-ticket-shadow-draft);
+}
+
+.ticket-card.selected {
+  background-color: var(--sdlc-ticket-bg-selected);
+  border-color: var(--sdlc-ticket-accent-purple);
+  box-shadow: var(--sdlc-ticket-shadow-selected);
+}
+
+.ticket-card.draft.selected {
+  background: var(--sdlc-ticket-draft-bg-selected);
+  border-color: #f59e0b;
+  box-shadow: var(--sdlc-ticket-shadow-draft-selected);
+}
+
+.ticket-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--sdlc-ticket-text-primary);
+  margin-bottom: 8px;
+  line-height: 1.3;
+}
+
+.ticket-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 3px;
+  margin-bottom: 8px;
+}
+
+.ticket-badge.draft {
+  background: var(--sdlc-ticket-draft-badge-bg);
+  color: #ffffff;
+  box-shadow: var(--sdlc-ticket-shadow-badge);
+}
+
+.ticket-badge.assigned {
+  background: var(--sdlc-ticket-accent-purple-gradient);
+  color: #ffffff;
+}
+
+.ticket-description {
+  font-size: 12px;
+  color: var(--sdlc-ticket-text-tertiary);
+  line-height: 1.4;
+  margin-bottom: 8px;
+}
+
+.ticket-card.draft .ticket-description {
+  color: var(--sdlc-ticket-draft-text);
+}
+
+.ticket-actions {
+  display: flex;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--sdlc-ticket-border-secondary);
+}
+
+.ticket-card.draft .ticket-actions {
+  border-top-color: var(--sdlc-ticket-draft-border);
+}
+
+.action-btn {
+  padding: 6px;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
   display: flex;
   align-items: center;
   justify-content: center;
-  position: relative;
-  overflow: hidden;
 }
 
-.main-content::before {
-  content: '';
-  position: absolute;
-  width: 200%;
-  height: 200%;
-  background: radial-gradient(circle, var(--sdlc-loader-grid-color) 1px, transparent 1px);
-  background-size: 50px 50px;
-  animation: moveBackground 20s linear infinite;
+.action-btn:hover {
+  background-color: rgba(255, 255, 255, 0.05);
 }
 
-@keyframes moveBackground {
-  0% {
-    transform: translate(0, 0);
-  }
-  100% {
-    transform: translate(50px, 50px);
-  }
+.action-btn.delete {
+  color: var(--sdlc-ticket-accent-red);
+}
+
+.action-btn.delete:hover {
+  background-color: rgba(239, 68, 68, 0.1);
+}
+
+.action-btn.enhance {
+  color: var(--sdlc-ticket-accent-purple-alt);
+}
+
+.action-btn.enhance:hover {
+  background-color: rgba(168, 85, 247, 0.1);
+}
+
+.action-btn.upload {
+  color: var(--sdlc-ticket-accent-green);
+}
+
+.action-btn.upload:hover {
+  background-color: rgba(16, 185, 129, 0.1);
+}
+
+svg {
+  width: 16px;
+  height: 16px;
+}
+
+.sidebar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar::-webkit-scrollbar-track {
+  background: var(--sdlc-ticket-bg-primary);
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+  background: var(--sdlc-ticket-border-secondary);
+  border-radius: 3px;
+}
+
+.sidebar::-webkit-scrollbar-thumb:hover {
+  background: var(--sdlc-ticket-border-hover);
 }
 
 .loader-container {
-  text-align: center;
-  position: relative;
-  z-index: 1;
-  background: var(--sdlc-loader-card-bg);
-  padding: 60px 80px;
-  border-radius: 24px;
-  box-shadow: var(--sdlc-loader-card-shadow);
-  border: var(--sdlc-loader-card-border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 16px;
+  gap: 16px;
 }
 
-.spinner-container {
-  position: relative;
-  width: 120px;
-  height: 120px;
-  margin: 0 auto 40px;
-}
-
-.spinner-ring {
-  position: absolute;
+.loader {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--sdlc-ticket-border-secondary);
+  border-top-color: var(--sdlc-ticket-accent-purple);
   border-radius: 50%;
-  border: 4px solid transparent;
-}
-
-.ring-1 {
-  inset: 0;
-  border-top-color: var(--sdlc-loader-ring-1);
-  animation: spin 1.5s linear infinite;
-}
-
-.ring-2 {
-  inset: 12px;
-  border-top-color: var(--sdlc-loader-ring-2);
-  animation: spin 2s linear infinite reverse;
-}
-
-.ring-3 {
-  inset: 24px;
-  border-top-color: var(--sdlc-loader-ring-3);
-  animation: spin 2.5s linear infinite;
+  animation: spin 0.8s linear infinite;
 }
 
 @keyframes spin {
-  0% {
-    transform: rotate(0deg);
-  }
-  100% {
+  to {
     transform: rotate(360deg);
   }
 }
 
-.spinner-icon {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.loader-text {
+  font-size: 13px;
+  color: var(--sdlc-ticket-text-muted);
+  font-weight: 500;
 }
 
-.spinner-icon svg {
-  width: 40px;
-  height: 40px;
-  fill: var(--sdlc-loader-icon-fill);
-  animation: pulse 2s ease-in-out infinite;
+.skeleton-card {
+  background-color: var(--sdlc-ticket-bg-secondary);
+  border: 1px solid var(--sdlc-ticket-border-secondary);
+  border-radius: 4px;
+  padding: 12px;
+  margin-bottom: 8px;
 }
 
-@keyframes pulse {
-  0%, 100% {
-    transform: scale(1);
-    opacity: 1;
+.skeleton-line {
+  height: 12px;
+  background: linear-gradient(90deg, var(--sdlc-ticket-border-secondary) 25%, var(--sdlc-ticket-border-hover) 50%, var(--sdlc-ticket-border-secondary) 75%);
+  background-size: 200% 100%;
+  animation: loading 1.5s ease-in-out infinite;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+.skeleton-line.title {
+  width: 70%;
+  height: 14px;
+}
+
+.skeleton-line.badge {
+  width: 80px;
+  height: 20px;
+  margin-bottom: 10px;
+}
+
+.skeleton-line.description {
+  width: 100%;
+}
+
+.skeleton-line.description:last-child {
+  width: 80%;
+  margin-bottom: 0;
+}
+
+@keyframes loading {
+  0% {
+    background-position: 200% 0;
   }
-  50% {
-    transform: scale(1.1);
-    opacity: 0.8;
-  }
-}
-
-h2 {
-  font-size: 28px;
-  color: var(--sdlc-loader-text-primary);
-  margin-bottom: 12px;
-  font-weight: 700;
-}
-
-.subtitle {
-  font-size: 16px;
-  color: var(--sdlc-loader-text-secondary);
-  margin-bottom: 30px;
-}
-
-.dots {
-  display: inline-block;
-  width: 20px;
-}
-
-.bounce-dots {
-  display: flex;
-  gap: 8px;
-  justify-content: center;
-  margin-top: 40px;
-}
-
-.bounce-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  animation: bounce 1.4s ease-in-out infinite;
-}
-
-.bounce-dot:nth-child(1) {
-  background: var(--sdlc-loader-dot-1);
-}
-
-.bounce-dot:nth-child(2) {
-  background: var(--sdlc-loader-dot-2);
-  animation-delay: 0.2s;
-}
-
-.bounce-dot:nth-child(3) {
-  background: var(--sdlc-loader-dot-3);
-  animation-delay: 0.4s;
-}
-
-@keyframes bounce {
-  0%, 80%, 100% {
-    transform: translateY(0);
-  }
-  40% {
-    transform: translateY(-15px);
+  100% {
+    background-position: -200% 0;
   }
 }
 
-
-
-<!-- sdlc-loader.component.html -->
-<div class="main-content">
-  <div class="loader-container">
-    <div class="spinner-container">
-      <div class="spinner-ring ring-1"></div>
-      <div class="spinner-ring ring-2"></div>
-      <div class="spinner-ring ring-3"></div>
-      <div class="spinner-icon">
-        <svg viewBox="0 0 24 24">
-          <path d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-        </svg>
-      </div>
-    </div>
-
-    <h2>Loading SDLC Data</h2>
-    <p class="subtitle">Please wait while we retrieve your project data<span class="dots">{{ dots }}</span></p>
-
-    <div class="bounce-dots">
-      <div class="bounce-dot"></div>
-      <div class="bounce-dot"></div>
-      <div class="bounce-dot"></div>
-    </div>
-  </div>
-</div>
-
-
-
-
-
-// sdlc-loader.component.ts
-import { Component, OnInit, OnDestroy } from '@angular/core';
-
-@Component({
-  selector: 'app-sdlc-loader',
-  templateUrl: './sdlc-loader.component.html',
-  styleUrls: ['./sdlc-loader.component.css']
-})
-export class SdlcLoaderComponent implements OnInit, OnDestroy {
-  dots: string = '';
-  private intervalId: any;
-
-  ngOnInit(): void {
-    let dotCount = 0;
-    this.intervalId = setInterval(() => {
-      dotCount = (dotCount + 1) % 4;
-      this.dots = '.'.repeat(dotCount);
-    }, 500);
-  }
-
-  ngOnDestroy(): void {
-    if (this.intervalId) {
-      clearInterval(this.intervalId);
-    }
-  }
+/* Light mode specific hover effects */
+:host-context(.light-mode) .action-btn:hover {
+  background-color: rgba(0, 0, 0, 0.05);
 }
+
 
