@@ -1,547 +1,72 @@
-import { Component, OnInit } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
+transformData(
+  CRS: TicketItem[] | null,
+  SRS: { [key: string]: TicketItem[] } | null,
+  Task: { [key: string]: TicketItem[] } | null,
+  TC: { [key: string]: TicketItem[] } | null
+): TreeNode[] {
+  if (!CRS || CRS.length === 0) return [];
 
-interface TicketItem {
-  id: number;
-  title: string;
-  description: string;
-  jira_ticket: string | null;
-  delete: boolean;
-}
-
-interface TreeNode {
-  id: string;
-  title: string;
-  description: string;
-  jira_ticket: string | null;
-  type: 'crs' | 'srs' | 'task' | 'tc';
-  originalId: number;
-  children?: TreeNode[];
-  expanded?: boolean;
-}
-
-interface HierarchyData {
-  CRS?: TicketItem[];
-  SRS?: { [key: string]: TicketItem[] };
-  Task?: { [key: string]: TicketItem[] };
-  TC?: { [key: string]: TicketItem[] };
-}
-
-@Component({
-  selector: 'app-jira-hierarchy',
-  standalone: true,
-  imports: [CommonModule, FormsModule],
-  templateUrl: './jira-hierarchy.component.html',
-  styleUrls: ['./jira-hierarchy.component.css']
-})
-export class JiraHierarchyComponent implements OnInit {
-  searchQuery: string = '';
-  searchResults: string = '';
-  hierarchyData: TreeNode[] = [];
-  legendItems: Array<{ color: string; label: string }> = [];
-  isDarkMode: boolean = true;
-
-  // Sample data
-  private CRS: TicketItem[] = [
-    {
-      id: 1,
-      title: 'CRS1',
-      description: 'CRS1 description',
-      jira_ticket: 'Test-001',
-      delete: false
-    },
-    {
-      id: 2,
-      title: 'CRS2',
-      description: 'CRS2 description',
-      jira_ticket: 'Test-002',
-      delete: false
-    }
-  ];
-
-  private SRS: { [key: string]: TicketItem[] } = {
-    '1': [
-      {
-        id: 3,
-        title: 'SRS1',
-        description: 'SRS1 description',
-        jira_ticket: 'Test-SRS-001',
-        delete: false
-      },
-      {
-        id: 4,
-        title: 'SRS2',
-        description: 'SRS2 description',
-        jira_ticket: 'Test-SRS-002',
-        delete: false
-      }
-    ],
-    '2': [
-      {
-        id: 5,
-        title: 'SRS3',
-        description: 'SRS3 description',
-        jira_ticket: null,
-        delete: false
-      }
-    ]
-  };
-
-  private Task: { [key: string]: TicketItem[] } = {
-    '3': [
-      {
-        id: 6,
-        title: 'Task1',
-        description: 'Task1 description',
-        jira_ticket: null,
-        delete: false
-      },
-      {
-        id: 7,
-        title: 'Task2',
-        description: 'Task2 description',
-        jira_ticket: 'Test-Task-001',
-        delete: false
-      }
-    ],
-    '4': [
-      {
-        id: 8,
-        title: 'Task3',
-        description: 'Task3 description',
-        jira_ticket: 'Test-Task-002',
-        delete: false
-      }
-    ]
-  };
-
-  private TC: { [key: string]: TicketItem[] } = {
-    '3': [
-      {
-        id: 9,
-        title: 'TC1',
-        description: 'TC1 description',
-        jira_ticket: 'Test-TC-001',
-        delete: false
-      }
-    ],
-    '4': [
-      {
-        id: 10,
-        title: 'TC2',
-        description: 'TC2 description',
-        jira_ticket: null,
-        delete: false
-      }
-    ]
-  };
-
-  ngOnInit(): void {
-    this.initializeHierarchy({ CRS: this.CRS, SRS: this.SRS, TC: this.TC });
-    this.applyTheme();
-  }
-
-  initializeHierarchy(data: HierarchyData): void {
-    const { CRS = null, SRS = null, Task = null, TC = null } = data;
-    this.hierarchyData = this.transformData(CRS, SRS, Task, TC);
-    this.renderLegend(CRS, SRS, Task, TC);
-  }
-
-  transformData(
-    CRS: TicketItem[] | null,
-    SRS: { [key: string]: TicketItem[] } | null,
-    Task: { [key: string]: TicketItem[] } | null,
-    TC: { [key: string]: TicketItem[] } | null
-  ): TreeNode[] {
-    if (!CRS || CRS.length === 0) return [];
-
-    return CRS.filter(crs => !crs.delete).map(crs => {
-      const crsNode: TreeNode = {
-        id: crs.jira_ticket || `Draft-${crs.id}`,
-        title: crs.title,
-        description: crs.description,
-        jira_ticket: crs.jira_ticket,
-        type: 'crs',
-        originalId: crs.id,
-        children: [],
-        expanded: false
-      };
-
-      if (SRS && SRS[crs.id]) {
-        crsNode.children = SRS[crs.id].filter(srs => !srs.delete).map(srs => {
-          const srsNode: TreeNode = {
-            id: srs.jira_ticket || `Draft-${srs.id}`,
-            title: srs.title,
-            description: srs.description,
-            jira_ticket: srs.jira_ticket,
-            type: 'srs',
-            originalId: srs.id,
-            children: [],
-            expanded: false
-          };
-
-          if (Task && Task[srs.id]) {
-            const tasks = Task[srs.id].filter(task => !task.delete).map(task => ({
-              id: task.jira_ticket || `Draft-${task.id}`,
-              title: task.title,
-              description: task.description,
-              jira_ticket: task.jira_ticket,
-              type: 'task' as const,
-              originalId: task.id,
-              expanded: false
-            }));
-            srsNode.children!.push(...tasks);
-          }
-
-          if (TC && TC[srs.id]) {
-            const tcs = TC[srs.id].filter(tc => !tc.delete).map(tc => ({
-              id: tc.jira_ticket || `Draft-${tc.id}`,
-              title: tc.title,
-              description: tc.description,
-              jira_ticket: tc.jira_ticket,
-              type: 'tc' as const,
-              originalId: tc.id,
-              expanded: false
-            }));
-            srsNode.children!.push(...tcs);
-          }
-
-          return srsNode;
-        });
-      }
-
-      return crsNode;
-    });
-  }
-
-  renderLegend(
-    CRS: TicketItem[] | null,
-    SRS: { [key: string]: TicketItem[] } | null,
-    Task: { [key: string]: TicketItem[] } | null,
-    TC: { [key: string]: TicketItem[] } | null
-  ): void {
-    this.legendItems = [];
-
-    if (CRS) {
-      this.legendItems.push({ color: 'var(--sdlc-tree-crs-color)', label: 'CRS' });
-    }
-    if (SRS) {
-      this.legendItems.push({ color: 'var(--sdlc-tree-srs-color)', label: 'SRS' });
-    }
-    if (Task) {
-      this.legendItems.push({ color: 'var(--sdlc-tree-task-color)', label: 'Task' });
-    }
-    if (TC) {
-      this.legendItems.push({ color: 'var(--sdlc-tree-tc-color)', label: 'Test Case' });
-    }
-  }
-
-  toggleNode(node: TreeNode): void {
-    node.expanded = !node.expanded;
-  }
-
-  countChildren(node: TreeNode): number {
-    if (!node.children || node.children.length === 0) return 0;
-    return node.children.length;
-  }
-
-  hasChildren(node: TreeNode): boolean {
-    return node.children !== undefined && node.children.length > 0;
-  }
-
-  isDraft(node: TreeNode): boolean {
-    return !node.jira_ticket;
-  }
-
-  getTypeBadge(type: string): string {
-    return type === 'tc' ? 'TC' : type.toUpperCase();
-  }
-
-  handleViewClick(event: Event, item: TreeNode): void {
-    event.stopPropagation();
-    const ticketInfo = item.jira_ticket ? item.jira_ticket : 'Draft';
-    const status = item.jira_ticket ? 'Published' : 'Draft';
-    alert(
-      `Viewing Ticket Details:\n\nID: ${item.id}\nStatus: ${status}\nJira Ticket: ${ticketInfo}\nType: ${item.type.toUpperCase()}\nTitle: ${item.title}\nDescription: ${item.description}`
-    );
-  }
-
-  onSearch(): void {
-    if (!this.searchQuery.trim()) {
-      this.searchResults = '';
-      this.clearHighlights(this.hierarchyData);
-      return;
-    }
-
-    const lowerQuery = this.searchQuery.toLowerCase();
-    const matches = this.searchInData(this.hierarchyData, lowerQuery);
-
-    if (matches.length > 0) {
-      this.searchResults = `Found ${matches.length} match${matches.length > 1 ? 'es' : ''}`;
-    } else {
-      this.searchResults = 'No matches found';
-    }
-  }
-
-  private searchInData(data: TreeNode[], query: string): TreeNode[] {
-    const matches: TreeNode[] = [];
-
-    const search = (nodes: TreeNode[]) => {
-      nodes.forEach(node => {
-        if (
-          node.id.toLowerCase().includes(query) ||
-          node.title.toLowerCase().includes(query) ||
-          (node.jira_ticket && node.jira_ticket.toLowerCase().includes(query))
-        ) {
-          matches.push(node);
-          this.expandParents(node, this.hierarchyData);
-        }
-        if (node.children) {
-          search(node.children);
-        }
-      });
+  return CRS.filter(crs => !crs.delete).map(crs => {
+    const crsNode: TreeNode = {
+      id: crs.jira_ticket || `Draft-${crs.id}`,
+      title: crs.title,
+      description: crs.description,
+      jira_ticket: crs.jira_ticket,
+      type: 'crs',
+      originalId: crs.id,
+      children: [],
+      expanded: false
     };
 
-    search(data);
-    return matches;
-  }
-
-  private expandParents(targetNode: TreeNode, data: TreeNode[]): void {
-    const findAndExpand = (nodes: TreeNode[], target: TreeNode): boolean => {
-      for (const node of nodes) {
-        if (node.id === target.id) {
-          return true;
-        }
-        if (node.children) {
-          if (findAndExpand(node.children, target)) {
-            node.expanded = true;
-            return true;
-          }
-        }
-      }
-      return false;
-    };
-
-    findAndExpand(data, targetNode);
-  }
-
-  private clearHighlights(data: TreeNode[]): void {
-    data.forEach(node => {
-      if (node.children) {
-        this.clearHighlights(node.children);
-      }
-    });
-  }
-
-  toggleTheme(): void {
-    this.isDarkMode = !this.isDarkMode;
-    this.applyTheme();
-  }
-
-  private applyTheme(): void {
-    document.documentElement.setAttribute('data-theme', this.isDarkMode ? 'dark' : 'light');
-  }
-}
-
-
-
-
-
-
-
-
-
-
-
-<div class="sidebar" [attr.data-theme]="isDarkMode ? 'dark' : 'light'">
-  <div class="content">
-    <!-- Theme Toggle Button -->
-    <button class="theme-toggle" (click)="toggleTheme()">
-      {{ isDarkMode ? '☀️' : '🌙' }}
-    </button>
-
-    <!-- Search Container -->
-    <div class="search-container">
-      <input
-        type="text"
-        class="search-input"
-        [(ngModel)]="searchQuery"
-        (input)="onSearch()"
-        placeholder="Search tickets..."
-      />
-      <span class="search-icon">🔍</span>
-    </div>
-    <div class="search-results" *ngIf="searchResults">{{ searchResults }}</div>
-
-    <!-- Legend -->
-    <div class="legend" *ngIf="legendItems.length > 0">
-      <div class="legend-item" *ngFor="let item of legendItems">
-        <div class="legend-color" [style.background]="item.color"></div>
-        <span>{{ item.label }}</span>
-      </div>
-    </div>
-
-    <!-- Tree Container -->
-    <div class="tree-container">
-      <ul class="tree">
-        <ng-container *ngFor="let node of hierarchyData">
-          <ng-container *ngTemplateOutlet="treeNode; context: { $implicit: node }"></ng-container>
-        </ng-container>
-      </ul>
-
-      <div class="empty-state" *ngIf="hierarchyData.length === 0">
-        No tickets to display
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Tree Node Template -->
-<ng-template #treeNode let-node>
-  <li class="tree-item">
-    <div
-      class="tree-node"
-      [class]="node.type + (isDraft(node) ? ' draft' : '')"
-      (click)="hasChildren(node) ? toggleNode(node) : null"
-    >
-      <span
-        class="toggle-icon"
-        [class.expanded]="node.expanded"
-        [class.empty]="!hasChildren(node)"
-      >
-        {{ hasChildren(node) ? '▶' : '●' }}
-      </span>
-
-      <span class="ticket-badge" [class]="node.type">
-        {{ getTypeBadge(node.type) }}
-      </span>
-
-      <div class="ticket-info">
-        <span class="ticket-id" [class.draft-text]="isDraft(node)">
-          <span class="jira-ticket-id" *ngIf="node.jira_ticket">
-            {{ node.jira_ticket }}
-          </span>
-          <ng-container *ngIf="!node.jira_ticket">
-            Untitled
-            <span class="draft-badge">DRAFT</span>
-          </ng-container>
-        </span>
-        <span class="ticket-title">{{ node.title }}</span>
-      </div>
-
-      <span class="count-badge" *ngIf="hasChildren(node)">
-        {{ countChildren(node) }}
-      </span>
-
-      <span class="view-icon" (click)="handleViewClick($event, node)" title="View Details">
-        👁
-      </span>
-    </div>
-
-    <ul class="children" *ngIf="hasChildren(node) && node.expanded" [class.expanded]="node.expanded">
-      <ng-container *ngFor="let child of node.children">
-        <ng-container *ngTemplateOutlet="treeNode; context: { $implicit: child }"></ng-container>
-      </ng-container>
-    </ul>
-  </li>
-</ng-template>
-
-
-
-
-
-
-
-
-
-
-import { Component } from '@angular/core';
-import { JiraHierarchyComponent } from './jira-hierarchy/jira-hierarchy.component';
-
-@Component({
-  selector: 'app-root',
-  standalone: true,
-  imports: [JiraHierarchyComponent],
-  template: `<app-jira-hierarchy></app-jira-hierarchy>`
-})
-export class AppComponent {}
-
-
-
-
-
-import { Injectable } from '@angular/core';
-import { Observable, of } from 'rxjs';
-
-export interface TicketItem {
-  id: number;
-  title: string;
-  description: string;
-  jira_ticket: string | null;
-  delete: boolean;
-}
-
-export interface HierarchyData {
-  CRS?: TicketItem[];
-  SRS?: { [key: string]: TicketItem[] };
-  Task?: { [key: string]: TicketItem[] };
-  TC?: { [key: string]: TicketItem[] };
-}
-
-@Injectable({
-  providedIn: 'root'
-})
-export class JiraHierarchyService {
-  
-  getHierarchyData(): Observable<HierarchyData> {
-    // Replace with actual API call
-    const data: HierarchyData = {
-      CRS: [
-        {
-          id: 1,
-          title: 'CRS1',
-          description: 'CRS1 description',
-          jira_ticket: 'Test-001',
-          delete: false
-        },
-        {
-          id: 2,
-          title: 'CRS2',
-          description: 'CRS2 description',
-          jira_ticket: 'Test-002',
-          delete: false
-        }
-      ],
-      SRS: {
-        '1': [
-          {
-            id: 3,
-            title: 'SRS1',
-            description: 'SRS1 description',
-            jira_ticket: 'Test-SRS-001',
-            delete: false
-          }
-        ]
-      },
-      TC: {
-        '3': [
-          {
-            id: 9,
-            title: 'TC1',
-            description: 'TC1 description',
-            jira_ticket: 'Test-TC-001',
-            delete: false
-          }
-        ]
-      }
-    };
+    // Use jira_ticket as key to find children, fallback to id if jira_ticket is null
+    const crsKey = crs.jira_ticket || crs.id.toString();
     
-    return of(data);
-  }
+    if (SRS && SRS[crsKey]) {
+      crsNode.children = SRS[crsKey].filter(srs => !srs.delete).map(srs => {
+        const srsNode: TreeNode = {
+          id: srs.jira_ticket || `Draft-${srs.id}`,
+          title: srs.title,
+          description: srs.description,
+          jira_ticket: srs.jira_ticket,
+          type: 'srs',
+          originalId: srs.id,
+          children: [],
+          expanded: false
+        };
+
+        // Use jira_ticket as key to find children, fallback to id if jira_ticket is null
+        const srsKey = srs.jira_ticket || srs.id.toString();
+
+        if (Task && Task[srsKey]) {
+          const tasks = Task[srsKey].filter(task => !task.delete).map(task => ({
+            id: task.jira_ticket || `Draft-${task.id}`,
+            title: task.title,
+            description: task.description,
+            jira_ticket: task.jira_ticket,
+            type: 'task' as const,
+            originalId: task.id,
+            expanded: false
+          }));
+          srsNode.children!.push(...tasks);
+        }
+
+        if (TC && TC[srsKey]) {
+          const tcs = TC[srsKey].filter(tc => !tc.delete).map(tc => ({
+            id: tc.jira_ticket || `Draft-${tc.id}`,
+            title: tc.title,
+            description: tc.description,
+            jira_ticket: tc.jira_ticket,
+            type: 'tc' as const,
+            originalId: tc.id,
+            expanded: false
+          }));
+          srsNode.children!.push(...tcs);
+        }
+
+        return srsNode;
+      });
+    }
+
+    return crsNode;
+  });
 }
-
-
-
-
-
