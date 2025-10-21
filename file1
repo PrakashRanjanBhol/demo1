@@ -1,70 +1,178 @@
-transformData(
-  CRS: TicketItem[] | null,
-  SRS: { [key: string]: TicketItem[] } | null,
-  Task: { [key: string]: TicketItem[] } | null,
-  TC: { [key: string]: TicketItem[] } | null
-): TreeNode[] {
-  if (!CRS || CRS.length === 0) return [];
+/* Update these specific font-size properties */
 
-  return CRS.filter(crs => !crs.delete).map(crs => {
-    const crsNode: TreeNode = {
-      id: crs.jira_ticket || `Draft-${crs.id}`,
-      title: crs.title,
-      description: crs.description,
-      jira_ticket: crs.jira_ticket,
-      type: 'crs',
-      originalId: crs.id,
-      children: [],
-      expanded: false
-    };
-
-    // SRS: Use CRS id as key (keep original behavior)
-    if (SRS && SRS[crs.id]) {
-      crsNode.children = SRS[crs.id].filter(srs => !srs.delete).map(srs => {
-        const srsNode: TreeNode = {
-          id: srs.jira_ticket || `Draft-${srs.id}`,
-          title: srs.title,
-          description: srs.description,
-          jira_ticket: srs.jira_ticket,
-          type: 'srs',
-          originalId: srs.id,
-          children: [],
-          expanded: false
-        };
-
-        // Task and TC: Use SRS jira_ticket as key, fallback to id if null
-        const srsKey = srs.jira_ticket || srs.id.toString();
-
-        if (Task && Task[srsKey]) {
-          const tasks = Task[srsKey].filter(task => !task.delete).map(task => ({
-            id: task.jira_ticket || `Draft-${task.id}`,
-            title: task.title,
-            description: task.description,
-            jira_ticket: task.jira_ticket,
-            type: 'task' as const,
-            originalId: task.id,
-            expanded: false
-          }));
-          srsNode.children!.push(...tasks);
-        }
-
-        if (TC && TC[srsKey]) {
-          const tcs = TC[srsKey].filter(tc => !tc.delete).map(tc => ({
-            id: tc.jira_ticket || `Draft-${tc.id}`,
-            title: tc.title,
-            description: tc.description,
-            jira_ticket: tc.jira_ticket,
-            type: 'tc' as const,
-            originalId: tc.id,
-            expanded: false
-          }));
-          srsNode.children!.push(...tcs);
-        }
-
-        return srsNode;
-      });
-    }
-
-    return crsNode;
-  });
+.sidebar {
+  font-size: 0.875rem; /* Changed from 0.75rem to 0.875rem */
 }
+
+.search-input {
+  font-size: 0.875rem; /* Changed from 0.75rem to 0.875rem */
+}
+
+.search-icon {
+  font-size: 1rem; /* Changed from 0.875rem to 1rem */
+}
+
+.search-results {
+  font-size: 0.75rem; /* Changed from 0.625rem to 0.75rem */
+}
+
+.legend-item {
+  font-size: 0.75rem; /* Changed from 0.625rem to 0.75rem */
+}
+
+.legend-color {
+  width: 0.75rem; /* Changed from 0.625rem to 0.75rem */
+  height: 0.75rem; /* Changed from 0.625rem to 0.75rem */
+}
+
+.toggle-icon {
+  font-size: 0.625rem; /* Changed from 0.5rem to 0.625rem */
+}
+
+.ticket-badge {
+  font-size: 0.625rem; /* Changed from 0.5rem to 0.625rem */
+}
+
+.draft-badge {
+  font-size: 0.625rem; /* Changed from 0.5rem to 0.625rem */
+}
+
+.draft-badge::before {
+  font-size: 0.75rem; /* Changed from 0.625rem to 0.75rem */
+}
+
+.jira-ticket-id {
+  font-size: 0.6875rem; /* Changed from 0.5625rem to 0.6875rem */
+}
+
+.jira-ticket-id::before {
+  font-size: 0.75rem; /* Changed from 0.625rem to 0.75rem */
+}
+
+.ticket-id {
+  font-size: 0.8125rem; /* Changed from 0.6875rem to 0.8125rem */
+}
+
+.ticket-title {
+  font-size: 0.75rem; /* Changed from 0.625rem to 0.75rem */
+}
+
+.view-icon {
+  font-size: 0.875rem; /* Changed from 0.75rem to 0.875rem */
+}
+
+.count-badge {
+  font-size: 0.625rem; /* Changed from 0.5rem to 0.625rem */
+}
+
+.empty-state {
+  font-size: 0.875rem; /* Changed from 0.75rem to 0.875rem */
+}
+
+/* Add Loader Styles */
+.loader-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1rem;
+  gap: 1rem;
+}
+
+.loader {
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 0.25rem solid var(--sdlc-tree-border-primary);
+  border-top: 0.25rem solid var(--sdlc-tree-search-focus);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.loader-text {
+  color: var(--sdlc-tree-text-muted);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+
+
+
+
+
+
+
+
+export class JiraHierarchyComponent implements OnInit {
+  searchQuery: string = '';
+  searchResults: string = '';
+  hierarchyData: TreeNode[] = [];
+  legendItems: Array<{ color: string; label: string }> = [];
+  isDarkMode: boolean = true;
+  isLoading: boolean = false; // Add this property
+
+  // ... existing code ...
+
+  ngOnInit(): void {
+    this.loadData();
+    this.applyTheme();
+  }
+
+  // Add this method
+  loadData(): void {
+    this.isLoading = true;
+    
+    // Simulate API call with timeout
+    setTimeout(() => {
+      this.initializeHierarchy({ CRS: this.CRS, SRS: this.SRS, TC: this.TC });
+      this.isLoading = false;
+    }, 1500); // Remove this timeout when using real API
+    
+    // For real API call, use:
+    // this.jiraService.getHierarchyData().subscribe({
+    //   next: (data) => {
+    //     this.initializeHierarchy(data);
+    //     this.isLoading = false;
+    //   },
+    //   error: (error) => {
+    //     console.error('Error loading data:', error);
+    //     this.isLoading = false;
+    //   }
+    // });
+  }
+
+  // ... rest of the existing code ...
+}
+
+
+
+
+
+
+
+
+
+<!-- Update the tree-container section -->
+<div class="tree-container">
+  <!-- Loader -->
+  <div class="loader-container" *ngIf="isLoading">
+    <div class="loader"></div>
+    <span class="loader-text">Loading tickets...</span>
+  </div>
+
+  <!-- Tree -->
+  <ul class="tree" *ngIf="!isLoading">
+    <ng-container *ngFor="let node of hierarchyData">
+      <ng-container *ngTemplateOutlet="treeNode; context: { $implicit: node }"></ng-container>
+    </ng-container>
+  </ul>
+
+  <!-- Empty State -->
+  <div class="empty-state" *ngIf="!isLoading && hierarchyData.length === 0">
+    No tickets to display
+  </div>
+</div>
