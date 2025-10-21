@@ -1,103 +1,22 @@
-/* Update these specific font-size properties */
-
-.sidebar {
-  font-size: 0.875rem; /* Changed from 0.75rem to 0.875rem */
+/* Add this new class for search highlighting */
+.tree-node.search-highlight {
+  background: var(--sdlc-tree-highlight-bg) !important;
+  border-color: var(--sdlc-tree-highlight-border) !important;
+  animation: highlightPulse 1.5s ease-in-out infinite;
 }
 
-.search-input {
-  font-size: 0.875rem; /* Changed from 0.75rem to 0.875rem */
+/* Make sure highlight animation works */
+@keyframes highlightPulse {
+  0%,
+  100% {
+    border-color: var(--sdlc-tree-highlight-border);
+  }
+  50% {
+    border-color: #8b9cff;
+  }
 }
 
-.search-icon {
-  font-size: 1rem; /* Changed from 0.875rem to 1rem */
-}
 
-.search-results {
-  font-size: 0.75rem; /* Changed from 0.625rem to 0.75rem */
-}
-
-.legend-item {
-  font-size: 0.75rem; /* Changed from 0.625rem to 0.75rem */
-}
-
-.legend-color {
-  width: 0.75rem; /* Changed from 0.625rem to 0.75rem */
-  height: 0.75rem; /* Changed from 0.625rem to 0.75rem */
-}
-
-.toggle-icon {
-  font-size: 0.625rem; /* Changed from 0.5rem to 0.625rem */
-}
-
-.ticket-badge {
-  font-size: 0.625rem; /* Changed from 0.5rem to 0.625rem */
-}
-
-.draft-badge {
-  font-size: 0.625rem; /* Changed from 0.5rem to 0.625rem */
-}
-
-.draft-badge::before {
-  font-size: 0.75rem; /* Changed from 0.625rem to 0.75rem */
-}
-
-.jira-ticket-id {
-  font-size: 0.6875rem; /* Changed from 0.5625rem to 0.6875rem */
-}
-
-.jira-ticket-id::before {
-  font-size: 0.75rem; /* Changed from 0.625rem to 0.75rem */
-}
-
-.ticket-id {
-  font-size: 0.8125rem; /* Changed from 0.6875rem to 0.8125rem */
-}
-
-.ticket-title {
-  font-size: 0.75rem; /* Changed from 0.625rem to 0.75rem */
-}
-
-.view-icon {
-  font-size: 0.875rem; /* Changed from 0.75rem to 0.875rem */
-}
-
-.count-badge {
-  font-size: 0.625rem; /* Changed from 0.5rem to 0.625rem */
-}
-
-.empty-state {
-  font-size: 0.875rem; /* Changed from 0.75rem to 0.875rem */
-}
-
-/* Add Loader Styles */
-.loader-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 3rem 1rem;
-  gap: 1rem;
-}
-
-.loader {
-  width: 2.5rem;
-  height: 2.5rem;
-  border: 0.25rem solid var(--sdlc-tree-border-primary);
-  border-top: 0.25rem solid var(--sdlc-tree-search-focus);
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-.loader-text {
-  color: var(--sdlc-tree-text-muted);
-  font-size: 0.875rem;
-  font-weight: 500;
-}
 
 
 
@@ -113,36 +32,62 @@ export class JiraHierarchyComponent implements OnInit {
   hierarchyData: TreeNode[] = [];
   legendItems: Array<{ color: string; label: string }> = [];
   isDarkMode: boolean = true;
-  isLoading: boolean = false; // Add this property
+  isLoading: boolean = false;
+  highlightedNodes: Set<string> = new Set(); // Add this property
 
   // ... existing code ...
 
-  ngOnInit(): void {
-    this.loadData();
-    this.applyTheme();
+  onSearch(): void {
+    // Clear previous highlights
+    this.highlightedNodes.clear();
+
+    if (!this.searchQuery.trim()) {
+      this.searchResults = '';
+      return;
+    }
+
+    const lowerQuery = this.searchQuery.toLowerCase();
+    const matches = this.searchInData(this.hierarchyData, lowerQuery);
+
+    if (matches.length > 0) {
+      this.searchResults = `Found ${matches.length} match${matches.length > 1 ? 'es' : ''}`;
+      
+      // Add matched nodes to highlighted set
+      matches.forEach(node => {
+        this.highlightedNodes.add(node.id);
+      });
+    } else {
+      this.searchResults = 'No matches found';
+    }
   }
 
-  // Add this method
-  loadData(): void {
-    this.isLoading = true;
-    
-    // Simulate API call with timeout
-    setTimeout(() => {
-      this.initializeHierarchy({ CRS: this.CRS, SRS: this.SRS, TC: this.TC });
-      this.isLoading = false;
-    }, 1500); // Remove this timeout when using real API
-    
-    // For real API call, use:
-    // this.jiraService.getHierarchyData().subscribe({
-    //   next: (data) => {
-    //     this.initializeHierarchy(data);
-    //     this.isLoading = false;
-    //   },
-    //   error: (error) => {
-    //     console.error('Error loading data:', error);
-    //     this.isLoading = false;
-    //   }
-    // });
+  // Update this method
+  private searchInData(data: TreeNode[], query: string): TreeNode[] {
+    const matches: TreeNode[] = [];
+
+    const search = (nodes: TreeNode[]) => {
+      nodes.forEach(node => {
+        if (
+          node.id.toLowerCase().includes(query) ||
+          node.title.toLowerCase().includes(query) ||
+          (node.jira_ticket && node.jira_ticket.toLowerCase().includes(query))
+        ) {
+          matches.push(node);
+          this.expandParents(node, this.hierarchyData);
+        }
+        if (node.children) {
+          search(node.children);
+        }
+      });
+    };
+
+    search(data);
+    return matches;
+  }
+
+  // Add this method to check if node is highlighted
+  isHighlighted(node: TreeNode): boolean {
+    return this.highlightedNodes.has(node.id);
   }
 
   // ... rest of the existing code ...
@@ -156,23 +101,56 @@ export class JiraHierarchyComponent implements OnInit {
 
 
 
-<!-- Update the tree-container section -->
-<div class="tree-container">
-  <!-- Loader -->
-  <div class="loader-container" *ngIf="isLoading">
-    <div class="loader"></div>
-    <span class="loader-text">Loading tickets...</span>
-  </div>
 
-  <!-- Tree -->
-  <ul class="tree" *ngIf="!isLoading">
-    <ng-container *ngFor="let node of hierarchyData">
-      <ng-container *ngTemplateOutlet="treeNode; context: { $implicit: node }"></ng-container>
-    </ng-container>
-  </ul>
 
-  <!-- Empty State -->
-  <div class="empty-state" *ngIf="!isLoading && hierarchyData.length === 0">
-    No tickets to display
-  </div>
-</div>
+<!-- Update the tree-node div in the template -->
+<ng-template #treeNode let-node>
+  <li class="tree-item">
+    <div
+      class="tree-node"
+      [class]="node.type + (isDraft(node) ? ' draft' : '') + (isHighlighted(node) ? ' search-highlight' : '')"
+      (click)="hasChildren(node) ? toggleNode(node) : null"
+    >
+      <!-- Rest of the node content remains the same -->
+      <span
+        class="toggle-icon"
+        [class.expanded]="node.expanded"
+        [class.empty]="!hasChildren(node)"
+      >
+        {{ hasChildren(node) ? '▶' : '●' }}
+      </span>
+
+      <span class="ticket-badge" [class]="node.type">
+        {{ getTypeBadge(node.type) }}
+      </span>
+
+      <div class="ticket-info">
+        <span class="ticket-id" [class.draft-text]="isDraft(node)">
+          <span class="jira-ticket-id" *ngIf="node.jira_ticket">
+            {{ node.jira_ticket }}
+          </span>
+          <ng-container *ngIf="!node.jira_ticket">
+            Untitled
+            <span class="draft-badge">DRAFT</span>
+          </ng-container>
+        </span>
+        <span class="ticket-title">{{ node.title }}</span>
+      </div>
+
+      <span class="count-badge" *ngIf="hasChildren(node)">
+        {{ countChildren(node) }}
+      </span>
+
+      <span class="view-icon" (click)="handleViewClick($event, node)" title="View Details">
+        👁
+      </span>
+    </div>
+
+    <ul class="children" *ngIf="hasChildren(node) && node.expanded" [class.expanded]="node.expanded">
+      <ng-container *ngFor="let child of node.children">
+        <ng-container *ngTemplateOutlet="treeNode; context: { $implicit: child }"></ng-container>
+      </ng-container>
+    </ul>
+  </li>
+</ng-template>
+
