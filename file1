@@ -1,4 +1,32 @@
- @ViewChild('carouselContainer') carouselContainer!: ElementRef;
+div class="action-cards-carousel">
+                    <button class="carousel-nav prev" (click)="scrollCarousel('prev')" [disabled]="isAtStart()"
+                        *ngIf="showCarouselNav">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="15 18 9 12 15 6"></polyline>
+                        </svg>
+                    </button>
+
+                    <div class="action-cards-wrapper" #carouselContainer>
+
+
+
+
+
+<button class="carousel-nav next" (click)="scrollCarousel('next')" [disabled]="isAtEnd()"
+                        *ngIf="showCarouselNav">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="9 18 15 12 9 6"></polyline>
+                        </svg>
+                    </button>
+                </div>
+
+
+
+
+
+
+@ViewChild('carouselContainer') carouselContainer!: ElementRef;
+
   carouselScrollPosition = 0;
   maxCarouselScroll = 0;
   showCarouselNav = false;
@@ -8,19 +36,55 @@
   visibleCards = 4;
 
   private resizeObserver?: ResizeObserver;
+  private scrollTimeout: any;
+
+  constructor(private cdr: ChangeDetectorRef) { }
 
   ngAfterViewInit() {
     setTimeout(() => {
       this.calculateCarouselDimensions();
       this.setupResizeObserver();
+      this.setupScrollListener();
     }, 100);
+  }
 
-    // Listen to scroll events to update button states
+  setupScrollListener() {
     if (this.carouselContainer) {
       this.carouselContainer.nativeElement.addEventListener('scroll', () => {
-        this.carouselScrollPosition = this.carouselContainer.nativeElement.scrollLeft;
+        // Clear existing timeout
+        if (this.scrollTimeout) {
+          clearTimeout(this.scrollTimeout);
+        }
+
+        // Debounce scroll updates
+        this.scrollTimeout = setTimeout(() => {
+          this.updateScrollPosition();
+        }, 50);
       });
     }
+  }
+
+  updateScrollPosition() {
+    if (this.carouselContainer) {
+      const container = this.carouselContainer.nativeElement;
+      this.carouselScrollPosition = container.scrollLeft;
+
+      // Trigger change detection to update button states
+      this.cdr.detectChanges();
+
+      console.log('Scroll Position:', this.carouselScrollPosition);
+      console.log('Max Scroll:', this.maxCarouselScroll);
+      console.log('At End:', this.isAtEnd());
+    }
+  }
+
+  isAtEnd(): boolean {
+    // Add small tolerance (1px) for floating point precision
+    return this.carouselScrollPosition >= (this.maxCarouselScroll - 1);
+  }
+
+  isAtStart(): boolean {
+    return this.carouselScrollPosition <= 1;
   }
 
   setupResizeObserver() {
@@ -50,10 +114,16 @@
       // Show navigation only if content overflows
       this.showCarouselNav = totalContentWidth > containerWidth;
 
-      // Calculate max scroll position (content width - container width)
-      this.maxCarouselScroll = Math.max(0, totalContentWidth - containerWidth + 12); // +12 for padding
+      // Calculate max scroll position
+      // scrollWidth gives us the total scrollable width
+      // offsetWidth gives us the visible width
+      this.maxCarouselScroll = container.scrollWidth - container.offsetWidth;
+
+      // Update current scroll position
+      this.updateScrollPosition();
 
       console.log('Container Width:', containerWidth);
+      console.log('Scroll Width:', container.scrollWidth);
       console.log('Total Content Width:', totalContentWidth);
       console.log('Max Scroll:', this.maxCarouselScroll);
       console.log('Show Nav:', this.showCarouselNav);
@@ -89,204 +159,9 @@
     if (this.resizeObserver) {
       this.resizeObserver.disconnect();
     }
+    if (this.scrollTimeout) {
+      clearTimeout(this.scrollTimeout);
+    }
   }
 
-
-
-
-
-
-
-
-
-
-
-
-
-/* Action Cards Carousel Container */
-.action-cards-carousel {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    position: relative;
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-}
-
-.action-cards-wrapper {
-    display: flex;
-    gap: 0.75rem;
-    overflow-x: auto;
-    overflow-y: visible;
-    scroll-behavior: smooth;
-    flex: 1;
-    padding: 0.25rem 0.5rem 0.25rem 0;
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-    /* Prevent last card from being cut off */
-    padding-right: 0.75rem;
-}
-
-.action-cards-wrapper::-webkit-scrollbar {
-    display: none;
-}
-
-.action-card {
-    display: flex;
-    align-items: center;
-    gap: 0.625rem;
-    padding: 0.75rem 1rem;
-    background: var(--sdlc-card-bg);
-    border: 1px solid var(--sdlc-card-border);
-    border-radius: 0.5rem;
-    transition: all 0.2s ease;
-    cursor: pointer;
-    min-width: 180px;
-    flex-shrink: 0;
-    box-sizing: border-box;
-}
-
-.action-card:hover {
-    background: var(--sdlc-hover-bg);
-    border-color: rgba(102, 126, 234, 0.5);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
-
-.action-card.active {
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.2));
-    border-color: var(--sdlc-accent-violet);
-}
-
-.action-icon {
-    width: 2rem;
-    height: 2rem;
-    border-radius: 0.5rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    transition: all 0.2s ease;
-}
-
-.action-icon svg {
-    width: 1rem;
-    height: 1rem;
-    stroke-width: 2;
-}
-
-.action-icon.crs {
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(37, 99, 235, 0.2) 100%);
-}
-
-.action-icon.crs svg {
-    stroke: var(--sdlc-accent-blue);
-}
-
-.action-card:hover .action-icon.crs,
-.action-card.active .action-icon.crs {
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.3) 0%, rgba(37, 99, 235, 0.3) 100%);
-}
-
-.action-icon.srs {
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.2) 0%, rgba(124, 58, 237, 0.2) 100%);
-}
-
-.action-icon.srs svg {
-    stroke: var(--sdlc-accent-purple);
-}
-
-.action-card:hover .action-icon.srs,
-.action-card.active .action-icon.srs {
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.3) 0%, rgba(124, 58, 237, 0.3) 100%);
-}
-
-.action-icon.task {
-    background: linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(5, 150, 105, 0.2) 100%);
-}
-
-.action-icon.task svg {
-    stroke: var(--sdlc-accent-green);
-}
-
-.action-card:hover .action-icon.task,
-.action-card.active .action-icon.task {
-    background: linear-gradient(135deg, rgba(16, 185, 129, 0.3) 0%, rgba(5, 150, 105, 0.3) 100%);
-}
-
-.action-icon.testcase {
-    background: linear-gradient(135deg, rgba(249, 115, 22, 0.2) 0%, rgba(234, 88, 12, 0.2) 100%);
-}
-
-.action-icon.testcase svg {
-    stroke: var(--sdlc-accent-orange);
-}
-
-.action-card:hover .action-icon.testcase,
-.action-card.active .action-icon.testcase {
-    background: linear-gradient(135deg, rgba(249, 115, 22, 0.3) 0%, rgba(234, 88, 12, 0.3) 100%);
-}
-
-.action-content {
-    display: flex;
-    flex-direction: column;
-    gap: 0.125rem;
-}
-
-.action-content h4 {
-    font-size: 0.8125rem;
-    font-weight: 600;
-    color: var(--sdlc-text-primary);
-    margin: 0;
-    letter-spacing: -0.01em;
-    white-space: nowrap;
-}
-
-.action-content p {
-    font-size: 0.6875rem;
-    color: var(--sdlc-text-secondary);
-    margin: 0;
-    line-height: 1.3;
-    white-space: nowrap;
-}
-
-/* Carousel Navigation Buttons */
-.carousel-nav {
-    width: 32px;
-    height: 32px;
-    background: var(--sdlc-card-bg);
-    border: 1px solid var(--sdlc-card-border);
-    border-radius: 50%;
-    color: var(--sdlc-text-primary);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s;
-    flex-shrink: 0;
-    padding: 0;
-    z-index: 10;
-}
-
-.carousel-nav:hover:not(:disabled) {
-    background: var(--sdlc-hover-bg);
-    border-color: rgba(102, 126, 234, 0.5);
-    transform: scale(1.1);
-}
-
-.carousel-nav:disabled {
-    opacity: 0.3;
-    cursor: not-allowed;
-}
-
-.carousel-nav svg {
-    width: 18px;
-    height: 18px;
-}
-
-/* Hide carousel in minimized mode */
-.slide-container.minimized .action-cards-carousel {
-    display: none;
-}
 
