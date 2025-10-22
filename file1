@@ -1,6 +1,79 @@
-div class="action-cards-carousel">
-                    <button class="carousel-nav prev" (click)="scrollCarousel('prev')" [disabled]="isAtStart()"
-                        *ngIf="showCarouselNav">
+@ViewChild('carouselContainer') carouselContainer!: ElementRef;
+
+  carouselScrollPosition = 0;
+  maxCarouselScroll = 0;
+
+  private scrollTimeout: any;
+
+  constructor(private cdr: ChangeDetectorRef) { }
+
+  ngAfterViewInit() {
+    setTimeout(() => {
+      this.calculateMaxScroll();
+      this.setupScrollListener();
+    }, 100);
+  }
+
+  setupScrollListener() {
+    this.carouselContainer.nativeElement.addEventListener('scroll', () => {
+      if (this.scrollTimeout) {
+        clearTimeout(this.scrollTimeout);
+      }
+
+      this.scrollTimeout = setTimeout(() => {
+        this.carouselScrollPosition = this.carouselContainer.nativeElement.scrollLeft;
+        this.cdr.detectChanges();
+      }, 50);
+    });
+  }
+
+  calculateMaxScroll() {
+    const container = this.carouselContainer.nativeElement;
+    this.maxCarouselScroll = container.scrollWidth - container.offsetWidth;
+    this.carouselScrollPosition = container.scrollLeft;
+  }
+
+  isAtEnd(): boolean {
+    return this.carouselScrollPosition >= (this.maxCarouselScroll - 1);
+  }
+
+  isAtStart(): boolean {
+    return this.carouselScrollPosition <= 1;
+  }
+
+  scrollCarousel(direction: 'prev' | 'next') {
+    const container = this.carouselContainer.nativeElement;
+    const scrollAmount = 768; // (180px * 4 cards) + (12px * 3 gaps) = 756px
+
+    const newPosition = direction === 'next'
+      ? Math.min(this.carouselScrollPosition + scrollAmount, this.maxCarouselScroll)
+      : Math.max(this.carouselScrollPosition - scrollAmount, 0);
+
+    container.scrollTo({
+      left: newPosition,
+      behavior: 'smooth'
+    });
+  }
+
+  ngOnDestroy() {
+    if (this.scrollTimeout) {
+      clearTimeout(this.scrollTimeout);
+    }
+
+  }
+
+
+
+
+
+
+
+
+
+
+
+<div class="action-cards-carousel">
+                    <button class="carousel-nav prev" (click)="scrollCarousel('prev')" [disabled]="isAtStart()">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <polyline points="15 18 9 12 15 6"></polyline>
                         </svg>
@@ -12,156 +85,211 @@ div class="action-cards-carousel">
 
 
 
-<button class="carousel-nav next" (click)="scrollCarousel('next')" [disabled]="isAtEnd()"
-                        *ngIf="showCarouselNav">
+
+
+
+
+
+<button class="carousel-nav next" (click)="scrollCarousel('next')" [disabled]="isAtEnd()">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <polyline points="9 18 15 12 9 6"></polyline>
                         </svg>
                     </button>
-                </div>
 
 
 
 
 
 
-@ViewChild('carouselContainer') carouselContainer!: ElementRef;
 
-  carouselScrollPosition = 0;
-  maxCarouselScroll = 0;
-  showCarouselNav = false;
 
-  cardWidth = 180;
-  gap = 12;
-  visibleCards = 4;
+/* Action Cards Carousel Container - Fixed Width */
+.action-cards-carousel {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    position: relative;
+    /* Fixed width: 4 cards (180px each) + 3 gaps (12px each) + navigation buttons + spacing */
+    width: 784px; /* (180 * 4) + (12 * 3) + 64 (nav buttons and gaps) */
+    flex-shrink: 0;
+}
 
-  private resizeObserver?: ResizeObserver;
-  private scrollTimeout: any;
+.action-cards-wrapper {
+    display: flex;
+    gap: 0.75rem; /* 12px */
+    overflow-x: auto;
+    overflow-y: visible;
+    scroll-behavior: smooth;
+    width: 756px; /* (180 * 4) + (12 * 3) = 720 + 36 = 756px */
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+    padding: 0.25rem 0.75rem 0.25rem 0;
+}
 
-  constructor(private cdr: ChangeDetectorRef) { }
+.action-cards-wrapper::-webkit-scrollbar {
+    display: none;
+}
 
-  ngAfterViewInit() {
-    setTimeout(() => {
-      this.calculateCarouselDimensions();
-      this.setupResizeObserver();
-      this.setupScrollListener();
-    }, 100);
-  }
+.action-card {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.75rem 1rem;
+    background: var(--sdlc-card-bg);
+    border: 1px solid var(--sdlc-card-border);
+    border-radius: 0.5rem;
+    transition: all 0.2s ease;
+    cursor: pointer;
+    width: 180px;
+    min-width: 180px;
+    max-width: 180px;
+    flex-shrink: 0;
+    box-sizing: border-box;
+}
 
-  setupScrollListener() {
-    if (this.carouselContainer) {
-      this.carouselContainer.nativeElement.addEventListener('scroll', () => {
-        // Clear existing timeout
-        if (this.scrollTimeout) {
-          clearTimeout(this.scrollTimeout);
-        }
+.action-card:hover {
+    background: var(--sdlc-hover-bg);
+    border-color: rgba(102, 126, 234, 0.5);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
 
-        // Debounce scroll updates
-        this.scrollTimeout = setTimeout(() => {
-          this.updateScrollPosition();
-        }, 50);
-      });
-    }
-  }
+.action-card.active {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.2));
+    border-color: var(--sdlc-accent-violet);
+}
 
-  updateScrollPosition() {
-    if (this.carouselContainer) {
-      const container = this.carouselContainer.nativeElement;
-      this.carouselScrollPosition = container.scrollLeft;
+.action-icon {
+    width: 2rem;
+    height: 2rem;
+    border-radius: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.2s ease;
+}
 
-      // Trigger change detection to update button states
-      this.cdr.detectChanges();
+.action-icon svg {
+    width: 1rem;
+    height: 1rem;
+    stroke-width: 2;
+}
 
-      console.log('Scroll Position:', this.carouselScrollPosition);
-      console.log('Max Scroll:', this.maxCarouselScroll);
-      console.log('At End:', this.isAtEnd());
-    }
-  }
+.action-icon.crs {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(37, 99, 235, 0.2) 100%);
+}
 
-  isAtEnd(): boolean {
-    // Add small tolerance (1px) for floating point precision
-    return this.carouselScrollPosition >= (this.maxCarouselScroll - 1);
-  }
+.action-icon.crs svg {
+    stroke: var(--sdlc-accent-blue);
+}
 
-  isAtStart(): boolean {
-    return this.carouselScrollPosition <= 1;
-  }
+.action-card:hover .action-icon.crs,
+.action-card.active .action-icon.crs {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.3) 0%, rgba(37, 99, 235, 0.3) 100%);
+}
 
-  setupResizeObserver() {
-    if (this.carouselContainer) {
-      this.resizeObserver = new ResizeObserver(() => {
-        this.calculateCarouselDimensions();
-      });
-      this.resizeObserver.observe(this.carouselContainer.nativeElement);
-    }
-  }
+.action-icon.srs {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.2) 0%, rgba(124, 58, 237, 0.2) 100%);
+}
 
-  calculateCarouselDimensions() {
-    if (this.carouselContainer) {
-      const container = this.carouselContainer.nativeElement;
-      const totalCards = container.children.length;
-      const containerWidth = container.offsetWidth;
+.action-icon.srs svg {
+    stroke: var(--sdlc-accent-purple);
+}
 
-      // Calculate actual card width from first card if available
-      if (container.children.length > 0) {
-        const firstCard = container.children[0] as HTMLElement;
-        this.cardWidth = firstCard.offsetWidth;
-      }
+.action-card:hover .action-icon.srs,
+.action-card.active .action-icon.srs {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.3) 0%, rgba(124, 58, 237, 0.3) 100%);
+}
 
-      // Calculate total content width including all gaps
-      const totalContentWidth = (totalCards * this.cardWidth) + ((totalCards - 1) * this.gap);
+.action-icon.task {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(5, 150, 105, 0.2) 100%);
+}
 
-      // Show navigation only if content overflows
-      this.showCarouselNav = totalContentWidth > containerWidth;
+.action-icon.task svg {
+    stroke: var(--sdlc-accent-green);
+}
 
-      // Calculate max scroll position
-      // scrollWidth gives us the total scrollable width
-      // offsetWidth gives us the visible width
-      this.maxCarouselScroll = container.scrollWidth - container.offsetWidth;
+.action-card:hover .action-icon.task,
+.action-card.active .action-icon.task {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.3) 0%, rgba(5, 150, 105, 0.3) 100%);
+}
 
-      // Update current scroll position
-      this.updateScrollPosition();
+.action-icon.testcase {
+    background: linear-gradient(135deg, rgba(249, 115, 22, 0.2) 0%, rgba(234, 88, 12, 0.2) 100%);
+}
 
-      console.log('Container Width:', containerWidth);
-      console.log('Scroll Width:', container.scrollWidth);
-      console.log('Total Content Width:', totalContentWidth);
-      console.log('Max Scroll:', this.maxCarouselScroll);
-      console.log('Show Nav:', this.showCarouselNav);
-    }
-  }
+.action-icon.testcase svg {
+    stroke: var(--sdlc-accent-orange);
+}
 
-  scrollCarousel(direction: 'prev' | 'next') {
-    const container = this.carouselContainer.nativeElement;
-    const scrollAmount = (this.cardWidth + this.gap) * this.visibleCards;
+.action-card:hover .action-icon.testcase,
+.action-card.active .action-icon.testcase {
+    background: linear-gradient(135deg, rgba(249, 115, 22, 0.3) 0%, rgba(234, 88, 12, 0.3) 100%);
+}
 
-    if (direction === 'next') {
-      const newPosition = Math.min(
-        this.carouselScrollPosition + scrollAmount,
-        this.maxCarouselScroll
-      );
-      container.scrollTo({
-        left: newPosition,
-        behavior: 'smooth'
-      });
-    } else {
-      const newPosition = Math.max(
-        this.carouselScrollPosition - scrollAmount,
-        0
-      );
-      container.scrollTo({
-        left: newPosition,
-        behavior: 'smooth'
-      });
-    }
-  }
+.action-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+}
 
-  ngOnDestroy() {
-    if (this.resizeObserver) {
-      this.resizeObserver.disconnect();
-    }
-    if (this.scrollTimeout) {
-      clearTimeout(this.scrollTimeout);
-    }
-  }
+.action-content h4 {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--sdlc-text-primary);
+    margin: 0;
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+}
+
+.action-content p {
+    font-size: 0.6875rem;
+    color: var(--sdlc-text-secondary);
+    margin: 0;
+    line-height: 1.3;
+    white-space: nowrap;
+}
+
+/* Carousel Navigation Buttons - Always Visible */
+.carousel-nav {
+    width: 32px;
+    height: 32px;
+    background: var(--sdlc-card-bg);
+    border: 1px solid var(--sdlc-card-border);
+    border-radius: 50%;
+    color: var(--sdlc-text-primary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    flex-shrink: 0;
+    padding: 0;
+    z-index: 10;
+}
+
+.carousel-nav:hover:not(:disabled) {
+    background: var(--sdlc-hover-bg);
+    border-color: rgba(102, 126, 234, 0.5);
+    transform: scale(1.1);
+}
+
+.carousel-nav:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.carousel-nav svg {
+    width: 18px;
+    height: 18px;
+}
+
+/* Hide carousel in minimized mode */
+.slide-container.minimized .action-cards-carousel {
+    display: none;
+}
+
+
 
 
