@@ -1,4 +1,4 @@
-import { Component, ElementRef, ViewChild } from '@angular/core';
+import { Component } from '@angular/core';
 
 @Component({
   selector: 'app-root',
@@ -6,44 +6,33 @@ import { Component, ElementRef, ViewChild } from '@angular/core';
   styleUrls: ['./app.component.css']
 })
 export class AppComponent {
-  @ViewChild('textarea') textareaRef!: ElementRef<HTMLTextAreaElement>;
-  imageSrc: string | null = null;
+  pastedFile: File | null = null;
+  pastedText: string | null = null;
 
   onPaste(event: ClipboardEvent): void {
     const items = event.clipboardData?.items;
-    if (!items) return;
+    if (!items || items.length === 0) return;
 
-    for (let item of items) {
-      if (item.type.startsWith('image/')) {
-        const file = item.getAsFile();
-        if (file) {
-          this.imageSrc = URL.createObjectURL(file);
-          event.preventDefault(); // prevent base64 text paste
-        }
+    const firstItem = items[0]; // ✅ Take only the FIRST item
+
+    // Clear previous values
+    this.pastedFile = null;
+    this.pastedText = null;
+
+    if (firstItem.type.startsWith('image/')) {
+      const file = firstItem.getAsFile();
+      if (file) {
+        this.pastedFile = file;
+        event.preventDefault(); // block base64 text paste
       }
+    } else if (firstItem.type === 'text/plain') {
+      firstItem.getAsString((text) => {
+        this.pastedText = text;
+      });
     }
   }
+
+  get imageURL(): string | null {
+    return this.pastedFile ? URL.createObjectURL(this.pastedFile) : null;
+  }
 }
-
-
-
-
-
-
-
-
-<div class="container">
-  <h3>Paste Text or Image</h3>
-  <textarea
-    #textarea
-    placeholder="Paste text or image here..."
-    (paste)="onPaste($event)"
-  ></textarea>
-
-  <div id="preview" *ngIf="imageSrc">
-    <img [src]="imageSrc" alt="Pasted Image" />
-  </div>
-</div>
-
-
-
