@@ -1,38 +1,579 @@
+// forgot-password.component.ts
 import { Component } from '@angular/core';
+import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 
 @Component({
-  selector: 'app-root',
-  templateUrl: './app.component.html',
-  styleUrls: ['./app.component.css']
+  selector: 'app-forgot-password',
+  templateUrl: './forgot-password.component.html',
+  styleUrls: ['./forgot-password.component.css']
 })
-export class AppComponent {
-  pastedFile: File | null = null;
-  pastedText: string | null = null;
+export class ForgotPasswordComponent {
+  currentStep: 'userId' | 'securityQuestion' | 'newPassword' | 'success' = 'userId';
+  
+  userIdForm: FormGroup;
+  securityForm: FormGroup;
+  passwordForm: FormGroup;
+  
+  isLoading = false;
+  userIdError = '';
+  securityAnswerError = '';
+  
+  secretQuestions: string[] = [];
+  userId = '';
 
-  onPaste(event: ClipboardEvent): void {
-    const items = event.clipboardData?.items;
-    if (!items || items.length === 0) return;
+  constructor(private fb: FormBuilder) {
+    this.userIdForm = this.fb.group({
+      userId: ['', Validators.required]
+    });
 
-    const firstItem = items[0]; // ✅ Take only the FIRST item
+    this.securityForm = this.fb.group({
+      secretQuestion: ['', Validators.required],
+      secretAnswer: ['', Validators.required]
+    });
 
-    // Clear previous values
-    this.pastedFile = null;
-    this.pastedText = null;
+    this.passwordForm = this.fb.group({
+      newPassword: ['', [Validators.required, Validators.minLength(6), Validators.maxLength(12)]],
+      confirmPassword: ['', Validators.required]
+    }, { validators: this.passwordMatchValidator });
+  }
 
-    if (firstItem.type.startsWith('image/')) {
-      const file = firstItem.getAsFile();
-      if (file) {
-        this.pastedFile = file;
-        event.preventDefault(); // block base64 text paste
-      }
-    } else if (firstItem.type === 'text/plain') {
-      firstItem.getAsString((text) => {
-        this.pastedText = text;
-      });
+  // Custom validator to check if passwords match
+  passwordMatchValidator(form: FormGroup) {
+    const password = form.get('newPassword');
+    const confirmPassword = form.get('confirmPassword');
+    
+    if (password && confirmPassword && password.value !== confirmPassword.value) {
+      confirmPassword.setErrors({ passwordMismatch: true });
+      return { passwordMismatch: true };
     }
+    return null;
   }
 
-  get imageURL(): string | null {
-    return this.pastedFile ? URL.createObjectURL(this.pastedFile) : null;
+  // Step 1: Validate User ID
+  onSubmitUserId(): void {
+    if (!this.userIdForm.valid) return;
+
+    this.isLoading = true;
+    this.userIdError = '';
+    this.userId = this.userIdForm.value.userId;
+
+    // Simulate API call to validate user ID
+    this.validateUserIdApi(this.userId).then(
+      (response) => {
+        this.isLoading = false;
+        this.secretQuestions = response.questions;
+        this.currentStep = 'securityQuestion';
+      },
+      (error) => {
+        this.isLoading = false;
+        this.userIdError = error.message;
+      }
+    );
   }
+
+  // Step 2: Validate Security Answer
+  onSubmitSecurityAnswer(): void {
+    if (!this.securityForm.valid) return;
+
+    this.isLoading = true;
+    this.securityAnswerError = '';
+
+    const { secretQuestion, secretAnswer } = this.securityForm.value;
+
+    // Simulate API call to validate security answer
+    this.validateSecurityAnswerApi(this.userId, secretQuestion, secretAnswer).then(
+      () => {
+        this.isLoading = false;
+        this.currentStep = 'newPassword';
+      },
+      (error) => {
+        this.isLoading = false;
+        this.securityAnswerError = error.message;
+      }
+    );
+  }
+
+  // Step 3: Reset Password
+  onSubmitNewPassword(): void {
+    if (!this.passwordForm.valid) return;
+
+    this.isLoading = true;
+
+    const { newPassword } = this.passwordForm.value;
+
+    // Simulate API call to reset password
+    this.resetPasswordApi(this.userId, newPassword).then(
+      () => {
+        this.isLoading = false;
+        this.currentStep = 'success';
+      },
+      () => {
+        this.isLoading = false;
+      }
+    );
+  }
+
+  // Mock API: Validate User ID
+  private validateUserIdApi(userId: string): Promise<any> {
+    return new Promise((resolve, reject) => {
+      setTimeout(() => {
+        if (userId === 'admin' || userId === 'user123') {
+          resolve({
+            questions: [
+              'What is your mother\'s maiden name?',
+              'What was the name of your first pet?',
+              'What city were you born in?',
+              'What is your favorite color?'
+            ]
+          });
+        } else {
+          reject({ message: 'User ID not found' });
+        }
+      }, 1500);
+    });
+  }
+
+  // Mock API: Validate Security Answer
+  private validateSecurityAnswerApi(userId: string, question: string, answer: string): Promise<any> {
+    return new Promise((resolve, reject) => {
+      setTimeout(() => {
+        // For demo: accept "answer" as the correct answer
+        if (answer.toLowerCase() === 'answer') {
+          resolve({ success: true });
+        } else {
+          reject({ message: 'Incorrect security answer' });
+        }
+      }, 1500);
+    });
+  }
+
+  // Mock API: Reset Password
+  private resetPasswordApi(userId: string, newPassword: string): Promise<any> {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        console.log('Password reset successful for user:', userId);
+        resolve({ success: true });
+      }, 1500);
+    });
+  }
+
+  // Helper methods
+  clearUserIdError(): void {
+    this.userIdError = '';
+  }
+
+  clearSecurityAnswerError(): void {
+    this.securityAnswerError = '';
+  }
+
+  get passwordMismatch(): boolean {
+    const confirmPassword = this.passwordForm.get('confirmPassword');
+    return confirmPassword?.touched && confirmPassword?.hasError('passwordMismatch') || false;
+  }
+
+  get newPasswordInvalid(): boolean {
+    const newPassword = this.passwordForm.get('newPassword');
+    return newPassword?.touched && newPassword?.invalid || false;
+  }
+
+  backToLogin(): void {
+    console.log('Navigate back to login');
+    // Implement navigation to login page
+  }
+}
+
+// ============================================
+// forgot-password.component.html
+// ============================================
+<div class="forgot-password-container">
+  <div class="forgot-password-card">
+    <h1 class="title">
+      <span class="app-name">Test</span>
+    </h1>
+    <h2 class="subtitle">Forgot Password</h2>
+
+    <!-- Step 1: User ID -->
+    <div *ngIf="currentStep === 'userId'" class="step-container">
+      <p class="step-description">Enter your User ID to reset your password</p>
+      
+      <form [formGroup]="userIdForm" (ngSubmit)="onSubmitUserId()">
+        <div class="form-group">
+          <label for="userId">User ID</label>
+          <input
+            type="text"
+            id="userId"
+            formControlName="userId"
+            [class.error]="userIdError"
+            (input)="clearUserIdError()"
+            placeholder="Enter your user ID"
+          />
+          <span class="error-text" *ngIf="userIdError">{{ userIdError }}</span>
+        </div>
+
+        <button
+          type="submit"
+          class="submit-btn"
+          [disabled]="!userIdForm.valid || isLoading"
+        >
+          <span class="spinner" *ngIf="isLoading"></span>
+          {{ isLoading ? 'Validating...' : 'Continue' }}
+        </button>
+      </form>
+
+      <button type="button" class="back-link" (click)="backToLogin()">
+        Back to Login
+      </button>
+    </div>
+
+    <!-- Step 2: Security Question -->
+    <div *ngIf="currentStep === 'securityQuestion'" class="step-container">
+      <p class="step-description">Answer your security question</p>
+      
+      <form [formGroup]="securityForm" (ngSubmit)="onSubmitSecurityAnswer()">
+        <div class="form-group">
+          <label for="secretQuestion">Security Question</label>
+          <select
+            id="secretQuestion"
+            formControlName="secretQuestion"
+            class="select-input"
+          >
+            <option value="">Select a question</option>
+            <option *ngFor="let question of secretQuestions" [value]="question">
+              {{ question }}
+            </option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="secretAnswer">Answer</label>
+          <input
+            type="text"
+            id="secretAnswer"
+            formControlName="secretAnswer"
+            [class.error]="securityAnswerError"
+            (input)="clearSecurityAnswerError()"
+            placeholder="Enter your answer"
+          />
+          <span class="error-text" *ngIf="securityAnswerError">{{ securityAnswerError }}</span>
+        </div>
+
+        <button
+          type="submit"
+          class="submit-btn"
+          [disabled]="!securityForm.valid || isLoading"
+        >
+          <span class="spinner" *ngIf="isLoading"></span>
+          {{ isLoading ? 'Verifying...' : 'Continue' }}
+        </button>
+      </form>
+
+      <button type="button" class="back-link" (click)="backToLogin()">
+        Back to Login
+      </button>
+    </div>
+
+    <!-- Step 3: New Password -->
+    <div *ngIf="currentStep === 'newPassword'" class="step-container">
+      <p class="step-description">Create a new password</p>
+      
+      <form [formGroup]="passwordForm" (ngSubmit)="onSubmitNewPassword()">
+        <div class="form-group">
+          <label for="newPassword">
+            New Password
+            <span class="info-icon" title="Password must be 6-12 characters">ⓘ</span>
+          </label>
+          <input
+            type="password"
+            id="newPassword"
+            formControlName="newPassword"
+            [class.error]="newPasswordInvalid"
+            placeholder="Enter new password"
+          />
+          <span class="info-text">Password must be 6-12 characters</span>
+          <span class="error-text" *ngIf="newPasswordInvalid">
+            Password must be between 6 and 12 characters
+          </span>
+        </div>
+
+        <div class="form-group">
+          <label for="confirmPassword">Confirm Password</label>
+          <input
+            type="password"
+            id="confirmPassword"
+            formControlName="confirmPassword"
+            [class.error]="passwordMismatch"
+            placeholder="Confirm new password"
+          />
+          <span class="error-text" *ngIf="passwordMismatch">
+            Passwords do not match
+          </span>
+        </div>
+
+        <button
+          type="submit"
+          class="submit-btn"
+          [disabled]="!passwordForm.valid || isLoading"
+        >
+          <span class="spinner" *ngIf="isLoading"></span>
+          {{ isLoading ? 'Resetting...' : 'Reset Password' }}
+        </button>
+      </form>
+
+      <button type="button" class="back-link" (click)="backToLogin()">
+        Back to Login
+      </button>
+    </div>
+
+    <!-- Step 4: Success -->
+    <div *ngIf="currentStep === 'success'" class="step-container success-container">
+      <div class="success-icon">✓</div>
+      <h3 class="success-title">Password Reset Successfully!</h3>
+      <p class="success-message">Your password has been reset. You can now login with your new password.</p>
+      
+      <button type="button" class="submit-btn" (click)="backToLogin()">
+        Back to Login
+      </button>
+    </div>
+  </div>
+</div>
+
+// ============================================
+// forgot-password.component.css
+// ============================================
+.forgot-password-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: calc(100vh - 3.75rem);
+  padding: 1.25rem;
+}
+
+.forgot-password-card {
+  background: #ffffff;
+  border-radius: 0.75rem;
+  border: 0.0625rem solid #cbd5e0;
+  padding: 2rem;
+  width: 100%;
+  max-width: 28rem;
+}
+
+.title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #2d3748;
+  margin: 0 0 0.5rem 0;
+  text-align: center;
+}
+
+.app-name {
+  color: #2d3748;
+  font-size: 1.75rem;
+  font-weight: 600;
+  letter-spacing: 0.0625rem;
+}
+
+.subtitle {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #4a5568;
+  margin: 0 0 1.5rem 0;
+  text-align: center;
+}
+
+.step-container {
+  animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(0.625rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.step-description {
+  font-size: 0.875rem;
+  color: #718096;
+  margin: 0 0 1.5rem 0;
+  text-align: center;
+}
+
+.form-group {
+  margin-bottom: 1.25rem;
+}
+
+.form-group label {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #4a5568;
+  margin-bottom: 0.5rem;
+}
+
+.info-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  font-size: 0.75rem;
+  color: #667eea;
+  cursor: help;
+  border: 0.0625rem solid #667eea;
+  border-radius: 50%;
+  font-weight: 600;
+}
+
+.form-group input[type="text"],
+.form-group input[type="password"],
+.select-input {
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  font-size: 0.875rem;
+  border: 0.0625rem solid #cbd5e0;
+  border-radius: 0.5rem;
+  transition: all 0.3s ease;
+  box-sizing: border-box;
+}
+
+.form-group input[type="text"]:focus,
+.form-group input[type="password"]:focus,
+.select-input:focus {
+  outline: none;
+  border-color: #667eea;
+  border-width: 0.125rem;
+}
+
+.form-group input.error {
+  border-color: #f56565;
+  border-width: 0.125rem;
+}
+
+.select-input {
+  cursor: pointer;
+  background-color: #ffffff;
+}
+
+.info-text {
+  display: block;
+  color: #718096;
+  font-size: 0.75rem;
+  margin-top: 0.375rem;
+  font-style: italic;
+}
+
+.error-text {
+  display: block;
+  color: #f56565;
+  font-size: 0.75rem;
+  margin-top: 0.375rem;
+}
+
+.submit-btn {
+  width: 100%;
+  padding: 0.75rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: #ffffff;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.submit-btn:hover:not(:disabled) {
+  transform: translateY(-0.125rem);
+  box-shadow: 0 0.375rem 1.25rem rgba(102, 126, 234, 0.4);
+}
+
+.submit-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.spinner {
+  width: 1rem;
+  height: 1rem;
+  border: 0.125rem solid #ffffff;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.back-link {
+  width: 100%;
+  padding: 0.625rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #667eea;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-align: center;
+}
+
+.back-link:hover {
+  color: #764ba2;
+  text-decoration: underline;
+}
+
+.success-container {
+  text-align: center;
+  padding: 1.25rem 0;
+}
+
+.success-icon {
+  width: 4rem;
+  height: 4rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #ffffff;
+  font-size: 2.5rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 1.25rem;
+  animation: scaleIn 0.5s ease-out;
+}
+
+@keyframes scaleIn {
+  from {
+    transform: scale(0);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+
+.success-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #2d3748;
+  margin: 0 0 0.75rem 0;
+}
+
+.success-message {
+  font-size: 0.875rem;
+  color: #718096;
+  margin: 0 0 1.5rem 0;
+  line-height: 1.5;
 }
