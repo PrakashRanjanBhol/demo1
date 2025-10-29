@@ -1,28 +1,12 @@
-let navType = 'navigate'; // default
+constructor(private authService: AuthService, private router: Router) {}
 
-if ('getEntriesByType' in performance) {
-  const entries = performance.getEntriesByType('navigation') as PerformanceNavigationTiming[];
-  if (entries && entries.length > 0) {
-    navType = entries[0].type;
-  } else if (performance.navigation) {
-    // Fallback for older browsers
-    switch (performance.navigation.type) {
-      case performance.navigation.TYPE_RELOAD:
-        navType = 'reload';
-        break;
-      case performance.navigation.TYPE_BACK_FORWARD:
-        navType = 'back_forward';
-        break;
-      default:
-        navType = 'navigate';
+ngOnInit() {
+  this.router.events.subscribe(event => {
+    if (event.constructor.name === 'NavigationEnd') {
+      const user = this.authService['getStoredUser']();
+      if (user?.method === 'sso' && this.router.url !== '/login') {
+        this.authService.connectSSO(true);
+      }
     }
-  }
-}
-
-if (navType === 'reload') {
-  console.log('🔄 Page reloaded');
-} else if (navType === 'navigate') {
-  console.log('➡️ Normal navigation (routerLink or direct click)');
-} else if (navType === 'back_forward') {
-  console.log('⏪ Came via browser back/forward');
+  });
 }
