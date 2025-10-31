@@ -1,81 +1,597 @@
-async renderStream(text, chunkSize = 5, delay = 50) {
-    this.contentElement.innerHTML = '';
-    this.buffer = '';
-    
-    // Add streaming cursor
-    const cursor = document.createElement('span');
-    cursor.className = 'streaming-cursor';
-    this.contentElement.appendChild(cursor);
-    
-    // Simulate streaming by adding characters chunk by chunk
-    for (let i = 0; i < text.length; i += chunkSize) {
-        const chunk = text.slice(i, i + chunkSize);
-        this.buffer += chunk;
-        
-        // Process the buffer
-        this.processBuffer();
-        
-        // Re-add cursor at the end
-        if (cursor.parentNode) {
-            cursor.parentNode.removeChild(cursor);
-        }
-        this.contentElement.appendChild(cursor);
-        
-        await new Promise(resolve => setTimeout(resolve, delay));
-    }
-    
-    // Final processing
-    this.processBuffer(true);
-    
-    // Remove cursor
-    if (cursor.parentNode) {
-        cursor.parentNode.removeChild(cursor);
-    }
-}
+<!DOCTYPE html>
+<html lang="en">
 
-processBuffer(isFinal = false) {
-    // Try to extract complete code blocks from buffer
-    const codeBlockRegex = /```(\w+)?\s*\n([\s\S]*?)\n```/g;
-    let lastProcessedIndex = 0;
-    let match;
-    
-    // Clear content except cursor
-    const cursor = this.contentElement.querySelector('.streaming-cursor');
-    this.contentElement.innerHTML = '';
-    
-    while ((match = codeBlockRegex.exec(this.buffer)) !== null) {
-        const matchStart = match.index;
-        const matchEnd = codeBlockRegex.lastIndex;
-        
-        // Render markdown before this code block
-        const beforeMarkdown = this.buffer.slice(lastProcessedIndex, matchStart);
-        if (beforeMarkdown.trim().length > 0) {
-            const markdownElement = this.renderMarkdown(beforeMarkdown);
-            while (markdownElement.firstChild) {
-                this.contentElement.appendChild(markdownElement.firstChild);
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Markdown & Code Block Renderer</title>
+
+    <!-- Highlight.js CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+
+    <!-- Marked.js -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+    <!-- Highlight.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: #0d1117;
+            color: #c9d1d9;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .controls {
+            background: #161b22;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .controls h2 {
+            margin-bottom: 15px;
+            color: #58a6ff;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 150px;
+            padding: 12px;
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            color: #c9d1d9;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            resize: vertical;
+        }
+
+        .button-group {
+            margin-top: 15px;
+            display: flex;
+            gap: 10px;
+        }
+
+        button {
+            padding: 10px 20px;
+            background: #238636;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #2ea043;
+        }
+
+        button.secondary {
+            background: #21262d;
+        }
+
+        button.secondary:hover {
+            background: #30363d;
+        }
+
+        .output {
+            background: #161b22;
+            padding: 20px;
+            border-radius: 8px;
+            min-height: 200px;
+        }
+
+        .output h2 {
+            margin-bottom: 15px;
+            color: #58a6ff;
+            border-bottom: 1px solid #30363d;
+            padding-bottom: 10px;
+        }
+
+        #content {
+            color: #c9d1d9;
+        }
+
+        /* Markdown styling */
+        #content p {
+            margin-bottom: 16px;
+        }
+
+        #content h1,
+        #content h2,
+        #content h3,
+        #content h4,
+        #content h5,
+        #content h6 {
+            margin-top: 24px;
+            margin-bottom: 16px;
+            font-weight: 600;
+            line-height: 1.25;
+            color: #c9d1d9;
+        }
+
+        #content h1 {
+            font-size: 2em;
+            border-bottom: 1px solid #30363d;
+            padding-bottom: 0.3em;
+        }
+
+        #content h2 {
+            font-size: 1.5em;
+            border-bottom: 1px solid #30363d;
+            padding-bottom: 0.3em;
+        }
+
+        #content ul,
+        #content ol {
+            margin-bottom: 16px;
+            padding-left: 2em;
+        }
+
+        #content li {
+            margin-bottom: 4px;
+        }
+
+        #content code {
+            background: #0d1117;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+
+        #content blockquote {
+            border-left: 4px solid #30363d;
+            padding-left: 16px;
+            margin-bottom: 16px;
+            color: #8b949e;
+        }
+
+        #content a {
+            color: #58a6ff;
+            text-decoration: none;
+        }
+
+        #content a:hover {
+            text-decoration: underline;
+        }
+
+        /* Code block styling */
+        /* .code-block {
+            margin: 16px 0;
+            border-radius: 6px;
+            overflow: hidden;
+            background: #0d1117;
+            border: 1px solid #30363d;
+        } */
+
+        .code-block-header {
+            background: #161b22;
+            padding: 8px 12px;
+            border-bottom: 1px solid #30363d;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .code-block-language {
+            color: #8b949e;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .code-block-copy {
+            background: #21262d;
+            border: 1px solid #30363d;
+            color: #c9d1d9;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            transition: background 0.2s;
+        }
+
+        .code-block-copy:hover {
+            background: #30363d;
+        }
+
+        .code-block-copy.copied {
+            background: #238636;
+            border-color: #238636;
+        }
+
+        .code-block pre {
+            margin: 0;
+            padding: 16px;
+            overflow-x: auto;
+        }
+
+        .code-block pre code {
+            background: transparent;
+            padding: 0;
+            border-radius: 0;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        /* Streaming cursor effect */
+        .streaming-cursor {
+            display: inline-block;
+            width: 8px;
+            height: 16px;
+            background: #58a6ff;
+            animation: blink 1s infinite;
+            margin-left: 2px;
+        }
+
+        @keyframes blink {
+
+            0%,
+            50% {
+                opacity: 1;
+            }
+
+            51%,
+            100% {
+                opacity: 0;
             }
         }
-        
-        // Render the code block
-        const language = match[1] || 'plaintext';
-        const codeContent = match[2];
-        const codeBlock = this.createCodeBlock(language, codeContent);
-        this.contentElement.appendChild(codeBlock);
-        
-        lastProcessedIndex = matchEnd;
-    }
-    
-    // Render remaining markdown (incomplete code blocks will show as markdown)
-    const remaining = this.buffer.slice(lastProcessedIndex);
-    if (remaining.trim().length > 0 || isFinal) {
-        const markdownElement = this.renderMarkdown(remaining);
-        while (markdownElement.firstChild) {
-            this.contentElement.appendChild(markdownElement.firstChild);
-        }
-    }
-    
-    // Re-add cursor if it existed
-    if (cursor) {
-        this.contentElement.appendChild(cursor);
-    }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="controls">
+            <h2>Input</h2>
+            <textarea id="input" placeholder="Enter markdown text with code blocks...">Here is some **markdown** text with `inline code`.
+
+## Example Code Block
+
+```javascript
+function hello() {
+    console.log("Hello, World!");
+    return true;
 }
+```
+
+And some more text after the code block.
+
+```python
+def greet(name):
+    print(f"Hello, {name}!")
+    for i in range(5):
+        print(i)
+```
+
+You can use double backticks like `` this `` for inline formatting.</textarea>
+            <div class="button-group">
+                <button onclick="renderAll()">Render All</button>
+                <button onclick="streamRender()" class="secondary">Stream Render</button>
+                <button onclick="clearOutput()" class="secondary">Clear</button>
+            </div>
+        </div>
+
+        <div class="output">
+            <h2>Output</h2>
+            <div id="content"></div>
+        </div>
+    </div>
+
+    <script>
+        // Configure marked to not handle code blocks (we'll do it manually)
+        marked.setOptions({
+            breaks: true,
+            gfm: true
+        });
+
+        class MarkdownRenderer {
+            constructor(contentElement) {
+                this.contentElement = contentElement;
+                this.buffer = '';
+            }
+
+            extractCodeBlocks(text) {
+                // Matches code blocks: ``` optionally followed by language, content, then ```
+                const regex = /```(\w+)?\s*\n([\s\S]*?)\n```/g;
+                const result = [];
+                let lastIndex = 0;
+                let match;
+
+                while ((match = regex.exec(text)) !== null) {
+                    const matchStart = match.index;
+                    const matchEnd = regex.lastIndex;
+
+                    // Extract non-code content before this code block
+                    const nonCodeText = text.slice(lastIndex, matchStart);
+                    if (nonCodeText.length > 0) {
+                        result.push({ type: 'markdown', content: nonCodeText });
+                    }
+
+                    const language = match[1] || 'plaintext';
+                    const codeContent = match[2];
+                    result.push({ type: 'code', language, content: codeContent });
+
+                    lastIndex = matchEnd;
+                }
+
+                // Remaining non-code content
+                if (lastIndex < text.length) {
+                    const remaining = text.slice(lastIndex);
+                    if (remaining.length > 0) {
+                        result.push({ type: 'markdown', content: remaining });
+                    }
+                }
+
+                return result;
+            }
+
+            createCodeBlock(language, code) {
+                const blockId = 'code-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+
+                const wrapper = document.createElement('div');
+                wrapper.className = 'code-block';
+
+                const header = document.createElement('div');
+                header.className = 'code-block-header';
+
+                const langLabel = document.createElement('span');
+                langLabel.className = 'code-block-language';
+                langLabel.textContent = language;
+
+                const copyBtn = document.createElement('button');
+                copyBtn.className = 'code-block-copy';
+                copyBtn.textContent = 'Copy';
+                copyBtn.onclick = () => this.copyCode(code, copyBtn);
+
+                header.appendChild(langLabel);
+                header.appendChild(copyBtn);
+
+                const pre = document.createElement('pre');
+                const codeElement = document.createElement('code');
+                codeElement.className = `language-${language}`;
+                codeElement.textContent = code;
+
+                // Apply syntax highlighting
+                hljs.highlightElement(codeElement);
+
+                pre.appendChild(codeElement);
+                wrapper.appendChild(header);
+                wrapper.appendChild(pre);
+
+                return wrapper;
+            }
+
+            createLiveCodeBlock(language, code) {
+                // Create a code block for streaming content (with live highlighting)
+                const blockId = 'code-live-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+
+                const wrapper = document.createElement('div');
+                wrapper.className = 'code-block';
+                wrapper.setAttribute('data-live', 'true');
+
+                const header = document.createElement('div');
+                header.className = 'code-block-header';
+
+                const langLabel = document.createElement('span');
+                langLabel.className = 'code-block-language';
+                langLabel.textContent = language;
+
+                const copyBtn = document.createElement('button');
+                copyBtn.className = 'code-block-copy';
+                copyBtn.textContent = 'Copy';
+                copyBtn.onclick = () => this.copyCode(code, copyBtn);
+
+                header.appendChild(langLabel);
+                header.appendChild(copyBtn);
+
+                const pre = document.createElement('pre');
+                const codeElement = document.createElement('code');
+                codeElement.className = `language-${language}`;
+                codeElement.textContent = code;
+
+                // Apply syntax highlighting immediately
+                hljs.highlightElement(codeElement);
+
+                pre.appendChild(codeElement);
+                wrapper.appendChild(header);
+                wrapper.appendChild(pre);
+
+                return wrapper;
+            }
+
+            copyCode(code, button) {
+                navigator.clipboard.writeText(code).then(() => {
+                    const originalText = button.textContent;
+                    button.textContent = 'Copied!';
+                    button.classList.add('copied');
+
+                    setTimeout(() => {
+                        button.textContent = originalText;
+                        button.classList.remove('copied');
+                    }, 2000);
+                });
+            }
+
+            renderMarkdown(markdown) {
+                const html = marked.parse(markdown);
+                const temp = document.createElement('div');
+                temp.innerHTML = html;
+                return temp;
+            }
+
+            renderAll(text) {
+                this.contentElement.innerHTML = '';
+                const blocks = this.extractCodeBlocks(text);
+
+                blocks.forEach(block => {
+                    if (block.type === 'code') {
+                        const codeBlock = this.createCodeBlock(block.language, block.content);
+                        this.contentElement.appendChild(codeBlock);
+                    } else {
+                        const markdownElement = this.renderMarkdown(block.content);
+                        while (markdownElement.firstChild) {
+                            this.contentElement.appendChild(markdownElement.firstChild);
+                        }
+                    }
+                });
+            }
+
+            async renderStream(text, chunkSize = 5, delay = 50) {
+                this.contentElement.innerHTML = '';
+                this.buffer = '';
+
+                // Add streaming cursor
+                const cursor = document.createElement('span');
+                cursor.className = 'streaming-cursor';
+                this.contentElement.appendChild(cursor);
+
+                // Simulate streaming by adding characters chunk by chunk
+                for (let i = 0; i < text.length; i += chunkSize) {
+                    const chunk = text.slice(i, i + chunkSize);
+                    this.buffer += chunk;
+
+                    // Process the buffer
+                    this.processBuffer();
+
+                    // Re-add cursor at the end
+                    if (cursor.parentNode) {
+                        cursor.parentNode.removeChild(cursor);
+                    }
+                    this.contentElement.appendChild(cursor);
+
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                }
+
+                // Final processing
+                this.processBuffer(true);
+
+                // Remove cursor
+                if (cursor.parentNode) {
+                    cursor.parentNode.removeChild(cursor);
+                }
+            }
+
+            processBuffer(isFinal = false) {
+                // Try to extract complete code blocks from buffer
+                const completeCodeBlockRegex = /```(\w+)?\s*\n([\s\S]*?)\n```/g;
+                // Detect incomplete/ongoing code blocks
+                const incompleteCodeBlockRegex = /```(\w+)?\s*\n([\s\S]*)$/;
+
+                let lastProcessedIndex = 0;
+                let match;
+                let hasIncompleteBlock = false;
+                let incompleteBlockStart = -1;
+
+                // Clear content except cursor
+                const cursor = this.contentElement.querySelector('.streaming-cursor');
+                this.contentElement.innerHTML = '';
+
+                // Process complete code blocks
+                while ((match = completeCodeBlockRegex.exec(this.buffer)) !== null) {
+                    const matchStart = match.index;
+                    const matchEnd = completeCodeBlockRegex.lastIndex;
+
+                    // Render markdown before this code block
+                    const beforeMarkdown = this.buffer.slice(lastProcessedIndex, matchStart);
+                    if (beforeMarkdown.trim().length > 0) {
+                        const markdownElement = this.renderMarkdown(beforeMarkdown);
+                        while (markdownElement.firstChild) {
+                            this.contentElement.appendChild(markdownElement.firstChild);
+                        }
+                    }
+
+                    // Render the complete code block with highlighting
+                    const language = match[1] || 'plaintext';
+                    const codeContent = match[2];
+                    const codeBlock = this.createCodeBlock(language, codeContent);
+                    this.contentElement.appendChild(codeBlock);
+
+                    lastProcessedIndex = matchEnd;
+                }
+
+                // Check for incomplete code block in the remaining buffer
+                const remaining = this.buffer.slice(lastProcessedIndex);
+                const incompleteMatch = incompleteCodeBlockRegex.exec(remaining);
+
+                if (incompleteMatch && !isFinal) {
+                    // We have an incomplete code block that's still streaming
+                    hasIncompleteBlock = true;
+                    incompleteBlockStart = lastProcessedIndex + incompleteMatch.index;
+
+                    // Render markdown before the incomplete code block
+                    const beforeIncomplete = this.buffer.slice(lastProcessedIndex, incompleteBlockStart);
+                    if (beforeIncomplete.trim().length > 0) {
+                        const markdownElement = this.renderMarkdown(beforeIncomplete);
+                        while (markdownElement.firstChild) {
+                            this.contentElement.appendChild(markdownElement.firstChild);
+                        }
+                    }
+
+                    // Render the incomplete code block with live highlighting
+                    const language = incompleteMatch[1] || 'plaintext';
+                    const codeContent = incompleteMatch[2];
+                    const incompleteCodeBlock = this.createLiveCodeBlock(language, codeContent);
+                    this.contentElement.appendChild(incompleteCodeBlock);
+
+                } else {
+                    // No incomplete code block, just render remaining markdown
+                    if (remaining.trim().length > 0 || isFinal) {
+                        const markdownElement = this.renderMarkdown(remaining);
+                        while (markdownElement.firstChild) {
+                            this.contentElement.appendChild(markdownElement.firstChild);
+                        }
+                    }
+                }
+
+                // Re-add cursor if it existed
+                if (cursor) {
+                    this.contentElement.appendChild(cursor);
+                }
+            }
+
+            clear() {
+                this.contentElement.innerHTML = '';
+                this.buffer = '';
+            }
+        }
+
+        // Initialize renderer
+        const renderer = new MarkdownRenderer(document.getElementById('content'));
+
+        function renderAll() {
+            const input = document.getElementById('input').value;
+            renderer.renderAll(input);
+        }
+
+        function streamRender() {
+            const input = document.getElementById('input').value;
+            renderer.renderStream(input, 5, 30); // 5 chars per chunk, 30ms delay
+        }
+
+        function clearOutput() {
+            renderer.clear();
+        }
+
+        // Initial render
+        renderAll();
+    </script>
+</body>
+
+</html>
