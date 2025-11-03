@@ -1,88 +1,68 @@
 function extractCodeBlocks(text) {
     const result = [];
-    let lastIndex = 0;
-    let pos = 0;
+    const lines = text.split('\n');
+    let currentBlock = null;
+    let nonCodeLines = [];
     
-    while (pos < text.length) {
-        // Find the start of a code block
-        const startMatch = text.indexOf('```', pos);
-        if (startMatch === -1) break;
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const trimmedLine = line.trim();
         
-        // Extract non-code content before this code block
-        const nonCodeText = text.slice(lastIndex, startMatch).trim();
-        if (nonCodeText.length > 0) {
-            result.push({ type: 'non-code', content: nonCodeText });
-        }
-        
-        // Find the end of the opening ``` line to get language
-        let lineEnd = startMatch + 3;
-        while (lineEnd < text.length && text[lineEnd] !== '\n' && text[lineEnd] !== '\r') {
-            lineEnd++;
-        }
-        
-        const language = text.slice(startMatch + 3, lineEnd).trim() || null;
-        
-        // Move past the newline(s) after the opening ```
-        let contentStart = lineEnd;
-        while (contentStart < text.length && (text[contentStart] === '\r' || text[contentStart] === '\n')) {
-            contentStart++;
-        }
-        
-        // Find the closing ``` - must be on its own line
-        let endMatch = -1;
-        let searchPos = contentStart;
-        
-        while (searchPos < text.length) {
-            const nextBackticks = text.indexOf('```', searchPos);
-            if (nextBackticks === -1) break;
-            
-            // Check if ``` is at start of line (only whitespace before it on the line)
-            let lineStart = nextBackticks - 1;
-            while (lineStart >= 0 && text[lineStart] !== '\n' && text[lineStart] !== '\r') {
-                lineStart--;
+        // Check if this line starts with ```
+        if (trimmedLine.startsWith('```')) {
+            if (currentBlock === null) {
+                // Starting a new code block
+                // Save any accumulated non-code content
+                if (nonCodeLines.length > 0) {
+                    const content = nonCodeLines.join('\n').trim();
+                    if (content) {
+                        result.push({ type: 'non-code', content });
+                    }
+                    nonCodeLines = [];
+                }
+                
+                // Extract language (everything after ``` on the same line)
+                const language = trimmedLine.substring(3).trim() || null;
+                currentBlock = {
+                    type: 'code',
+                    language: language,
+                    content: []
+                };
+            } else {
+                // Ending the current code block
+                result.push({
+                    type: 'code',
+                    language: currentBlock.language,
+                    content: currentBlock.content.join('\n').trim()
+                });
+                currentBlock = null;
             }
-            lineStart++; // Move to first char of line
-            
-            // Check if only whitespace between line start and ```
-            const beforeBackticks = text.slice(lineStart, nextBackticks);
-            if (/^\s*$/.test(beforeBackticks)) {
-                endMatch = nextBackticks;
-                break;
+        } else {
+            // Regular line
+            if (currentBlock !== null) {
+                // Inside a code block
+                currentBlock.content.push(line);
+            } else {
+                // Outside a code block
+                nonCodeLines.push(line);
             }
-            
-            searchPos = nextBackticks + 3;
         }
-        
-        if (endMatch === -1) {
-            // No closing found, skip this block
-            pos = startMatch + 3;
-            lastIndex = startMatch;
-            continue;
-        }
-        
-        // Extract code content (everything between opening and closing)
-        const codeContent = text.slice(contentStart, endMatch).trimEnd();
-        result.push({ type: 'code', language, content: codeContent });
-        
-        // Move past the closing ```
-        lastIndex = endMatch + 3;
-        
-        // Skip any trailing content on the same line as closing ```
-        while (lastIndex < text.length && text[lastIndex] !== '\n' && text[lastIndex] !== '\r') {
-            lastIndex++;
-        }
-        while (lastIndex < text.length && (text[lastIndex] === '\n' || text[lastIndex] === '\r')) {
-            lastIndex++;
-        }
-        
-        pos = lastIndex;
     }
     
-    // Remaining non-code content
-    if (lastIndex < text.length) {
-        const remaining = text.slice(lastIndex).trim();
-        if (remaining.length > 0) {
-            result.push({ type: 'non-code', content: remaining });
+    // Handle any remaining content
+    if (currentBlock !== null) {
+        // Unclosed code block
+        result.push({
+            type: 'code',
+            language: currentBlock.language,
+            content: currentBlock.content.join('\n').trim()
+        });
+    }
+    
+    if (nonCodeLines.length > 0) {
+        const content = nonCodeLines.join('\n').trim();
+        if (content) {
+            result.push({ type: 'non-code', content });
         }
     }
     
