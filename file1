@@ -1,12 +1,25 @@
-function extractCodeBlocks(text) {
-    const result = [];
-    const lines = text.split('\n');
-    let currentBlock = null;
-    let nonCodeLines = [];
+interface CodeBlock {
+    type: 'code';
+    language: string | null;
+    content: string;
+}
+
+interface NonCodeBlock {
+    type: 'non-code';
+    content: string;
+}
+
+type ContentBlock = CodeBlock | NonCodeBlock;
+
+function extractCodeBlocks(text: string): ContentBlock[] {
+    const result: ContentBlock[] = [];
+    const lines: string[] = text.split('\n');
+    let currentBlock: { type: 'code'; language: string | null; contentLines: string[] } | null = null;
+    let nonCodeLines: string[] = [];
     
     for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        const trimmedLine = line.trim();
+        const line: string = lines[i];
+        const trimmedLine: string = line.trim();
         
         // Check if this line starts with ```
         if (trimmedLine.startsWith('```')) {
@@ -14,7 +27,7 @@ function extractCodeBlocks(text) {
                 // Starting a new code block
                 // Save any accumulated non-code content
                 if (nonCodeLines.length > 0) {
-                    const content = nonCodeLines.join('\n').trim();
+                    const content: string = nonCodeLines.join('\n').trim();
                     if (content) {
                         result.push({ type: 'non-code', content });
                     }
@@ -22,18 +35,18 @@ function extractCodeBlocks(text) {
                 }
                 
                 // Extract language (everything after ``` on the same line)
-                const language = trimmedLine.substring(3).trim() || null;
+                const language: string | null = trimmedLine.substring(3).trim() || null;
                 currentBlock = {
                     type: 'code',
                     language: language,
-                    contentLines: []  // Changed from 'content' to 'contentLines'
+                    contentLines: []
                 };
             } else {
                 // Ending the current code block
                 result.push({
                     type: 'code',
                     language: currentBlock.language,
-                    content: currentBlock.contentLines.join('\n').trim()  // Use contentLines here
+                    content: currentBlock.contentLines.join('\n').trim()
                 });
                 currentBlock = null;
             }
@@ -41,7 +54,7 @@ function extractCodeBlocks(text) {
             // Regular line
             if (currentBlock !== null) {
                 // Inside a code block
-                currentBlock.contentLines.push(line);  // Use contentLines here
+                currentBlock.contentLines.push(line);
             } else {
                 // Outside a code block
                 nonCodeLines.push(line);
@@ -55,12 +68,12 @@ function extractCodeBlocks(text) {
         result.push({
             type: 'code',
             language: currentBlock.language,
-            content: currentBlock.contentLines.join('\n').trim()  // Use contentLines here
+            content: currentBlock.contentLines.join('\n').trim()
         });
     }
     
     if (nonCodeLines.length > 0) {
-        const content = nonCodeLines.join('\n').trim();
+        const content: string = nonCodeLines.join('\n').trim();
         if (content) {
             result.push({ type: 'non-code', content });
         }
@@ -68,3 +81,17 @@ function extractCodeBlocks(text) {
     
     return result;
 }
+
+// Example usage:
+const text = `Here's a tiny Java Program:
+\`\`\`java
+public class Hello{
+  public static void main(String[] args){
+    System.out.println("\`\`\`");
+  }
+}
+\`\`\`
+compile and run it`;
+
+const blocks: ContentBlock[] = extractCodeBlocks(text);
+console.log(JSON.stringify(blocks, null, 2));
