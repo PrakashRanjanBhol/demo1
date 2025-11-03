@@ -1,26 +1,60 @@
 function extractCodeBlocks(text) {
-    // Matches code blocks with or without language identifier
-    // Updated to handle various line ending scenarios
-    const regex = /```(\w+)?\s*\r?\n([\s\S]*?)```/g;
     const result = [];
     let lastIndex = 0;
-    let match;
+    let pos = 0;
     
-    while ((match = regex.exec(text)) !== null) {
-        const matchStart = match.index;
-        const matchEnd = regex.lastIndex;
+    while (pos < text.length) {
+        // Find the start of a code block
+        const startMatch = text.indexOf('```', pos);
+        if (startMatch === -1) break;
         
         // Extract non-code content before this code block
-        const nonCodeText = text.slice(lastIndex, matchStart).trim();
+        const nonCodeText = text.slice(lastIndex, startMatch).trim();
         if (nonCodeText.length > 0) {
             result.push({ type: 'non-code', content: nonCodeText });
         }
         
-        const language = match[1] || null;
-        const codeContent = match[2].trim();
+        // Find language identifier (optional)
+        let languageEnd = startMatch + 3;
+        while (languageEnd < text.length && text[languageEnd] !== '\n' && text[languageEnd] !== '\r') {
+            languageEnd++;
+        }
+        
+        const language = text.slice(startMatch + 3, languageEnd).trim() || null;
+        
+        // Skip past the newline after language identifier
+        let contentStart = languageEnd;
+        if (text[contentStart] === '\r') contentStart++;
+        if (text[contentStart] === '\n') contentStart++;
+        
+        // Find the end of the code block (next ``` that's at the start of a line or after newline)
+        let endMatch = -1;
+        let searchPos = contentStart;
+        
+        while (searchPos < text.length) {
+            const nextBackticks = text.indexOf('```', searchPos);
+            if (nextBackticks === -1) break;
+            
+            // Check if these backticks are at the start of a line (preceded by newline or start of string)
+            const charBefore = nextBackticks > 0 ? text[nextBackticks - 1] : '\n';
+            if (charBefore === '\n' || charBefore === '\r' || nextBackticks === 0) {
+                endMatch = nextBackticks;
+                break;
+            }
+            
+            searchPos = nextBackticks + 3;
+        }
+        
+        if (endMatch === -1) {
+            // No closing backticks found, treat rest as code
+            endMatch = text.length;
+        }
+        
+        const codeContent = text.slice(contentStart, endMatch).trim();
         result.push({ type: 'code', language, content: codeContent });
         
-        lastIndex = matchEnd;
+        lastIndex = endMatch + 3; // Skip past closing ```
+        pos = lastIndex;
     }
     
     // Remaining non-code content
