@@ -1,36 +1,332 @@
-copyTableAsHTML() {
-  const tableElement = document.querySelector('table');
-  
-  if (!tableElement) return;
+import { Component } from '@angular/core';
+import { CommonModule } from '@angular/common';
 
-  // Create a temporary container
-  const container = document.createElement('div');
-  container.style.position = 'fixed';
-  container.style.left = '-9999px';
-  container.contentEditable = 'true';
-  
-  // Clone and append table
-  container.appendChild(tableElement.cloneNode(true));
-  document.body.appendChild(container);
-  
-  // Select the content
-  const range = document.createRange();
-  range.selectNodeContents(container);
-  
-  const selection = window.getSelection();
-  if (selection) {
-    selection.removeAllRanges();
-    selection.addRange(range);
+@Component({
+  selector: 'app-share-url',
+  standalone: true,
+  imports: [CommonModule],
+  templateUrl: './share-url.component.html',
+  styleUrls: ['./share-url.component.css']
+})
+export class ShareUrlComponent {
+  showOverlay = false;
+  generatedURL = '';
+  copyButtonText = 'Copy URL';
+  isCopied = false;
+  showSuccessMessage = false;
+
+  generateShareURL(): void {
+    // Generate a unique URL
+    const baseURL = window.location.origin + window.location.pathname;
+    const shareId = 'share-' + Math.random().toString(36).substr(2, 9);
+    this.generatedURL = baseURL + '?shared=' + shareId;
     
-    try {
-      document.execCommand('copy');
-      this.copying = true;
-      setTimeout(() => this.copying = false, 2000);
-    } catch (err) {
-      console.error('Copy failed:', err);
-    } finally {
-      selection.removeAllRanges();
-      document.body.removeChild(container);
+    // Show overlay
+    this.showOverlay = true;
+    
+    // Reset states
+    this.isCopied = false;
+    this.copyButtonText = 'Copy URL';
+    this.showSuccessMessage = false;
+  }
+
+  closeOverlay(event?: Event): void {
+    if (!event || (event.target as HTMLElement).classList.contains('overlay')) {
+      this.showOverlay = false;
     }
   }
+
+  copyToClipboard(): void {
+    navigator.clipboard.writeText(this.generatedURL).then(() => {
+      // Update button appearance
+      this.isCopied = true;
+      this.copyButtonText = 'Copied!';
+      this.showSuccessMessage = true;
+      
+      // Reset after 2 seconds
+      setTimeout(() => {
+        this.isCopied = false;
+        this.copyButtonText = 'Copy URL';
+        this.showSuccessMessage = false;
+      }, 2000);
+    }).catch(err => {
+      alert('Failed to copy URL. Please try again.');
+      console.error('Copy failed:', err);
+    });
+  }
+
+  onKeyDown(event: KeyboardEvent): void {
+    if (event.key === 'Escape' && this.showOverlay) {
+      this.closeOverlay();
+    }
+  }
+}
+
+
+
+
+
+
+
+<div class="page-container" (keydown)="onKeyDown($event)" tabindex="0">
+  <div class="container">
+    <h1>Share This Page</h1>
+    
+    <button class="share-button" (click)="generateShareURL()">
+      <svg class="share-icon" fill="currentColor" viewBox="0 0 24 24">
+        <path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92 1.61 0 2.92-1.31 2.92-2.92s-1.31-2.92-2.92-2.92z"/>
+      </svg>
+      Generate Share Link
+    </button>
+
+    <p class="info-text">Click the button above to generate a shareable link</p>
+  </div>
+
+  <!-- Overlay Modal -->
+  <div class="overlay" [class.show]="showOverlay" (click)="closeOverlay($event)">
+    <div class="url-container" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h2 class="modal-title">Share Link</h2>
+        <button class="close-button" (click)="closeOverlay()">&times;</button>
+      </div>
+      
+      <div class="url-box">
+        <div class="url-text">{{ generatedURL }}</div>
+      </div>
+      
+      <button class="copy-button" [class.copied]="isCopied" (click)="copyToClipboard()">
+        <svg class="copy-icon" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
+        </svg>
+        <span>{{ copyButtonText }}</span>
+      </button>
+
+      <div class="success-message" [class.show]="showSuccessMessage">
+        ✓ Link copied to clipboard!
+      </div>
+    </div>
+  </div>
+</div>
+
+
+
+
+
+
+.page-container {
+    outline: none;
+}
+
+.page-container:focus {
+    outline: none;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+.container {
+    background: white;
+    padding: 40px;
+    border-radius: 20px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    max-width: 500px;
+    width: 100%;
+    margin: 0 auto;
+}
+
+h1 {
+    text-align: center;
+    color: #333;
+    margin-bottom: 30px;
+    font-size: 24px;
+}
+
+.share-button {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    padding: 15px 30px;
+    border-radius: 50px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.share-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+}
+
+.share-button:active {
+    transform: translateY(0);
+}
+
+.share-icon {
+    width: 20px;
+    height: 20px;
+}
+
+.info-text {
+    text-align: center;
+    color: #6c757d;
+    font-size: 12px;
+    margin-top: 15px;
+}
+
+/* Overlay styles */
+.overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(5px);
+    z-index: 1000;
+    justify-content: center;
+    align-items: center;
+    animation: fadeIn 0.3s ease-out;
+}
+
+.overlay.show {
+    display: flex;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+.url-container {
+    background: white;
+    border-radius: 20px;
+    padding: 30px;
+    max-width: 500px;
+    width: 90%;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    position: relative;
+    animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.modal-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: #333;
+}
+
+.close-button {
+    background: none;
+    border: none;
+    font-size: 28px;
+    color: #999;
+    cursor: pointer;
+    padding: 0;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: background 0.2s, color 0.2s;
+}
+
+.close-button:hover {
+    background: #f0f0f0;
+    color: #333;
+}
+
+.url-box {
+    background: #f8f9fa;
+    border: 2px solid #e9ecef;
+    border-radius: 12px;
+    padding: 15px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.url-text {
+    flex: 1;
+    color: #495057;
+    font-size: 14px;
+    word-break: break-all;
+    font-family: 'Courier New', monospace;
+}
+
+.copy-button {
+    background: #28a745;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: background 0.3s, transform 0.2s;
+    white-space: nowrap;
+}
+
+.copy-button:hover {
+    background: #218838;
+    transform: scale(1.05);
+}
+
+.copy-button:active {
+    transform: scale(0.95);
+}
+
+.copy-button.copied {
+    background: #17a2b8;
+}
+
+.copy-icon {
+    width: 16px;
+    height: 16px;
+}
+
+.success-message {
+    text-align: center;
+    color: #28a745;
+    font-size: 14px;
+    margin-top: 10px;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.success-message.show {
+    opacity: 1;
 }
