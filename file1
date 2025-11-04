@@ -2,69 +2,62 @@ import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 @Component({
-  selector: 'app-share-url',
+  selector: 'app-share-overlay',
   standalone: true,
   imports: [CommonModule],
-  templateUrl: './share-url.component.html',
-  styleUrls: ['./share-url.component.css'],
+  templateUrl: './share-overlay.component.html',
+  styleUrls: ['./share-overlay.component.css'],
   host: {
-    '[class.dark-theme]': 'isDarkTheme'
+    '[class.dark-mode]': 'isDarkMode',
+    '[class.light-mode]': '!isDarkMode'
   }
 })
-export class ShareUrlComponent {
+export class ShareOverlayComponent {
   showOverlay = false;
+  isLoading = false;
   generatedURL = '';
-  copyButtonText = 'Copy URL';
   isCopied = false;
+  copyButtonText = 'Copy URL';
   showSuccessMessage = false;
-  isDarkTheme = false; // Set to true for dark theme, false for light theme
-  isLoading = false; // Loading state for URL generation
+  isDarkMode = false; // false = light mode, true = dark mode
 
-  generateShareURL(): void {
-    // Show overlay with loading state
+  openOverlay(): void {
     this.showOverlay = true;
     this.isLoading = true;
-    
-    // Reset states
     this.generatedURL = '';
     this.isCopied = false;
     this.copyButtonText = 'Copy URL';
     this.showSuccessMessage = false;
-    
-    // Simulate API call or processing time (remove setTimeout for real implementation)
+
+    // Simulate URL generation (replace with actual API call)
     setTimeout(() => {
-      // Generate a unique URL
       const baseURL = window.location.origin + window.location.pathname;
       const shareId = 'share-' + Math.random().toString(36).substr(2, 9);
       this.generatedURL = baseURL + '?shared=' + shareId;
-      
-      // Hide loader
       this.isLoading = false;
-    }, 1500); // Simulated 1.5 second delay - adjust or remove for production
+    }, 1500);
   }
 
   closeOverlay(event?: Event): void {
-    if (!event || (event.target as HTMLElement).classList.contains('overlay')) {
+    if (!event || (event.target as HTMLElement).classList.contains('share-overlay')) {
       this.showOverlay = false;
     }
   }
 
   copyToClipboard(): void {
     navigator.clipboard.writeText(this.generatedURL).then(() => {
-      // Update button appearance
       this.isCopied = true;
       this.copyButtonText = 'Copied!';
       this.showSuccessMessage = true;
-      
-      // Reset after 2 seconds
+
       setTimeout(() => {
         this.isCopied = false;
         this.copyButtonText = 'Copy URL';
         this.showSuccessMessage = false;
       }, 2000);
     }).catch(err => {
+      console.error('Failed to copy URL:', err);
       alert('Failed to copy URL. Please try again.');
-      console.error('Copy failed:', err);
     });
   }
 
@@ -74,9 +67,8 @@ export class ShareUrlComponent {
     }
   }
 
-  // Toggle between light and dark theme
   toggleTheme(): void {
-    this.isDarkTheme = !this.isDarkTheme;
+    this.isDarkMode = !this.isDarkMode;
   }
 }
 
@@ -85,67 +77,45 @@ export class ShareUrlComponent {
 
 
 
-<div class="page-container" (keydown)="onKeyDown($event)" tabindex="0">
-  <div class="container">
-    <div class="header-controls">
-      <button class="theme-toggle" (click)="toggleTheme()" [attr.aria-label]="isDarkTheme ? 'Switch to light theme' : 'Switch to dark theme'">
-        <svg *ngIf="!isDarkTheme" class="theme-icon" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-        </svg>
-        <svg *ngIf="isDarkTheme" class="theme-icon" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
-        </svg>
-      </button>
+
+<!-- Overlay Modal Only -->
+<div class="share-overlay" 
+     [class.show]="showOverlay" 
+     (click)="closeOverlay($event)"
+     (keydown)="onKeyDown($event)"
+     tabindex="0">
+  
+  <div class="share-modal" (click)="$event.stopPropagation()">
+    
+    <!-- Loader State -->
+    <div *ngIf="isLoading" class="share-loader">
+      <div class="share-spinner"></div>
+      <p class="share-loader-text">Generating link...</p>
     </div>
-    
-    <h1>Share This Page</h1>
-    
-    <button class="share-button" (click)="generateShareURL()">
-      <svg class="share-icon" fill="currentColor" viewBox="0 0 24 24">
-        <path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92 1.61 0 2.92-1.31 2.92-2.92s-1.31-2.92-2.92-2.92z"/>
-      </svg>
-      Generate Share Link
-    </button>
 
-    <p class="info-text">Click the button above to generate a shareable link</p>
-  </div>
-
-  <!-- Overlay Modal -->
-  <div class="overlay" [class.show]="showOverlay" (click)="closeOverlay($event)">
-    <div class="url-container" (click)="$event.stopPropagation()">
+    <!-- Content State -->
+    <div *ngIf="!isLoading" class="share-content">
+      <div class="share-modal-header">
+        <h2 class="share-modal-title">🔗 Share Link</h2>
+        <button class="share-close-btn" (click)="closeOverlay()">&times;</button>
+      </div>
       
-      <!-- Loader State -->
-      <div *ngIf="isLoading" class="loader-container">
-        <div class="loader">
-          <div class="spinner"></div>
-        </div>
-        <p class="loader-text">Generating your share link...</p>
+      <div class="share-url-box">
+        <div class="share-url-text">{{ generatedURL }}</div>
       </div>
+      
+      <button class="share-copy-btn" [class.copied]="isCopied" (click)="copyToClipboard()">
+        <svg class="share-copy-icon" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
+        </svg>
+        <span>{{ copyButtonText }}</span>
+      </button>
 
-      <!-- Content State -->
-      <div *ngIf="!isLoading" class="content-container">
-        <div class="modal-header">
-          <h2 class="modal-title">Share Link</h2>
-          <button class="close-button" (click)="closeOverlay()">&times;</button>
-        </div>
-        
-        <div class="url-box">
-          <div class="url-text">{{ generatedURL }}</div>
-        </div>
-        
-        <button class="copy-button" [class.copied]="isCopied" (click)="copyToClipboard()">
-          <svg class="copy-icon" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
-          </svg>
-          <span>{{ copyButtonText }}</span>
-        </button>
-
-        <div class="success-message" [class.show]="showSuccessMessage">
-          ✓ Link copied to clipboard!
-        </div>
+      <div class="share-success" [class.show]="showSuccessMessage">
+        ✓ Copied to clipboard!
       </div>
-
     </div>
+
   </div>
 </div>
 
@@ -154,547 +124,285 @@ export class ShareUrlComponent {
 
 
 
-/* CSS Variables for Theming */
-:host {
-    /* Light Theme (Default) */
-    --bg-primary: #FFFFFF;
-    --bg-secondary: #F8F9FA;
-    --bg-tertiary: #F1F3F5;
-    --text-primary: #1A1A1A;
-    --text-secondary: #6C757D;
-    --text-tertiary: #ADB5BD;
-    --border-color: #E9ECEF;
-    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.08);
-    --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.12);
-    --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.16);
-    --overlay-bg: rgba(0, 0, 0, 0.5);
+
+
+
+/* Light Mode (Default) */
+:host.light-mode {
+  --share-chat-bg-primary: #FFFFFF;
+  --share-chat-bg-secondary: #F8F9FA;
+  --share-chat-text-primary: #1A1A1A;
+  --share-chat-text-secondary: #6C757D;
+  --share-chat-border-color: #E9ECEF;
+  --share-chat-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  --share-chat-overlay-bg: rgba(0, 0, 0, 0.5);
 }
 
-/* Dark Theme */
-:host(.dark-theme) {
-    --bg-primary: #111113;
-    --bg-secondary: #1A1A1D;
-    --bg-tertiary: #232326;
-    --text-primary: #E8E8E8;
-    --text-secondary: #A0A0A0;
-    --text-tertiary: #6C6C6C;
-    --border-color: #2D2D30;
-    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.4);
-    --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.6);
-    --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.8);
-    --overlay-bg: rgba(0, 0, 0, 0.75);
+/* Dark Mode */
+:host.dark-mode {
+  --share-chat-bg-primary: #111113;
+  --share-chat-bg-secondary: #1A1A1D;
+  --share-chat-text-primary: #E8E8E8;
+  --share-chat-text-secondary: #A0A0A0;
+  --share-chat-border-color: #2D2D30;
+  --share-chat-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+  --share-chat-overlay-bg: rgba(0, 0, 0, 0.75);
 }
 
-.page-container {
-    outline: none;
+/* Overlay */
+.share-overlay {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--share-chat-overlay-bg);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 1000;
+  justify-content: center;
+  align-items: center;
+  animation: shareOverlayFadeIn 0.3s ease;
+  outline: none;
 }
 
-.page-container:focus {
-    outline: none;
+.share-overlay.show {
+  display: flex;
 }
 
-* {
-    box-sizing: border-box;
-}
-
-.container {
-    background: var(--bg-primary);
-    padding: 40px;
-    border-radius: 20px;
-    box-shadow: var(--shadow-lg);
-    max-width: 500px;
-    width: 100%;
-    margin: 0 auto;
-    transition: background 0.3s ease, box-shadow 0.3s ease;
-    position: relative;
-}
-
-.header-controls {
-    display: flex;
-    justify-content: flex-end;
-    margin-bottom: 20px;
-}
-
-.theme-toggle {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    width: 44px;
-    height: 44px;
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    color: var(--text-primary);
-}
-
-.theme-toggle:hover {
-    background: var(--bg-tertiary);
-    transform: scale(1.05);
-    border-color: var(--text-tertiary);
-}
-
-.theme-toggle:active {
-    transform: scale(0.95);
-}
-
-.theme-icon {
-    width: 22px;
-    height: 22px;
-    transition: transform 0.3s ease;
-}
-
-.theme-toggle:hover .theme-icon {
-    transform: rotate(20deg);
-}
-
-h1 {
-    text-align: center;
-    color: var(--text-primary);
-    margin-bottom: 30px;
-    font-size: 24px;
-    font-weight: 700;
-    transition: color 0.3s ease;
-}
-
-.share-button {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    border: none;
-    padding: 16px 32px;
-    border-radius: 16px;
-    font-size: 16px;
-    font-weight: 600;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    width: 100%;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    position: relative;
-    overflow: hidden;
-}
-
-.share-button::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0) 100%);
+@keyframes shareOverlayFadeIn {
+  from {
     opacity: 0;
-    transition: opacity 0.3s ease;
-}
-
-.share-button:hover::before {
+  }
+  to {
     opacity: 1;
+  }
 }
 
-.share-button:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 12px 28px rgba(102, 126, 234, 0.35);
+/* Modal */
+.share-modal {
+  background: var(--share-chat-bg-primary);
+  border-radius: 16px;
+  padding: 24px;
+  max-width: 420px;
+  width: 90%;
+  box-shadow: var(--share-chat-shadow);
+  animation: shareModalSlideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  border: 1px solid var(--share-chat-border-color);
+  transition: all 0.3s ease;
 }
 
-.share-button:active {
-    transform: translateY(0);
+@keyframes shareModalSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
-.share-icon {
-    width: 22px;
-    height: 22px;
-    transition: transform 0.3s ease;
+/* Loader */
+.share-loader {
+  text-align: center;
+  padding: 32px 0;
 }
 
-.share-button:hover .share-icon {
-    transform: scale(1.1) rotate(5deg);
+.share-spinner {
+  width: 48px;
+  height: 48px;
+  border: 3px solid var(--share-chat-border-color);
+  border-top: 3px solid #667eea;
+  border-radius: 50%;
+  animation: shareSpinnerSpin 1s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite;
+  margin: 0 auto 16px;
 }
 
-.info-text {
-    text-align: center;
-    color: var(--text-secondary);
+@keyframes shareSpinnerSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.share-loader-text {
+  color: var(--share-chat-text-secondary);
+  font-size: 14px;
+  margin: 0;
+}
+
+/* Content */
+.share-content {
+  animation: shareContentFadeIn 0.3s ease;
+}
+
+@keyframes shareContentFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Modal Header */
+.share-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.share-modal-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--share-chat-text-primary);
+  margin: 0;
+  transition: color 0.3s ease;
+}
+
+.share-close-btn {
+  background: var(--share-chat-bg-secondary);
+  border: 1px solid var(--share-chat-border-color);
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--share-chat-text-secondary);
+  font-size: 20px;
+  transition: all 0.3s ease;
+  padding: 0;
+  line-height: 1;
+}
+
+.share-close-btn:hover {
+  background: var(--share-chat-bg-primary);
+  color: var(--share-chat-text-primary);
+  transform: rotate(90deg);
+}
+
+.share-close-btn:active {
+  transform: rotate(90deg) scale(0.9);
+}
+
+/* URL Box */
+.share-url-box {
+  background: var(--share-chat-bg-secondary);
+  border: 1px solid var(--share-chat-border-color);
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 12px;
+  transition: all 0.3s ease;
+}
+
+.share-url-box:hover {
+  border-color: #667eea;
+}
+
+.share-url-text {
+  color: var(--share-chat-text-primary);
+  font-size: 13px;
+  word-break: break-all;
+  font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+  line-height: 1.5;
+  transition: color 0.3s ease;
+}
+
+/* Copy Button */
+.share-copy-btn {
+  background: linear-gradient(135deg, #10B981, #059669);
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.share-copy-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(16, 185, 129, 0.4);
+}
+
+.share-copy-btn:active {
+  transform: translateY(0);
+}
+
+.share-copy-btn.copied {
+  background: linear-gradient(135deg, #3B82F6, #2563EB);
+}
+
+.share-copy-icon {
+  width: 16px;
+  height: 16px;
+  transition: transform 0.3s ease;
+}
+
+.share-copy-btn:hover .share-copy-icon {
+  transform: scale(1.1);
+}
+
+.share-copy-btn.copied .share-copy-icon {
+  animation: shareCheckmark 0.6s ease;
+}
+
+@keyframes shareCheckmark {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.3);
+  }
+}
+
+/* Success Message */
+.share-success {
+  text-align: center;
+  color: #10B981;
+  font-size: 13px;
+  font-weight: 600;
+  margin-top: 12px;
+  padding: 8px;
+  background: rgba(16, 185, 129, 0.1);
+  border-radius: 8px;
+  opacity: 0;
+  transform: translateY(-10px);
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.share-success.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+  .share-modal {
+    padding: 20px;
+    width: 95%;
+  }
+
+  .share-modal-title {
+    font-size: 16px;
+  }
+
+  .share-url-text {
+    font-size: 12px;
+  }
+
+  .share-copy-btn {
+    padding: 9px 18px;
     font-size: 13px;
-    margin-top: 16px;
-    transition: color 0.3s ease;
-}
-
-/* Overlay styles with premium design */
-.overlay {
-    display: none;
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: var(--overlay-bg);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    z-index: 1000;
-    justify-content: center;
-    align-items: center;
-    animation: fadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.overlay.show {
-    display: flex;
-}
-
-@keyframes fadeIn {
-    from {
-        opacity: 0;
-    }
-    to {
-        opacity: 1;
-    }
-}
-
-.url-container {
-    background: var(--bg-primary);
-    border-radius: 24px;
-    padding: 36px;
-    max-width: 540px;
-    width: 90%;
-    box-shadow: var(--shadow-lg);
-    position: relative;
-    animation: slideUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-    border: 1px solid var(--border-color);
-    transition: all 0.3s ease;
-    min-height: 280px;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-}
-
-/* Loader Styles */
-.loader-container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 40px 20px;
-    animation: fadeIn 0.3s ease;
-}
-
-.loader {
-    position: relative;
-    width: 80px;
-    height: 80px;
-    margin-bottom: 24px;
-}
-
-.spinner {
-    width: 100%;
-    height: 100%;
-    border: 4px solid var(--border-color);
-    border-top: 4px solid #667eea;
-    border-radius: 50%;
-    animation: spin 1s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite;
-    position: relative;
-}
-
-.spinner::before {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 60%;
-    height: 60%;
-    border: 4px solid transparent;
-    border-top: 4px solid #764ba2;
-    border-radius: 50%;
-    animation: spin 0.7s linear infinite reverse;
-}
-
-.spinner::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 30%;
-    height: 30%;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border-radius: 50%;
-    animation: pulse 1.5s ease-in-out infinite;
-}
-
-@keyframes spin {
-    0% {
-        transform: rotate(0deg);
-    }
-    100% {
-        transform: rotate(360deg);
-    }
-}
-
-@keyframes pulse {
-    0%, 100% {
-        transform: translate(-50%, -50%) scale(0.8);
-        opacity: 0.6;
-    }
-    50% {
-        transform: translate(-50%, -50%) scale(1.2);
-        opacity: 1;
-    }
-}
-
-.loader-text {
-    color: var(--text-primary);
-    font-size: 16px;
-    font-weight: 600;
-    text-align: center;
-    animation: fadeInOut 2s ease-in-out infinite;
-    margin: 0;
-}
-
-@keyframes fadeInOut {
-    0%, 100% {
-        opacity: 0.5;
-    }
-    50% {
-        opacity: 1;
-    }
-}
-
-/* Content Container */
-.content-container {
-    animation: fadeIn 0.4s ease;
-}
-
-@keyframes slideUp {
-    from {
-        opacity: 0;
-        transform: translateY(40px) scale(0.95);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
-}
-
-.modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 24px;
-}
-
-.modal-title {
-    font-size: 22px;
-    font-weight: 700;
-    color: var(--text-primary);
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    transition: color 0.3s ease;
-}
-
-.modal-title::before {
-    content: '🔗';
-    font-size: 24px;
-}
-
-.close-button {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    font-size: 24px;
-    color: var(--text-secondary);
-    cursor: pointer;
-    padding: 0;
-    width: 36px;
-    height: 36px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 12px;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.close-button:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
-    transform: rotate(90deg);
-    border-color: var(--text-tertiary);
-}
-
-.close-button:active {
-    transform: rotate(90deg) scale(0.9);
-}
-
-.url-box {
-    background: var(--bg-secondary);
-    border: 2px solid var(--border-color);
-    border-radius: 16px;
-    padding: 18px 20px;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 20px;
-    transition: all 0.3s ease;
-    position: relative;
-    overflow: hidden;
-}
-
-.url-box::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 0;
-    height: 100%;
-    width: 4px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    opacity: 0;
-    transition: opacity 0.3s ease;
-}
-
-.url-box:hover::before {
-    opacity: 1;
-}
-
-.url-box:hover {
-    border-color: rgba(102, 126, 234, 0.4);
-    background: var(--bg-tertiary);
-}
-
-.url-text {
-    flex: 1;
-    color: var(--text-primary);
-    font-size: 14px;
-    word-break: break-all;
-    font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Dank Mono', 'Courier New', monospace;
-    line-height: 1.6;
-    font-weight: 500;
-    transition: color 0.3s ease;
-}
-
-.copy-button {
-    background: linear-gradient(135deg, #10B981 0%, #059669 100%);
-    color: white;
-    border: none;
-    padding: 14px 28px;
-    border-radius: 14px;
-    font-size: 15px;
-    font-weight: 600;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    white-space: nowrap;
-    width: 100%;
-    position: relative;
-    overflow: hidden;
-}
-
-.copy-button::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
-    transition: left 0.5s ease;
-}
-
-.copy-button:hover::before {
-    left: 100%;
-}
-
-.copy-button:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 12px 28px rgba(16, 185, 129, 0.35);
-}
-
-.copy-button:active {
-    transform: translateY(0);
-}
-
-.copy-button.copied {
-    background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
-}
-
-.copy-icon {
-    width: 18px;
-    height: 18px;
-    transition: transform 0.3s ease;
-}
-
-.copy-button:hover .copy-icon {
-    transform: scale(1.1);
-}
-
-.copy-button.copied .copy-icon {
-    animation: checkmark 0.6s ease;
-}
-
-@keyframes checkmark {
-    0%, 100% {
-        transform: scale(1);
-    }
-    50% {
-        transform: scale(1.3);
-    }
-}
-
-.success-message {
-    text-align: center;
-    color: #10B981;
-    font-size: 14px;
-    font-weight: 600;
-    margin-top: 16px;
-    padding: 12px;
-    background: rgba(16, 185, 129, 0.1);
-    border-radius: 12px;
-    border: 1px solid rgba(16, 185, 129, 0.2);
-    opacity: 0;
-    transform: translateY(-10px);
-    transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.success-message.show {
-    opacity: 1;
-    transform: translateY(0);
-}
-
-.success-message::before {
-    content: '✓';
-    display: inline-block;
-    margin-right: 8px;
-    font-size: 16px;
-    animation: successPulse 0.6s ease;
-}
-
-@keyframes successPulse {
-    0%, 100% {
-        transform: scale(1);
-    }
-    50% {
-        transform: scale(1.3);
-    }
-}
-
-/* Responsive design */
-@media (max-width: 640px) {
-    .url-container {
-        padding: 28px;
-        width: 95%;
-    }
-    
-    .modal-title {
-        font-size: 20px;
-    }
-    
-    .url-text {
-        font-size: 13px;
-    }
-    
-    .copy-button {
-        padding: 12px 24px;
-        font-size: 14px;
-    }
+  }
 }
