@@ -1,50 +1,23 @@
-PrimeNG 16 Context Menu - Modified Parts Only
-🔄 Changes for PrimeNG 16
-PrimeNG 16 has slightly different imports and API. Here are ONLY the modified parts:
+PrimeNG 16 OverlayPanel Integration - Modified Parts Only
+🔄 Changes for PrimeNG 16 OverlayPanel
+Using OverlayPanel instead of ContextMenu for file actions.
 
 📝 FILE 1: repository-sidebar.component.ts
 MODIFY: Import Section (Lines 1-3)
-typescript// ✅ REPLACE THIS
+typescript// ✅ REPLACE/UPDATE IMPORTS
 import { Component, OnInit, ViewChild } from '@angular/core';
-import { ContextMenu } from 'primeng/contextmenu';
-import { MenuItem } from 'primeng/api';
+import { OverlayPanel } from 'primeng/overlaypanel';
 MODIFY: Properties Section (Lines ~120-123)
 typescript// ✅ ADD THESE PROPERTIES
-// PrimeNG Context Menu
-@ViewChild('cm') contextMenu!: ContextMenu;
-contextMenuItems: MenuItem[] = [];
+// PrimeNG OverlayPanel
+@ViewChild('op') overlayPanel!: OverlayPanel;
 selectedFileName: string | null = null;
-MODIFY: ngOnInit Method (Lines ~125-140)
-typescript// ✅ REPLACE/ADD IN ngOnInit
-ngOnInit(): void {
-  // Initialize PrimeNG context menu items
-  this.contextMenuItems = [
-    {
-      label: 'Summarize File',
-      icon: 'pi pi-file',
-      command: () => this.summarizeFile()
-    },
-    {
-      label: 'Open File',
-      icon: 'pi pi-external-link',
-      command: () => this.openFile()
-    },
-    {
-      separator: true
-    },
-    {
-      label: 'Copy Path',
-      icon: 'pi pi-copy',
-      command: () => this.copyFilePath()
-    }
-  ];
-}
-MODIFY: Context Menu Handler (Lines ~250-256)
+MODIFY: File Right Click Handler (Lines ~250-260)
 typescript// ✅ ADD THIS NEW METHOD (replaces handleFileRightClick)
 onFileRightClick(event: MouseEvent, fileName: string): void {
   this.selectedFileName = fileName;
-  if (this.contextMenu) {
-    this.contextMenu.show(event);
+  if (this.overlayPanel) {
+    this.overlayPanel.toggle(event);
   }
   event.preventDefault();
   event.stopPropagation();
@@ -57,6 +30,7 @@ summarizeFile(): void {
     alert('Summarizing file: ' + relativePath);
   }
   this.selectedFileName = null;
+  this.overlayPanel.hide();
 }
 
 // ✅ ADD THIS NEW METHOD
@@ -66,6 +40,7 @@ openFile(): void {
     alert('Opening file: ' + relativePath);
   }
   this.selectedFileName = null;
+  this.overlayPanel.hide();
 }
 
 // ✅ ADD THIS NEW METHOD
@@ -77,6 +52,7 @@ copyFilePath(): void {
     });
   }
   this.selectedFileName = null;
+  this.overlayPanel.hide();
 }
 ❌ REMOVE THESE METHODS AND HOST LISTENERS:
 typescript// ❌ REMOVE THESE (~30 lines around line 250-280)
@@ -140,8 +116,26 @@ html<!-- ❌ REMOVE THIS ENTIRE SECTION -->
     </div>
 </div>
 
-<!-- ✅ ADD THIS LINE AT THE VERY BOTTOM (after </div> of sidebar) -->
-<p-contextMenu #cm [model]="contextMenuItems"></p-contextMenu>
+<!-- ✅ ADD THIS SECTION AT THE VERY BOTTOM (after </div> of sidebar) -->
+<p-overlayPanel #op [showCloseIcon]="false" [dismissable]="true" styleClass="file-actions-overlay">
+    <ng-template pTemplate="content">
+        <div class="overlay-menu">
+            <div class="overlay-menu-item" (click)="summarizeFile()">
+                <i class="pi pi-file"></i>
+                <span>Summarize File</span>
+            </div>
+            <div class="overlay-menu-item" (click)="openFile()">
+                <i class="pi pi-external-link"></i>
+                <span>Open File</span>
+            </div>
+            <div class="overlay-menu-separator"></div>
+            <div class="overlay-menu-item" (click)="copyFilePath()">
+                <i class="pi pi-copy"></i>
+                <span>Copy Path</span>
+            </div>
+        </div>
+    </ng-template>
+</p-overlayPanel>
 
 📝 FILE 3: repository-sidebar.module.ts
 MODIFY: Import Section and NgModule
@@ -151,7 +145,7 @@ import { FormsModule } from '@angular/forms';
 import { RepositorySidebarComponent } from './repository-sidebar.component';
 
 // ✅ ADD THIS IMPORT FOR PRIMENG 16
-import { ContextMenuModule } from 'primeng/contextmenu';
+import { OverlayPanelModule } from 'primeng/overlaypanel';
 
 @NgModule({
   declarations: [
@@ -160,7 +154,7 @@ import { ContextMenuModule } from 'primeng/contextmenu';
   imports: [
     CommonModule,
     FormsModule,
-    ContextMenuModule  // ✅ ADD THIS LINE
+    OverlayPanelModule  // ✅ ADD THIS LINE
   ],
   exports: [
     RepositorySidebarComponent
@@ -173,85 +167,98 @@ MODIFY: Bottom of File (Add these styles)
 css/* ✅ ADD THESE STYLES AT THE BOTTOM OF THE FILE */
 
 /* ========================================
-   PrimeNG 16 Context Menu Theme Overrides
+   PrimeNG 16 OverlayPanel Custom Styles
    ======================================== */
 
-/* Main Context Menu Container */
-::ng-deep .p-contextmenu {
+/* OverlayPanel Container */
+::ng-deep .file-actions-overlay.p-overlaypanel {
     background-color: var(--bitbucket-bg-tertiary) !important;
     border: 1px solid var(--bitbucket-border-primary) !important;
     border-radius: 6px !important;
     box-shadow: 0 4px 12px var(--bitbucket-shadow-low) !important;
+    padding: 0 !important;
+    min-width: 180px;
+}
+
+/* OverlayPanel Content */
+::ng-deep .file-actions-overlay .p-overlaypanel-content {
     padding: 4px 0 !important;
+    background-color: var(--bitbucket-bg-tertiary) !important;
+    border-radius: 6px !important;
 }
 
-/* Menu Items Container */
-::ng-deep .p-contextmenu .p-menuitem {
-    outline: none !important;
+/* Menu Container */
+.overlay-menu {
+    display: flex;
+    flex-direction: column;
 }
 
-/* Menu Item Links */
-::ng-deep .p-contextmenu .p-menuitem-link {
-    padding: 10px 16px !important;
-    color: var(--bitbucket-text-primary) !important;
-    transition: background-color 0.2s ease !important;
-    border-radius: 0 !important;
-    display: flex !important;
-    align-items: center !important;
+/* Menu Items */
+.overlay-menu-item {
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    color: var(--bitbucket-text-primary);
+    font-size: 13px;
 }
 
-/* Menu Item Hover */
-::ng-deep .p-contextmenu .p-menuitem-link:not(.p-disabled):hover {
-    background-color: var(--bitbucket-border-primary) !important;
+.overlay-menu-item:hover {
+    background-color: var(--bitbucket-border-primary);
 }
 
-/* Menu Item Focus */
-::ng-deep .p-contextmenu .p-menuitem-link:focus {
-    box-shadow: none !important;
-    outline: none !important;
+.overlay-menu-item i {
+    color: var(--bitbucket-text-secondary);
+    font-size: 14px;
+    width: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
-/* Menu Item Icons */
-::ng-deep .p-contextmenu .p-menuitem-icon {
-    color: var(--bitbucket-text-secondary) !important;
-    font-size: 14px !important;
-    margin-right: 10px !important;
-}
-
-/* Menu Item Text */
-::ng-deep .p-contextmenu .p-menuitem-text {
-    color: var(--bitbucket-text-primary) !important;
-    font-size: 13px !important;
+.overlay-menu-item span {
+    color: var(--bitbucket-text-primary);
 }
 
 /* Menu Separator */
-::ng-deep .p-contextmenu .p-menu-separator {
-    border-top: 1px solid var(--bitbucket-border-primary) !important;
-    margin: 4px 0 !important;
-}
-
-/* Active/Focused Item */
-::ng-deep .p-contextmenu .p-menuitem.p-focus > .p-menuitem-link {
-    background-color: var(--bitbucket-border-primary) !important;
+.overlay-menu-separator {
+    border-top: 1px solid var(--bitbucket-border-primary);
+    margin: 4px 0;
 }
 
 /* Light Mode Adjustments */
-[data-theme="light"] ::ng-deep .p-contextmenu {
+[data-theme="light"] ::ng-deep .file-actions-overlay.p-overlaypanel {
     background-color: var(--bitbucket-bg-tertiary) !important;
     border-color: var(--bitbucket-border-primary) !important;
     box-shadow: 0 4px 12px var(--bitbucket-shadow-low) !important;
 }
 
-[data-theme="light"] ::ng-deep .p-contextmenu .p-menuitem-link:not(.p-disabled):hover {
+[data-theme="light"] ::ng-deep .file-actions-overlay .p-overlaypanel-content {
+    background-color: var(--bitbucket-bg-tertiary) !important;
+}
+
+[data-theme="light"] .overlay-menu-item:hover {
     background-color: var(--bitbucket-bg-hover) !important;
 }
 
-[data-theme="light"] ::ng-deep .p-contextmenu .p-menuitem-icon {
+[data-theme="light"] .overlay-menu-item i {
     color: var(--bitbucket-text-secondary) !important;
 }
 
-[data-theme="light"] ::ng-deep .p-contextmenu .p-menuitem-text {
+[data-theme="light"] .overlay-menu-item span {
     color: var(--bitbucket-text-primary) !important;
+}
+
+/* Arrow/Pointer styling */
+::ng-deep .file-actions-overlay .p-overlaypanel:before,
+::ng-deep .file-actions-overlay .p-overlaypanel:after {
+    border-color: transparent transparent var(--bitbucket-border-primary) transparent !important;
+}
+
+::ng-deep .file-actions-overlay .p-overlaypanel:after {
+    border-color: transparent transparent var(--bitbucket-bg-tertiary) transparent !important;
 }
 ❌ REMOVE THESE CSS RULES:
 css/* ❌ REMOVE THESE ENTIRE SECTIONS (around line 380-420) */
