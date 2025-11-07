@@ -1,1191 +1,179 @@
+PrimeNG 16 Context Menu - Modified Parts Only
+🔄 Changes for PrimeNG 16
+PrimeNG 16 has slightly different imports and API. Here are ONLY the modified parts:
+
+📝 FILE 1: repository-sidebar.component.ts
+MODIFY: Import Section (Lines 1-3)
+typescript// ✅ REPLACE THIS
 import { Component, OnInit, ViewChild } from '@angular/core';
 import { ContextMenu } from 'primeng/contextmenu';
 import { MenuItem } from 'primeng/api';
-
-interface Project {
-  project_key: string;
-  project_name: string;
-  project_url: string;
-}
-
-interface Repository {
-  repo_key: string;
-  repo_name: string;
-  repo_url: string;
-}
-
-interface FileSystemItem {
-  type: 'file' | 'folder';
-  children?: { [key: string]: FileSystemItem };
-}
-
-interface FileSystem {
-  root: FileSystemItem;
-}
-
-@Component({
-  selector: 'app-repository-sidebar',
-  templateUrl: './repository-sidebar.component.html',
-  styleUrls: ['./repository-sidebar.component.css']
-})
-export class RepositorySidebarComponent implements OnInit {
-  // Tabs
-  activeTab: 'favorites' | 'all' = 'favorites';
-
-  // Mock Data - All Projects
-  allProjects: Project[] = [
+MODIFY: Properties Section (Lines ~120-123)
+typescript// ✅ ADD THESE PROPERTIES
+// PrimeNG Context Menu
+@ViewChild('cm') contextMenu!: ContextMenu;
+contextMenuItems: MenuItem[] = [];
+selectedFileName: string | null = null;
+MODIFY: ngOnInit Method (Lines ~125-140)
+typescript// ✅ REPLACE/ADD IN ngOnInit
+ngOnInit(): void {
+  // Initialize PrimeNG context menu items
+  this.contextMenuItems = [
     {
-      project_key: 'ecommerce-platform',
-      project_name: 'E-Commerce Platform',
-      project_url: 'http://example.com/projects/ecommerce'
+      label: 'Summarize File',
+      icon: 'pi pi-file',
+      command: () => this.summarizeFile()
     },
     {
-      project_key: 'mobile-banking',
-      project_name: 'Mobile Banking App',
-      project_url: 'http://example.com/projects/banking'
+      label: 'Open File',
+      icon: 'pi pi-external-link',
+      command: () => this.openFile()
     },
     {
-      project_key: 'analytics-dashboard',
-      project_name: 'Analytics Dashboard',
-      project_url: 'http://example.com/projects/analytics'
+      separator: true
     },
     {
-      project_key: 'devops-infra',
-      project_name: 'DevOps Infrastructure',
-      project_url: 'http://example.com/projects/devops'
+      label: 'Copy Path',
+      icon: 'pi pi-copy',
+      command: () => this.copyFilePath()
     }
   ];
-
-  // Mock Data - Repositories by Project
-  repositoriesByProject: { [key: string]: Repository[] } = {
-    'ecommerce-platform': [
-      { repo_key: 'frontend-app', repo_name: 'frontend-app', repo_url: 'http://example.com/repos/frontend' },
-      { repo_key: 'backend-api', repo_name: 'backend-api', repo_url: 'http://example.com/repos/backend' },
-      { repo_key: 'payment-service', repo_name: 'payment-service', repo_url: 'http://example.com/repos/payment' },
-      { repo_key: 'notification-service', repo_name: 'notification-service', repo_url: 'http://example.com/repos/notification' }
-    ],
-    'mobile-banking': [
-      { repo_key: 'ios-app', repo_name: 'ios-app', repo_url: 'http://example.com/repos/ios' },
-      { repo_key: 'android-app', repo_name: 'android-app', repo_url: 'http://example.com/repos/android' },
-      { repo_key: 'shared-backend', repo_name: 'shared-backend', repo_url: 'http://example.com/repos/shared' }
-    ],
-    'analytics-dashboard': [
-      { repo_key: 'dashboard-ui', repo_name: 'dashboard-ui', repo_url: 'http://example.com/repos/dashboard' },
-      { repo_key: 'data-pipeline', repo_name: 'data-pipeline', repo_url: 'http://example.com/repos/pipeline' },
-      { repo_key: 'ml-models', repo_name: 'ml-models', repo_url: 'http://example.com/repos/ml' }
-    ],
-    'devops-infra': [
-      { repo_key: 'terraform-configs', repo_name: 'terraform-configs', repo_url: 'http://example.com/repos/terraform' },
-      { repo_key: 'jenkins-pipelines', repo_name: 'jenkins-pipelines', repo_url: 'http://example.com/repos/jenkins' },
-      { repo_key: 'docker-images', repo_name: 'docker-images', repo_url: 'http://example.com/repos/docker' }
-    ]
-  };
-
-  // Mock Data - Favorite Repositories
-  favoriteRepositories: { [key: string]: Repository[] } = {
-    'ecommerce-platform': [
-      { repo_key: 'frontend-app', repo_name: 'frontend-app', repo_url: 'http://example.com/repos/frontend' },
-      { repo_key: 'backend-api', repo_name: 'backend-api', repo_url: 'http://example.com/repos/backend' }
-    ],
-    'analytics-dashboard': [
-      { repo_key: 'dashboard-ui', repo_name: 'dashboard-ui', repo_url: 'http://example.com/repos/dashboard' }
-    ]
-  };
-
-  // Mock file system
-  fileSystem: FileSystem = {
-    root: {
-      type: 'folder',
-      children: {
-        'src': {
-          type: 'folder',
-          children: {
-            'components': {
-              type: 'folder',
-              children: {
-                'Header.jsx': { type: 'file' },
-                'Footer.jsx': { type: 'file' },
-                'Sidebar.jsx': { type: 'file' }
-              }
-            },
-            'utils': {
-              type: 'folder',
-              children: {
-                'api.js': { type: 'file' },
-                'helpers.js': { type: 'file' }
-              }
-            },
-            'App.jsx': { type: 'file' },
-            'index.js': { type: 'file' }
-          }
-        },
-        'public': {
-          type: 'folder',
-          children: {
-            'index.html': { type: 'file' },
-            'favicon.ico': { type: 'file' }
-          }
-        },
-        'package.json': { type: 'file' },
-        'README.md': { type: 'file' },
-        '.gitignore': { type: 'file' }
-      }
-    }
-  };
-
-  // State
-  favoriteRepos: Set<string> = new Set(['frontend-app', 'backend-api', 'dashboard-ui']);
-  currentProject: Project | null = null;
-  currentFavoriteProject: { project_key: string; project_name: string } | null = null;
-  currentRepo: { id: string; name: string } | null = null;
-  currentPath: string[] = ['root'];
-  selectedBranch: string = 'main';
-  branches: string[] = ['main', 'develop', 'feature/new-ui'];
-
-  // View states
-  showAllProjectsView: boolean = true;
-  showAllReposView: boolean = false;
-  showFavoritesProjectsView: boolean = true;
-  showFavoritesReposView: boolean = false;
-  showFavoritesBrowserView: boolean = false;
-
-  // Loading states
-  loadingRepos: { [key: string]: boolean } = {};
-  loadingFiles: boolean = false;
-
-  // PrimeNG Context Menu
-  @ViewChild('cm') contextMenu!: ContextMenu;
-  contextMenuItems: MenuItem[] = [];
-  selectedFileName: string | null = null;
-
-  ngOnInit(): void {
-    // Initialize PrimeNG context menu items
-    this.contextMenuItems = [
-      {
-        label: 'Summarize File',
-        icon: 'pi pi-file',
-        command: () => this.summarizeFile()
-      },
-      {
-        label: 'Open File',
-        icon: 'pi pi-external-link',
-        command: () => this.openFile()
-      },
-      {
-        separator: true
-      },
-      {
-        label: 'Copy Path',
-        icon: 'pi pi-copy',
-        command: () => this.copyFilePath()
-      }
-    ];
-  }
-
-  // Tab Management
-  switchTab(tabName: 'favorites' | 'all'): void {
-    this.activeTab = tabName;
-    
-    if (tabName === 'favorites') {
-      this.showAllProjectsView = true;
-      this.showAllReposView = false;
-    } else {
-      this.showFavoritesProjectsView = true;
-      this.showFavoritesReposView = false;
-      this.showFavoritesBrowserView = false;
-    }
-  }
-
-  // Project Management
-  getProjectRepoCount(projectKey: string): number {
-    return this.repositoriesByProject[projectKey]?.length || 0;
-  }
-
-  showRepositories(projectKey: string): void {
-    this.currentProject = this.allProjects.find(p => p.project_key === projectKey) || null;
-    if (!this.currentProject) return;
-
-    this.showAllProjectsView = false;
-    this.showAllReposView = true;
-  }
-
-  getRepositoriesForProject(projectKey: string): Repository[] {
-    return this.repositoriesByProject[projectKey] || [];
-  }
-
-  // Favorite Management
-  isFavorite(repoKey: string): boolean {
-    return this.favoriteRepos.has(repoKey);
-  }
-
-  toggleFavorite(repoKey: string, projectKey: string, event: Event): void {
-    event.stopPropagation();
-    
-    this.loadingRepos[repoKey] = true;
-
-    setTimeout(() => {
-      if (this.favoriteRepos.has(repoKey)) {
-        this.favoriteRepos.delete(repoKey);
-        
-        if (this.favoriteRepositories[projectKey]) {
-          this.favoriteRepositories[projectKey] = this.favoriteRepositories[projectKey]
-            .filter(r => r.repo_key !== repoKey);
-          
-          if (this.favoriteRepositories[projectKey].length === 0) {
-            delete this.favoriteRepositories[projectKey];
-          }
-        }
-      } else {
-        this.favoriteRepos.add(repoKey);
-        
-        const repo = this.repositoriesByProject[projectKey].find(r => r.repo_key === repoKey);
-        if (repo) {
-          if (!this.favoriteRepositories[projectKey]) {
-            this.favoriteRepositories[projectKey] = [];
-          }
-          this.favoriteRepositories[projectKey].push(repo);
-        }
-      }
-
-      this.loadingRepos[repoKey] = false;
-    }, 1000);
-  }
-
-  getFavoriteProjects(): string[] {
-    return Object.keys(this.favoriteRepositories);
-  }
-
-  hasFavorites(): boolean {
-    return Object.keys(this.favoriteRepositories).length > 0;
-  }
-
-  getFavoriteReposForProject(projectKey: string): Repository[] {
-    return this.favoriteRepositories[projectKey] || [];
-  }
-
-  getFavoriteRepoCount(projectKey: string): number {
-    return this.favoriteRepositories[projectKey]?.length || 0;
-  }
-
-  getProjectByKey(projectKey: string): Project | undefined {
-    return this.allProjects.find(p => p.project_key === projectKey);
-  }
-
-  showFavoriteRepositories(projectKey: string): void {
-    const project = this.allProjects.find(p => p.project_key === projectKey);
-    if (!project) return;
-
-    this.currentFavoriteProject = { 
-      project_key: projectKey, 
-      project_name: project.project_name 
-    };
-
-    this.showFavoritesProjectsView = false;
-    this.showFavoritesReposView = true;
-  }
-
-  // Repository Browser
-  openRepositoryWithLoading(repoId: string, repoName: string): void {
-    this.loadingRepos[repoId] = true;
-
-    setTimeout(() => {
-      this.openRepository(repoId, repoName);
-      this.loadingRepos[repoId] = false;
-    }, 1000);
-  }
-
-  openRepository(repoId: string, repoName: string): void {
-    this.currentRepo = { id: repoId, name: repoName };
-    this.currentPath = ['root'];
-
-    this.showFavoritesReposView = false;
-    this.showFavoritesBrowserView = true;
-    this.loadingFiles = true;
-
-    setTimeout(() => {
-      this.loadingFiles = false;
-    }, 1500);
-  }
-
-  // Breadcrumb Management
-  getBreadcrumbItems(): { name: string; index: number; isLast: boolean }[] {
-    return this.currentPath.map((item, index) => ({
-      name: item === 'root' ? (this.currentRepo?.name || 'root') : item,
-      index,
-      isLast: index === this.currentPath.length - 1
-    }));
-  }
-
-  navigateToPath(index: number): void {
-    this.currentPath = this.currentPath.slice(0, index + 1);
-  }
-
-  // File Browser
-  getCurrentFolderItems(): { name: string; isFolder: boolean }[] {
-    let currentFolder = this.fileSystem.root;
-
-    for (let i = 1; i < this.currentPath.length; i++) {
-      if (currentFolder.children) {
-        currentFolder = currentFolder.children[this.currentPath[i]];
-      }
-    }
-
-    if (!currentFolder.children) {
-      return [];
-    }
-
-    return Object.keys(currentFolder.children).map(name => ({
-      name,
-      isFolder: currentFolder.children![name].type === 'folder'
-    }));
-  }
-
-  openFolder(folderName: string): void {
-    this.currentPath.push(folderName);
-  }
-
-  handleFileDoubleClick(fileName: string): void {
-    const relativePath = [...this.currentPath.slice(1), fileName].join('/');
-    alert('File Path: ' + relativePath);
-  }
-
-  // PrimeNG Context Menu Handler
-  onFileRightClick(event: MouseEvent, fileName: string): void {
-    this.selectedFileName = fileName;
+}
+MODIFY: Context Menu Handler (Lines ~250-256)
+typescript// ✅ ADD THIS NEW METHOD (replaces handleFileRightClick)
+onFileRightClick(event: MouseEvent, fileName: string): void {
+  this.selectedFileName = fileName;
+  if (this.contextMenu) {
     this.contextMenu.show(event);
-    event.preventDefault();
-    event.stopPropagation();
   }
-
-  // Context Menu Actions
-  summarizeFile(): void {
-    if (this.selectedFileName) {
-      const relativePath = [...this.currentPath.slice(1), this.selectedFileName].join('/');
-      alert('Summarizing file: ' + relativePath);
-      // Here you can add your actual summarization logic
-    }
-    this.selectedFileName = null;
+  event.preventDefault();
+  event.stopPropagation();
+}
+MODIFY: Context Menu Actions (Lines ~260-285)
+typescript// ✅ UPDATE summarizeFile METHOD
+summarizeFile(): void {
+  if (this.selectedFileName) {
+    const relativePath = [...this.currentPath.slice(1), this.selectedFileName].join('/');
+    alert('Summarizing file: ' + relativePath);
   }
+  this.selectedFileName = null;
+}
 
-  openFile(): void {
-    if (this.selectedFileName) {
-      const relativePath = [...this.currentPath.slice(1), this.selectedFileName].join('/');
-      alert('Opening file: ' + relativePath);
-      // Add your file opening logic here
-    }
-    this.selectedFileName = null;
+// ✅ ADD THIS NEW METHOD
+openFile(): void {
+  if (this.selectedFileName) {
+    const relativePath = [...this.currentPath.slice(1), this.selectedFileName].join('/');
+    alert('Opening file: ' + relativePath);
   }
+  this.selectedFileName = null;
+}
 
-  copyFilePath(): void {
-    if (this.selectedFileName) {
-      const relativePath = [...this.currentPath.slice(1), this.selectedFileName].join('/');
-      navigator.clipboard.writeText(relativePath).then(() => {
-        alert('Path copied to clipboard: ' + relativePath);
-      });
-    }
-    this.selectedFileName = null;
+// ✅ ADD THIS NEW METHOD
+copyFilePath(): void {
+  if (this.selectedFileName) {
+    const relativePath = [...this.currentPath.slice(1), this.selectedFileName].join('/');
+    navigator.clipboard.writeText(relativePath).then(() => {
+      alert('Path copied to clipboard: ' + relativePath);
+    });
   }
+  this.selectedFileName = null;
+}
+❌ REMOVE THESE METHODS AND HOST LISTENERS:
+typescript// ❌ REMOVE THESE (~30 lines around line 250-280)
+handleFileRightClick(event: MouseEvent, fileName: string): void {
+  event.preventDefault();
+  event.stopPropagation();
+  this.contextMenuFileName = fileName;
+  this.contextMenuVisible = true;
+  this.contextMenuX = event.pageX;
+  this.contextMenuY = event.pageY;
+}
 
-  // Back Navigation
-  backToProjects(): void {
-    this.showAllReposView = false;
-    this.showAllProjectsView = true;
-    this.currentProject = null;
-  }
+hideContextMenu(): void {
+  this.contextMenuVisible = false;
+  this.contextMenuFileName = null;
+}
 
-  backToFavoritesProjects(): void {
-    this.showFavoritesReposView = false;
-    this.showFavoritesProjectsView = true;
-    this.currentFavoriteProject = null;
-  }
+@HostListener('document:click')
+onDocumentClick(): void {
+  this.hideContextMenu();
+}
 
-  backFromFavoritesBrowser(): void {
-    this.showFavoritesBrowserView = false;
-    this.showFavoritesReposView = true;
-    this.currentRepo = null;
-    
-    if (this.currentFavoriteProject) {
-      this.showFavoriteRepositories(this.currentFavoriteProject.project_key);
+@HostListener('document:contextmenu', ['$event'])
+onDocumentRightClick(event: MouseEvent): void {
+  if ((event.target as HTMLElement).closest('.sidebar')) {
+    if (!(event.target as HTMLElement).closest('.file-item')) {
+      event.preventDefault();
     }
   }
 }
+❌ REMOVE THESE PROPERTIES:
+typescript// ❌ REMOVE THESE (around line 120)
+contextMenuVisible: boolean = false;
+contextMenuX: number = 0;
+contextMenuY: number = 0;
+contextMenuFileName: string | null = null;
 
+📝 FILE 2: repository-sidebar.component.html
+MODIFY: File Item Event Handler (Line ~180)
+html<!-- ❌ REMOVE THIS LINE -->
+(contextmenu)="!item.isFolder && handleFileRightClick($event, item.name)">
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-<div class="sidebar">
-    <!-- Tabs -->
-    <div class="tabs">
-        <div class="tab" 
-             [class.active]="activeTab === 'favorites'" 
-             (click)="switchTab('favorites')">
-            Favorite Repository
-        </div>
-        <div class="tab" 
-             [class.active]="activeTab === 'all'" 
-             (click)="switchTab('all')">
-            All Repository
-        </div>
-    </div>
-
-    <!-- Content Area -->
-    <div class="content">
-        <!-- Favorites Tab Content -->
-        <div id="favorites-content" 
-             class="tab-content" 
-             [class.hidden]="activeTab !== 'favorites'">
-            
-            <!-- Favorites Projects View -->
-            <div id="favorites-projects-view" [class.hidden]="!showFavoritesProjectsView">
-                <div class="empty-state" *ngIf="!hasFavorites()">
-                    <svg class="empty-state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
-                    </svg>
-                    <div class="empty-state-text">No favorite repositories yet</div>
-                    <div class="empty-state-subtext">Star repositories to see them here</div>
-                </div>
-
-                <div *ngIf="hasFavorites()">
-                    <div class="project-card" 
-                         *ngFor="let projectKey of getFavoriteProjects()"
-                         (click)="showFavoriteRepositories(projectKey)">
-                        <div class="project-name">{{ getProjectByKey(projectKey)?.project_name || projectKey }}</div>
-                        <div class="project-info">{{ getProjectByKey(projectKey)?.project_url || '' }}</div>
-                        <div class="repo-count">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
-                            </svg>
-                            {{ getFavoriteRepoCount(projectKey) }} favorites
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Favorites Repository View -->
-            <div id="favorites-repos-view" [class.hidden]="!showFavoritesReposView">
-                <div class="view-header">
-                    <button class="back-button" (click)="backToFavoritesProjects()">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M19 12H5M12 19l-7-7 7-7" />
-                        </svg>
-                    </button>
-                    <div class="view-title">{{ currentFavoriteProject?.project_name }}</div>
-                </div>
-                <div id="favorites-repos-list">
-                    <div class="repo-card" 
-                         *ngFor="let repo of getFavoriteReposForProject(currentFavoriteProject?.project_key || '')"
-                         (click)="openRepositoryWithLoading(repo.repo_key, repo.repo_name)"
-                         [style.position]="'relative'"
-                         [style.pointer-events]="loadingRepos[repo.repo_key] ? 'none' : 'auto'"
-                         [style.opacity]="loadingRepos[repo.repo_key] ? '0.7' : '1'">
-                        <div class="repo-header">
-                            <div class="repo-info-section">
-                                <div class="repo-name">{{ repo.repo_name }}</div>
-                                <div class="repo-description">{{ repo.repo_url }}</div>
-                            </div>
-                            <div class="repo-action-icon">
-                                <div class="spinner" *ngIf="loadingRepos[repo.repo_key]"></div>
-                                <svg class="file-icon" 
-                                     *ngIf="!loadingRepos[repo.repo_key]"
-                                     viewBox="0 0 24 24" 
-                                     fill="none" 
-                                     stroke="currentColor" 
-                                     stroke-width="2">
-                                    <path d="M9 18l6-6-6-6"/>
-                                </svg>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Favorites File Browser View -->
-            <div id="favorites-browser-view" [class.hidden]="!showFavoritesBrowserView">
-                <div class="view-header">
-                    <button class="back-button" (click)="backFromFavoritesBrowser()">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M19 12H5M12 19l-7-7 7-7" />
-                        </svg>
-                    </button>
-                    <div class="view-title">{{ currentRepo?.name }}</div>
-                </div>
-                
-                <div class="breadcrumb">
-                    <ng-container *ngFor="let item of getBreadcrumbItems(); let isLast = last">
-                        <span class="breadcrumb-item" 
-                              [class.active]="item.isLast"
-                              (click)="!item.isLast && navigateToPath(item.index)">
-                            {{ item.name }}
-                        </span>
-                        <span class="breadcrumb-separator" *ngIf="!isLast">/</span>
-                    </ng-container>
-                </div>
-
-                <div class="branch-selector">
-                    <div class="branch-label">Branch</div>
-                    <select class="branch-dropdown" [(ngModel)]="selectedBranch">
-                        <option *ngFor="let branch of branches" [value]="branch">{{ branch }}</option>
-                    </select>
-                </div>
-
-                <div id="favorites-files-list">
-                    <div class="empty-state" *ngIf="loadingFiles">
-                        <div class="loading-spinner"></div>
-                        <div class="empty-state-text" style="margin-top: 16px;">Loading repository files...</div>
-                    </div>
-
-                    <div *ngIf="!loadingFiles">
-                        <div class="empty-state" *ngIf="getCurrentFolderItems().length === 0">
-                            <div class="empty-state-text">Empty folder</div>
-                        </div>
-
-                        <div class="file-item" 
-                             *ngFor="let item of getCurrentFolderItems()"
-                             [class.clickable]="item.isFolder"
-                             (click)="item.isFolder && openFolder(item.name)"
-                             (dblclick)="!item.isFolder && handleFileDoubleClick(item.name)"
-                             (contextmenu)="!item.isFolder && onFileRightClick($event, item.name)">
-                            <svg class="file-icon" 
-                                 [class.folder-icon]="item.isFolder"
-                                 [class.file-icon-default]="!item.isFolder"
-                                 viewBox="0 0 24 24" 
-                                 fill="none" 
-                                 stroke="currentColor" 
-                                 stroke-width="2">
-                                <path *ngIf="item.isFolder" 
-                                      d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-                                <ng-container *ngIf="!item.isFolder">
-                                    <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
-                                    <polyline points="13 2 13 9 20 9"></polyline>
-                                </ng-container>
-                            </svg>
-                            <div class="file-name">{{ item.name }}</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- All Repositories Tab Content -->
-        <div id="all-content" 
-             class="tab-content" 
-             [class.hidden]="activeTab !== 'all'">
-            
-            <!-- All Projects View -->
-            <div id="all-projects-view" [class.hidden]="!showAllProjectsView">
-                <div class="project-card" 
-                     *ngFor="let project of allProjects"
-                     (click)="showRepositories(project.project_key)">
-                    <div class="project-name">{{ project.project_name }}</div>
-                    <div class="project-info">{{ project.project_url }}</div>
-                    <div class="repo-count">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-                        </svg>
-                        {{ getProjectRepoCount(project.project_key) }} repositories
-                    </div>
-                </div>
-            </div>
-
-            <!-- All Repository View -->
-            <div id="all-repos-view" [class.hidden]="!showAllReposView">
-                <div class="view-header">
-                    <button class="back-button" (click)="backToProjects()">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M19 12H5M12 19l-7-7 7-7" />
-                        </svg>
-                    </button>
-                    <div class="view-title">{{ currentProject?.project_name }}</div>
-                </div>
-                <div id="repos-list">
-                    <div class="repo-card" 
-                         *ngFor="let repo of getRepositoriesForProject(currentProject?.project_key || '')"
-                         [class.loading]="loadingRepos[repo.repo_key]">
-                        <div class="repo-header">
-                            <div class="repo-info-section" (click)="$event.stopPropagation()">
-                                <div class="repo-name">{{ repo.repo_name }}</div>
-                                <div class="repo-description">{{ repo.repo_url }}</div>
-                            </div>
-                            <button class="star-button" 
-                                    [class.favorited]="isFavorite(repo.repo_key)"
-                                    (click)="toggleFavorite(repo.repo_key, currentProject?.project_key || '', $event)">
-                                <div class="spinner" *ngIf="loadingRepos[repo.repo_key]"></div>
-                                <svg *ngIf="!loadingRepos[repo.repo_key]" 
-                                     viewBox="0 0 24 24" 
-                                     fill="none" 
-                                     stroke="currentColor" 
-                                     stroke-width="2">
-                                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
-                                </svg>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+<!-- ✅ REPLACE WITH THIS LINE -->
+(contextmenu)="!item.isFolder && onFileRightClick($event, item.name)">
+MODIFY: Bottom of File (After closing </div> of sidebar)
+html<!-- ❌ REMOVE THIS ENTIRE SECTION -->
+<!-- Context Menu -->
+<div class="context-menu" 
+     [style.display]="contextMenuVisible ? 'block' : 'none'"
+     [style.left.px]="contextMenuX"
+     [style.top.px]="contextMenuY">
+    <div class="context-menu-item" (click)="summarizeFile()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+            <polyline points="10 9 9 9 8 9"></polyline>
+        </svg>
+        Summarize File
     </div>
 </div>
 
-<!-- PrimeNG Context Menu -->
+<!-- ✅ ADD THIS LINE AT THE VERY BOTTOM (after </div> of sidebar) -->
 <p-contextMenu #cm [model]="contextMenuItems"></p-contextMenu>
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* CSS Variables - Dark Mode */
-:root {
-    --bitbucket-bg-primary: #1a1a1a;
-    --bitbucket-bg-secondary: #111113;
-    --bitbucket-bg-tertiary: #1a1a1c;
-    --bitbucket-bg-quaternary: #0a0a0b;
-    --bitbucket-bg-hover: #1f1f21;
-    
-    --bitbucket-border-primary: #2a2a2c;
-    --bitbucket-border-secondary: #3a3a3c;
-    
-    --bitbucket-text-primary: #e0e0e0;
-    --bitbucket-text-secondary: #888;
-    --bitbucket-text-tertiary: #aaa;
-    --bitbucket-text-muted: #666;
-    --bitbucket-text-very-muted: #555;
-    
-    --bitbucket-accent-primary: #6366f1;
-    --bitbucket-accent-secondary: #8b5cf6;
-    --bitbucket-accent-hover: #7477f2;
-    --bitbucket-accent-hover-secondary: #9c6df7;
-    
-    --bitbucket-blue: #5b9cff;
-    --bitbucket-gold: #ffd700;
-    
-    --bitbucket-scrollbar-track: #1a1a1c;
-    --bitbucket-scrollbar-thumb: #3a3a3c;
-    --bitbucket-scrollbar-thumb-hover: #4a4a4c;
-    
-    --bitbucket-shadow-low: rgba(0, 0, 0, 0.5);
-    --bitbucket-shadow-medium: rgba(99, 102, 241, 0.3);
-    --bitbucket-shadow-medium-alt: rgba(139, 92, 246, 0.2);
-    --bitbucket-shadow-high: rgba(99, 102, 241, 0.4);
-    --bitbucket-shadow-high-alt: rgba(139, 92, 246, 0.3);
-    
-    --bitbucket-overlay-bg: rgba(26, 26, 28, 0.8);
-}
-
-/* CSS Variables - Light Mode */
-[data-theme="light"] {
-    --bitbucket-bg-primary: #FFF;
-    --bitbucket-bg-secondary: #f8f9fa;
-    --bitbucket-bg-tertiary: #ffffff;
-    --bitbucket-bg-quaternary: #f0f1f2;
-    --bitbucket-bg-hover: #f5f6f7;
-    
-    --bitbucket-border-primary: #e1e4e8;
-    --bitbucket-border-secondary: #d1d5da;
-    
-    --bitbucket-text-primary: #24292e;
-    --bitbucket-text-secondary: #586069;
-    --bitbucket-text-tertiary: #6a737d;
-    --bitbucket-text-muted: #959da5;
-    --bitbucket-text-very-muted: #c6cbd1;
-    
-    --bitbucket-accent-primary: #6366f1;
-    --bitbucket-accent-secondary: #8b5cf6;
-    --bitbucket-accent-hover: #7477f2;
-    --bitbucket-accent-hover-secondary: #9c6df7;
-    
-    --bitbucket-blue: #0366d6;
-    --bitbucket-gold: #ffd700;
-    
-    --bitbucket-scrollbar-track: #f6f8fa;
-    --bitbucket-scrollbar-thumb: #d1d5da;
-    --bitbucket-scrollbar-thumb-hover: #b1b5ba;
-    
-    --bitbucket-shadow-low: rgba(0, 0, 0, 0.1);
-    --bitbucket-shadow-medium: rgba(99, 102, 241, 0.15);
-    --bitbucket-shadow-medium-alt: rgba(139, 92, 246, 0.1);
-    --bitbucket-shadow-high: rgba(99, 102, 241, 0.2);
-    --bitbucket-shadow-high-alt: rgba(139, 92, 246, 0.15);
-    
-    --bitbucket-overlay-bg: rgba(255, 255, 255, 0.9);
-}
-
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
-
-body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-    background-color: var(--bitbucket-bg-primary);
-    color: var(--bitbucket-text-primary);
-    height: 100vh;
-    overflow: hidden;
-}
-
-.sidebar {
-    width: 320px;
-    height: 100vh;
-    background-color: var(--bitbucket-bg-secondary);
-    display: flex;
-    flex-direction: column;
-    border-right: 1px solid var(--bitbucket-border-primary);
-}
-
-/* Tabs */
-.tabs {
-    display: flex;
-    background: linear-gradient(180deg, var(--bitbucket-bg-quaternary) 0%, var(--bitbucket-bg-secondary) 100%);
-    border-bottom: 1px solid var(--bitbucket-border-primary);
-    padding: 8px;
-    gap: 8px;
-}
-
-.tab {
-    flex: 1;
-    padding: 12px 20px;
-    text-align: center;
-    cursor: pointer;
-    color: var(--bitbucket-text-secondary);
-    font-size: 13px;
-    font-weight: 600;
-    transition: all 0.3s ease;
-    border-radius: 8px;
-    border: 1px solid transparent;
-    background: transparent;
-    position: relative;
-    letter-spacing: 0.3px;
-}
-
-.tab:hover {
-    background-color: var(--bitbucket-bg-tertiary);
-    color: var(--bitbucket-text-tertiary);
-    border-color: var(--bitbucket-border-primary);
-}
-
-.tab.active {
-    background: linear-gradient(135deg, var(--bitbucket-accent-primary), var(--bitbucket-accent-secondary));
-    color: #ffffff;
-    border-color: transparent;
-    box-shadow: 0 4px 12px var(--bitbucket-shadow-medium),
-        0 2px 4px var(--bitbucket-shadow-medium-alt);
-}
-
-.tab.active::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: 8px;
-    padding: 1px;
-    background: linear-gradient(135deg, var(--bitbucket-accent-primary), var(--bitbucket-accent-secondary));
-    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    -webkit-mask-composite: xor;
-    mask-composite: exclude;
-    opacity: 0.5;
-}
-
-.tab.active:hover {
-    background: linear-gradient(135deg, var(--bitbucket-accent-hover), var(--bitbucket-accent-hover-secondary));
-    box-shadow: 0 6px 16px var(--bitbucket-shadow-high),
-        0 3px 6px var(--bitbucket-shadow-high-alt);
-    transform: translateY(-1px);
-}
-
-/* Content Area */
-.content {
-    flex: 1;
-    overflow-y: auto;
-    overflow-x: hidden;
-}
-
-.content::-webkit-scrollbar {
-    width: 8px;
-}
-
-.content::-webkit-scrollbar-track {
-    background: var(--bitbucket-scrollbar-track);
-}
-
-.content::-webkit-scrollbar-thumb {
-    background: var(--bitbucket-scrollbar-thumb);
-    border-radius: 4px;
-}
-
-.content::-webkit-scrollbar-thumb:hover {
-    background: var(--bitbucket-scrollbar-thumb-hover);
-}
-
-/* View Header */
-.view-header {
-    padding: 16px;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    border-bottom: 1px solid var(--bitbucket-border-primary);
-    background-color: var(--bitbucket-bg-tertiary);
-    position: sticky;
-    top: 0;
-    z-index: 10;
-}
-
-.back-button {
-    background: none;
-    border: none;
-    color: var(--bitbucket-text-secondary);
-    cursor: pointer;
-    padding: 4px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s ease;
-    border-radius: 4px;
-}
-
-.back-button:hover {
-    background-color: var(--bitbucket-border-primary);
-    color: var(--bitbucket-text-primary);
-}
-
-.back-button svg {
-    width: 20px;
-    height: 20px;
-}
-
-.view-title {
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--bitbucket-text-primary);
-    flex: 1;
-}
-
-/* Project Card */
-.project-card {
-    padding: 16px;
-    margin: 8px;
-    background-color: var(--bitbucket-bg-tertiary);
-    border: 1px solid var(--bitbucket-border-primary);
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.project-card:hover {
-    background-color: var(--bitbucket-bg-hover);
-    border-color: var(--bitbucket-border-secondary);
-    transform: translateY(-1px);
-}
-
-.project-name {
-    font-size: 15px;
-    font-weight: 600;
-    color: var(--bitbucket-text-primary);
-    margin-bottom: 6px;
-}
-
-.project-info {
-    font-size: 12px;
-    color: var(--bitbucket-text-secondary);
-}
-
-.repo-count {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    margin-top: 8px;
-    padding: 4px 8px;
-    background-color: var(--bitbucket-border-primary);
-    border-radius: 4px;
-    font-size: 11px;
-    color: var(--bitbucket-text-tertiary);
-}
-
-/* Repository Card */
-.repo-card {
-    padding: 14px 16px;
-    margin: 8px;
-    background-color: var(--bitbucket-bg-tertiary);
-    border: 1px solid var(--bitbucket-border-primary);
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    position: relative;
-}
-
-.repo-card:hover {
-    background-color: var(--bitbucket-bg-hover);
-    border-color: var(--bitbucket-border-secondary);
-}
-
-.repo-card.loading {
-    pointer-events: none;
-}
-
-.repo-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: start;
-    gap: 8px;
-}
-
-.repo-info-section {
-    flex: 1;
-    min-width: 0;
-}
-
-.repo-name {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--bitbucket-text-primary);
-    margin-bottom: 4px;
-    word-break: break-word;
-}
-
-.repo-description {
-    font-size: 12px;
-    color: var(--bitbucket-text-secondary);
-    margin-top: 4px;
-}
-
-.star-button {
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: 4px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s ease;
-    border-radius: 4px;
-    flex-shrink: 0;
-}
-
-.star-button:hover {
-    background-color: var(--bitbucket-border-primary);
-}
-
-.star-button svg {
-    width: 18px;
-    height: 18px;
-}
-
-.star-button.favorited svg {
-    fill: var(--bitbucket-gold);
-    stroke: var(--bitbucket-gold);
-}
-
-.spinner {
-    width: 18px;
-    height: 18px;
-    border: 2px solid var(--bitbucket-border-primary);
-    border-top-color: var(--bitbucket-blue);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-    to {
-        transform: rotate(360deg);
-    }
-}
-
-/* Breadcrumb */
-.breadcrumb {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 12px 16px;
-    background-color: var(--bitbucket-bg-tertiary);
-    border-bottom: 1px solid var(--bitbucket-border-primary);
-    font-size: 13px;
-    overflow-x: auto;
-    white-space: nowrap;
-}
-
-.breadcrumb::-webkit-scrollbar {
-    height: 4px;
-}
-
-.breadcrumb-item {
-    color: var(--bitbucket-text-secondary);
-    cursor: pointer;
-    transition: color 0.2s ease;
-}
-
-.breadcrumb-item:hover {
-    color: var(--bitbucket-blue);
-}
-
-.breadcrumb-item.active {
-    color: var(--bitbucket-text-primary);
-    cursor: default;
-}
-
-.breadcrumb-separator {
-    color: var(--bitbucket-text-very-muted);
-}
-
-/* Branch Selector */
-.branch-selector {
-    padding: 12px 16px;
-    background-color: var(--bitbucket-bg-tertiary);
-    border-bottom: 1px solid var(--bitbucket-border-primary);
-}
-
-.branch-label {
-    font-size: 11px;
-    color: var(--bitbucket-text-secondary);
-    margin-bottom: 6px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.branch-dropdown {
-    width: 100%;
-    padding: 8px 12px;
-    background-color: var(--bitbucket-bg-secondary);
-    border: 1px solid var(--bitbucket-border-primary);
-    border-radius: 6px;
-    color: var(--bitbucket-text-primary);
-    font-size: 13px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.branch-dropdown:hover {
-    border-color: var(--bitbucket-border-secondary);
-    background-color: var(--bitbucket-bg-tertiary);
-}
-
-.branch-dropdown:focus {
-    outline: none;
-    border-color: var(--bitbucket-blue);
-}
-
-/* File/Folder Item */
-.file-item {
-    padding: 12px 16px;
-    margin: 4px 8px;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    border-radius: 6px;
-    transition: all 0.2s ease;
-}
-
-.file-item.clickable {
-    cursor: pointer;
-}
-
-.file-item.clickable:hover,
-.file-item:hover {
-    background-color: var(--bitbucket-bg-tertiary);
-}
-
-.file-icon {
-    width: 20px;
-    height: 20px;
-    flex-shrink: 0;
-}
-
-.folder-icon {
-    color: var(--bitbucket-blue);
-}
-
-.file-icon-default {
-    color: var(--bitbucket-text-secondary);
-}
-
-.file-name {
-    font-size: 13px;
-    color: var(--bitbucket-text-primary);
-    flex: 1;
-    word-break: break-word;
-}
-
-/* Empty State */
-.empty-state {
-    padding: 48px 24px;
-    text-align: center;
-    color: var(--bitbucket-text-muted);
-}
-
-.empty-state-icon {
-    width: 64px;
-    height: 64px;
-    margin: 0 auto 16px;
-    opacity: 0.5;
-}
-
-.empty-state-text {
-    font-size: 14px;
-    margin-bottom: 8px;
-}
-
-.empty-state-subtext {
-    font-size: 12px;
-    color: var(--bitbucket-text-very-muted);
-}
-
-/* Hidden class */
-.hidden {
-    display: none !important;
-}
-
-/* Loading Overlay */
-.loading-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: var(--bitbucket-overlay-bg);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 8px;
-    z-index: 5;
-}
-
-.loading-spinner {
-    width: 32px;
-    height: 32px;
-    border: 3px solid var(--bitbucket-border-primary);
-    border-top-color: var(--bitbucket-blue);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-}
-
-.repo-action-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 24px;
-    height: 24px;
-    flex-shrink: 0;
-}
+📝 FILE 3: repository-sidebar.module.ts
+MODIFY: Import Section and NgModule
+typescriptimport { NgModule } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import { RepositorySidebarComponent } from './repository-sidebar.component';
+
+// ✅ ADD THIS IMPORT FOR PRIMENG 16
+import { ContextMenuModule } from 'primeng/contextmenu';
+
+@NgModule({
+  declarations: [
+    RepositorySidebarComponent
+  ],
+  imports: [
+    CommonModule,
+    FormsModule,
+    ContextMenuModule  // ✅ ADD THIS LINE
+  ],
+  exports: [
+    RepositorySidebarComponent
+  ]
+})
+export class RepositorySidebarModule { }
+
+📝 FILE 4: repository-sidebar.component.css
+MODIFY: Bottom of File (Add these styles)
+css/* ✅ ADD THESE STYLES AT THE BOTTOM OF THE FILE */
 
 /* ========================================
-   PrimeNG Context Menu Theme Overrides
+   PrimeNG 16 Context Menu Theme Overrides
    ======================================== */
 
 /* Main Context Menu Container */
@@ -1197,22 +185,30 @@ body {
     padding: 4px 0 !important;
 }
 
-/* Menu Items */
+/* Menu Items Container */
+::ng-deep .p-contextmenu .p-menuitem {
+    outline: none !important;
+}
+
+/* Menu Item Links */
 ::ng-deep .p-contextmenu .p-menuitem-link {
     padding: 10px 16px !important;
     color: var(--bitbucket-text-primary) !important;
     transition: background-color 0.2s ease !important;
     border-radius: 0 !important;
+    display: flex !important;
+    align-items: center !important;
 }
 
 /* Menu Item Hover */
-::ng-deep .p-contextmenu .p-menuitem-link:hover {
+::ng-deep .p-contextmenu .p-menuitem-link:not(.p-disabled):hover {
     background-color: var(--bitbucket-border-primary) !important;
 }
 
 /* Menu Item Focus */
 ::ng-deep .p-contextmenu .p-menuitem-link:focus {
     box-shadow: none !important;
+    outline: none !important;
 }
 
 /* Menu Item Icons */
@@ -1234,24 +230,19 @@ body {
     margin: 4px 0 !important;
 }
 
-/* Remove Default Focus Outline */
-::ng-deep .p-contextmenu .p-menuitem {
-    outline: none !important;
-}
-
-/* Active/Selected Item */
-::ng-deep .p-contextmenu .p-menuitem.p-menuitem-active > .p-menuitem-link {
+/* Active/Focused Item */
+::ng-deep .p-contextmenu .p-menuitem.p-focus > .p-menuitem-link {
     background-color: var(--bitbucket-border-primary) !important;
 }
 
-/* Light Mode Adjustments for PrimeNG Context Menu */
+/* Light Mode Adjustments */
 [data-theme="light"] ::ng-deep .p-contextmenu {
     background-color: var(--bitbucket-bg-tertiary) !important;
     border-color: var(--bitbucket-border-primary) !important;
     box-shadow: 0 4px 12px var(--bitbucket-shadow-low) !important;
 }
 
-[data-theme="light"] ::ng-deep .p-contextmenu .p-menuitem-link:hover {
+[data-theme="light"] ::ng-deep .p-contextmenu .p-menuitem-link:not(.p-disabled):hover {
     background-color: var(--bitbucket-bg-hover) !important;
 }
 
@@ -1261,4 +252,39 @@ body {
 
 [data-theme="light"] ::ng-deep .p-contextmenu .p-menuitem-text {
     color: var(--bitbucket-text-primary) !important;
+}
+❌ REMOVE THESE CSS RULES:
+css/* ❌ REMOVE THESE ENTIRE SECTIONS (around line 380-420) */
+
+/* Context Menu */
+.context-menu {
+    position: fixed;
+    background-color: var(--bitbucket-bg-tertiary);
+    border: 1px solid var(--bitbucket-border-primary);
+    border-radius: 6px;
+    padding: 4px 0;
+    min-width: 160px;
+    box-shadow: 0 4px 12px var(--bitbucket-shadow-low);
+    z-index: 1000;
+}
+
+.context-menu-item {
+    padding: 10px 16px;
+    font-size: 13px;
+    color: var(--bitbucket-text-primary);
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.context-menu-item:hover {
+    background-color: var(--bitbucket-border-primary);
+}
+
+.context-menu-item svg {
+    width: 16px;
+    height: 16px;
+    color: var(--bitbucket-text-secondary);
 }
