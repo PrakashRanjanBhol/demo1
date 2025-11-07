@@ -1,3 +1,429 @@
+import { Component, OnInit, ViewChild } from '@angular/core';
+import { ContextMenu } from 'primeng/contextmenu';
+import { MenuItem } from 'primeng/api';
+
+interface Project {
+  project_key: string;
+  project_name: string;
+  project_url: string;
+}
+
+interface Repository {
+  repo_key: string;
+  repo_name: string;
+  repo_url: string;
+}
+
+interface FileSystemItem {
+  type: 'file' | 'folder';
+  children?: { [key: string]: FileSystemItem };
+}
+
+interface FileSystem {
+  root: FileSystemItem;
+}
+
+@Component({
+  selector: 'app-repository-sidebar',
+  templateUrl: './repository-sidebar.component.html',
+  styleUrls: ['./repository-sidebar.component.css']
+})
+export class RepositorySidebarComponent implements OnInit {
+  // Tabs
+  activeTab: 'favorites' | 'all' = 'favorites';
+
+  // Mock Data - All Projects
+  allProjects: Project[] = [
+    {
+      project_key: 'ecommerce-platform',
+      project_name: 'E-Commerce Platform',
+      project_url: 'http://example.com/projects/ecommerce'
+    },
+    {
+      project_key: 'mobile-banking',
+      project_name: 'Mobile Banking App',
+      project_url: 'http://example.com/projects/banking'
+    },
+    {
+      project_key: 'analytics-dashboard',
+      project_name: 'Analytics Dashboard',
+      project_url: 'http://example.com/projects/analytics'
+    },
+    {
+      project_key: 'devops-infra',
+      project_name: 'DevOps Infrastructure',
+      project_url: 'http://example.com/projects/devops'
+    }
+  ];
+
+  // Mock Data - Repositories by Project
+  repositoriesByProject: { [key: string]: Repository[] } = {
+    'ecommerce-platform': [
+      { repo_key: 'frontend-app', repo_name: 'frontend-app', repo_url: 'http://example.com/repos/frontend' },
+      { repo_key: 'backend-api', repo_name: 'backend-api', repo_url: 'http://example.com/repos/backend' },
+      { repo_key: 'payment-service', repo_name: 'payment-service', repo_url: 'http://example.com/repos/payment' },
+      { repo_key: 'notification-service', repo_name: 'notification-service', repo_url: 'http://example.com/repos/notification' }
+    ],
+    'mobile-banking': [
+      { repo_key: 'ios-app', repo_name: 'ios-app', repo_url: 'http://example.com/repos/ios' },
+      { repo_key: 'android-app', repo_name: 'android-app', repo_url: 'http://example.com/repos/android' },
+      { repo_key: 'shared-backend', repo_name: 'shared-backend', repo_url: 'http://example.com/repos/shared' }
+    ],
+    'analytics-dashboard': [
+      { repo_key: 'dashboard-ui', repo_name: 'dashboard-ui', repo_url: 'http://example.com/repos/dashboard' },
+      { repo_key: 'data-pipeline', repo_name: 'data-pipeline', repo_url: 'http://example.com/repos/pipeline' },
+      { repo_key: 'ml-models', repo_name: 'ml-models', repo_url: 'http://example.com/repos/ml' }
+    ],
+    'devops-infra': [
+      { repo_key: 'terraform-configs', repo_name: 'terraform-configs', repo_url: 'http://example.com/repos/terraform' },
+      { repo_key: 'jenkins-pipelines', repo_name: 'jenkins-pipelines', repo_url: 'http://example.com/repos/jenkins' },
+      { repo_key: 'docker-images', repo_name: 'docker-images', repo_url: 'http://example.com/repos/docker' }
+    ]
+  };
+
+  // Mock Data - Favorite Repositories
+  favoriteRepositories: { [key: string]: Repository[] } = {
+    'ecommerce-platform': [
+      { repo_key: 'frontend-app', repo_name: 'frontend-app', repo_url: 'http://example.com/repos/frontend' },
+      { repo_key: 'backend-api', repo_name: 'backend-api', repo_url: 'http://example.com/repos/backend' }
+    ],
+    'analytics-dashboard': [
+      { repo_key: 'dashboard-ui', repo_name: 'dashboard-ui', repo_url: 'http://example.com/repos/dashboard' }
+    ]
+  };
+
+  // Mock file system
+  fileSystem: FileSystem = {
+    root: {
+      type: 'folder',
+      children: {
+        'src': {
+          type: 'folder',
+          children: {
+            'components': {
+              type: 'folder',
+              children: {
+                'Header.jsx': { type: 'file' },
+                'Footer.jsx': { type: 'file' },
+                'Sidebar.jsx': { type: 'file' }
+              }
+            },
+            'utils': {
+              type: 'folder',
+              children: {
+                'api.js': { type: 'file' },
+                'helpers.js': { type: 'file' }
+              }
+            },
+            'App.jsx': { type: 'file' },
+            'index.js': { type: 'file' }
+          }
+        },
+        'public': {
+          type: 'folder',
+          children: {
+            'index.html': { type: 'file' },
+            'favicon.ico': { type: 'file' }
+          }
+        },
+        'package.json': { type: 'file' },
+        'README.md': { type: 'file' },
+        '.gitignore': { type: 'file' }
+      }
+    }
+  };
+
+  // State
+  favoriteRepos: Set<string> = new Set(['frontend-app', 'backend-api', 'dashboard-ui']);
+  currentProject: Project | null = null;
+  currentFavoriteProject: { project_key: string; project_name: string } | null = null;
+  currentRepo: { id: string; name: string } | null = null;
+  currentPath: string[] = ['root'];
+  selectedBranch: string = 'main';
+  branches: string[] = ['main', 'develop', 'feature/new-ui'];
+
+  // View states
+  showAllProjectsView: boolean = true;
+  showAllReposView: boolean = false;
+  showFavoritesProjectsView: boolean = true;
+  showFavoritesReposView: boolean = false;
+  showFavoritesBrowserView: boolean = false;
+
+  // Loading states
+  loadingRepos: { [key: string]: boolean } = {};
+  loadingFiles: boolean = false;
+
+  // PrimeNG Context Menu
+  @ViewChild('cm') contextMenu!: ContextMenu;
+  contextMenuItems: MenuItem[] = [];
+  selectedFileName: string | null = null;
+
+  ngOnInit(): void {
+    // Initialize PrimeNG context menu items
+    this.contextMenuItems = [
+      {
+        label: 'Summarize File',
+        icon: 'pi pi-file',
+        command: () => this.summarizeFile()
+      },
+      {
+        label: 'Open File',
+        icon: 'pi pi-external-link',
+        command: () => this.openFile()
+      },
+      {
+        separator: true
+      },
+      {
+        label: 'Copy Path',
+        icon: 'pi pi-copy',
+        command: () => this.copyFilePath()
+      }
+    ];
+  }
+
+  // Tab Management
+  switchTab(tabName: 'favorites' | 'all'): void {
+    this.activeTab = tabName;
+    
+    if (tabName === 'favorites') {
+      this.showAllProjectsView = true;
+      this.showAllReposView = false;
+    } else {
+      this.showFavoritesProjectsView = true;
+      this.showFavoritesReposView = false;
+      this.showFavoritesBrowserView = false;
+    }
+  }
+
+  // Project Management
+  getProjectRepoCount(projectKey: string): number {
+    return this.repositoriesByProject[projectKey]?.length || 0;
+  }
+
+  showRepositories(projectKey: string): void {
+    this.currentProject = this.allProjects.find(p => p.project_key === projectKey) || null;
+    if (!this.currentProject) return;
+
+    this.showAllProjectsView = false;
+    this.showAllReposView = true;
+  }
+
+  getRepositoriesForProject(projectKey: string): Repository[] {
+    return this.repositoriesByProject[projectKey] || [];
+  }
+
+  // Favorite Management
+  isFavorite(repoKey: string): boolean {
+    return this.favoriteRepos.has(repoKey);
+  }
+
+  toggleFavorite(repoKey: string, projectKey: string, event: Event): void {
+    event.stopPropagation();
+    
+    this.loadingRepos[repoKey] = true;
+
+    setTimeout(() => {
+      if (this.favoriteRepos.has(repoKey)) {
+        this.favoriteRepos.delete(repoKey);
+        
+        if (this.favoriteRepositories[projectKey]) {
+          this.favoriteRepositories[projectKey] = this.favoriteRepositories[projectKey]
+            .filter(r => r.repo_key !== repoKey);
+          
+          if (this.favoriteRepositories[projectKey].length === 0) {
+            delete this.favoriteRepositories[projectKey];
+          }
+        }
+      } else {
+        this.favoriteRepos.add(repoKey);
+        
+        const repo = this.repositoriesByProject[projectKey].find(r => r.repo_key === repoKey);
+        if (repo) {
+          if (!this.favoriteRepositories[projectKey]) {
+            this.favoriteRepositories[projectKey] = [];
+          }
+          this.favoriteRepositories[projectKey].push(repo);
+        }
+      }
+
+      this.loadingRepos[repoKey] = false;
+    }, 1000);
+  }
+
+  getFavoriteProjects(): string[] {
+    return Object.keys(this.favoriteRepositories);
+  }
+
+  hasFavorites(): boolean {
+    return Object.keys(this.favoriteRepositories).length > 0;
+  }
+
+  getFavoriteReposForProject(projectKey: string): Repository[] {
+    return this.favoriteRepositories[projectKey] || [];
+  }
+
+  getFavoriteRepoCount(projectKey: string): number {
+    return this.favoriteRepositories[projectKey]?.length || 0;
+  }
+
+  getProjectByKey(projectKey: string): Project | undefined {
+    return this.allProjects.find(p => p.project_key === projectKey);
+  }
+
+  showFavoriteRepositories(projectKey: string): void {
+    const project = this.allProjects.find(p => p.project_key === projectKey);
+    if (!project) return;
+
+    this.currentFavoriteProject = { 
+      project_key: projectKey, 
+      project_name: project.project_name 
+    };
+
+    this.showFavoritesProjectsView = false;
+    this.showFavoritesReposView = true;
+  }
+
+  // Repository Browser
+  openRepositoryWithLoading(repoId: string, repoName: string): void {
+    this.loadingRepos[repoId] = true;
+
+    setTimeout(() => {
+      this.openRepository(repoId, repoName);
+      this.loadingRepos[repoId] = false;
+    }, 1000);
+  }
+
+  openRepository(repoId: string, repoName: string): void {
+    this.currentRepo = { id: repoId, name: repoName };
+    this.currentPath = ['root'];
+
+    this.showFavoritesReposView = false;
+    this.showFavoritesBrowserView = true;
+    this.loadingFiles = true;
+
+    setTimeout(() => {
+      this.loadingFiles = false;
+    }, 1500);
+  }
+
+  // Breadcrumb Management
+  getBreadcrumbItems(): { name: string; index: number; isLast: boolean }[] {
+    return this.currentPath.map((item, index) => ({
+      name: item === 'root' ? (this.currentRepo?.name || 'root') : item,
+      index,
+      isLast: index === this.currentPath.length - 1
+    }));
+  }
+
+  navigateToPath(index: number): void {
+    this.currentPath = this.currentPath.slice(0, index + 1);
+  }
+
+  // File Browser
+  getCurrentFolderItems(): { name: string; isFolder: boolean }[] {
+    let currentFolder = this.fileSystem.root;
+
+    for (let i = 1; i < this.currentPath.length; i++) {
+      if (currentFolder.children) {
+        currentFolder = currentFolder.children[this.currentPath[i]];
+      }
+    }
+
+    if (!currentFolder.children) {
+      return [];
+    }
+
+    return Object.keys(currentFolder.children).map(name => ({
+      name,
+      isFolder: currentFolder.children![name].type === 'folder'
+    }));
+  }
+
+  openFolder(folderName: string): void {
+    this.currentPath.push(folderName);
+  }
+
+  handleFileDoubleClick(fileName: string): void {
+    const relativePath = [...this.currentPath.slice(1), fileName].join('/');
+    alert('File Path: ' + relativePath);
+  }
+
+  // PrimeNG Context Menu Handler
+  onFileRightClick(event: MouseEvent, fileName: string): void {
+    this.selectedFileName = fileName;
+    this.contextMenu.show(event);
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  // Context Menu Actions
+  summarizeFile(): void {
+    if (this.selectedFileName) {
+      const relativePath = [...this.currentPath.slice(1), this.selectedFileName].join('/');
+      alert('Summarizing file: ' + relativePath);
+      // Here you can add your actual summarization logic
+    }
+    this.selectedFileName = null;
+  }
+
+  openFile(): void {
+    if (this.selectedFileName) {
+      const relativePath = [...this.currentPath.slice(1), this.selectedFileName].join('/');
+      alert('Opening file: ' + relativePath);
+      // Add your file opening logic here
+    }
+    this.selectedFileName = null;
+  }
+
+  copyFilePath(): void {
+    if (this.selectedFileName) {
+      const relativePath = [...this.currentPath.slice(1), this.selectedFileName].join('/');
+      navigator.clipboard.writeText(relativePath).then(() => {
+        alert('Path copied to clipboard: ' + relativePath);
+      });
+    }
+    this.selectedFileName = null;
+  }
+
+  // Back Navigation
+  backToProjects(): void {
+    this.showAllReposView = false;
+    this.showAllProjectsView = true;
+    this.currentProject = null;
+  }
+
+  backToFavoritesProjects(): void {
+    this.showFavoritesReposView = false;
+    this.showFavoritesProjectsView = true;
+    this.currentFavoriteProject = null;
+  }
+
+  backFromFavoritesBrowser(): void {
+    this.showFavoritesBrowserView = false;
+    this.showFavoritesReposView = true;
+    this.currentRepo = null;
+    
+    if (this.currentFavoriteProject) {
+      this.showFavoriteRepositories(this.currentFavoriteProject.project_key);
+    }
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 <div class="sidebar">
     <!-- Tabs -->
     <div class="tabs">
@@ -129,7 +555,7 @@
                              [class.clickable]="item.isFolder"
                              (click)="item.isFolder && openFolder(item.name)"
                              (dblclick)="!item.isFolder && handleFileDoubleClick(item.name)"
-                             (contextmenu)="!item.isFolder && handleFileRightClick($event, item.name)">
+                             (contextmenu)="!item.isFolder && onFileRightClick($event, item.name)">
                             <svg class="file-icon" 
                                  [class.folder-icon]="item.isFolder"
                                  [class.file-icon-default]="!item.isFolder"
@@ -209,27 +635,10 @@
             </div>
         </div>
     </div>
-
-    <!-- Context Menu -->
-    <div class="context-menu" 
-         [style.display]="contextMenuVisible ? 'block' : 'none'"
-         [style.left.px]="contextMenuX"
-         [style.top.px]="contextMenuY">
-        <div class="context-menu-item" (click)="summarizeFile()">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                <polyline points="14 2 14 8 20 8"></polyline>
-                <line x1="16" y1="13" x2="8" y2="13"></line>
-                <line x1="16" y1="17" x2="8" y2="17"></line>
-                <polyline points="10 9 9 9 8 9"></polyline>
-            </svg>
-            Summarize File
-        </div>
-    </div>
 </div>
 
-
-
+<!-- PrimeNG Context Menu -->
+<p-contextMenu #cm [model]="contextMenuItems"></p-contextMenu>
 
 
 
@@ -742,39 +1151,6 @@ body {
     display: none !important;
 }
 
-/* Context Menu */
-.context-menu {
-    position: fixed;
-    background-color: var(--bitbucket-bg-tertiary);
-    border: 1px solid var(--bitbucket-border-primary);
-    border-radius: 6px;
-    padding: 4px 0;
-    min-width: 160px;
-    box-shadow: 0 4px 12px var(--bitbucket-shadow-low);
-    z-index: 1000;
-}
-
-.context-menu-item {
-    padding: 10px 16px;
-    font-size: 13px;
-    color: var(--bitbucket-text-primary);
-    cursor: pointer;
-    transition: background-color 0.2s ease;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.context-menu-item:hover {
-    background-color: var(--bitbucket-border-primary);
-}
-
-.context-menu-item svg {
-    width: 16px;
-    height: 16px;
-    color: var(--bitbucket-text-secondary);
-}
-
 /* Loading Overlay */
 .loading-overlay {
     position: absolute;
@@ -808,411 +1184,81 @@ body {
     flex-shrink: 0;
 }
 
+/* ========================================
+   PrimeNG Context Menu Theme Overrides
+   ======================================== */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-import { Component, OnInit, HostListener } from '@angular/core';
-
-interface Project {
-  project_key: string;
-  project_name: string;
-  project_url: string;
+/* Main Context Menu Container */
+::ng-deep .p-contextmenu {
+    background-color: var(--bitbucket-bg-tertiary) !important;
+    border: 1px solid var(--bitbucket-border-primary) !important;
+    border-radius: 6px !important;
+    box-shadow: 0 4px 12px var(--bitbucket-shadow-low) !important;
+    padding: 4px 0 !important;
 }
 
-interface Repository {
-  repo_key: string;
-  repo_name: string;
-  repo_url: string;
+/* Menu Items */
+::ng-deep .p-contextmenu .p-menuitem-link {
+    padding: 10px 16px !important;
+    color: var(--bitbucket-text-primary) !important;
+    transition: background-color 0.2s ease !important;
+    border-radius: 0 !important;
 }
 
-interface FileSystemItem {
-  type: 'file' | 'folder';
-  children?: { [key: string]: FileSystemItem };
+/* Menu Item Hover */
+::ng-deep .p-contextmenu .p-menuitem-link:hover {
+    background-color: var(--bitbucket-border-primary) !important;
 }
 
-interface FileSystem {
-  root: FileSystemItem;
+/* Menu Item Focus */
+::ng-deep .p-contextmenu .p-menuitem-link:focus {
+    box-shadow: none !important;
 }
 
-@Component({
-  selector: 'app-repository-sidebar',
-  templateUrl: './repository-sidebar.component.html',
-  styleUrls: ['./repository-sidebar.component.css']
-})
-export class RepositorySidebarComponent implements OnInit {
-  // Tabs
-  activeTab: 'favorites' | 'all' = 'favorites';
+/* Menu Item Icons */
+::ng-deep .p-contextmenu .p-menuitem-icon {
+    color: var(--bitbucket-text-secondary) !important;
+    font-size: 14px !important;
+    margin-right: 10px !important;
+}
 
-  // Mock Data - All Projects
-  allProjects: Project[] = [
-    {
-      project_key: 'ecommerce-platform',
-      project_name: 'E-Commerce Platform',
-      project_url: 'http://example.com/projects/ecommerce'
-    },
-    {
-      project_key: 'mobile-banking',
-      project_name: 'Mobile Banking App',
-      project_url: 'http://example.com/projects/banking'
-    },
-    {
-      project_key: 'analytics-dashboard',
-      project_name: 'Analytics Dashboard',
-      project_url: 'http://example.com/projects/analytics'
-    },
-    {
-      project_key: 'devops-infra',
-      project_name: 'DevOps Infrastructure',
-      project_url: 'http://example.com/projects/devops'
-    }
-  ];
+/* Menu Item Text */
+::ng-deep .p-contextmenu .p-menuitem-text {
+    color: var(--bitbucket-text-primary) !important;
+    font-size: 13px !important;
+}
 
-  // Mock Data - Repositories by Project
-  repositoriesByProject: { [key: string]: Repository[] } = {
-    'ecommerce-platform': [
-      { repo_key: 'frontend-app', repo_name: 'frontend-app', repo_url: 'http://example.com/repos/frontend' },
-      { repo_key: 'backend-api', repo_name: 'backend-api', repo_url: 'http://example.com/repos/backend' },
-      { repo_key: 'payment-service', repo_name: 'payment-service', repo_url: 'http://example.com/repos/payment' },
-      { repo_key: 'notification-service', repo_name: 'notification-service', repo_url: 'http://example.com/repos/notification' }
-    ],
-    'mobile-banking': [
-      { repo_key: 'ios-app', repo_name: 'ios-app', repo_url: 'http://example.com/repos/ios' },
-      { repo_key: 'android-app', repo_name: 'android-app', repo_url: 'http://example.com/repos/android' },
-      { repo_key: 'shared-backend', repo_name: 'shared-backend', repo_url: 'http://example.com/repos/shared' }
-    ],
-    'analytics-dashboard': [
-      { repo_key: 'dashboard-ui', repo_name: 'dashboard-ui', repo_url: 'http://example.com/repos/dashboard' },
-      { repo_key: 'data-pipeline', repo_name: 'data-pipeline', repo_url: 'http://example.com/repos/pipeline' },
-      { repo_key: 'ml-models', repo_name: 'ml-models', repo_url: 'http://example.com/repos/ml' }
-    ],
-    'devops-infra': [
-      { repo_key: 'terraform-configs', repo_name: 'terraform-configs', repo_url: 'http://example.com/repos/terraform' },
-      { repo_key: 'jenkins-pipelines', repo_name: 'jenkins-pipelines', repo_url: 'http://example.com/repos/jenkins' },
-      { repo_key: 'docker-images', repo_name: 'docker-images', repo_url: 'http://example.com/repos/docker' }
-    ]
-  };
+/* Menu Separator */
+::ng-deep .p-contextmenu .p-menu-separator {
+    border-top: 1px solid var(--bitbucket-border-primary) !important;
+    margin: 4px 0 !important;
+}
 
-  // Mock Data - Favorite Repositories
-  favoriteRepositories: { [key: string]: Repository[] } = {
-    'ecommerce-platform': [
-      { repo_key: 'frontend-app', repo_name: 'frontend-app', repo_url: 'http://example.com/repos/frontend' },
-      { repo_key: 'backend-api', repo_name: 'backend-api', repo_url: 'http://example.com/repos/backend' }
-    ],
-    'analytics-dashboard': [
-      { repo_key: 'dashboard-ui', repo_name: 'dashboard-ui', repo_url: 'http://example.com/repos/dashboard' }
-    ]
-  };
+/* Remove Default Focus Outline */
+::ng-deep .p-contextmenu .p-menuitem {
+    outline: none !important;
+}
 
-  // Mock file system
-  fileSystem: FileSystem = {
-    root: {
-      type: 'folder',
-      children: {
-        'src': {
-          type: 'folder',
-          children: {
-            'components': {
-              type: 'folder',
-              children: {
-                'Header.jsx': { type: 'file' },
-                'Footer.jsx': { type: 'file' },
-                'Sidebar.jsx': { type: 'file' }
-              }
-            },
-            'utils': {
-              type: 'folder',
-              children: {
-                'api.js': { type: 'file' },
-                'helpers.js': { type: 'file' }
-              }
-            },
-            'App.jsx': { type: 'file' },
-            'index.js': { type: 'file' }
-          }
-        },
-        'public': {
-          type: 'folder',
-          children: {
-            'index.html': { type: 'file' },
-            'favicon.ico': { type: 'file' }
-          }
-        },
-        'package.json': { type: 'file' },
-        'README.md': { type: 'file' },
-        '.gitignore': { type: 'file' }
-      }
-    }
-  };
+/* Active/Selected Item */
+::ng-deep .p-contextmenu .p-menuitem.p-menuitem-active > .p-menuitem-link {
+    background-color: var(--bitbucket-border-primary) !important;
+}
 
-  // State
-  favoriteRepos: Set<string> = new Set(['frontend-app', 'backend-api', 'dashboard-ui']);
-  currentProject: Project | null = null;
-  currentFavoriteProject: { project_key: string; project_name: string } | null = null;
-  currentRepo: { id: string; name: string } | null = null;
-  currentPath: string[] = ['root'];
-  selectedBranch: string = 'main';
-  branches: string[] = ['main', 'develop', 'feature/new-ui'];
+/* Light Mode Adjustments for PrimeNG Context Menu */
+[data-theme="light"] ::ng-deep .p-contextmenu {
+    background-color: var(--bitbucket-bg-tertiary) !important;
+    border-color: var(--bitbucket-border-primary) !important;
+    box-shadow: 0 4px 12px var(--bitbucket-shadow-low) !important;
+}
 
-  // View states
-  showAllProjectsView: boolean = true;
-  showAllReposView: boolean = false;
-  showFavoritesProjectsView: boolean = true;
-  showFavoritesReposView: boolean = false;
-  showFavoritesBrowserView: boolean = false;
+[data-theme="light"] ::ng-deep .p-contextmenu .p-menuitem-link:hover {
+    background-color: var(--bitbucket-bg-hover) !important;
+}
 
-  // Loading states
-  loadingRepos: { [key: string]: boolean } = {};
-  loadingFiles: boolean = false;
+[data-theme="light"] ::ng-deep .p-contextmenu .p-menuitem-icon {
+    color: var(--bitbucket-text-secondary) !important;
+}
 
-  // Context menu
-  contextMenuVisible: boolean = false;
-  contextMenuX: number = 0;
-  contextMenuY: number = 0;
-  contextMenuFileName: string | null = null;
-
-  ngOnInit(): void {
-    // Initialization logic if needed
-  }
-
-  // Tab Management
-  switchTab(tabName: 'favorites' | 'all'): void {
-    this.activeTab = tabName;
-    
-    if (tabName === 'favorites') {
-      this.showAllProjectsView = true;
-      this.showAllReposView = false;
-    } else {
-      this.showFavoritesProjectsView = true;
-      this.showFavoritesReposView = false;
-      this.showFavoritesBrowserView = false;
-    }
-  }
-
-  // Project Management
-  getProjectRepoCount(projectKey: string): number {
-    return this.repositoriesByProject[projectKey]?.length || 0;
-  }
-
-  showRepositories(projectKey: string): void {
-    this.currentProject = this.allProjects.find(p => p.project_key === projectKey) || null;
-    if (!this.currentProject) return;
-
-    this.showAllProjectsView = false;
-    this.showAllReposView = true;
-  }
-
-  getRepositoriesForProject(projectKey: string): Repository[] {
-    return this.repositoriesByProject[projectKey] || [];
-  }
-
-  // Favorite Management
-  isFavorite(repoKey: string): boolean {
-    return this.favoriteRepos.has(repoKey);
-  }
-
-  toggleFavorite(repoKey: string, projectKey: string, event: Event): void {
-    event.stopPropagation();
-    
-    this.loadingRepos[repoKey] = true;
-
-    setTimeout(() => {
-      if (this.favoriteRepos.has(repoKey)) {
-        this.favoriteRepos.delete(repoKey);
-        
-        if (this.favoriteRepositories[projectKey]) {
-          this.favoriteRepositories[projectKey] = this.favoriteRepositories[projectKey]
-            .filter(r => r.repo_key !== repoKey);
-          
-          if (this.favoriteRepositories[projectKey].length === 0) {
-            delete this.favoriteRepositories[projectKey];
-          }
-        }
-      } else {
-        this.favoriteRepos.add(repoKey);
-        
-        const repo = this.repositoriesByProject[projectKey].find(r => r.repo_key === repoKey);
-        if (repo) {
-          if (!this.favoriteRepositories[projectKey]) {
-            this.favoriteRepositories[projectKey] = [];
-          }
-          this.favoriteRepositories[projectKey].push(repo);
-        }
-      }
-
-      this.loadingRepos[repoKey] = false;
-    }, 1000);
-  }
-
-  getFavoriteProjects(): string[] {
-    return Object.keys(this.favoriteRepositories);
-  }
-
-  hasFavorites(): boolean {
-    return Object.keys(this.favoriteRepositories).length > 0;
-  }
-
-  getFavoriteReposForProject(projectKey: string): Repository[] {
-    return this.favoriteRepositories[projectKey] || [];
-  }
-
-  getFavoriteRepoCount(projectKey: string): number {
-    return this.favoriteRepositories[projectKey]?.length || 0;
-  }
-
-  getProjectByKey(projectKey: string): Project | undefined {
-    return this.allProjects.find(p => p.project_key === projectKey);
-  }
-
-  showFavoriteRepositories(projectKey: string): void {
-    const project = this.allProjects.find(p => p.project_key === projectKey);
-    if (!project) return;
-
-    this.currentFavoriteProject = { 
-      project_key: projectKey, 
-      project_name: project.project_name 
-    };
-
-    this.showFavoritesProjectsView = false;
-    this.showFavoritesReposView = true;
-  }
-
-  // Repository Browser
-  openRepositoryWithLoading(repoId: string, repoName: string): void {
-    this.loadingRepos[repoId] = true;
-
-    setTimeout(() => {
-      this.openRepository(repoId, repoName);
-      this.loadingRepos[repoId] = false;
-    }, 1000);
-  }
-
-  openRepository(repoId: string, repoName: string): void {
-    this.currentRepo = { id: repoId, name: repoName };
-    this.currentPath = ['root'];
-
-    this.showFavoritesReposView = false;
-    this.showFavoritesBrowserView = true;
-    this.loadingFiles = true;
-
-    setTimeout(() => {
-      this.loadingFiles = false;
-    }, 1500);
-  }
-
-  // Breadcrumb Management
-  getBreadcrumbItems(): { name: string; index: number; isLast: boolean }[] {
-    return this.currentPath.map((item, index) => ({
-      name: item === 'root' ? (this.currentRepo?.name || 'root') : item,
-      index,
-      isLast: index === this.currentPath.length - 1
-    }));
-  }
-
-  navigateToPath(index: number): void {
-    this.currentPath = this.currentPath.slice(0, index + 1);
-  }
-
-  // File Browser
-  getCurrentFolderItems(): { name: string; isFolder: boolean }[] {
-    let currentFolder = this.fileSystem.root;
-
-    for (let i = 1; i < this.currentPath.length; i++) {
-      if (currentFolder.children) {
-        currentFolder = currentFolder.children[this.currentPath[i]];
-      }
-    }
-
-    if (!currentFolder.children) {
-      return [];
-    }
-
-    return Object.keys(currentFolder.children).map(name => ({
-      name,
-      isFolder: currentFolder.children![name].type === 'folder'
-    }));
-  }
-
-  openFolder(folderName: string): void {
-    this.currentPath.push(folderName);
-  }
-
-  handleFileDoubleClick(fileName: string): void {
-    const relativePath = [...this.currentPath.slice(1), fileName].join('/');
-    alert('File Path: ' + relativePath);
-  }
-
-  handleFileRightClick(event: MouseEvent, fileName: string): void {
-    event.preventDefault();
-    event.stopPropagation();
-
-    this.contextMenuFileName = fileName;
-    this.contextMenuVisible = true;
-    this.contextMenuX = event.pageX;
-    this.contextMenuY = event.pageY;
-  }
-
-  summarizeFile(): void {
-    if (this.contextMenuFileName) {
-      const relativePath = [...this.currentPath.slice(1), this.contextMenuFileName].join('/');
-      alert('Summarizing file: ' + relativePath);
-    }
-    this.hideContextMenu();
-  }
-
-  hideContextMenu(): void {
-    this.contextMenuVisible = false;
-    this.contextMenuFileName = null;
-  }
-
-  @HostListener('document:click')
-  onDocumentClick(): void {
-    this.hideContextMenu();
-  }
-
-  @HostListener('document:contextmenu', ['$event'])
-  onDocumentRightClick(event: MouseEvent): void {
-    if ((event.target as HTMLElement).closest('.sidebar')) {
-      // Let component handle right-click on files
-      if (!(event.target as HTMLElement).closest('.file-item')) {
-        event.preventDefault();
-      }
-    }
-  }
-
-  // Back Navigation
-  backToProjects(): void {
-    this.showAllReposView = false;
-    this.showAllProjectsView = true;
-    this.currentProject = null;
-  }
-
-  backToFavoritesProjects(): void {
-    this.showFavoritesReposView = false;
-    this.showFavoritesProjectsView = true;
-    this.currentFavoriteProject = null;
-  }
-
-  backFromFavoritesBrowser(): void {
-    this.showFavoritesBrowserView = false;
-    this.showFavoritesReposView = true;
-    this.currentRepo = null;
-    
-    if (this.currentFavoriteProject) {
-      this.showFavoriteRepositories(this.currentFavoriteProject.project_key);
-    }
-  }
+[data-theme="light"] ::ng-deep .p-contextmenu .p-menuitem-text {
+    color: var(--bitbucket-text-primary) !important;
 }
