@@ -1,297 +1,109 @@
-PrimeNG 16 OverlayPanel Integration - Modified Parts Only
-🔄 Changes for PrimeNG 16 OverlayPanel
-Using OverlayPanel instead of ContextMenu for file actions.
-
-📝 FILE 1: repository-sidebar.component.ts
-MODIFY: Import Section (Lines 1-3)
-typescript// ✅ REPLACE/UPDATE IMPORTS
-import { Component, OnInit, ViewChild } from '@angular/core';
-import { OverlayPanel } from 'primeng/overlaypanel';
-MODIFY: Properties Section (Lines ~120-123)
-typescript// ✅ ADD THESE PROPERTIES
-// PrimeNG OverlayPanel
-@ViewChild('op') overlayPanel!: OverlayPanel;
-selectedFileName: string | null = null;
-MODIFY: File Right Click Handler (Lines ~250-260)
-typescript// ✅ ADD THIS NEW METHOD (replaces handleFileRightClick)
+MODIFY: repository-sidebar.component.ts
+Replace the onFileRightClick method with this updated version:
+typescript// ✅ REPLACE THIS METHOD (around line 250)
 onFileRightClick(event: MouseEvent, fileName: string): void {
   this.selectedFileName = fileName;
   if (this.overlayPanel) {
-    this.overlayPanel.toggle(event);
+    // Use the event target as the reference for positioning
+    this.overlayPanel.toggle(event, event.currentTarget as HTMLElement);
   }
   event.preventDefault();
   event.stopPropagation();
 }
-MODIFY: Context Menu Actions (Lines ~260-285)
-typescript// ✅ UPDATE summarizeFile METHOD
-summarizeFile(): void {
-  if (this.selectedFileName) {
-    const relativePath = [...this.currentPath.slice(1), this.selectedFileName].join('/');
-    alert('Summarizing file: ' + relativePath);
+OR - Alternative Solution (More Control)
+If the above doesn't work perfectly, use this version with explicit event target:
+typescript// ✅ ALTERNATIVE METHOD - Better positioning control
+onFileRightClick(event: MouseEvent, fileName: string): void {
+  this.selectedFileName = fileName;
+  if (this.overlayPanel) {
+    // Show the overlay panel at the cursor position
+    this.overlayPanel.show(event);
   }
-  this.selectedFileName = null;
-  this.overlayPanel.hide();
-}
-
-// ✅ ADD THIS NEW METHOD
-openFile(): void {
-  if (this.selectedFileName) {
-    const relativePath = [...this.currentPath.slice(1), this.selectedFileName].join('/');
-    alert('Opening file: ' + relativePath);
-  }
-  this.selectedFileName = null;
-  this.overlayPanel.hide();
-}
-
-// ✅ ADD THIS NEW METHOD
-copyFilePath(): void {
-  if (this.selectedFileName) {
-    const relativePath = [...this.currentPath.slice(1), this.selectedFileName].join('/');
-    navigator.clipboard.writeText(relativePath).then(() => {
-      alert('Path copied to clipboard: ' + relativePath);
-    });
-  }
-  this.selectedFileName = null;
-  this.overlayPanel.hide();
-}
-❌ REMOVE THESE METHODS AND HOST LISTENERS:
-typescript// ❌ REMOVE THESE (~30 lines around line 250-280)
-handleFileRightClick(event: MouseEvent, fileName: string): void {
   event.preventDefault();
   event.stopPropagation();
-  this.contextMenuFileName = fileName;
-  this.contextMenuVisible = true;
-  this.contextMenuX = event.pageX;
-  this.contextMenuY = event.pageY;
 }
-
-hideContextMenu(): void {
-  this.contextMenuVisible = false;
-  this.contextMenuFileName = null;
-}
-
-@HostListener('document:click')
-onDocumentClick(): void {
-  this.hideContextMenu();
-}
-
-@HostListener('document:contextmenu', ['$event'])
-onDocumentRightClick(event: MouseEvent): void {
-  if ((event.target as HTMLElement).closest('.sidebar')) {
-    if (!(event.target as HTMLElement).closest('.file-item')) {
-      event.preventDefault();
-    }
-  }
-}
-❌ REMOVE THESE PROPERTIES:
-typescript// ❌ REMOVE THESE (around line 120)
-contextMenuVisible: boolean = false;
-contextMenuX: number = 0;
-contextMenuY: number = 0;
-contextMenuFileName: string | null = null;
-
-📝 FILE 2: repository-sidebar.component.html
-MODIFY: File Item Event Handler (Line ~180)
-html<!-- ❌ REMOVE THIS LINE -->
-(contextmenu)="!item.isFolder && handleFileRightClick($event, item.name)">
-
-<!-- ✅ REPLACE WITH THIS LINE -->
-(contextmenu)="!item.isFolder && onFileRightClick($event, item.name)">
-MODIFY: Bottom of File (After closing </div> of sidebar)
-html<!-- ❌ REMOVE THIS ENTIRE SECTION -->
-<!-- Context Menu -->
-<div class="context-menu" 
-     [style.display]="contextMenuVisible ? 'block' : 'none'"
-     [style.left.px]="contextMenuX"
-     [style.top.px]="contextMenuY">
-    <div class="context-menu-item" (click)="summarizeFile()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-            <polyline points="14 2 14 8 20 8"></polyline>
-            <line x1="16" y1="13" x2="8" y2="13"></line>
-            <line x1="16" y1="17" x2="8" y2="17"></line>
-            <polyline points="10 9 9 9 8 9"></polyline>
-        </svg>
-        Summarize File
-    </div>
+OR - Best Solution (Most Reliable)
+For the most reliable positioning, modify the HTML template to add a target element:
+Step 1: Update HTML (repository-sidebar.component.html)
+html<!-- ✅ MODIFY the file-item div to add template reference -->
+<div class="file-item" 
+     #fileItem
+     *ngFor="let item of getCurrentFolderItems()"
+     [class.clickable]="item.isFolder"
+     (click)="item.isFolder && openFolder(item.name)"
+     (dblclick)="!item.isFolder && handleFileDoubleClick(item.name)"
+     (contextmenu)="!item.isFolder && onFileRightClick($event, item.name, fileItem)">
+    <!-- rest of the file item content -->
 </div>
+Step 2: Update TypeScript Method
+typescript// ✅ REPLACE with this method signature (around line 250)
+onFileRightClick(event: MouseEvent, fileName: string, target: HTMLElement): void {
+  this.selectedFileName = fileName;
+  if (this.overlayPanel) {
+    // Toggle with explicit target element
+    this.overlayPanel.toggle(event, target);
+  }
+  event.preventDefault();
+  event.stopPropagation();
+}
 
-<!-- ✅ ADD THIS SECTION AT THE VERY BOTTOM (after </div> of sidebar) -->
-<p-overlayPanel #op [showCloseIcon]="false" [dismissable]="true" styleClass="file-actions-overlay">
-    <ng-template pTemplate="content">
-        <div class="overlay-menu">
-            <div class="overlay-menu-item" (click)="summarizeFile()">
-                <i class="pi pi-file"></i>
-                <span>Summarize File</span>
-            </div>
-            <div class="overlay-menu-item" (click)="openFile()">
-                <i class="pi pi-external-link"></i>
-                <span>Open File</span>
-            </div>
-            <div class="overlay-menu-separator"></div>
-            <div class="overlay-menu-item" (click)="copyFilePath()">
-                <i class="pi pi-copy"></i>
-                <span>Copy Path</span>
-            </div>
-        </div>
-    </ng-template>
-</p-overlayPanel>
+🎯 Recommended Solution (Complete Code)
+Here's the complete recommended fix:
+FILE: repository-sidebar.component.html
+Find the file-item section (around line 150-180) and replace with:
+html<div class="file-item" 
+     #fileItem
+     *ngFor="let item of getCurrentFolderItems()"
+     [class.clickable]="item.isFolder"
+     (click)="item.isFolder && openFolder(item.name)"
+     (dblclick)="!item.isFolder && handleFileDoubleClick(item.name)"
+     (contextmenu)="!item.isFolder && onFileRightClick($event, item.name, fileItem)">
+    <svg class="file-icon" 
+         [class.folder-icon]="item.isFolder"
+         [class.file-icon-default]="!item.isFolder"
+         viewBox="0 0 24 24" 
+         fill="none" 
+         stroke="currentColor" 
+         stroke-width="2">
+        <path *ngIf="item.isFolder" 
+              d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+        <ng-container *ngIf="!item.isFolder">
+            <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+            <polyline points="13 2 13 9 20 9"></polyline>
+        </ng-container>
+    </svg>
+    <div class="file-name">{{ item.name }}</div>
+</div>
+FILE: repository-sidebar.component.ts
+Replace the method (around line 250):
+typescript// ✅ COMPLETE METHOD WITH PROPER POSITIONING
+onFileRightClick(event: MouseEvent, fileName: string, target: HTMLElement): void {
+  this.selectedFileName = fileName;
+  if (this.overlayPanel) {
+    // Show overlay panel positioned relative to the clicked element
+    this.overlayPanel.toggle(event, target);
+  }
+  event.preventDefault();
+  event.stopPropagation();
+}
 
-📝 FILE 3: repository-sidebar.module.ts
-MODIFY: Import Section and NgModule
-typescriptimport { NgModule } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
-import { RepositorySidebarComponent } from './repository-sidebar.component';
+🔧 Additional CSS Fix (Optional)
+If you still have positioning issues, add this to your CSS:
+FILE: repository-sidebar.component.css
+Add at the bottom with other OverlayPanel styles:
+css/* ✅ ADD THIS FOR BETTER POSITIONING */
 
-// ✅ ADD THIS IMPORT FOR PRIMENG 16
-import { OverlayPanelModule } from 'primeng/overlaypanel';
-
-@NgModule({
-  declarations: [
-    RepositorySidebarComponent
-  ],
-  imports: [
-    CommonModule,
-    FormsModule,
-    OverlayPanelModule  // ✅ ADD THIS LINE
-  ],
-  exports: [
-    RepositorySidebarComponent
-  ]
-})
-export class RepositorySidebarModule { }
-
-📝 FILE 4: repository-sidebar.component.css
-MODIFY: Bottom of File (Add these styles)
-css/* ✅ ADD THESE STYLES AT THE BOTTOM OF THE FILE */
-
-/* ========================================
-   PrimeNG 16 OverlayPanel Custom Styles
-   ======================================== */
-
-/* OverlayPanel Container */
+/* Ensure overlay has proper z-index */
 ::ng-deep .file-actions-overlay.p-overlaypanel {
-    background-color: var(--bitbucket-bg-tertiary) !important;
-    border: 1px solid var(--bitbucket-border-primary) !important;
-    border-radius: 6px !important;
-    box-shadow: 0 4px 12px var(--bitbucket-shadow-low) !important;
-    padding: 0 !important;
-    min-width: 180px;
+    z-index: 1100 !important;
 }
 
-/* OverlayPanel Content */
-::ng-deep .file-actions-overlay .p-overlaypanel-content {
-    padding: 4px 0 !important;
-    background-color: var(--bitbucket-bg-tertiary) !important;
-    border-radius: 6px !important;
+/* Position overlay properly */
+::ng-deep .p-overlaypanel {
+    position: absolute !important;
 }
 
-/* Menu Container */
-.overlay-menu {
-    display: flex;
-    flex-direction: column;
-}
-
-/* Menu Items */
-.overlay-menu-item {
-    padding: 10px 16px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    cursor: pointer;
-    transition: background-color 0.2s ease;
-    color: var(--bitbucket-text-primary);
-    font-size: 13px;
-}
-
-.overlay-menu-item:hover {
-    background-color: var(--bitbucket-border-primary);
-}
-
-.overlay-menu-item i {
-    color: var(--bitbucket-text-secondary);
-    font-size: 14px;
-    width: 16px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.overlay-menu-item span {
-    color: var(--bitbucket-text-primary);
-}
-
-/* Menu Separator */
-.overlay-menu-separator {
-    border-top: 1px solid var(--bitbucket-border-primary);
-    margin: 4px 0;
-}
-
-/* Light Mode Adjustments */
-[data-theme="light"] ::ng-deep .file-actions-overlay.p-overlaypanel {
-    background-color: var(--bitbucket-bg-tertiary) !important;
-    border-color: var(--bitbucket-border-primary) !important;
-    box-shadow: 0 4px 12px var(--bitbucket-shadow-low) !important;
-}
-
-[data-theme="light"] ::ng-deep .file-actions-overlay .p-overlaypanel-content {
-    background-color: var(--bitbucket-bg-tertiary) !important;
-}
-
-[data-theme="light"] .overlay-menu-item:hover {
-    background-color: var(--bitbucket-bg-hover) !important;
-}
-
-[data-theme="light"] .overlay-menu-item i {
-    color: var(--bitbucket-text-secondary) !important;
-}
-
-[data-theme="light"] .overlay-menu-item span {
-    color: var(--bitbucket-text-primary) !important;
-}
-
-/* Arrow/Pointer styling */
-::ng-deep .file-actions-overlay .p-overlaypanel:before,
-::ng-deep .file-actions-overlay .p-overlaypanel:after {
-    border-color: transparent transparent var(--bitbucket-border-primary) transparent !important;
-}
-
-::ng-deep .file-actions-overlay .p-overlaypanel:after {
-    border-color: transparent transparent var(--bitbucket-bg-tertiary) transparent !important;
-}
-❌ REMOVE THESE CSS RULES:
-css/* ❌ REMOVE THESE ENTIRE SECTIONS (around line 380-420) */
-
-/* Context Menu */
-.context-menu {
-    position: fixed;
-    background-color: var(--bitbucket-bg-tertiary);
-    border: 1px solid var(--bitbucket-border-primary);
-    border-radius: 6px;
-    padding: 4px 0;
-    min-width: 160px;
-    box-shadow: 0 4px 12px var(--bitbucket-shadow-low);
-    z-index: 1000;
-}
-
-.context-menu-item {
-    padding: 10px 16px;
-    font-size: 13px;
-    color: var(--bitbucket-text-primary);
-    cursor: pointer;
-    transition: background-color 0.2s ease;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.context-menu-item:hover {
-    background-color: var(--bitbucket-border-primary);
-}
-
-.context-menu-item svg {
-    width: 16px;
-    height: 16px;
-    color: var(--bitbucket-text-secondary);
+/* Ensure the overlay appears near cursor on right-click */
+.file-item {
+    position: relative;
 }
