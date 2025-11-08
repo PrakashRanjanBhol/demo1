@@ -1,48 +1,64 @@
-/* Repository Card */
-.repo-card {
-    padding: 14px 16px;
-    margin: 8px;
-    background-color: var(--bitbucket-bg-tertiary);
-    border: 1px solid var(--bitbucket-border-primary);
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    position: relative;
-    overflow: hidden; /* ✅ ADD THIS */
+// ✅ REPLACE old interfaces with this:
+interface FileSystemItem {
+  name: string;
+  type: 'file' | 'folder';
+  children?: FileSystemItem[];
 }
 
-.repo-info-section {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden; /* ✅ ADD THIS */
-}
 
-/* ✅ REPLACE .repo-description with this: */
-.repo-description {
-    font-size: 12px;
-    color: var(--bitbucket-text-secondary);
-    margin-top: 4px;
-    line-height: 1.4;
+
+// ✅ REPLACE
+fileSystem: FileSystem = { root: { ... } };
+
+// ✅ WITH
+fileSystem: FileSystemItem[] = [];
+
+
+
+
+// ✅ REPLACE the entire method with:
+private calculateFolderItems(): { name: string; isFolder: boolean }[] {
+  let currentItems: FileSystemItem[] = this.fileSystem;
+  
+  // Navigate through path (skip 'root' at index 0)
+  for (let i = 1; i < this.currentPath.length; i++) {
+    const folderName = this.currentPath[i];
+    const folder = currentItems.find(item => item.name === folderName && item.type === 'folder');
     
-    /* Multi-line ellipsis (max 2 lines) */
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    word-break: break-all;
+    if (folder && folder.children) {
+      currentItems = folder.children;
+    } else {
+      return [];
+    }
+  }
+  
+  return currentItems.map(item => ({
+    name: item.name,
+    isFolder: item.type === 'folder'
+  }));
 }
 
 
 
 
+openRepository(repoId: string, repoName: string): void {
+  this.currentRepo = { id: repoId, name: repoName };
+  this.currentPath = ['root'];
+  this.showFavoritesReposView = false;
+  this.showFavoritesBrowserView = true;
+  this.loadingFiles = true;
 
-
-
-
-
-
-<!-- Around line 180 -->
-<div class="repo-description" [title]="repo.repo_url">
-    {{ repo.repo_url }}
-</div>
+  // ✅ Call your actual API here
+  this.http.get<FileSystemItem[]>(`your-api-url/repos/${repoId}/files`)
+    .subscribe({
+      next: (data) => {
+        this.fileSystem = data;
+        this.loadingFiles = false;
+      },
+      error: (error) => {
+        console.error('Error:', error);
+        this.fileSystem = [];
+        this.loadingFiles = false;
+      }
+    });
+}
