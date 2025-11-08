@@ -1,92 +1,30 @@
-// ✅ ADD properties (around line 150)
-branchSelectorVisible: boolean = false;
-branchSearchText: string = '';
-
-// ✅ ADD getter for filtered branches (around line 240)
-get filteredBranches(): string[] {
-  if (!this.branchSearchText.trim()) {
-    return this.branches;
-  }
-  
-  const searchLower = this.branchSearchText.toLowerCase();
-  return this.branches.filter(branch => 
-    branch.toLowerCase().includes(searchLower)
-  );
-}
-
-// ✅ UPDATE method
-toggleBranchSelector(): void {
-  this.branchSelectorVisible = !this.branchSelectorVisible;
-  if (!this.branchSelectorVisible) {
-    this.branchSearchText = ''; // Clear on close
-  }
-}
-
-// ✅ ADD method
-selectBranch(branch: string): void {
-  this.selectedBranch = branch;
-  this.branchSelectorVisible = false;
-  this.branchSearchText = '';
-}
-
-
-
-
-
-
-
-
-
-
-<div class="branch-selector-content" [class.visible]="branchSelectorVisible">
-    <!-- ✅ ADD Search Box -->
-    <div class="branch-search">
-        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="11" cy="11" r="8"></circle>
-            <path d="m21 21-4.35-4.35"></path>
-        </svg>
-        <input type="text" 
-               class="branch-search-input" 
-               placeholder="Search branches..."
-               [(ngModel)]="branchSearchText"
-               (click)="$event.stopPropagation()"
-               #searchInput>
-        <button class="clear-search-btn" 
-                *ngIf="branchSearchText"
-                (click)="branchSearchText = ''; searchInput.focus(); $event.stopPropagation()">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="18" y1="6" x2="6" y2="18"></line>
-                <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-        </button>
+<div class="file-header">
+  <div class="file-info">
+    <span class="file-icon">{{ currentFileData?.icon }}</span>
+    <span class="file-name">{{ currentFileData?.name }}</span>
+    <span class="file-meta">{{ currentFileData?.meta }}</span>
+  </div>
+  <div class="header-actions">
+    <div class="view-toggle" *ngIf="showViewToggle">
+      <button 
+        class="toggle-btn" 
+        [class.active]="isViewActive('code')"
+        (click)="changeView('code')">
+        Code
+      </button>
+      <button 
+        class="toggle-btn" 
+        [class.active]="isViewActive('preview')"
+        (click)="changeView('preview')">
+        Preview
+      </button>
     </div>
-    
-    <!-- ✅ UPDATE branch list to use filteredBranches -->
-    <div class="branch-list">
-        <div class="branch-option" 
-             *ngFor="let branch of filteredBranches"
-             [class.selected]="branch === selectedBranch"
-             (click)="selectBranch(branch); $event.stopPropagation()">
-            <span class="branch-option-text">{{ branch }}</span>
-            <svg class="check-icon" 
-                 *ngIf="branch === selectedBranch"
-                 viewBox="0 0 24 24" 
-                 fill="none" 
-                 stroke="currentColor" 
-                 stroke-width="2">
-                <polyline points="20 6 9 17 4 12"></polyline>
-            </svg>
-        </div>
-        
-        <!-- ✅ ADD No results message -->
-        <div class="no-results" *ngIf="filteredBranches.length === 0">
-            <svg class="no-results-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="11" cy="11" r="8"></circle>
-                <path d="m21 21-4.35-4.35"></path>
-            </svg>
-            <span class="no-results-text">No branches found</span>
-        </div>
-    </div>
+    <button class="close-btn" (click)="onClose()" title="Close">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+        <path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06z"></path>
+      </svg>
+    </button>
+  </div>
 </div>
 
 
@@ -98,64 +36,74 @@ selectBranch(branch: string): void {
 
 
 
-/* Search Box */
-.branch-search {
-    padding: 12px 16px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    border-bottom: 1px solid var(--bitbucket-border-primary);
-    background-color: var(--bitbucket-bg-secondary);
-    position: sticky;
-    top: 0;
+export class FileViewerComponent implements OnInit, OnChanges {
+  @Input() fileName?: string;
+  @Input() fileContent?: string;
+  @Input() files?: Files;
+  @Input() theme: 'dark' | 'light' = 'dark';
+  @Output() close = new EventEmitter<void>();
+
+  @HostBinding('class.light-mode') get isLightMode() {
+    return this.theme === 'light';
+  }
+
+  // ... rest of the properties
+
+  onClose(): void {
+    this.close.emit();
+  }
+
+
+
+
+
+
+
+
+
+
+
+.file-header {
+  background-color: var(--bitbucket-file-view-bg-secondary);
+  border: 1px solid var(--bitbucket-file-view-border);
+  border-bottom: none;
+  padding: 12px 16px;
+  border-radius: 6px 6px 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  animation: slideIn 0.4s ease-out 0.1s both;
 }
 
-.search-icon {
-    width: 16px;
-    height: 16px;
-    color: var(--bitbucket-text-secondary);
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
-.branch-search-input {
-    flex: 1;
-    padding: 8px 10px;
-    background-color: var(--bitbucket-bg-tertiary);
-    border: 1px solid var(--bitbucket-border-primary);
-    border-radius: 4px;
-    color: var(--bitbucket-text-primary);
-    font-size: 12px;
-    outline: none;
+.close-btn {
+  background-color: transparent;
+  color: var(--bitbucket-file-view-text-muted);
+  border: none;
+  padding: 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  line-height: 0;
 }
 
-.branch-search-input:focus {
-    border-color: var(--bitbucket-blue);
+.close-btn:hover {
+  background-color: var(--bitbucket-file-view-btn-hover);
+  color: var(--bitbucket-file-view-text-primary);
 }
 
-.clear-search-btn {
-    background: none;
-    border: none;
-    padding: 4px;
-    cursor: pointer;
-    border-radius: 4px;
+.close-btn:active {
+  transform: scale(0.95);
 }
 
-.clear-search-btn:hover {
-    background-color: var(--bitbucket-border-primary);
-}
-
-.clear-search-btn svg {
-    width: 14px;
-    height: 14px;
-    color: var(--bitbucket-text-secondary);
-}
-
-/* No Results */
-.no-results {
-    padding: 32px 16px;
-    text-align: center;
-}
-
-.no-results-text {
-    font-size: 13px;
-    color: var(--bitbucket-text-secondary);
+.close-btn svg {
+  display: block;
 }
