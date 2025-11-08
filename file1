@@ -1,371 +1,18 @@
-import { Component, OnInit, Input, OnChanges, SimpleChanges } from '@angular/core';
-import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
-import hljs from 'highlight.js';
-import { marked } from 'marked';
-
-interface FileData {
-  name: string;
-  content: string;
-  icon?: string;
-  type?: string;
-  meta?: string;
-}
-
-interface Files {
-  [key: string]: FileData;
-}
-
-@Component({
-  selector: 'app-file-viewer',
-  templateUrl: './file-viewer.component.html',
-  styleUrls: ['./file-viewer.component.scss']
-})
-export class FileViewerComponent implements OnInit, OnChanges {
-  @Input() fileName?: string;
-  @Input() fileContent?: string;
-  @Input() files?: Files;
-
-  currentFile: string = 'readme';
-  currentView: string = 'preview';
-  currentFileData: FileData | null = null;
-  renderedContent: SafeHtml = '';
-  showViewToggle: boolean = false;
-
-  
-  demoFiles: Files = {};
-
-  displayFiles: Files = {};
-  fileKeys: string[] = [];
-
-  constructor(private sanitizer: DomSanitizer) {}
-
-  ngOnInit(): void {
-    this.initializeFiles();
-  }
-
-  ngOnChanges(changes: SimpleChanges): void {
-    if (changes['fileName'] || changes['fileContent'] || changes['files']) {
-      this.initializeFiles();
-    }
-  }
-
-  private initializeFiles(): void {
-    // Priority: Single file input > Multiple files input
-    if (this.fileName && this.fileContent) {
-      // Single file passed as input
-      const fileData = this.createFileData(this.fileName, this.fileContent);
-      this.displayFiles = { 'userFile': fileData };
-      this.fileKeys = ['userFile'];
-      this.displayFile('userFile');
-    } else if (this.files && Object.keys(this.files).length > 0) {
-      // Multiple files passed as input
-      this.displayFiles = {};
-      Object.keys(this.files).forEach(key => {
-        const file = this.files![key];
-        this.displayFiles[key] = this.createFileData(file.name, file.content, file.icon, file.type, file.meta);
-      });
-      this.fileKeys = Object.keys(this.displayFiles);
-      this.displayFile(this.fileKeys[0]);
-    } else {
-      // No files provided
-      this.displayFiles = {};
-      this.fileKeys = [];
-    }
-  }
-
-  private createFileData(name: string, content: string, icon?: string, type?: string, meta?: string): FileData {
-    const detectedType = type || this.detectFileType(name);
-    const fileIcon = icon || this.getFileIcon(name, detectedType);
-    const fileMeta = meta || this.generateMeta(content);
-
-    return {
-      name,
-      content,
-      icon: fileIcon,
-      type: detectedType,
-      meta: fileMeta
-    };
-  }
-
-  private detectFileType(fileName: string): string {
-    const extension = fileName.split('.').pop()?.toLowerCase() || '';
-    
-    const typeMap: { [key: string]: string } = {
-      'js': 'javascript',
-      'jsx': 'javascript',
-      'ts': 'typescript',
-      'tsx': 'typescript',
-      'py': 'python',
-      'java': 'java',
-      'cpp': 'cpp',
-      'c': 'c',
-      'cs': 'csharp',
-      'php': 'php',
-      'rb': 'ruby',
-      'go': 'go',
-      'rs': 'rust',
-      'swift': 'swift',
-      'kt': 'kotlin',
-      'scala': 'scala',
-      'html': 'html',
-      'htm': 'html',
-      'xml': 'xml',
-      'css': 'css',
-      'scss': 'scss',
-      'sass': 'sass',
-      'less': 'less',
-      'json': 'json',
-      'yaml': 'yaml',
-      'yml': 'yaml',
-      'md': 'markdown',
-      'markdown': 'markdown',
-      'sql': 'sql',
-      'sh': 'bash',
-      'bash': 'bash',
-      'zsh': 'bash',
-      'ps1': 'powershell',
-      'r': 'r',
-      'dart': 'dart',
-      'lua': 'lua',
-      'vim': 'vim',
-      'dockerfile': 'dockerfile',
-      'txt': 'plaintext'
-    };
-
-    return typeMap[extension] || 'plaintext';
-  }
-
-  private getFileIcon(fileName: string, fileType: string): string {
-    const extension = fileName.split('.').pop()?.toLowerCase() || '';
-    
-    const iconMap: { [key: string]: string } = {
-      'js': '📜',
-      'jsx': '⚛️',
-      'ts': '📘',
-      'tsx': '⚛️',
-      'py': '🐍',
-      'java': '☕',
-      'html': '🌐',
-      'css': '🎨',
-      'json': '📋',
-      'md': '📄',
-      'markdown': '📄',
-      'sql': '🗄️',
-      'sh': '⚡',
-      'bash': '⚡',
-      'txt': '📝',
-      'xml': '📰',
-      'yml': '⚙️',
-      'yaml': '⚙️'
-    };
-
-    return iconMap[extension] || '📄';
-  }
-
-  private generateMeta(content: string): string {
-    const lines = content.split('\n').length;
-    const bytes = new Blob([content]).size;
-    const kb = (bytes / 1024).toFixed(1);
-    return `${lines} lines · ${kb} KB`;
-  }
-
-
-  displayFile(fileKey: string): void {
-    const file = this.displayFiles[fileKey];
-    if (!file) return;
-
-    this.currentFile = fileKey;
-    this.currentFileData = file;
-
-    const fileType = file.type || 'plaintext';
-
-    if (fileType === 'markdown') {
-      this.showViewToggle = true;
-      if (this.currentView === 'preview') {
-        this.renderedContent = this.sanitizer.bypassSecurityTrustHtml(
-          this.renderMarkdownView(file.content)
-        );
-      } else {
-        this.renderedContent = this.sanitizer.bypassSecurityTrustHtml(
-          this.renderCodeView(file.content, 'markdown')
-        );
-      }
-    } else {
-      this.showViewToggle = false;
-      this.renderedContent = this.sanitizer.bypassSecurityTrustHtml(
-        this.renderCodeView(file.content, fileType)
-      );
-    }
-  }
-
-  changeView(view: string): void {
-    this.currentView = view;
-    this.displayFile(this.currentFile);
-  }
-
-  isFileActive(fileKey: string): boolean {
-    return this.currentFile === fileKey;
-  }
-
-  isViewActive(view: string): boolean {
-    return this.currentView === view;
-  }
-
-  private escapeHtml(text: string): string {
-    const map: { [key: string]: string } = {
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-      "'": '&#039;'
-    };
-    return text.replace(/[&<>"']/g, (m) => map[m]);
-  }
-
-  private renderCodeView(content: string, language: string): string {
-    const lines = content.split('\n');
-    
-    let highlightedLines: string[];
-    try {
-      if (language && language !== 'markdown' && hljs.getLanguage(language)) {
-        const highlighted = hljs.highlight(content, { language: language }).value;
-        highlightedLines = highlighted.split('\n');
-      } else {
-        highlightedLines = lines.map(line => this.escapeHtml(line));
-      }
-    } catch (e) {
-      highlightedLines = lines.map(line => this.escapeHtml(line));
-    }
-
-    const lineNumbers = highlightedLines
-      .map((_, i) => `<div class="line-number">${i + 1}</div>`)
-      .join('');
-
-    const codeContent = highlightedLines
-      .map(line => `<div class="code-line">${line || '&nbsp;'}</div>`)
-      .join('');
-
-    return `
-      <div class="code-view">
-        <div class="line-numbers">${lineNumbers}</div>
-        <div class="code-lines">${codeContent}</div>
-      </div>
-    `;
-  }
-
-  private renderMarkdownView(content: string): string {
-    try {
-      const html = marked.parse(content) as string;
-      return `<div class="markdown-view">${html}</div>`;
-    } catch (e) {
-      console.error('Markdown parsing error:', e);
-      return `<div class="markdown-view"><p>Error rendering markdown</p></div>`;
-    }
-  }
-}
-
-
-
-
-
-
-
-
-
-<div class="container">
-    <div class="demo-controls">
-        <h3>Select a file to view:</h3>
-        <div class="file-selector">
-            <button *ngFor="let key of fileKeys" class="file-btn" [class.active]="isFileActive(key)"
-                (click)="displayFile(key)">
-                {{ displayFiles[key].icon }} {{ displayFiles[key].name }}
-            </button>
-        </div>
-    </div>
-
-    <div class="file-header">
-        <div class="file-info">
-            <span class="file-icon">{{ currentFileData?.icon }}</span>
-            <span class="file-name">{{ currentFileData?.name }}</span>
-            <span class="file-meta">{{ currentFileData?.meta }}</span>
-        </div>
-        <div class="view-toggle" *ngIf="showViewToggle">
-            <button class="toggle-btn" [class.active]="isViewActive('code')" (click)="changeView('code')">
-                Code
-            </button>
-            <button class="toggle-btn" [class.active]="isViewActive('preview')" (click)="changeView('preview')">
-                Preview
-            </button>
-        </div>
-    </div>
-
-    <div class="file-content">
-        <div [innerHTML]="renderedContent"></div>
-    </div>
-</div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* CSS Variables for Dark and Light Modes */
-:host {
-  /* Dark Mode Variables (Default) */
-  --bitbucket-file-view-bg-primary: #0a0a0b;
-  --bitbucket-file-view-bg-secondary: #161b22;
-  --bitbucket-file-view-bg-content: #111113;
-  --bitbucket-file-view-bg-code-inline: #161b22;
-  --bitbucket-file-view-border: #30363d;
-  --bitbucket-file-view-text-primary: #e6edf3;
-  --bitbucket-file-view-text-secondary: #b6c2cf;
-  --bitbucket-file-view-text-muted: #7d8590;
-  --bitbucket-file-view-text-line-number: #6e7681;
-  --bitbucket-file-view-link: #58a6ff;
-  --bitbucket-file-view-btn-bg: #21262d;
-  --bitbucket-file-view-btn-hover: #30363d;
-  --bitbucket-file-view-btn-active: #1f6feb;
-  --bitbucket-file-view-blockquote: #7d8590;
-}
-
-/* Light Mode Variables */
-:host.light-mode {
-  --bitbucket-file-view-bg-primary: #ffffff;
-  --bitbucket-file-view-bg-secondary: #f6f8fa;
-  --bitbucket-file-view-bg-content: #ffffff;
-  --bitbucket-file-view-bg-code-inline: #f6f8fa;
-  --bitbucket-file-view-border: #d0d7de;
-  --bitbucket-file-view-text-primary: #1f2328;
-  --bitbucket-file-view-text-secondary: #59636e;
-  --bitbucket-file-view-text-muted: #656d76;
-  --bitbucket-file-view-text-line-number: #57606a;
-  --bitbucket-file-view-link: #0969da;
-  --bitbucket-file-view-btn-bg: #f6f8fa;
-  --bitbucket-file-view-btn-hover: #eaeef2;
-  --bitbucket-file-view-btn-active: #0969da;
-  --bitbucket-file-view-blockquote: #656d76;
-}
-
-:host {
-  display: block;
-  background-color: var(--bitbucket-file-view-bg-primary);
-  color: var(--bitbucket-file-view-text-secondary);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
-  padding: 20px;
-  min-height: 100vh;
-}
-
 .container {
   max-width: 1200px;
   margin: 0 auto;
+  animation: fadeInSlideDown 0.3s ease-out;
+}
+
+@keyframes fadeInSlideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .file-header {
@@ -377,27 +24,18 @@ export class FileViewerComponent implements OnInit, OnChanges {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  animation: slideIn 0.4s ease-out 0.1s both;
 }
 
-.file-info {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.file-icon {
-  font-size: 18px;
-}
-
-.file-name {
-  color: var(--bitbucket-file-view-text-primary);
-  font-weight: 600;
-  font-size: 14px;
-}
-
-.file-meta {
-  color: var(--bitbucket-file-view-text-muted);
-  font-size: 12px;
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 .file-content {
@@ -405,266 +43,34 @@ export class FileViewerComponent implements OnInit, OnChanges {
   border: 1px solid var(--bitbucket-file-view-border);
   border-radius: 0 0 6px 6px;
   overflow: hidden;
+  animation: expandDown 0.4s ease-out 0.2s both;
 }
 
-/* Code view with line numbers */
-::ng-deep .code-view {
-  display: flex;
-  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-  font-size: 13px;
-  line-height: 20px;
-  background-color: var(--bitbucket-file-view-bg-content);
+@keyframes expandDown {
+  from {
+    opacity: 0;
+    max-height: 0;
+    transform: scaleY(0);
+    transform-origin: top;
+  }
+  to {
+    opacity: 1;
+    max-height: 5000px;
+    transform: scaleY(1);
+  }
 }
 
-::ng-deep .line-numbers {
-  background-color: var(--bitbucket-file-view-bg-content);
-  color: var(--bitbucket-file-view-text-line-number);
-  padding: 12px 0;
-  text-align: right;
-  user-select: none;
-  min-width: 50px;
-  border-right: 1px solid var(--bitbucket-file-view-border);
-  flex-shrink: 0;
-}
-
-::ng-deep .line-number {
-  padding: 0 12px;
-  height: 20px;
-  line-height: 20px;
-  display: block;
-}
-
-::ng-deep .line-number:hover {
-  color: var(--bitbucket-file-view-text-primary);
-  cursor: pointer;
-}
-
-::ng-deep .code-lines {
-  flex: 1;
-  padding: 12px 16px;
-  overflow-x: auto;
-  background-color: var(--bitbucket-file-view-bg-content);
-  color: var(--bitbucket-file-view-text-primary);
-}
-
-::ng-deep .code-line {
-  height: 20px;
-  line-height: 20px;
-  display: block;
-  white-space: pre;
-  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-  font-size: 13px;
-}
-
-/* Markdown view */
+/* Smooth transition for content changes */
+::ng-deep .code-view,
 ::ng-deep .markdown-view {
-  padding: 24px 32px;
-  background-color: var(--bitbucket-file-view-bg-content);
-  color: var(--bitbucket-file-view-text-primary);
-  line-height: 1.6;
+  animation: fadeIn 0.3s ease-in;
 }
 
-::ng-deep .markdown-view h1 {
-  font-size: 2em;
-  border-bottom: 1px solid var(--bitbucket-file-view-border);
-  padding-bottom: 0.3em;
-  margin-bottom: 16px;
-  margin-top: 24px;
-  color: var(--bitbucket-file-view-text-primary);
-}
-
-::ng-deep .markdown-view h1:first-child {
-  margin-top: 0;
-}
-
-::ng-deep .markdown-view h2 {
-  font-size: 1.5em;
-  border-bottom: 1px solid var(--bitbucket-file-view-border);
-  padding-bottom: 0.3em;
-  margin-bottom: 16px;
-  margin-top: 24px;
-  color: var(--bitbucket-file-view-text-primary);
-}
-
-::ng-deep .markdown-view h3 {
-  font-size: 1.25em;
-  margin-bottom: 16px;
-  margin-top: 24px;
-  color: var(--bitbucket-file-view-text-primary);
-}
-
-::ng-deep .markdown-view h4,
-::ng-deep .markdown-view h5,
-::ng-deep .markdown-view h6 {
-  margin-bottom: 16px;
-  margin-top: 24px;
-  color: var(--bitbucket-file-view-text-primary);
-}
-
-::ng-deep .markdown-view p {
-  margin-bottom: 16px;
-}
-
-::ng-deep .markdown-view a {
-  color: var(--bitbucket-file-view-link);
-  text-decoration: none;
-}
-
-::ng-deep .markdown-view a:hover {
-  text-decoration: underline;
-}
-
-::ng-deep .markdown-view ul,
-::ng-deep .markdown-view ol {
-  margin-bottom: 16px;
-  padding-left: 32px;
-}
-
-::ng-deep .markdown-view li {
-  margin-bottom: 4px;
-}
-
-::ng-deep .markdown-view code {
-  background-color: var(--bitbucket-file-view-bg-code-inline);
-  padding: 2px 6px;
-  border-radius: 3px;
-  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-  font-size: 85%;
-  color: var(--bitbucket-file-view-text-primary);
-}
-
-::ng-deep .markdown-view pre {
-  background-color: var(--bitbucket-file-view-bg-code-inline);
-  padding: 16px;
-  border-radius: 6px;
-  overflow-x: auto;
-  margin-bottom: 16px;
-}
-
-::ng-deep .markdown-view pre code {
-  background-color: transparent;
-  padding: 0;
-}
-
-::ng-deep .markdown-view blockquote {
-  border-left: 4px solid var(--bitbucket-file-view-border);
-  padding-left: 16px;
-  margin-bottom: 16px;
-  color: var(--bitbucket-file-view-blockquote);
-}
-
-::ng-deep .markdown-view table {
-  border-collapse: collapse;
-  width: 100%;
-  margin-bottom: 16px;
-}
-
-::ng-deep .markdown-view table th,
-::ng-deep .markdown-view table td {
-  border: 1px solid var(--bitbucket-file-view-border);
-  padding: 8px 13px;
-}
-
-::ng-deep .markdown-view table th {
-  background-color: var(--bitbucket-file-view-bg-code-inline);
-  font-weight: 600;
-}
-
-::ng-deep .markdown-view table tr:nth-child(even) {
-  background-color: var(--bitbucket-file-view-bg-content);
-}
-
-::ng-deep .markdown-view img {
-  max-width: 100%;
-  height: auto;
-  margin: 16px 0;
-}
-
-::ng-deep .markdown-view hr {
-  border: none;
-  border-top: 1px solid var(--bitbucket-file-view-border);
-  margin: 24px 0;
-}
-
-::ng-deep .markdown-view strong {
-  color: var(--bitbucket-file-view-text-primary);
-  font-weight: 600;
-}
-
-::ng-deep .markdown-view em {
-  font-style: italic;
-}
-
-/* View toggle */
-.view-toggle {
-  display: flex;
-  gap: 8px;
-}
-
-.toggle-btn {
-  background-color: var(--bitbucket-file-view-btn-bg);
-  color: var(--bitbucket-file-view-text-primary);
-  border: 1px solid var(--bitbucket-file-view-border);
-  padding: 4px 12px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 12px;
-  transition: all 0.2s;
-}
-
-.toggle-btn:hover {
-  background-color: var(--bitbucket-file-view-btn-hover);
-}
-
-.toggle-btn.active {
-  background-color: var(--bitbucket-file-view-btn-active);
-  border-color: var(--bitbucket-file-view-btn-active);
-  color: #ffffff;
-}
-
-/* Syntax highlighting adjustments */
-::ng-deep .hljs {
-  background-color: transparent !important;
-  color: var(--bitbucket-file-view-text-primary);
-}
-
-/* Demo controls */
-.demo-controls {
-  margin-bottom: 20px;
-  padding: 16px;
-  background-color: var(--bitbucket-file-view-bg-secondary);
-  border: 1px solid var(--bitbucket-file-view-border);
-  border-radius: 6px;
-}
-
-.demo-controls h3 {
-  margin-bottom: 12px;
-  color: var(--bitbucket-file-view-text-primary);
-}
-
-.file-selector {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.file-btn {
-  background-color: var(--bitbucket-file-view-btn-bg);
-  color: var(--bitbucket-file-view-text-primary);
-  border: 1px solid var(--bitbucket-file-view-border);
-  padding: 8px 16px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: all 0.2s;
-}
-
-.file-btn:hover {
-  background-color: var(--bitbucket-file-view-btn-hover);
-}
-
-.file-btn.active {
-  background-color: var(--bitbucket-file-view-btn-active);
-  border-color: var(--bitbucket-file-view-btn-active);
-  color: #ffffff;
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
