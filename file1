@@ -1,26 +1,19 @@
-// ✅ REPLACE old interfaces with this:
-interface FileSystemItem {
-  name: string;
-  type: 'file' | 'folder';
-  children?: FileSystemItem[];
+// You already have this getter:
+get currentFolderItems(): { name: string; isFolder: boolean }[] {
+  const currentPathKey = this.currentPath.join('/');
+  
+  if (this._lastPath !== currentPathKey) {
+    this._lastPath = currentPathKey;
+    this._currentFolderItems = this.calculateFolderItems(); // ← This calls the method below
+  }
+  
+  return this._currentFolderItems;
 }
 
-
-
-// ✅ REPLACE
-fileSystem: FileSystem = { root: { ... } };
-
-// ✅ WITH
-fileSystem: FileSystemItem[] = [];
-
-
-
-
-// ✅ REPLACE the entire method with:
+// ✅ ADD THE NEW METHOD RIGHT HERE (immediately after the getter above)
 private calculateFolderItems(): { name: string; isFolder: boolean }[] {
   let currentItems: FileSystemItem[] = this.fileSystem;
   
-  // Navigate through path (skip 'root' at index 0)
   for (let i = 1; i < this.currentPath.length; i++) {
     const folderName = this.currentPath[i];
     const folder = currentItems.find(item => item.name === folderName && item.type === 'folder');
@@ -36,29 +29,4 @@ private calculateFolderItems(): { name: string; isFolder: boolean }[] {
     name: item.name,
     isFolder: item.type === 'folder'
   }));
-}
-
-
-
-
-openRepository(repoId: string, repoName: string): void {
-  this.currentRepo = { id: repoId, name: repoName };
-  this.currentPath = ['root'];
-  this.showFavoritesReposView = false;
-  this.showFavoritesBrowserView = true;
-  this.loadingFiles = true;
-
-  // ✅ Call your actual API here
-  this.http.get<FileSystemItem[]>(`your-api-url/repos/${repoId}/files`)
-    .subscribe({
-      next: (data) => {
-        this.fileSystem = data;
-        this.loadingFiles = false;
-      },
-      error: (error) => {
-        console.error('Error:', error);
-        this.fileSystem = [];
-        this.loadingFiles = false;
-      }
-    });
 }
