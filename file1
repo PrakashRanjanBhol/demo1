@@ -1,442 +1,101 @@
-import { Component, OnInit } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
-
-interface PullRequest {
-  id: number;
-  title: string;
-  state: 'OPEN' | 'MERGED';
-  author: string;
-  reviewers: string[];
-  user_comments: number;
-  url: string;
-}
-
-type SortType = 'status' | 'activity';
-type StatusOrder = 'open' | 'merged';
-type ActivityOrder = 'asc' | 'desc';
-
-@Component({
-  selector: 'app-pr-sidebar',
-  standalone: true,
-  imports: [CommonModule, FormsModule],
-  templateUrl: './pr-sidebar.component.html',
-  styleUrls: ['./pr-sidebar.component.css']
-})
-export class PrSidebarComponent implements OnInit {
-  prData: PullRequest[] = [
-    {
-      id: 1,
-      title: 'Sample PR',
-      state: 'OPEN',
-      author: 'Person4',
-      reviewers: ['person1', 'person2', 'person3'],
-      user_comments: 3,
-      url: 'http://abc'
-    },
-    {
-      id: 2,
-      title: 'Sample PR1',
-      state: 'MERGED',
-      author: 'Person1',
-      reviewers: ['person4', 'person2', 'person3'],
-      user_comments: 2,
-      url: 'http://abc'
-    },
-    {
-      id: 3,
-      title: 'Fix authentication bug in login flow',
-      state: 'OPEN',
-      author: 'Person2',
-      reviewers: ['person1', 'person3'],
-      user_comments: 5,
-      url: 'http://abc'
-    },
-    {
-      id: 4,
-      title: 'Add new dashboard component with analytics',
-      state: 'OPEN',
-      author: 'Person3',
-      reviewers: ['person1', 'person2', 'person4'],
-      user_comments: 1,
-      url: 'http://abc'
-    },
-    {
-      id: 5,
-      title: 'Update dependencies and fix security vulnerabilities',
-      state: 'MERGED',
-      author: 'Person5',
-      reviewers: ['person1'],
-      user_comments: 0,
-      url: 'http://abc'
-    }
-  ];
-
-  currentSort: SortType = 'status';
-  currentOrder: StatusOrder = 'open';
-  activityOrder: ActivityOrder = 'asc'; // Default to Low → High
-  searchQuery: string = '';
-  filteredAndSortedPRs: PullRequest[] = [];
-  openPRs: PullRequest[] = [];
-  mergedPRs: PullRequest[] = [];
-
-  ngOnInit(): void {
-    this.updatePRList();
-  }
-
-  getInitials(name: string): string {
-    return name.charAt(0).toUpperCase();
-  }
-
-  handleSearch(): void {
-    this.updatePRList();
-  }
-
-  sortPRs(sortType: SortType): void {
-    this.currentSort = sortType;
-    this.updatePRList();
-  }
-
-  setStatusOrder(order: StatusOrder): void {
-    this.currentOrder = order;
-    this.updatePRList();
-  }
-
-  setActivityOrder(order: ActivityOrder): void {
-    this.activityOrder = order;
-    this.updatePRList();
-  }
-
-  private getFilteredPRs(): PullRequest[] {
-    if (!this.searchQuery) {
-      return this.prData;
-    }
-
-    const query = this.searchQuery.toLowerCase();
-    return this.prData.filter(pr => {
-      return (
-        pr.title.toLowerCase().includes(query) ||
-        pr.author.toLowerCase().includes(query) ||
-        pr.reviewers.some(reviewer => reviewer.toLowerCase().includes(query)) ||
-        pr.id.toString().includes(query) ||
-        pr.state.toLowerCase().includes(query)
-      );
-    });
-  }
-
-  private getSortedPRs(): PullRequest[] {
-    let sorted = [...this.getFilteredPRs()];
-
-    if (this.currentSort === 'status') {
-      sorted.sort((a, b) => {
-        if (this.currentOrder === 'open') {
-          if (a.state !== b.state) {
-            return a.state === 'OPEN' ? -1 : 1;
-          }
-          return a.user_comments - b.user_comments;
-        } else {
-          if (a.state !== b.state) {
-            return a.state === 'MERGED' ? -1 : 1;
-          }
-          return a.user_comments - b.user_comments;
-        }
-      });
-    } else if (this.currentSort === 'activity') {
-      if (this.activityOrder === 'desc') {
-        sorted.sort((a, b) => b.user_comments - a.user_comments);
-      } else {
-        sorted.sort((a, b) => a.user_comments - b.user_comments);
-      }
-    }
-
-    return sorted;
-  }
-
-  private updatePRList(): void {
-    this.filteredAndSortedPRs = this.getSortedPRs();
-    this.openPRs = this.filteredAndSortedPRs.filter(pr => pr.state === 'OPEN');
-    this.mergedPRs = this.filteredAndSortedPRs.filter(pr => pr.state === 'MERGED');
-  }
-
-  openPR(url: string): void {
-    window.open(url, '_blank');
-  }
-
-  stopPropagation(event: Event): void {
-    event.stopPropagation();
-  }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<div class="sidebar">
-  <div class="header">
+<!-- Updated Header Section - Replace the existing .header div in your HTML -->
+<div class="header">
+  <div class="header-top">
     <h2>Pull Requests</h2>
-    
-    <div class="search-box">
-      <svg class="search-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+    <button class="filter-toggle-btn" (click)="toggleFilters()" [class.active]="showFilters">
+      <svg class="filter-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path>
       </svg>
-      <input 
-        type="text" 
-        class="search-input" 
-        placeholder="Search PRs..." 
-        [(ngModel)]="searchQuery"
-        (input)="handleSearch()">
-    </div>
-
-    <div class="sort-controls">
-      <div class="sort-tabs">
-        <button 
-          class="sort-btn"
-          [class.active]="currentSort === 'status'"
-          (click)="sortPRs('status')">
-          <svg class="sort-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
-          </svg>
-          <span>Status</span>
-        </button>
-        <button 
-          class="sort-btn"
-          [class.active]="currentSort === 'activity'"
-          (click)="sortPRs('activity')">
-          <svg class="sort-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"></path>
-          </svg>
-          <span>Activity</span>
-        </button>
-      </div>
-
-      <div class="order-controls">
-        <!-- Status Order Controls -->
-        <ng-container *ngIf="currentSort === 'status'">
-          <button 
-            class="order-btn"
-            [class.active]="currentOrder === 'open'"
-            (click)="setStatusOrder('open')">
-            <svg class="order-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6-2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-            </svg>
-            <span>Open</span>
-          </button>
-          <button 
-            class="order-btn"
-            [class.active]="currentOrder === 'merged'"
-            (click)="setStatusOrder('merged')">
-            <svg class="order-icon" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
-            </svg>
-            <span>Merged</span>
-          </button>
-        </ng-container>
-
-        <!-- Activity Order Controls -->
-        <ng-container *ngIf="currentSort === 'activity'">
-          <button 
-            class="order-btn"
-            [class.active]="activityOrder === 'asc'"
-            (click)="setActivityOrder('asc')">
-            <svg class="order-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h9m5-4v12m0 0l-4-4m4 4l4-4"></path>
-            </svg>
-            <span>Low → High</span>
-          </button>
-          <button 
-            class="order-btn"
-            [class.active]="activityOrder === 'desc'"
-            (click)="setActivityOrder('desc')">
-            <svg class="order-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"></path>
-            </svg>
-            <span>High → Low</span>
-          </button>
-        </ng-container>
-      </div>
-    </div>
+      <span>{{ showFilters ? 'Hide' : 'Show' }} Filters</span>
+      <svg class="chevron-icon" [class.rotate]="showFilters" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+      </svg>
+    </button>
   </div>
 
-  <div id="pr-container">
-    <!-- Empty State -->
-    <div class="empty-state" *ngIf="filteredAndSortedPRs.length === 0">
-      {{ searchQuery ? 'No PRs match your search' : 'No pull requests found' }}
-    </div>
+  <div class="filters-container" [class.expanded]="showFilters">
+    <div class="filters-content">
+      <div class="search-box">
+        <svg class="search-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+        </svg>
+        <input 
+          type="text" 
+          class="search-input" 
+          placeholder="Search PRs..." 
+          [(ngModel)]="searchQuery"
+          (input)="handleSearch()">
+      </div>
 
-    <!-- Status View -->
-    <ng-container *ngIf="currentSort === 'status' && filteredAndSortedPRs.length > 0">
-      <ng-container *ngIf="currentOrder === 'open'">
-        <!-- Open PRs Section -->
-        <ng-container *ngIf="openPRs.length > 0">
-          <div class="section-header">Open ({{ openPRs.length }})</div>
-          <div 
-            class="pr-card" 
-            *ngFor="let pr of openPRs"
-            (click)="openPR(pr.url)">
-            <div class="pr-header">
-              <span class="pr-state" [class.open]="pr.state === 'OPEN'" [class.merged]="pr.state === 'MERGED'">
-                {{ pr.state }}
-              </span>
-              <span class="pr-id">#{{ pr.id }}</span>
-            </div>
-            <div class="pr-title">{{ pr.title }}</div>
-            <div class="pr-author">
-              <div class="author-avatar">{{ getInitials(pr.author) }}</div>
-              <span>{{ pr.author }}</span>
-            </div>
-            <div class="pr-footer">
-              <div class="comment-count" [class.has-comments]="pr.user_comments > 0">
-                <svg class="comment-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
-                </svg>
-                <span>{{ pr.user_comments }} comment{{ pr.user_comments !== 1 ? 's' : '' }}</span>
-              </div>
-              <a [href]="pr.url" class="view-link" (click)="stopPropagation($event)">
-                View →
-              </a>
-            </div>
-          </div>
-        </ng-container>
-
-        <!-- Merged PRs Section -->
-        <ng-container *ngIf="mergedPRs.length > 0">
-          <div class="section-header">Merged ({{ mergedPRs.length }})</div>
-          <div 
-            class="pr-card" 
-            *ngFor="let pr of mergedPRs"
-            (click)="openPR(pr.url)">
-            <div class="pr-header">
-              <span class="pr-state" [class.open]="pr.state === 'OPEN'" [class.merged]="pr.state === 'MERGED'">
-                {{ pr.state }}
-              </span>
-              <span class="pr-id">#{{ pr.id }}</span>
-            </div>
-            <div class="pr-title">{{ pr.title }}</div>
-            <div class="pr-author">
-              <div class="author-avatar">{{ getInitials(pr.author) }}</div>
-              <span>{{ pr.author }}</span>
-            </div>
-            <div class="pr-footer">
-              <div class="comment-count" [class.has-comments]="pr.user_comments > 0">
-                <svg class="comment-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
-                </svg>
-                <span>{{ pr.user_comments }} comment{{ pr.user_comments !== 1 ? 's' : '' }}</span>
-              </div>
-              <a [href]="pr.url" class="view-link" (click)="stopPropagation($event)">
-                View →
-              </a>
-            </div>
-          </div>
-        </ng-container>
-      </ng-container>
-
-      <ng-container *ngIf="currentOrder === 'merged'">
-        <!-- Merged PRs Section -->
-        <ng-container *ngIf="mergedPRs.length > 0">
-          <div class="section-header">Merged ({{ mergedPRs.length }})</div>
-          <div 
-            class="pr-card" 
-            *ngFor="let pr of mergedPRs"
-            (click)="openPR(pr.url)">
-            <div class="pr-header">
-              <span class="pr-state" [class.open]="pr.state === 'OPEN'" [class.merged]="pr.state === 'MERGED'">
-                {{ pr.state }}
-              </span>
-              <span class="pr-id">#{{ pr.id }}</span>
-            </div>
-            <div class="pr-title">{{ pr.title }}</div>
-            <div class="pr-author">
-              <div class="author-avatar">{{ getInitials(pr.author) }}</div>
-              <span>{{ pr.author }}</span>
-            </div>
-            <div class="pr-footer">
-              <div class="comment-count" [class.has-comments]="pr.user_comments > 0">
-                <svg class="comment-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
-                </svg>
-                <span>{{ pr.user_comments }} comment{{ pr.user_comments !== 1 ? 's' : '' }}</span>
-              </div>
-              <a [href]="pr.url" class="view-link" (click)="stopPropagation($event)">
-                View →
-              </a>
-            </div>
-          </div>
-        </ng-container>
-
-        <!-- Open PRs Section -->
-        <ng-container *ngIf="openPRs.length > 0">
-          <div class="section-header">Open ({{ openPRs.length }})</div>
-          <div 
-            class="pr-card" 
-            *ngFor="let pr of openPRs"
-            (click)="openPR(pr.url)">
-            <div class="pr-header">
-              <span class="pr-state" [class.open]="pr.state === 'OPEN'" [class.merged]="pr.state === 'MERGED'">
-                {{ pr.state }}
-              </span>
-              <span class="pr-id">#{{ pr.id }}</span>
-            </div>
-            <div class="pr-title">{{ pr.title }}</div>
-            <div class="pr-author">
-              <div class="author-avatar">{{ getInitials(pr.author) }}</div>
-              <span>{{ pr.author }}</span>
-            </div>
-            <div class="pr-footer">
-              <div class="comment-count" [class.has-comments]="pr.user_comments > 0">
-                <svg class="comment-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
-                </svg>
-                <span>{{ pr.user_comments }} comment{{ pr.user_comments !== 1 ? 's' : '' }}</span>
-              </div>
-              <a [href]="pr.url" class="view-link" (click)="stopPropagation($event)">
-                View →
-              </a>
-            </div>
-          </div>
-        </ng-container>
-      </ng-container>
-    </ng-container>
-
-    <!-- Activity View -->
-    <ng-container *ngIf="currentSort === 'activity' && filteredAndSortedPRs.length > 0">
-      <div 
-        class="pr-card" 
-        *ngFor="let pr of filteredAndSortedPRs"
-        (click)="openPR(pr.url)">
-        <div class="pr-header">
-          <span class="pr-state" [class.open]="pr.state === 'OPEN'" [class.merged]="pr.state === 'MERGED'">
-            {{ pr.state }}
-          </span>
-          <span class="pr-id">#{{ pr.id }}</span>
-        </div>
-        <div class="pr-title">{{ pr.title }}</div>
-        <div class="pr-author">
-          <div class="author-avatar">{{ getInitials(pr.author) }}</div>
-          <span>{{ pr.author }}</span>
-        </div>
-        <div class="pr-footer">
-          <div class="comment-count" [class.has-comments]="pr.user_comments > 0">
-            <svg class="comment-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
+      <div class="sort-controls">
+        <div class="sort-tabs">
+          <button 
+            class="sort-btn"
+            [class.active]="currentSort === 'status'"
+            (click)="sortPRs('status')">
+            <svg class="sort-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
             </svg>
-            <span>{{ pr.user_comments }} comment{{ pr.user_comments !== 1 ? 's' : '' }}</span>
-          </div>
-          <a [href]="pr.url" class="view-link" (click)="stopPropagation($event)">
-            View →
-          </a>
+            <span>Status</span>
+          </button>
+          <button 
+            class="sort-btn"
+            [class.active]="currentSort === 'activity'"
+            (click)="sortPRs('activity')">
+            <svg class="sort-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"></path>
+            </svg>
+            <span>Activity</span>
+          </button>
+        </div>
+
+        <div class="order-controls">
+          <!-- Status Order Controls -->
+          <ng-container *ngIf="currentSort === 'status'">
+            <button 
+              class="order-btn"
+              [class.active]="currentOrder === 'open'"
+              (click)="setStatusOrder('open')">
+              <svg class="order-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6-2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+              </svg>
+              <span>Open</span>
+            </button>
+            <button 
+              class="order-btn"
+              [class.active]="currentOrder === 'merged'"
+              (click)="setStatusOrder('merged')">
+              <svg class="order-icon" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+              </svg>
+              <span>Merged</span>
+            </button>
+          </ng-container>
+
+          <!-- Activity Order Controls -->
+          <ng-container *ngIf="currentSort === 'activity'">
+            <button 
+              class="order-btn"
+              [class.active]="activityOrder === 'asc'"
+              (click)="setActivityOrder('asc')">
+              <svg class="order-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h9m5-4v12m0 0l-4-4m4 4l4-4"></path>
+              </svg>
+              <span>Low → High</span>
+            </button>
+            <button 
+              class="order-btn"
+              [class.active]="activityOrder === 'desc'"
+              (click)="setActivityOrder('desc')">
+              <svg class="order-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"></path>
+              </svg>
+              <span>High → Low</span>
+            </button>
+          </ng-container>
         </div>
       </div>
-    </ng-container>
+    </div>
   </div>
 </div>
 
@@ -451,143 +110,87 @@ export class PrSidebarComponent implements OnInit {
 
 
 
-
-
-
-
-
-
-
-/* Dark Mode (Default) */
-:root {
-  /* Background Colors */
-  --bitbucket-prs-bg-primary: #0a0a0b;
-  --bitbucket-prs-bg-secondary: #111113;
-  --bitbucket-prs-bg-tertiary: #1a1a1c;
-  --bitbucket-prs-bg-hover: #222225;
-  --bitbucket-prs-bg-elevated: #2a2a2e;
-  
-  /* Text Colors */
-  --bitbucket-prs-text-primary: #fafafa;
-  --bitbucket-prs-text-secondary: #e4e4e7;
-  --bitbucket-prs-text-tertiary: #a1a1aa;
-  --bitbucket-prs-text-muted: #71717a;
-  
-  /* Border Colors */
-  --bitbucket-prs-border-primary: #2a2a2e;
-  --bitbucket-prs-border-secondary: #3a3a3e;
-  
-  /* Scrollbar Colors */
-  --bitbucket-prs-scrollbar-track: #1a1a1c;
-  --bitbucket-prs-scrollbar-thumb: #333336;
-  --bitbucket-prs-scrollbar-thumb-hover: #444448;
-  
-  /* Accent Colors */
-  --bitbucket-prs-accent-primary: #6366f1;
-  --bitbucket-prs-accent-secondary: #8b5cf6;
-  --bitbucket-prs-accent-gradient: linear-gradient(135deg, #6366f1, #8b5cf6);
-  
-  /* State Colors */
-  --bitbucket-prs-state-open-bg: rgba(34, 197, 94, 0.15);
-  --bitbucket-prs-state-open-text: #22c55e;
-  --bitbucket-prs-state-merged-bg: rgba(139, 92, 246, 0.15);
-  --bitbucket-prs-state-merged-text: #8b5cf6;
-  
-  /* Avatar Gradient */
-  --bitbucket-prs-avatar-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  
-  /* Box Shadow */
-  --bitbucket-prs-shadow-focus: 0 0 0 3px rgba(99, 102, 241, 0.1);
-}
-
-/* Light Mode */
-[data-theme="light"] {
-  /* Background Colors */
-  --bitbucket-prs-bg-primary: #ffffff;
-  --bitbucket-prs-bg-secondary: #f9fafb;
-  --bitbucket-prs-bg-tertiary: #f3f4f6;
-  --bitbucket-prs-bg-hover: #e5e7eb;
-  --bitbucket-prs-bg-elevated: #d1d5db;
-  
-  /* Text Colors */
-  --bitbucket-prs-text-primary: #111827;
-  --bitbucket-prs-text-secondary: #1f2937;
-  --bitbucket-prs-text-tertiary: #6b7280;
-  --bitbucket-prs-text-muted: #9ca3af;
-  
-  /* Border Colors */
-  --bitbucket-prs-border-primary: #e5e7eb;
-  --bitbucket-prs-border-secondary: #d1d5db;
-  
-  /* Scrollbar Colors */
-  --bitbucket-prs-scrollbar-track: #f3f4f6;
-  --bitbucket-prs-scrollbar-thumb: #d1d5db;
-  --bitbucket-prs-scrollbar-thumb-hover: #9ca3af;
-  
-  /* Accent Colors */
-  --bitbucket-prs-accent-primary: #6366f1;
-  --bitbucket-prs-accent-secondary: #8b5cf6;
-  --bitbucket-prs-accent-gradient: linear-gradient(135deg, #6366f1, #8b5cf6);
-  
-  /* State Colors */
-  --bitbucket-prs-state-open-bg: rgba(34, 197, 94, 0.1);
-  --bitbucket-prs-state-open-text: #16a34a;
-  --bitbucket-prs-state-merged-bg: rgba(139, 92, 246, 0.1);
-  --bitbucket-prs-state-merged-text: #7c3aed;
-  
-  /* Avatar Gradient */
-  --bitbucket-prs-avatar-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  
-  /* Box Shadow */
-  --bitbucket-prs-shadow-focus: 0 0 0 3px rgba(99, 102, 241, 0.15);
-}
-
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  background: var(--bitbucket-prs-bg-primary);
-  color: var(--bitbucket-prs-text-secondary);
-}
-
-.sidebar {
-  width: 320px;
-  height: 100vh;
-  background: var(--bitbucket-prs-bg-secondary);
-  overflow-y: auto;
-  padding: 16px;
-}
-
-.sidebar::-webkit-scrollbar {
-  width: 6px;
-}
-
-.sidebar::-webkit-scrollbar-track {
-  background: var(--bitbucket-prs-scrollbar-track);
-}
-
-.sidebar::-webkit-scrollbar-thumb {
-  background: var(--bitbucket-prs-scrollbar-thumb);
-  border-radius: 3px;
-}
-
-.sidebar::-webkit-scrollbar-thumb:hover {
-  background: var(--bitbucket-prs-scrollbar-thumb-hover);
-}
+/* Updated CSS - Add/Replace these styles in your CSS file */
 
 .header {
   margin-bottom: 20px;
+}
+
+.header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
 }
 
 .header h2 {
   font-size: 18px;
   font-weight: 600;
   color: var(--bitbucket-prs-text-primary);
-  margin-bottom: 12px;
+  margin-bottom: 0;
+}
+
+.filter-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--bitbucket-prs-bg-tertiary);
+  border: 1px solid var(--bitbucket-prs-border-primary);
+  border-radius: 6px;
+  color: var(--bitbucket-prs-text-tertiary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  outline: none;
+}
+
+.filter-toggle-btn:hover {
+  background: var(--bitbucket-prs-bg-hover);
+  border-color: var(--bitbucket-prs-border-secondary);
+  color: var(--bitbucket-prs-text-secondary);
+}
+
+.filter-toggle-btn.active {
+  background: var(--bitbucket-prs-accent-gradient);
+  border-color: transparent;
+  color: #fff;
+}
+
+.filter-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.chevron-icon {
+  width: 14px;
+  height: 14px;
+  transition: transform 0.3s ease;
+}
+
+.chevron-icon.rotate {
+  transform: rotate(180deg);
+}
+
+.filters-container {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  opacity: 0;
+}
+
+.filters-container.expanded {
+  max-height: 500px;
+  opacity: 1;
+}
+
+.filters-content {
+  padding: 12px;
+  background: var(--bitbucket-prs-bg-tertiary);
+  border: 1px solid var(--bitbucket-prs-border-primary);
+  border-radius: 8px;
+  margin-bottom: 4px;
 }
 
 .search-box {
@@ -598,7 +201,7 @@ body {
 .search-input {
   width: 100%;
   padding: 10px 12px 10px 36px;
-  background: var(--bitbucket-prs-bg-tertiary);
+  background: var(--bitbucket-prs-bg-secondary);
   border: 1px solid var(--bitbucket-prs-border-primary);
   border-radius: 6px;
   color: var(--bitbucket-prs-text-secondary);
@@ -632,14 +235,13 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin-bottom: 16px;
 }
 
 .sort-tabs {
   display: flex;
   gap: 6px;
   padding: 4px;
-  background: var(--bitbucket-prs-bg-tertiary);
+  background: var(--bitbucket-prs-bg-secondary);
   border-radius: 8px;
   border: 1px solid var(--bitbucket-prs-border-primary);
 }
@@ -680,7 +282,7 @@ body {
   display: flex;
   gap: 6px;
   padding: 4px;
-  background: var(--bitbucket-prs-bg-tertiary);
+  background: var(--bitbucket-prs-bg-secondary);
   border-radius: 8px;
   border: 1px solid var(--bitbucket-prs-border-primary);
 }
@@ -718,154 +320,22 @@ body {
   height: 12px;
 }
 
-.pr-card {
-  background: var(--bitbucket-prs-bg-tertiary);
-  border: 1px solid var(--bitbucket-prs-border-primary);
-  border-radius: 8px;
-  padding: 14px;
-  margin-bottom: 12px;
-  cursor: pointer;
-  transition: all 0.2s;
-  position: relative;
-}
 
-.pr-card:hover {
-  background: var(--bitbucket-prs-bg-hover);
-  border-color: var(--bitbucket-prs-border-secondary);
-  transform: translateY(-1px);
-}
 
-.pr-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 8px;
-}
 
-.pr-state {
-  display: inline-flex;
-  align-items: center;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
 
-.pr-state.open {
-  background: var(--bitbucket-prs-state-open-bg);
-  color: var(--bitbucket-prs-state-open-text);
-}
 
-.pr-state.merged {
-  background: var(--bitbucket-prs-state-merged-bg);
-  color: var(--bitbucket-prs-state-merged-text);
-}
 
-.pr-id {
-  font-size: 11px;
-  color: var(--bitbucket-prs-text-muted);
-  font-weight: 500;
-}
 
-.pr-title {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--bitbucket-prs-text-primary);
-  margin-bottom: 10px;
-  line-height: 1.4;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
 
-.pr-author {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 10px;
-  font-size: 12px;
-  color: var(--bitbucket-prs-text-tertiary);
-}
 
-.author-avatar {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: var(--bitbucket-prs-avatar-gradient);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  font-weight: 600;
-  color: #fff;
-}
 
-.pr-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding-top: 10px;
-  border-top: 1px solid var(--bitbucket-prs-border-primary);
-}
+ // ... existing properties ...
+  
+  showFilters: boolean = false; // Add this property
 
-.comment-count {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--bitbucket-prs-text-tertiary);
-}
+  // ... existing methods ...
 
-.comment-icon {
-  width: 16px;
-  height: 16px;
-}
-
-.comment-count.has-comments {
-  background: var(--bitbucket-prs-accent-gradient);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  font-weight: 600;
-}
-
-.view-link {
-  font-size: 11px;
-  background: var(--bitbucket-prs-accent-gradient);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  text-decoration: none;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-weight: 600;
-}
-
-.view-link:hover {
-  opacity: 0.8;
-}
-
-.section-header {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--bitbucket-prs-text-muted);
-  margin: 20px 0 12px 0;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.section-header:first-of-type {
-  margin-top: 0;
-}
-
-.empty-state {
-  text-align: center;
-  padding: 40px 20px;
-  color: var(--bitbucket-prs-text-muted);
-  font-size: 13px;
-}
-
+  toggleFilters(): void {
+    this.showFilters = !this.showFilters;
+  }
