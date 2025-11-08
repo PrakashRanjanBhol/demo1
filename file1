@@ -1,9 +1,32 @@
-// ✅ ADD this property
+// ✅ ADD properties (around line 150)
 branchSelectorVisible: boolean = false;
+branchSearchText: string = '';
 
-// ✅ ADD this method (around line 280)
+// ✅ ADD getter for filtered branches (around line 240)
+get filteredBranches(): string[] {
+  if (!this.branchSearchText.trim()) {
+    return this.branches;
+  }
+  
+  const searchLower = this.branchSearchText.toLowerCase();
+  return this.branches.filter(branch => 
+    branch.toLowerCase().includes(searchLower)
+  );
+}
+
+// ✅ UPDATE method
 toggleBranchSelector(): void {
   this.branchSelectorVisible = !this.branchSelectorVisible;
+  if (!this.branchSelectorVisible) {
+    this.branchSearchText = ''; // Clear on close
+  }
+}
+
+// ✅ ADD method
+selectBranch(branch: string): void {
+  this.selectedBranch = branch;
+  this.branchSelectorVisible = false;
+  this.branchSearchText = '';
 }
 
 
@@ -11,48 +34,57 @@ toggleBranchSelector(): void {
 
 
 
-<div class="branch-selector-container">
-    <!-- Always visible header -->
-    <div class="branch-selector-header" (click)="toggleBranchSelector()">
-        <div class="branch-info">
-            <svg class="branch-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="6" y1="3" x2="6" y2="15"></line>
-                <circle cx="18" cy="6" r="3"></circle>
-                <circle cx="6" cy="18" r="3"></circle>
-                <path d="M18 9a9 9 0 0 1-9 9"></path>
-            </svg>
-            <div class="branch-details">
-                <span class="branch-label">Branch</span>
-                <span class="branch-name">{{ selectedBranch }}</span>
-            </div>
-        </div>
-        <svg class="toggle-icon" 
-             [class.rotated]="branchSelectorVisible"
-             viewBox="0 0 24 24" 
-             fill="none" 
-             stroke="currentColor" 
-             stroke-width="2">
-            <polyline points="6 9 12 15 18 9"></polyline>
+
+
+
+
+<div class="branch-selector-content" [class.visible]="branchSelectorVisible">
+    <!-- ✅ ADD Search Box -->
+    <div class="branch-search">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"></circle>
+            <path d="m21 21-4.35-4.35"></path>
         </svg>
+        <input type="text" 
+               class="branch-search-input" 
+               placeholder="Search branches..."
+               [(ngModel)]="branchSearchText"
+               (click)="$event.stopPropagation()"
+               #searchInput>
+        <button class="clear-search-btn" 
+                *ngIf="branchSearchText"
+                (click)="branchSearchText = ''; searchInput.focus(); $event.stopPropagation()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        </button>
     </div>
     
-    <!-- Collapsible dropdown -->
-    <div class="branch-selector-content" [class.visible]="branchSelectorVisible">
-        <div class="branch-list">
-            <div class="branch-option" 
-                 *ngFor="let branch of branches"
-                 [class.selected]="branch === selectedBranch"
-                 (click)="selectedBranch = branch; toggleBranchSelector()">
-                <span class="branch-option-text">{{ branch }}</span>
-                <svg class="check-icon" 
-                     *ngIf="branch === selectedBranch"
-                     viewBox="0 0 24 24" 
-                     fill="none" 
-                     stroke="currentColor" 
-                     stroke-width="2">
-                    <polyline points="20 6 9 17 4 12"></polyline>
-                </svg>
-            </div>
+    <!-- ✅ UPDATE branch list to use filteredBranches -->
+    <div class="branch-list">
+        <div class="branch-option" 
+             *ngFor="let branch of filteredBranches"
+             [class.selected]="branch === selectedBranch"
+             (click)="selectBranch(branch); $event.stopPropagation()">
+            <span class="branch-option-text">{{ branch }}</span>
+            <svg class="check-icon" 
+                 *ngIf="branch === selectedBranch"
+                 viewBox="0 0 24 24" 
+                 fill="none" 
+                 stroke="currentColor" 
+                 stroke-width="2">
+                <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+        </div>
+        
+        <!-- ✅ ADD No results message -->
+        <div class="no-results" *ngIf="filteredBranches.length === 0">
+            <svg class="no-results-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.35-4.35"></path>
+            </svg>
+            <span class="no-results-text">No branches found</span>
         </div>
     </div>
 </div>
@@ -65,108 +97,65 @@ toggleBranchSelector(): void {
 
 
 
-/* Branch Selector - Collapsible */
-.branch-selector-container {
-    border-bottom: 1px solid var(--bitbucket-border-primary);
-    background-color: var(--bitbucket-bg-tertiary);
-}
 
-.branch-selector-header {
+/* Search Box */
+.branch-search {
     padding: 12px 16px;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    cursor: pointer;
-    transition: background-color 0.2s ease;
+    gap: 8px;
+    border-bottom: 1px solid var(--bitbucket-border-primary);
+    background-color: var(--bitbucket-bg-secondary);
+    position: sticky;
+    top: 0;
 }
 
-.branch-selector-header:hover {
-    background-color: var(--bitbucket-bg-hover);
-}
-
-.branch-info {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-.branch-icon {
-    width: 18px;
-    height: 18px;
-    color: var(--bitbucket-blue);
-}
-
-.branch-details {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-
-.branch-label {
-    font-size: 10px;
-    color: var(--bitbucket-text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.branch-name {
-    font-size: 13px;
-    color: var(--bitbucket-text-primary);
-    font-weight: 600;
-}
-
-.toggle-icon {
+.search-icon {
     width: 16px;
     height: 16px;
     color: var(--bitbucket-text-secondary);
-    transition: transform 0.3s ease;
 }
 
-.toggle-icon.rotated {
-    transform: rotate(180deg);
+.branch-search-input {
+    flex: 1;
+    padding: 8px 10px;
+    background-color: var(--bitbucket-bg-tertiary);
+    border: 1px solid var(--bitbucket-border-primary);
+    border-radius: 4px;
+    color: var(--bitbucket-text-primary);
+    font-size: 12px;
+    outline: none;
 }
 
-.branch-selector-content {
-    max-height: 0;
-    overflow: hidden;
-    transition: max-height 0.3s ease-out, opacity 0.3s ease-out;
-    opacity: 0;
+.branch-search-input:focus {
+    border-color: var(--bitbucket-blue);
 }
 
-.branch-selector-content.visible {
-    max-height: 200px;
-    opacity: 1;
-    overflow-y: auto;
-}
-
-.branch-list {
-    padding: 4px 0;
-}
-
-.branch-option {
-    padding: 10px 16px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+.clear-search-btn {
+    background: none;
+    border: none;
+    padding: 4px;
     cursor: pointer;
-    transition: background-color 0.2s ease;
+    border-radius: 4px;
 }
 
-.branch-option:hover {
-    background-color: var(--bitbucket-bg-hover);
-}
-
-.branch-option.selected {
+.clear-search-btn:hover {
     background-color: var(--bitbucket-border-primary);
 }
 
-.branch-option-text {
-    font-size: 13px;
-    color: var(--bitbucket-text-primary);
+.clear-search-btn svg {
+    width: 14px;
+    height: 14px;
+    color: var(--bitbucket-text-secondary);
 }
 
-.check-icon {
-    width: 16px;
-    height: 16px;
-    color: var(--bitbucket-blue);
+/* No Results */
+.no-results {
+    padding: 32px 16px;
+    text-align: center;
+}
+
+.no-results-text {
+    font-size: 13px;
+    color: var(--bitbucket-text-secondary);
 }
