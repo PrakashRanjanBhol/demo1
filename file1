@@ -1,6 +1,9 @@
 // center-content.component.ts
-import { Component } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import hljs from 'highlight.js';
+import { marked } from 'marked';
 
 interface FileInfo {
   id: number;
@@ -8,6 +11,8 @@ interface FileInfo {
   path: string;
   size: string;
   repository: string;
+  content: string;
+  type: string;
 }
 
 interface PRInfo {
@@ -31,7 +36,7 @@ type ViewType = 'pr' | 'file' | null;
   templateUrl: './center-content.component.html',
   styleUrls: ['./center-content.component.css']
 })
-export class CenterContentComponent {
+export class CenterContentComponent implements OnInit {
   // Static data for PRs
   prs: PRInfo[] = [
     {
@@ -69,42 +74,198 @@ export class CenterContentComponent {
     }
   ];
 
-  // Static data for Files
+  // Static data for Files with content
   files: FileInfo[] = [
     {
       id: 1,
       name: 'App.jsx',
       path: 'src/',
       size: '2.4 KB',
-      repository: 'frontend-app'
+      repository: 'frontend-app',
+      type: 'javascript',
+      content: `import React from 'react';
+import './App.css';
+
+function App() {
+  const [count, setCount] = React.useState(0);
+
+  return (
+    <div className="App">
+      <header className="App-header">
+        <h1>Welcome to React</h1>
+        <p>You clicked {count} times</p>
+        <button onClick={() => setCount(count + 1)}>
+          Click me
+        </button>
+      </header>
+    </div>
+  );
+}
+
+export default App;`
     },
     {
       id: 2,
       name: 'index.css',
       path: 'src/',
       size: '1.2 KB',
-      repository: 'frontend-app'
+      repository: 'frontend-app',
+      type: 'css',
+      content: `body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+.App {
+  text-align: center;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(10px + 2vmin);
+}`
     },
     {
       id: 3,
       name: 'utils.js',
       path: 'src/lib/',
       size: '3.8 KB',
-      repository: 'frontend-app'
+      repository: 'frontend-app',
+      type: 'javascript',
+      content: `// Utility functions for the application
+
+/**
+ * Format a date to a readable string
+ * @param {Date} date - The date to format
+ * @returns {string} Formatted date string
+ */
+export function formatDate(date) {
+  const options = { year: 'numeric', month: 'long', day: 'numeric' };
+  return date.toLocaleDateString(undefined, options);
+}
+
+/**
+ * Debounce a function call
+ * @param {Function} func - The function to debounce
+ * @param {number} wait - The wait time in milliseconds
+ * @returns {Function} Debounced function
+ */
+export function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
+
+/**
+ * Check if a value is empty
+ * @param {*} value - The value to check
+ * @returns {boolean} True if empty, false otherwise
+ */
+export function isEmpty(value) {
+  return value === null || value === undefined || value === '';
+}`
     },
     {
       id: 4,
       name: 'README.md',
       path: '/',
       size: '5.1 KB',
-      repository: 'backend-api'
+      repository: 'backend-api',
+      type: 'markdown',
+      content: `# Backend API
+
+## Overview
+This is the backend API for our application. It provides RESTful endpoints for managing users, posts, and comments.
+
+## Features
+- User authentication with JWT
+- CRUD operations for posts
+- Comment system
+- File upload support
+- Rate limiting
+- API documentation with Swagger
+
+## Installation
+
+\`\`\`bash
+npm install
+\`\`\`
+
+## Configuration
+
+Create a \`.env\` file in the root directory:
+
+\`\`\`
+PORT=3000
+DATABASE_URL=mongodb://localhost:27017/myapp
+JWT_SECRET=your-secret-key
+\`\`\`
+
+## Usage
+
+Start the development server:
+
+\`\`\`bash
+npm run dev
+\`\`\`
+
+## API Endpoints
+
+### Authentication
+- \`POST /api/auth/register\` - Register a new user
+- \`POST /api/auth/login\` - Login user
+
+### Posts
+- \`GET /api/posts\` - Get all posts
+- \`POST /api/posts\` - Create a new post
+- \`PUT /api/posts/:id\` - Update a post
+- \`DELETE /api/posts/:id\` - Delete a post
+
+## Testing
+
+\`\`\`bash
+npm test
+\`\`\`
+
+## License
+MIT`
     }
   ];
 
   // Current selections
-  selectedPR: PRInfo | null = this.prs[0]; // Default to first PR
+  selectedPR: PRInfo | null = this.prs[0];
   selectedFile: FileInfo | null = null;
-  activeView: ViewType = 'pr'; // Default view is PR
+  activeView: ViewType = 'pr';
+  
+  // File viewer properties
+  currentView: string = 'code';
+  renderedContent: SafeHtml = '';
+  showViewToggle: boolean = false;
+
+  constructor(private sanitizer: DomSanitizer) {}
+
+  ngOnInit(): void {
+    // Initialize with first PR
+    if (this.selectedPR) {
+      this.activeView = 'pr';
+    }
+  }
 
   get hasContent(): boolean {
     return this.selectedPR !== null || this.selectedFile !== null;
@@ -120,6 +281,7 @@ export class CenterContentComponent {
   selectFile(file: FileInfo): void {
     this.selectedFile = file;
     this.activeView = 'file';
+    this.renderFileContent();
   }
 
   // Method to toggle between views (for demo purposes)
@@ -130,7 +292,103 @@ export class CenterContentComponent {
       this.selectPR(this.prs[0]);
     }
   }
+
+  // File viewer methods
+  changeView(view: string): void {
+    this.currentView = view;
+    this.renderFileContent();
+  }
+
+  isViewActive(view: string): boolean {
+    return this.currentView === view;
+  }
+
+  private renderFileContent(): void {
+    if (!this.selectedFile) return;
+
+    const fileType = this.selectedFile.type || 'plaintext';
+
+    if (fileType === 'markdown') {
+      this.showViewToggle = true;
+      if (this.currentView === 'preview') {
+        this.renderedContent = this.sanitizer.bypassSecurityTrustHtml(
+          this.renderMarkdownView(this.selectedFile.content)
+        );
+      } else {
+        this.renderedContent = this.sanitizer.bypassSecurityTrustHtml(
+          this.renderCodeView(this.selectedFile.content, 'markdown')
+        );
+      }
+    } else {
+      this.showViewToggle = false;
+      this.currentView = 'code';
+      this.renderedContent = this.sanitizer.bypassSecurityTrustHtml(
+        this.renderCodeView(this.selectedFile.content, fileType)
+      );
+    }
+  }
+
+  private escapeHtml(text: string): string {
+    const map: { [key: string]: string } = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#039;'
+    };
+    return text.replace(/[&<>"']/g, (m) => map[m]);
+  }
+
+  private renderCodeView(content: string, language: string): string {
+    const lines = content.split('\n');
+    
+    let highlightedLines: string[];
+    try {
+      if (language && language !== 'markdown' && hljs.getLanguage(language)) {
+        const highlighted = hljs.highlight(content, { language: language }).value;
+        highlightedLines = highlighted.split('\n');
+      } else {
+        highlightedLines = lines.map(line => this.escapeHtml(line));
+      }
+    } catch (e) {
+      highlightedLines = lines.map(line => this.escapeHtml(line));
+    }
+
+    const lineNumbers = highlightedLines
+      .map((_, i) => `<div class="line-number">${i + 1}</div>`)
+      .join('');
+
+    const codeContent = highlightedLines
+      .map(line => `<div class="code-line">${line || '&nbsp;'}</div>`)
+      .join('');
+
+    return `
+      <div class="code-view">
+        <div class="line-numbers">${lineNumbers}</div>
+        <div class="code-lines">${codeContent}</div>
+      </div>
+    `;
+  }
+
+  private renderMarkdownView(content: string): string {
+    try {
+      const html = marked.parse(content) as string;
+      return `<div class="markdown-view">${html}</div>`;
+    } catch (e) {
+      console.error('Markdown parsing error:', e);
+      return `<div class="markdown-view"><p>Error rendering markdown</p></div>`;
+    }
+  }
 }
+
+
+
+
+
+
+
+
+
 
 
 
@@ -249,9 +507,77 @@ export class CenterContentComponent {
         <div class="info-badge">
           <span class="info-badge-label">Size:</span> {{ selectedFile.size }}
         </div>
+        <!-- View Toggle for Markdown files -->
+        <div class="view-toggle" *ngIf="showViewToggle">
+          <button 
+            class="toggle-btn" 
+            [class.active]="isViewActive('code')"
+            (click)="changeView('code')">
+            Code
+          </button>
+          <button 
+            class="toggle-btn" 
+            [class.active]="isViewActive('preview')"
+            (click)="changeView('preview')">
+            Preview
+          </button>
+        </div>
       </div>
     </ng-container>
   </div>
+
+  <!-- Content Area -->
+  <div class="content">
+    <!-- Empty State -->
+    <div class="empty-state" *ngIf="!hasContent">
+      <svg class="empty-state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+      </svg>
+      <p>Select a PR or file to view details</p>
+    </div>
+
+    <!-- PR Content -->
+    <div class="content-view" [class.active]="activeView === 'pr' && selectedPR" *ngIf="selectedPR">
+      <div class="meta-grid">
+        <div class="meta-item">
+          <div class="meta-label">Pull Request</div>
+          <div class="meta-value">#{{ selectedPR.number }}</div>
+        </div>
+        <div class="meta-item">
+          <div class="meta-label">Status</div>
+          <div class="meta-value" style="text-transform: capitalize;">{{ selectedPR.status }}</div>
+        </div>
+        <div class="meta-item">
+          <div class="meta-label">Author</div>
+          <div class="meta-value">{{ selectedPR.author }}</div>
+        </div>
+      </div>
+      <div class="content-section">
+        <h3 class="section-title">Description</h3>
+        <div class="section-content">
+          <p>This pull request implements the necessary changes for the feature. The implementation follows best practices and includes comprehensive test coverage.</p>
+          <p style="margin-top: 12px;">Key changes include improved error handling, optimized performance, and enhanced user experience across all supported platforms.</p>
+        </div>
+      </div>
+      <div class="content-section">
+        <h3 class="section-title">Changes</h3>
+        <div class="section-content">
+          <p>• Added new authentication middleware</p>
+          <p>• Updated user model with validation</p>
+          <p>• Implemented JWT token handling</p>
+          <p>• Added comprehensive unit tests</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- File Content with Code Viewer -->
+    <div class="content-view file-viewer-content" [class.active]="activeView === 'file' && selectedFile" *ngIf="selectedFile">
+      <div class="file-content-wrapper">
+        <div [innerHTML]="renderedContent"></div>
+      </div>
+    </div>
+  </div>
+</div>
 
   <!-- Content Area -->
   <div class="content">
@@ -331,7 +657,6 @@ export default example;</pre>
 
 
 
-
 /* center-content.component.css */
 
 /* Light Mode Variables (Default) */
@@ -365,6 +690,16 @@ export default example;</pre>
   
   /* Gradient */
   --bitbucket-file-gradient-header: linear-gradient(to bottom, #ffffff 0%, #fafbfc 100%);
+  
+  /* File Viewer Specific */
+  --bitbucket-file-view-bg-content: #ffffff;
+  --bitbucket-file-view-bg-code-inline: #f6f8fa;
+  --bitbucket-file-view-text-line-number: #57606a;
+  --bitbucket-file-view-link: #0969da;
+  --bitbucket-file-view-btn-bg: #f6f8fa;
+  --bitbucket-file-view-btn-hover: #eaeef2;
+  --bitbucket-file-view-btn-active: #0969da;
+  --bitbucket-file-view-blockquote: #656d76;
 }
 
 /* Dark Mode Variables */
@@ -398,6 +733,16 @@ export default example;</pre>
   
   /* Gradient */
   --bitbucket-file-gradient-header: linear-gradient(to bottom, #0a0a0b 0%, #151518 100%);
+  
+  /* File Viewer Specific */
+  --bitbucket-file-view-bg-content: #111113;
+  --bitbucket-file-view-bg-code-inline: #161b22;
+  --bitbucket-file-view-text-line-number: #6e7681;
+  --bitbucket-file-view-link: #58a6ff;
+  --bitbucket-file-view-btn-bg: #21262d;
+  --bitbucket-file-view-btn-hover: #30363d;
+  --bitbucket-file-view-btn-active: #1f6feb;
+  --bitbucket-file-view-blockquote: #7d8590;
 }
 
 /* Center Area */
@@ -553,6 +898,34 @@ export default example;</pre>
   flex-shrink: 0;
 }
 
+/* View Toggle */
+.view-toggle {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.toggle-btn {
+  background-color: var(--bitbucket-file-view-btn-bg);
+  color: var(--bitbucket-file-text-primary);
+  border: 1px solid var(--bitbucket-file-border-primary);
+  padding: 4px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s;
+}
+
+.toggle-btn:hover {
+  background-color: var(--bitbucket-file-view-btn-hover);
+}
+
+.toggle-btn.active {
+  background-color: var(--bitbucket-file-view-btn-active);
+  border-color: var(--bitbucket-file-view-btn-active);
+  color: #ffffff;
+}
+
 /* Content */
 .content {
   flex: 1;
@@ -643,20 +1016,210 @@ export default example;</pre>
   color: var(--bitbucket-file-text-primary);
 }
 
-.code-block {
-  background: var(--bitbucket-file-bg-code);
+/* File Viewer Styles */
+.file-viewer-content {
+  padding: 0 !important;
+}
+
+.file-content-wrapper {
+  background-color: var(--bitbucket-file-view-bg-content);
+  border: 1px solid var(--bitbucket-file-border-primary);
   border-radius: 8px;
-  padding: 20px;
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-  font-size: 14px;
-  color: var(--bitbucket-file-text-code);
+  overflow: hidden;
+}
+
+/* Code view with line numbers */
+::ng-deep .code-view {
+  display: flex;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 20px;
+  background-color: var(--bitbucket-file-view-bg-content);
+}
+
+::ng-deep .line-numbers {
+  background-color: var(--bitbucket-file-view-bg-content);
+  color: var(--bitbucket-file-view-text-line-number);
+  padding: 12px 0;
+  text-align: right;
+  user-select: none;
+  min-width: 50px;
+  border-right: 1px solid var(--bitbucket-file-border-primary);
+  flex-shrink: 0;
+}
+
+::ng-deep .line-number {
+  padding: 0 12px;
+  height: 20px;
+  line-height: 20px;
+  display: block;
+}
+
+::ng-deep .line-number:hover {
+  color: var(--bitbucket-file-text-primary);
+  cursor: pointer;
+}
+
+::ng-deep .code-lines {
+  flex: 1;
+  padding: 12px 16px;
   overflow-x: auto;
+  background-color: var(--bitbucket-file-view-bg-content);
+  color: var(--bitbucket-file-text-primary);
+}
+
+::ng-deep .code-line {
+  height: 20px;
+  line-height: 20px;
+  display: block;
+  white-space: pre;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+}
+
+/* Markdown view */
+::ng-deep .markdown-view {
+  padding: 24px 32px;
+  background-color: var(--bitbucket-file-view-bg-content);
+  color: var(--bitbucket-file-text-primary);
   line-height: 1.6;
 }
 
-.code-block pre {
-  margin: 0;
-  color: var(--bitbucket-file-text-code);
+::ng-deep .markdown-view h1 {
+  font-size: 2em;
+  border-bottom: 1px solid var(--bitbucket-file-border-primary);
+  padding-bottom: 0.3em;
+  margin-bottom: 16px;
+  margin-top: 24px;
+  color: var(--bitbucket-file-text-primary);
+}
+
+::ng-deep .markdown-view h1:first-child {
+  margin-top: 0;
+}
+
+::ng-deep .markdown-view h2 {
+  font-size: 1.5em;
+  border-bottom: 1px solid var(--bitbucket-file-border-primary);
+  padding-bottom: 0.3em;
+  margin-bottom: 16px;
+  margin-top: 24px;
+  color: var(--bitbucket-file-text-primary);
+}
+
+::ng-deep .markdown-view h3 {
+  font-size: 1.25em;
+  margin-bottom: 16px;
+  margin-top: 24px;
+  color: var(--bitbucket-file-text-primary);
+}
+
+::ng-deep .markdown-view h4,
+::ng-deep .markdown-view h5,
+::ng-deep .markdown-view h6 {
+  margin-bottom: 16px;
+  margin-top: 24px;
+  color: var(--bitbucket-file-text-primary);
+}
+
+::ng-deep .markdown-view p {
+  margin-bottom: 16px;
+}
+
+::ng-deep .markdown-view a {
+  color: var(--bitbucket-file-view-link);
+  text-decoration: none;
+}
+
+::ng-deep .markdown-view a:hover {
+  text-decoration: underline;
+}
+
+::ng-deep .markdown-view ul,
+::ng-deep .markdown-view ol {
+  margin-bottom: 16px;
+  padding-left: 32px;
+}
+
+::ng-deep .markdown-view li {
+  margin-bottom: 4px;
+}
+
+::ng-deep .markdown-view code {
+  background-color: var(--bitbucket-file-view-bg-code-inline);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 85%;
+  color: var(--bitbucket-file-text-primary);
+}
+
+::ng-deep .markdown-view pre {
+  background-color: var(--bitbucket-file-view-bg-code-inline);
+  padding: 16px;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin-bottom: 16px;
+}
+
+::ng-deep .markdown-view pre code {
+  background-color: transparent;
+  padding: 0;
+}
+
+::ng-deep .markdown-view blockquote {
+  border-left: 4px solid var(--bitbucket-file-border-primary);
+  padding-left: 16px;
+  margin-bottom: 16px;
+  color: var(--bitbucket-file-view-blockquote);
+}
+
+::ng-deep .markdown-view table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-bottom: 16px;
+}
+
+::ng-deep .markdown-view table th,
+::ng-deep .markdown-view table td {
+  border: 1px solid var(--bitbucket-file-border-primary);
+  padding: 8px 13px;
+}
+
+::ng-deep .markdown-view table th {
+  background-color: var(--bitbucket-file-view-bg-code-inline);
+  font-weight: 600;
+}
+
+::ng-deep .markdown-view table tr:nth-child(even) {
+  background-color: var(--bitbucket-file-view-bg-content);
+}
+
+::ng-deep .markdown-view img {
+  max-width: 100%;
+  height: auto;
+  margin: 16px 0;
+}
+
+::ng-deep .markdown-view hr {
+  border: none;
+  border-top: 1px solid var(--bitbucket-file-border-primary);
+  margin: 24px 0;
+}
+
+::ng-deep .markdown-view strong {
+  color: var(--bitbucket-file-text-primary);
+  font-weight: 600;
+}
+
+::ng-deep .markdown-view em {
+  font-style: italic;
+}
+
+/* Syntax highlighting adjustments */
+::ng-deep .hljs {
+  background-color: transparent !important;
+  color: var(--bitbucket-file-text-primary);
 }
 
 @keyframes fadeInUp {
@@ -708,4 +1271,22 @@ export default example;</pre>
 
 .content::-webkit-scrollbar-thumb:hover {
   background: var(--bitbucket-file-text-tertiary);
+}
+
+/* Code viewer scrollbar */
+::ng-deep .code-lines::-webkit-scrollbar {
+  height: 8px;
+}
+
+::ng-deep .code-lines::-webkit-scrollbar-track {
+  background: var(--bitbucket-file-view-bg-content);
+}
+
+::ng-deep .code-lines::-webkit-scrollbar-thumb {
+  background: var(--bitbucket-file-border-primary);
+  border-radius: 4px;
+}
+
+::ng-deep .code-lines::-webkit-scrollbar-thumb:hover {
+  background: var(--bitbucket-file-border-secondary);
 }
