@@ -1,25 +1,77 @@
-<div class="pr-review-container">
-    <div class="container">
-        <!-- Compact Toggle Header -->
-        <div class="compact-header">
-            <h2 class="review-title">AI Review</h2>
-            <div class="view-toggle-switch">
-                <input type="checkbox" id="viewToggle" [checked]="viewMode === 'side-by-side'" 
-                       (change)="toggleViewMode()" class="toggle-input">
-                <label for="viewToggle" class="toggle-label">
-                    <span class="toggle-slider">
-                        <span class="toggle-option unified">Unified</span>
-                        <span class="toggle-option split">Split</span>
-                    </span>
-                </label>
-            </div>
-        </div>
+.action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 2px solid;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 1px 3px var(--bitbucket-file-comparator-comment-shadow);
+    opacity: 1;
+}
 
-        <!-- Files Container -->
-        <div id="files-container">
-            <!-- Your existing files content -->
-        </div>
-    </div>
+.btn-icon {
+    font-size: 14px;
+    font-weight: bold;
+    line-height: 1;
+}
+
+
+
+
+
+
+
+
+
+
+<!-- Comment Actions -->
+<div class="comment-actions" [id]="getCommentId(fileIndex, commentIndex) + '-actions'">
+
+    <!-- Pending State Actions -->
+    <ng-container
+        *ngIf="getCommentState(fileIndex, commentIndex).status === 'pending' && !getCommentState(fileIndex, commentIndex).isEditing">
+        <button class="action-btn btn-accept"
+            (click)="acceptComment(fileIndex, commentIndex)">
+            <span class="btn-icon">✓</span>
+            <span class="btn-text">Accept</span>
+        </button>
+        <button class="action-btn btn-reject"
+            (click)="rejectComment(fileIndex, commentIndex)">
+            <span class="btn-icon">✗</span>
+            <span class="btn-text">Reject</span>
+        </button>
+        <button class="action-btn btn-modify"
+            (click)="modifyComment(fileIndex, commentIndex)">
+            <span class="btn-icon">✎</span>
+            <span class="btn-text">Modify</span>
+        </button>
+    </ng-container>
+
+    <!-- Editing State Actions -->
+    <ng-container *ngIf="getCommentState(fileIndex, commentIndex).isEditing">
+        <button class="action-btn btn-save"
+            (click)="saveModifiedComment(fileIndex, commentIndex)">
+            <span class="btn-icon">💾</span>
+            <span class="btn-text">Save</span>
+        </button>
+        <button class="action-btn btn-cancel"
+            (click)="cancelModification(fileIndex, commentIndex)">
+            <span class="btn-icon">✕</span>
+            <span class="btn-text">Cancel</span>
+        </button>
+    </ng-container>
+
+    <!-- Accepted/Rejected State - Show nothing or just status badge -->
+    <ng-container
+        *ngIf="getCommentState(fileIndex, commentIndex).status !== 'pending' && !getCommentState(fileIndex, commentIndex).isEditing">
+        <!-- No undo button - comment remains in accepted/rejected state -->
+    </ng-container>
 </div>
 
 
@@ -32,113 +84,78 @@
 
 
 
-/* Compact Header */
-.compact-header {
-    padding: 16px 24px;
-    border-bottom: 1px solid var(--bitbucket-file-comparator-border-primary);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background: var(--bitbucket-file-comparator-bg-primary);
-}
 
-/* Review Title */
-.review-title {
-    font-size: 20px;
-    font-weight: 600;
-    color: var(--bitbucket-file-comparator-text-primary);
-    margin: 0;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
+bindCommentEvents(commentElement: HTMLElement, fileIndex: number, commentIndex: number): void {
+  const commentId = this.getCommentId(fileIndex, commentIndex);
+  
+  // Find buttons within the cloned element
+  const acceptBtn = commentElement.querySelector('.btn-accept');
+  const rejectBtn = commentElement.querySelector('.btn-reject');
+  const modifyBtn = commentElement.querySelector('.btn-modify');
+  const saveBtn = commentElement.querySelector('.btn-save');
+  const cancelBtn = commentElement.querySelector('.btn-cancel');
+  // Remove: const undoBtn = commentElement.querySelector('.btn-undo');
+  
+  // Find textarea for two-way binding
+  const textarea = commentElement.querySelector('.comment-body-editable') as HTMLTextAreaElement;
+  if (textarea) {
+    textarea.value = this.editingCommentText[commentId] || '';
+    textarea.addEventListener('input', (e) => {
+      const target = e.target as HTMLTextAreaElement;
+      this.editingCommentText[commentId] = target.value;
+    });
+  }
 
-.review-title::before {
-    content: "✨";
-    font-size: 22px;
-}
+  // Bind events
+  if (acceptBtn) {
+    acceptBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!this.loadingComments[commentId]) {
+        this.acceptComment(fileIndex, commentIndex);
+      }
+    });
+  }
 
-/* Modern Toggle Switch - Smaller Size */
-.view-toggle-switch {
-    position: relative;
-    display: inline-block;
-}
+  if (rejectBtn) {
+    rejectBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!this.loadingComments[commentId]) {
+        this.rejectComment(fileIndex, commentIndex);
+      }
+    });
+  }
 
-.toggle-input {
-    display: none;
-}
+  if (modifyBtn) {
+    modifyBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!this.loadingComments[commentId]) {
+        this.modifyComment(fileIndex, commentIndex);
+      }
+    });
+  }
 
-.toggle-label {
-    display: block;
-    position: relative;
-    width: 160px;
-    height: 36px;
-    background: var(--bitbucket-file-comparator-bg-tertiary);
-    border-radius: 18px;
-    cursor: pointer;
-    border: 2px solid var(--bitbucket-file-comparator-border-primary);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 0 2px 8px var(--bitbucket-file-comparator-comment-shadow);
-}
+  if (saveBtn) {
+    saveBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!this.loadingComments[commentId]) {
+        this.saveModifiedComment(fileIndex, commentIndex);
+      }
+    });
+  }
 
-.toggle-label:hover {
-    border-color: var(--bitbucket-file-comparator-accent-primary);
-    box-shadow: 0 4px 12px rgba(0, 82, 204, 0.15);
-}
+  if (cancelBtn) {
+    cancelBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!this.loadingComments[commentId]) {
+        this.cancelModification(fileIndex, commentIndex);
+      }
+    });
+  }
 
-.toggle-slider {
-    position: relative;
-    display: flex;
-    width: 100%;
-    height: 100%;
-    border-radius: 16px;
-    overflow: hidden;
-}
-
-.toggle-slider::before {
-    content: '';
-    position: absolute;
-    width: 50%;
-    height: 100%;
-    background: linear-gradient(135deg, var(--bitbucket-file-comparator-accent-primary) 0%, var(--bitbucket-file-comparator-accent-secondary) 100%);
-    border-radius: 14px;
-    left: 0;
-    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 0 2px 8px rgba(0, 82, 204, 0.3);
-    z-index: 1;
-}
-
-.toggle-input:checked + .toggle-label .toggle-slider::before {
-    transform: translateX(100%);
-}
-
-.toggle-option {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.3px;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    position: relative;
-    z-index: 2;
-    color: var(--bitbucket-file-comparator-text-secondary);
-}
-
-.toggle-input:not(:checked) + .toggle-label .toggle-option.unified,
-.toggle-input:checked + .toggle-label .toggle-option.split {
-    color: white;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
-}
-
-/* Ripple effect on click */
-.toggle-label:active {
-    transform: scale(0.98);
-}
-
-/* Focus state for accessibility */
-.toggle-input:focus + .toggle-label {
-    outline: 2px solid var(--bitbucket-file-comparator-accent-primary);
-    outline-offset: 2px;
+  // Remove undo button event binding
 }
