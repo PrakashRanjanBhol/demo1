@@ -1,326 +1,200 @@
-// Add this property to your component class
-selectedFileIndex: number = 0;
-
-// Add this method to select a file
-selectFile(index: number): void {
-  this.selectedFileIndex = index;
-  
-  // Re-render the selected file
-  setTimeout(() => {
-    this.renderDiff(this.responseData.files[index], index);
-    setTimeout(() => {
-      this.highlightCommentedLines(this.responseData.files[index], index);
-      this.insertCommentsAtLines(this.responseData.files[index], index);
-    }, 200);
-  }, 50);
-}
-
-// Update renderAllDiffs to only render the selected file
-renderAllDiffs(): void {
-  if (this.responseData.files.length > 0) {
-    this.renderDiff(this.responseData.files[this.selectedFileIndex], this.selectedFileIndex);
-    setTimeout(() => {
-      this.highlightCommentedLines(this.responseData.files[this.selectedFileIndex], this.selectedFileIndex);
-    }, 200);
-  }
-}
-
-// Update toggleViewMode to re-render only the selected file
-toggleViewMode(): void {
-  this.viewMode = this.viewMode === 'side-by-side' ? 'line-by-line' : 'side-by-side';
-  setTimeout(() => {
-    this.renderDiff(this.responseData.files[this.selectedFileIndex], this.selectedFileIndex);
-    setTimeout(() => {
-      this.highlightCommentedLines(this.responseData.files[this.selectedFileIndex], this.selectedFileIndex);
-      this.insertCommentsAtLines(this.responseData.files[this.selectedFileIndex], this.selectedFileIndex);
-    }, 300);
-  }, 50);
-}
-
-
-
-
-
-
-
-
-
-
-
-
-<div class="pr-review-container">
-    <div class="container">
-        <!-- Compact Toggle Header -->
-        <div class="compact-header">
-            <h2 class="review-title">AI Review</h2>
-            <div class="view-toggle-switch">
-                <input type="checkbox" id="viewToggle" [checked]="viewMode === 'side-by-side'" 
-                       (change)="toggleViewMode()" class="toggle-input">
-                <label for="viewToggle" class="toggle-label">
-                    <span class="toggle-slider">
-                        <span class="toggle-option unified">Unified</span>
-                        <span class="toggle-option split">Split</span>
-                    </span>
-                </label>
-            </div>
-        </div>
-
-        <!-- File Navigation Tabs -->
-        <div class="file-navigation">
-            <div class="file-tabs">
-                <button 
-                    *ngFor="let file of responseData.files; let i = index"
-                    class="file-tab"
-                    [class.active]="selectedFileIndex === i"
-                    (click)="selectFile(i)"
-                    [title]="file.file_path">
-                    <span class="file-icon">📄</span>
-                    <span class="file-name">{{ getFileName(file.file_path) }}</span>
-                    <span class="file-comment-badge" *ngIf="file.ai_comments.length > 0">
-                        {{ file.ai_comments.length }}
-                    </span>
-                </button>
-            </div>
-        </div>
-
-        <!-- Single File Container -->
-        <div id="files-container">
-            <div class="file-section" *ngIf="responseData.files[selectedFileIndex]">
-                <!-- File Header -->
-                <div class="file-header">
-                    <span class="file-icon">📄</span>
-                    <span>{{ responseData.files[selectedFileIndex].file_path }}</span>
-                    <span class="ai-comment-count" *ngIf="responseData.files[selectedFileIndex].ai_comments.length > 0">
-                        {{ responseData.files[selectedFileIndex].ai_comments.length }} AI 
-                        {{ responseData.files[selectedFileIndex].ai_comments.length === 1 ? 'comment' : 'comments' }}
-                    </span>
-                    <div class="file-stats">
-                        <span class="stat-additions">+{{ getFileStats(responseData.files[selectedFileIndex]).additions }}</span>
-                        <span class="stat-deletions">-{{ getFileStats(responseData.files[selectedFileIndex]).deletions }}</span>
-                    </div>
-                </div>
-
-                <!-- Diff Container -->
-                <div class="diff-container">
-                    <div [id]="'diff-output-' + selectedFileIndex"></div>
-
-                    <!-- AI Comments (hidden, will be moved to appropriate lines) -->
-                    <div class="comments-hidden-container">
-                        <div class="ai-comment-thread" 
-                            *ngFor="let comment of responseData.files[selectedFileIndex].ai_comments; let commentIndex = index"
-                            [attr.data-line]="comment.line" 
-                            [id]="'comment-' + getCommentId(selectedFileIndex, commentIndex)">
-
-                            <div [class]="getCommentClasses(selectedFileIndex, commentIndex)"
-                                [id]="getCommentId(selectedFileIndex, commentIndex)">
-
-                                <!-- Comment Header -->
-                                <div class="comment-header">
-                                    <span class="ai-badge">AI Review</span>
-                                    <span class="severity-badge" [ngClass]="'severity-' + comment.severity">
-                                        {{ comment.severity }}
-                                    </span>
-
-                                    <span *ngIf="getCommentState(selectedFileIndex, commentIndex).status !== 'pending'"
-                                        class="status-badge"
-                                        [ngClass]="'status-' + getCommentState(selectedFileIndex, commentIndex).status">
-                                        {{ getCommentState(selectedFileIndex, commentIndex).status }}
-                                    </span>
-
-                                    <span class="comment-time">Line {{ comment.line }}</span>
-                                </div>
-
-                                <!-- Comment Body -->
-                                <div *ngIf="!getCommentState(selectedFileIndex, commentIndex).isEditing" class="comment-body"
-                                    [id]="getCommentId(selectedFileIndex, commentIndex) + '-body'">
-                                    {{ getCommentState(selectedFileIndex, commentIndex).currentText }}
-                                </div>
-
-                                <!-- Edit Mode -->
-                                <div *ngIf="getCommentState(selectedFileIndex, commentIndex).isEditing">
-                                    <textarea class="comment-body-editable"
-                                        [(ngModel)]="editingCommentText[getCommentId(selectedFileIndex, commentIndex)]"
-                                        [id]="getCommentId(selectedFileIndex, commentIndex) + '-textarea'">
-                                    </textarea>
-                                </div>
-
-                                <!-- Suggested Patch -->
-                                <div class="suggested-patch" *ngIf="comment.suggested_patch">
-                                    <div class="suggested-patch-header">Suggested Fix:</div>
-                                    <div class="suggested-patch-code">{{ comment.suggested_patch }}</div>
-                                </div>
-
-                                <!-- Comment Actions -->
-                                <div class="comment-actions" [id]="getCommentId(selectedFileIndex, commentIndex) + '-actions'">
-
-                                    <!-- Pending State Actions -->
-                                    <ng-container
-                                        *ngIf="getCommentState(selectedFileIndex, commentIndex).status === 'pending' && !getCommentState(selectedFileIndex, commentIndex).isEditing">
-                                        <button class="action-btn btn-accept"
-                                            (click)="acceptComment(selectedFileIndex, commentIndex)">
-                                            <span class="btn-icon">✓</span>
-                                            <span class="btn-text">Accept</span>
-                                        </button>
-                                        <button class="action-btn btn-reject"
-                                            (click)="rejectComment(selectedFileIndex, commentIndex)">
-                                            <span class="btn-icon">✗</span>
-                                            <span class="btn-text">Reject</span>
-                                        </button>
-                                        <button class="action-btn btn-modify"
-                                            (click)="modifyComment(selectedFileIndex, commentIndex)">
-                                            <span class="btn-icon">✎</span>
-                                            <span class="btn-text">Modify</span>
-                                        </button>
-                                    </ng-container>
-
-                                    <!-- Editing State Actions -->
-                                    <ng-container *ngIf="getCommentState(selectedFileIndex, commentIndex).isEditing">
-                                        <button class="action-btn btn-save"
-                                            (click)="saveModifiedComment(selectedFileIndex, commentIndex)">
-                                            <span class="btn-icon">💾</span>
-                                            <span class="btn-text">Save</span>
-                                        </button>
-                                        <button class="action-btn btn-cancel"
-                                            (click)="cancelModification(selectedFileIndex, commentIndex)">
-                                            <span class="btn-icon">✕</span>
-                                            <span class="btn-text">Cancel</span>
-                                        </button>
-                                    </ng-container>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-getFileName(filePath: string): string {
-  const parts = filePath.split('/');
-  return parts[parts.length - 1];
-}
-
-
-
-
-
-
-/* File Navigation Tabs */
+/* File Navigation Tabs - Improved visibility */
 .file-navigation {
-    background: var(--bitbucket-file-comparator-bg-tertiary);
-    border-bottom: 1px solid var(--bitbucket-file-comparator-border-primary);
+    background: var(--bitbucket-file-comparator-bg-secondary);
+    border-bottom: 2px solid var(--bitbucket-file-comparator-border-primary);
     overflow-x: auto;
     overflow-y: hidden;
     white-space: nowrap;
+    box-shadow: inset 0 -1px 0 var(--bitbucket-file-comparator-border-primary);
 }
 
 .file-tabs {
     display: flex;
-    gap: 4px;
-    padding: 8px 16px;
-    min-height: 48px;
+    gap: 6px;
+    padding: 12px 20px 0 20px;
+    min-height: 52px;
 }
 
 .file-tab {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    padding: 8px 16px;
-    background: var(--bitbucket-file-comparator-bg-primary);
-    border: 2px solid var(--bitbucket-file-comparator-border-primary);
+    padding: 10px 18px;
+    background: var(--bitbucket-file-comparator-bg-tertiary);
+    border: 2px solid var(--bitbucket-file-comparator-border-secondary);
     border-bottom: none;
-    border-radius: 8px 8px 0 0;
+    border-radius: 10px 10px 0 0;
     font-size: 13px;
     font-weight: 500;
-    color: var(--bitbucket-file-comparator-text-secondary);
+    color: var(--bitbucket-file-comparator-text-primary);
     cursor: pointer;
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     position: relative;
     white-space: nowrap;
     max-width: 250px;
+    box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.05);
 }
 
 .file-tab:hover {
-    background: var(--bitbucket-file-comparator-bg-overlay);
+    background: var(--bitbucket-file-comparator-bg-primary);
     border-color: var(--bitbucket-file-comparator-accent-primary);
-    color: var(--bitbucket-file-comparator-text-primary);
-    transform: translateY(-2px);
+    color: var(--bitbucket-file-comparator-accent-primary);
+    transform: translateY(-3px);
+    box-shadow: 0 -4px 12px rgba(0, 82, 204, 0.2);
 }
 
 .file-tab.active {
     background: var(--bitbucket-file-comparator-bg-primary);
     border-color: var(--bitbucket-file-comparator-accent-primary);
+    border-bottom-color: var(--bitbucket-file-comparator-bg-primary);
     color: var(--bitbucket-file-comparator-accent-primary);
     font-weight: 600;
-    box-shadow: 0 -2px 8px rgba(0, 82, 204, 0.15);
+    box-shadow: 0 -4px 16px rgba(0, 82, 204, 0.25);
+    z-index: 1;
 }
 
 .file-tab.active::after {
     content: '';
     position: absolute;
     bottom: -2px;
-    left: 0;
-    right: 0;
-    height: 2px;
+    left: -2px;
+    right: -2px;
+    height: 4px;
     background: var(--bitbucket-file-comparator-bg-primary);
+}
+
+.file-tab .file-icon {
+    font-size: 16px;
+    opacity: 0.8;
+}
+
+.file-tab.active .file-icon {
+    opacity: 1;
 }
 
 .file-name {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    letter-spacing: 0.3px;
 }
 
 .file-comment-badge {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 20px;
-    height: 20px;
-    padding: 0 6px;
-    background: var(--bitbucket-file-comparator-purple-bg);
-    color: var(--bitbucket-file-comparator-purple-text);
-    border-radius: 10px;
+    min-width: 22px;
+    height: 22px;
+    padding: 0 7px;
+    background: linear-gradient(135deg, var(--bitbucket-file-comparator-purple-bg) 0%, var(--bitbucket-file-comparator-purple-text) 100%);
+    color: white;
+    border-radius: 11px;
     font-size: 11px;
     font-weight: 700;
+    box-shadow: 0 2px 4px rgba(124, 58, 237, 0.3);
 }
 
 .file-tab.active .file-comment-badge {
-    background: var(--bitbucket-file-comparator-accent-primary);
-    color: white;
+    background: linear-gradient(135deg, var(--bitbucket-file-comparator-accent-primary) 0%, var(--bitbucket-file-comparator-accent-secondary) 100%);
+    box-shadow: 0 2px 6px rgba(0, 82, 204, 0.4);
 }
 
-/* Scrollbar for file tabs */
+/* Improved File Header */
+.file-header {
+    background: linear-gradient(135deg, var(--bitbucket-file-comparator-bg-tertiary) 0%, var(--bitbucket-file-comparator-bg-secondary) 100%);
+    padding: 16px 24px;
+    border-top: 1px solid var(--bitbucket-file-comparator-border-primary);
+    border-bottom: 2px solid var(--bitbucket-file-comparator-accent-primary);
+    font-weight: 600;
+    color: var(--bitbucket-file-comparator-text-primary);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.file-header .file-icon {
+    font-size: 20px;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+}
+
+.file-header > span:nth-child(2) {
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--bitbucket-file-comparator-text-primary);
+    letter-spacing: 0.3px;
+    padding: 6px 12px;
+    background: var(--bitbucket-file-comparator-bg-primary);
+    border-radius: 6px;
+    border: 1px solid var(--bitbucket-file-comparator-border-primary);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.file-stats {
+    display: inline-flex;
+    gap: 12px;
+    font-size: 13px;
+    margin-left: auto;
+    padding: 6px 12px;
+    background: var(--bitbucket-file-comparator-bg-primary);
+    border-radius: 6px;
+    border: 1px solid var(--bitbucket-file-comparator-border-primary);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.stat-additions {
+    color: #22863a;
+    font-weight: 600;
+    padding: 2px 8px;
+    background: rgba(34, 197, 94, 0.1);
+    border-radius: 4px;
+}
+
+.stat-deletions {
+    color: #cb2431;
+    font-weight: 600;
+    padding: 2px 8px;
+    background: rgba(220, 38, 38, 0.1);
+    border-radius: 4px;
+}
+
+.ai-comment-count {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: linear-gradient(135deg, var(--bitbucket-file-comparator-purple-bg) 0%, var(--bitbucket-file-comparator-purple-text) 100%);
+    color: white;
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-left: 12px;
+    box-shadow: 0 2px 6px rgba(124, 58, 237, 0.3);
+}
+
+.ai-comment-count::before {
+    content: "✨";
+    font-size: 14px;
+}
+
+/* Scrollbar for file tabs - Better visibility in dark mode */
 .file-navigation::-webkit-scrollbar {
-    height: 6px;
+    height: 8px;
 }
 
 .file-navigation::-webkit-scrollbar-track {
-    background: var(--bitbucket-file-comparator-bg-primary);
+    background: var(--bitbucket-file-comparator-bg-tertiary);
+    border-radius: 4px;
 }
 
 .file-navigation::-webkit-scrollbar-thumb {
     background: var(--bitbucket-file-comparator-border-secondary);
-    border-radius: 3px;
+    border-radius: 4px;
+    border: 2px solid var(--bitbucket-file-comparator-bg-tertiary);
 }
 
 .file-navigation::-webkit-scrollbar-thumb:hover {
-    background: var(--bitbucket-file-comparator-text-secondary);
+    background: var(--bitbucket-file-comparator-accent-primary);
 }
