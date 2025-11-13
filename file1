@@ -1,6 +1,5 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -192,7 +191,6 @@
         }
     </style>
 </head>
-
 <body>
     <div class="container">
         <header>
@@ -215,7 +213,7 @@
     style B fill:#2196F3,stroke:#1565C0,stroke-width:2px
     style C fill:#FF9800,stroke:#E65100,stroke-width:2px
     style D fill:#f44336,stroke:#c62828,stroke-width:2px</textarea>
-
+                
                 <div class="button-group">
                     <button class="render-btn" onclick="renderDiagram()">🚀 Render Diagram</button>
                     <button class="clear-btn" onclick="clearAll()">🗑️ Clear</button>
@@ -250,17 +248,107 @@
     </div>
 
     <script>
-        // Initialize mermaid
-        mermaid.initialize({
+        // Initialize mermaid with more permissive settings
+        mermaid.initialize({ 
             startOnLoad: false,
             theme: 'default',
             securityLevel: 'loose',
+            logLevel: 'error',
+            flowchart: {
+                htmlLabels: true,
+                useMaxWidth: true
+            },
+            sequence: {
+                useMaxWidth: true
+            },
+            gantt: {
+                useMaxWidth: true
+            }
         });
 
         // Counter for unique IDs
         let diagramCounter = 0;
 
-        // Render the diagram
+        // Pre-process and fix common syntax issues
+        function preprocessMermaidCode(code) {
+            let processed = code.trim();
+            
+            // Fix common issues
+            
+            // 1. Remove extra spaces around arrows
+            processed = processed.replace(/\s*-->\s*/g, '-->');
+            processed = processed.replace(/\s*--->\s*/g, '--->');
+            processed = processed.replace(/\s*==>\s*/g, '==>');
+            processed = processed.replace(/\s*-\.->\s*/g, '-.->');
+            
+            // 2. Fix unclosed quotes
+            const lines = processed.split('\n');
+            processed = lines.map(line => {
+                // Count quotes in the line
+                const quoteCount = (line.match(/"/g) || []).length;
+                const singleQuoteCount = (line.match(/'/g) || []).length;
+                
+                // If odd number of quotes, try to fix
+                if (quoteCount % 2 !== 0 && line.includes('[') && line.includes(']')) {
+                    // Replace unmatched quotes in labels
+                    line = line.replace(/\[([^\]]*)\]/g, (match, content) => {
+                        // Remove quotes from content or balance them
+                        const cleanContent = content.replace(/"/g, '');
+                        return `[${cleanContent}]`;
+                    });
+                }
+                return line;
+            }).join('\n');
+            
+            // 3. Handle special characters in node labels
+            processed = processed.replace(/\[([^\]]*[<>&].*?)\]/g, (match, content) => {
+                const escaped = content
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;');
+                return `[${escaped}]`;
+            });
+            
+            // 4. Ensure proper diagram type declaration
+            const firstLine = processed.split('\n')[0].trim().toLowerCase();
+            const validTypes = ['graph', 'flowchart', 'sequencediagram', 'classdiagram', 
+                              'statediagram', 'erdiagram', 'journey', 'gantt', 'pie', 
+                              'requirementdiagram', 'gitgraph', 'c4context', 'mindmap', 'timeline'];
+            
+            const hasValidType = validTypes.some(type => firstLine.startsWith(type));
+            
+            // If no valid type, try to infer or default to flowchart
+            if (!hasValidType) {
+                // Check for sequence diagram indicators
+                if (processed.includes('participant') || processed.includes('->') || processed.includes('-->>')) {
+                    processed = 'sequenceDiagram\n' + processed;
+                }
+                // Check for class diagram indicators
+                else if (processed.includes('class ') || processed.includes('<<') || processed.includes('>>')) {
+                    processed = 'classDiagram\n' + processed;
+                }
+                // Check for state diagram indicators
+                else if (processed.includes('[*]') || processed.includes('state ')) {
+                    processed = 'stateDiagram-v2\n' + processed;
+                }
+                // Check for ER diagram indicators
+                else if (processed.includes('||') || processed.includes('}o') || processed.includes('o{')) {
+                    processed = 'erDiagram\n' + processed;
+                }
+                // Check for pie chart
+                else if (processed.includes('title') && processed.includes(':') && !processed.includes('-->')) {
+                    processed = 'pie ' + processed;
+                }
+                // Default to flowchart
+                else if (processed.includes('-->') || processed.includes('[') || processed.includes('{')) {
+                    processed = 'graph TD\n' + processed;
+                }
+            }
+            
+            return processed;
+        }
+
+        // Render the diagram with multiple fallback attempts
         async function renderDiagram() {
             const input = document.getElementById('input').value.trim();
             const output = document.getElementById('output');
@@ -270,26 +358,72 @@
                 return;
             }
 
-            try {
-                // Clear previous content
-                output.innerHTML = '';
+            // Show loading state
+            output.innerHTML = '<div class="placeholder">🔄 Rendering diagram...</div>';
 
-                // Create a unique ID for this diagram
-                const id = `mermaid-${diagramCounter++}`;
+            // Try multiple rendering strategies
+            const attempts = [
+                { code: input, description: 'Original code' },
+                { code: preprocessMermaidCode(input), description: 'Pre-processed code' },
+                { code: input.replace(/\r\n/g, '\n'), description: 'Normalized line endings' },
+                { code: preprocessMermaidCode(input).replace(/\t/g, '    '), description: 'Fixed indentation' }
+            ];
 
-                // Render the diagram
-                const { svg } = await mermaid.render(id, input);
-
-                // Display the rendered SVG
-                output.innerHTML = svg;
-
-            } catch (error) {
-                output.innerHTML = `<div class="error">
-                    <strong>❌ Error rendering diagram:</strong><br>
-                    ${error.message || 'Invalid mermaid syntax'}
-                </div>`;
-                console.error('Mermaid error:', error);
+            let lastError = null;
+            
+            for (let i = 0; i < attempts.length; i++) {
+                const attempt = attempts[i];
+                
+                try {
+                    // Clear previous content
+                    output.innerHTML = '';
+                    
+                    // Create a unique ID for this diagram
+                    const id = `mermaid-${diagramCounter++}`;
+                    
+                    // Try to parse first (validation)
+                    await mermaid.parse(attempt.code);
+                    
+                    // If parse succeeds, render the diagram
+                    const { svg } = await mermaid.render(id, attempt.code);
+                    
+                    // Display the rendered SVG
+                    output.innerHTML = svg;
+                    
+                    // Success! Show notification if not first attempt
+                    if (i > 0) {
+                        console.log(`✅ Rendered successfully using: ${attempt.description}`);
+                    }
+                    
+                    return; // Exit on success
+                    
+                } catch (error) {
+                    lastError = error;
+                    console.warn(`Attempt ${i + 1} failed (${attempt.description}):`, error.message);
+                    
+                    // Continue to next attempt
+                    continue;
+                }
             }
+
+            // If all attempts failed, show detailed error with suggestions
+            output.innerHTML = `<div class="error">
+                <strong>❌ Unable to render diagram</strong><br><br>
+                <strong>Error:</strong> ${lastError.message || 'Invalid mermaid syntax'}<br><br>
+                <strong>💡 Suggestions:</strong>
+                <ul style="margin: 10px 0; padding-left: 20px;">
+                    <li>Check that your diagram type is correct (graph, sequenceDiagram, classDiagram, etc.)</li>
+                    <li>Ensure all brackets [ ], parentheses ( ), and quotes " " are properly closed</li>
+                    <li>Verify arrow syntax (-->, --->, ==>, -.->)</li>
+                    <li>Make sure node IDs don't contain special characters</li>
+                    <li>Try one of the example diagrams to see correct syntax</li>
+                </ul>
+                <details style="margin-top: 10px;">
+                    <summary style="cursor: pointer; font-weight: bold;">Show technical details</summary>
+                    <pre style="margin-top: 10px; padding: 10px; background: #f5f5f5; border-radius: 4px; overflow-x: auto;">${lastError.stack || lastError.message}</pre>
+                </details>
+            </div>`;
+            console.error('All rendering attempts failed:', lastError);
         }
 
         // Clear all content
@@ -303,7 +437,7 @@
         function loadExample() {
             const select = document.getElementById('exampleSelect');
             const input = document.getElementById('input');
-
+            
             const examples = {
                 flowchart: `graph TD
     A[Christmas] -->|Get money| B(Go shopping)
@@ -316,7 +450,7 @@
     style D fill:#51cf66,stroke:#2f9e44,stroke-width:2px
     style E fill:#51cf66,stroke:#2f9e44,stroke-width:2px
     style F fill:#51cf66,stroke:#2f9e44,stroke-width:2px`,
-
+                
                 sequence: `sequenceDiagram
     participant User
     participant Browser
@@ -329,7 +463,7 @@
     Database-->>Server: Return Data
     Server-->>Browser: HTTP Response
     Browser-->>User: Display Page`,
-
+                
                 class: `classDiagram
     class Animal {
         +String name
@@ -349,7 +483,7 @@
     }
     Animal <|-- Dog
     Animal <|-- Cat`,
-
+                
                 state: `stateDiagram-v2
     [*] --> Idle
     Idle --> Processing: Start
@@ -359,7 +493,7 @@
     Error --> Retry: Retry
     Retry --> Processing
     Error --> [*]: Give Up`,
-
+                
                 gantt: `gantt
     title Project Timeline
     dateFormat YYYY-MM-DD
@@ -373,13 +507,13 @@
     section Deployment
     Staging            :a6, after a5, 5d
     Production         :a7, after a6, 3d`,
-
+                
                 pie: `pie title Pet Preference Survey
     "Dogs" : 45
     "Cats" : 30
     "Birds" : 15
     "Fish" : 10`,
-
+                
                 er: `erDiagram
     CUSTOMER ||--o{ ORDER : places
     ORDER ||--|{ LINE-ITEM : contains
@@ -408,17 +542,16 @@
         }
 
         // Render the initial example on load
-        window.onload = function () {
+        window.onload = function() {
             renderDiagram();
         };
 
         // Allow Ctrl+Enter to render
-        document.getElementById('input').addEventListener('keydown', function (e) {
+        document.getElementById('input').addEventListener('keydown', function(e) {
             if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
                 renderDiagram();
             }
         });
     </script>
 </body>
-
 </html>
