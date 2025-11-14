@@ -1,56 +1,113 @@
-// ✅ ADD these search properties
-projectSearchText: string = '';
-repoSearchText: string = '';
+// Add these properties
+currentCommentIndex: number = -1;
+visibleComments: { fileIndex: number; commentIndex: number; line: number }[] = [];
 
-// ✅ ADD getter for filtered projects (around line 240)
-get filteredProjects(): Project[] {
-  if (!this.projectSearchText.trim()) {
-    return this.allProjects;
+// Update ngOnInit to initialize visible comments
+ngOnInit(): void {
+  this.initializeCommentStates();
+  this.updateSummaryStats();
+  this.updateVisibleComments();
+}
+
+// Add method to update visible comments for current file
+updateVisibleComments(): void {
+  this.visibleComments = [];
+  const file = this.responseData.files[this.selectedFileIndex];
+  if (file) {
+    file.ai_comments.forEach((comment, commentIndex) => {
+      this.visibleComments.push({
+        fileIndex: this.selectedFileIndex,
+        commentIndex: commentIndex,
+        line: comment.line
+      });
+    });
+    // Sort by line number
+    this.visibleComments.sort((a, b) => a.line - b.line);
   }
-  
-  const searchLower = this.projectSearchText.toLowerCase();
-  return this.allProjects.filter(project => 
-    project.project_name.toLowerCase().includes(searchLower) ||
-    project.project_key.toLowerCase().includes(searchLower) ||
-    project.project_url.toLowerCase().includes(searchLower)
-  );
 }
 
-// ✅ ADD getter for filtered repositories (around line 250)
-get filteredRepositories(): Repository[] {
-  if (!this.currentProject) {
-    return [];
+// Update selectFile to refresh visible comments
+selectFile(index: number): void {
+  this.selectedFileIndex = index;
+  this.currentCommentIndex = -1;
+  this.updateVisibleComments();
+  
+  // Re-render the selected file
+  setTimeout(() => {
+    this.renderDiff(this.responseData.files[index], index);
+    setTimeout(() => {
+      this.highlightCommentedLines(this.responseData.files[index], index);
+      this.insertCommentsAtLines(this.responseData.files[index], index);
+    }, 200);
+  }, 50);
+}
+
+// Navigate to specific comment
+goToComment(fileIndex: number, commentIndex: number): void {
+  const commentId = this.getCommentId(fileIndex, commentIndex);
+  const commentElement = document.getElementById(commentId);
+  
+  if (commentElement) {
+    // Find the index in visible comments
+    this.currentCommentIndex = this.visibleComments.findIndex(
+      c => c.fileIndex === fileIndex && c.commentIndex === commentIndex
+    );
+    
+    // Scroll to comment with smooth behavior
+    commentElement.scrollIntoView({ 
+      behavior: 'smooth', 
+      block: 'center',
+      inline: 'nearest'
+    });
+    
+    // Add highlight effect
+    commentElement.classList.add('comment-highlight');
+    setTimeout(() => {
+      commentElement.classList.remove('comment-highlight');
+    }, 2000);
   }
-  
-  const repos = this.repositoriesByProject[this.currentProject.project_key] || [];
-  
-  if (!this.repoSearchText.trim()) {
-    return repos;
+}
+
+// Navigate to first comment
+goToFirstComment(): void {
+  if (this.visibleComments.length > 0) {
+    const first = this.visibleComments[0];
+    this.goToComment(first.fileIndex, first.commentIndex);
   }
-  
-  const searchLower = this.repoSearchText.toLowerCase();
-  return repos.filter(repo => 
-    repo.repo_name.toLowerCase().includes(searchLower) ||
-    repo.repo_url.toLowerCase().includes(searchLower)
-  );
 }
 
-// ✅ UPDATE showRepositories method to clear search
-showRepositories(projectKey: string): void {
-  this.currentProject = this.allProjects.find(p => p.project_key === projectKey) || null;
-  if (!this.currentProject) return;
-
-  this.repoSearchText = ''; // ✅ Clear repo search when switching projects
-  this.showAllProjectsView = false;
-  this.showAllReposView = true;
+// Navigate to previous comment
+goToPreviousComment(): void {
+  if (this.currentCommentIndex > 0) {
+    const prev = this.visibleComments[this.currentCommentIndex - 1];
+    this.goToComment(prev.fileIndex, prev.commentIndex);
+  }
 }
 
-// ✅ UPDATE backToProjects method to clear search
-backToProjects(): void {
-  this.showAllReposView = false;
-  this.showAllProjectsView = true;
-  this.currentProject = null;
-  this.repoSearchText = ''; // ✅ Clear repo search
+// Navigate to next comment
+goToNextComment(): void {
+  if (this.currentCommentIndex < this.visibleComments.length - 1) {
+    const next = this.visibleComments[this.currentCommentIndex + 1];
+    this.goToComment(next.fileIndex, next.commentIndex);
+  }
+}
+
+// Check if there's a previous comment
+hasPreviousComment(): boolean {
+  return this.currentCommentIndex > 0;
+}
+
+// Check if there's a next comment
+hasNextComment(): boolean {
+  return this.currentCommentIndex < this.visibleComments.length - 1;
+}
+
+// Get current comment position
+getCurrentCommentPosition(): string {
+  if (this.currentCommentIndex === -1 || this.visibleComments.length === 0) {
+    return '';
+  }
+  return `${this.currentCommentIndex + 1} of ${this.visibleComments.length}`;
 }
 
 
@@ -65,57 +122,21 @@ backToProjects(): void {
 
 
 
-
-
-<!-- ✅ UPDATE All Projects View -->
-<div id="all-projects-view" [class.hidden]="!showAllProjectsView">
-    <!-- ✅ ADD Search Box for Projects -->
-    <div class="search-container">
-        <div class="search-box">
-            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="11" cy="11" r="8"></circle>
-                <path d="m21 21-4.35-4.35"></path>
-            </svg>
-            <input type="text" 
-                   class="search-input" 
-                   placeholder="Search projects..."
-                   [(ngModel)]="projectSearchText">
-            <button class="clear-search-btn" 
-                    *ngIf="projectSearchText"
-                    (click)="projectSearchText = ''">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                </svg>
-            </button>
-        </div>
-        <div class="search-results-count" *ngIf="projectSearchText">
-            {{ filteredProjects.length }} of {{ allProjects.length }} projects
-        </div>
-    </div>
-
-    <!-- ✅ UPDATE to use filteredProjects -->
-    <div class="project-card" 
-         *ngFor="let project of filteredProjects; trackBy: trackByProjectKey"
-         (click)="showRepositories(project.project_key)">
-        <div class="project-name">{{ project.project_name }}</div>
-        <div class="project-info">{{ project.project_url }}</div>
-        <div class="repo-count">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-            </svg>
-            {{ getProjectRepoCount(project.project_key) }} repositories
-        </div>
-    </div>
-
-    <!-- ✅ ADD No results message -->
-    <div class="no-results" *ngIf="projectSearchText && filteredProjects.length === 0">
-        <svg class="no-results-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="11" cy="11" r="8"></circle>
-            <path d="m21 21-4.35-4.35"></path>
-        </svg>
-        <div class="no-results-text">No projects found</div>
-        <div class="no-results-hint">Try a different search term</div>
+<!-- File Header -->
+<div class="file-header">
+    <span class="file-icon">📄</span>
+    <span>{{ responseData.files[selectedFileIndex].file_path }}</span>
+    <button 
+        class="ai-comment-count clickable" 
+        *ngIf="responseData.files[selectedFileIndex].ai_comments.length > 0"
+        (click)="goToFirstComment()"
+        title="Jump to first comment">
+        {{ responseData.files[selectedFileIndex].ai_comments.length }} AI 
+        {{ responseData.files[selectedFileIndex].ai_comments.length === 1 ? 'comment' : 'comments' }}
+    </button>
+    <div class="file-stats">
+        <span class="stat-additions">+{{ getFileStats(responseData.files[selectedFileIndex]).additions }}</span>
+        <span class="stat-deletions">-{{ getFileStats(responseData.files[selectedFileIndex]).deletions }}</span>
     </div>
 </div>
 
@@ -127,163 +148,48 @@ backToProjects(): void {
 
 
 
-<!-- ✅ UPDATE All Repository View -->
-<div id="all-repos-view" [class.hidden]="!showAllReposView">
-    <div class="view-header">
-        <button class="back-button" (click)="backToProjects()">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M19 12H5M12 19l-7-7 7-7" />
+
+
+
+
+<!-- Comment Header -->
+<div class="comment-header">
+    <span class="ai-badge">AI Review</span>
+    <span class="severity-badge" [ngClass]="'severity-' + comment.severity">
+        {{ comment.severity }}
+    </span>
+
+    <span *ngIf="getCommentState(selectedFileIndex, commentIndex).status !== 'pending'"
+        class="status-badge"
+        [ngClass]="'status-' + getCommentState(selectedFileIndex, commentIndex).status">
+        {{ getCommentState(selectedFileIndex, commentIndex).status }}
+    </span>
+
+    <span class="comment-time">Line {{ comment.line }}</span>
+    
+    <!-- Comment Navigation -->
+    <div class="comment-navigation">
+        <span class="comment-position" *ngIf="getCurrentCommentPosition()">
+            {{ getCurrentCommentPosition() }}
+        </span>
+        <button 
+            class="nav-btn nav-prev" 
+            (click)="goToPreviousComment()"
+            [disabled]="!hasPreviousComment()"
+            title="Previous comment">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="15 18 9 12 15 6"></polyline>
             </svg>
         </button>
-        <div class="view-title">{{ currentProject?.project_name }}</div>
-    </div>
-
-    <!-- ✅ ADD Search Box for Repositories -->
-    <div class="search-container">
-        <div class="search-box">
-            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="11" cy="11" r="8"></circle>
-                <path d="m21 21-4.35-4.35"></path>
-            </svg>
-            <input type="text" 
-                   class="search-input" 
-                   placeholder="Search repositories..."
-                   [(ngModel)]="repoSearchText">
-            <button class="clear-search-btn" 
-                    *ngIf="repoSearchText"
-                    (click)="repoSearchText = ''">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                </svg>
-            </button>
-        </div>
-        <div class="search-results-count" *ngIf="repoSearchText">
-            {{ filteredRepositories.length }} of {{ getRepositoriesForProject(currentProject?.project_key || '').length }} repositories
-        </div>
-    </div>
-
-    <!-- ✅ UPDATE to use filteredRepositories -->
-    <div id="repos-list">
-        <div class="repo-card" 
-             *ngFor="let repo of filteredRepositories; trackBy: trackByRepoKey"
-             [class.loading]="loadingRepos[repo.repo_key]">
-            <div class="repo-header">
-                <div class="repo-info-section" (click)="$event.stopPropagation()">
-                    <div class="repo-name">{{ repo.repo_name }}</div>
-                    <div class="repo-description" [title]="repo.repo_url">
-                        {{ repo.repo_url }}
-                    </div>
-                </div>
-                <button class="star-button" 
-                        [class.favorited]="isFavorite(repo.repo_key)"
-                        (click)="toggleFavorite(repo.repo_key, currentProject?.project_key || '', $event)">
-                    <div class="spinner" *ngIf="loadingRepos[repo.repo_key]"></div>
-                    <svg *ngIf="!loadingRepos[repo.repo_key]" 
-                         viewBox="0 0 24 24" 
-                         fill="none" 
-                         stroke="currentColor" 
-                         stroke-width="2">
-                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
-                    </svg>
-                </button>
-            </div>
-        </div>
-
-        <!-- ✅ ADD No results message -->
-        <div class="no-results" *ngIf="repoSearchText && filteredRepositories.length === 0">
-            <svg class="no-results-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="11" cy="11" r="8"></circle>
-                <path d="m21 21-4.35-4.35"></path>
-            </svg>
-            <div class="no-results-text">No repositories found</div>
-            <div class="no-results-hint">Try a different search term</div>
-        </div>
-    </div>
-</div>
-
-
-
-
-
-
-
-
-
-
-
-<!-- ✅ UPDATE All Repository View -->
-<div id="all-repos-view" [class.hidden]="!showAllReposView">
-    <div class="view-header">
-        <button class="back-button" (click)="backToProjects()">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M19 12H5M12 19l-7-7 7-7" />
+        <button 
+            class="nav-btn nav-next" 
+            (click)="goToNextComment()"
+            [disabled]="!hasNextComment()"
+            title="Next comment">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 18 15 12 9 6"></polyline>
             </svg>
         </button>
-        <div class="view-title">{{ currentProject?.project_name }}</div>
-    </div>
-
-    <!-- ✅ ADD Search Box for Repositories -->
-    <div class="search-container">
-        <div class="search-box">
-            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="11" cy="11" r="8"></circle>
-                <path d="m21 21-4.35-4.35"></path>
-            </svg>
-            <input type="text" 
-                   class="search-input" 
-                   placeholder="Search repositories..."
-                   [(ngModel)]="repoSearchText">
-            <button class="clear-search-btn" 
-                    *ngIf="repoSearchText"
-                    (click)="repoSearchText = ''">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                </svg>
-            </button>
-        </div>
-        <div class="search-results-count" *ngIf="repoSearchText">
-            {{ filteredRepositories.length }} of {{ getRepositoriesForProject(currentProject?.project_key || '').length }} repositories
-        </div>
-    </div>
-
-    <!-- ✅ UPDATE to use filteredRepositories -->
-    <div id="repos-list">
-        <div class="repo-card" 
-             *ngFor="let repo of filteredRepositories; trackBy: trackByRepoKey"
-             [class.loading]="loadingRepos[repo.repo_key]">
-            <div class="repo-header">
-                <div class="repo-info-section" (click)="$event.stopPropagation()">
-                    <div class="repo-name">{{ repo.repo_name }}</div>
-                    <div class="repo-description" [title]="repo.repo_url">
-                        {{ repo.repo_url }}
-                    </div>
-                </div>
-                <button class="star-button" 
-                        [class.favorited]="isFavorite(repo.repo_key)"
-                        (click)="toggleFavorite(repo.repo_key, currentProject?.project_key || '', $event)">
-                    <div class="spinner" *ngIf="loadingRepos[repo.repo_key]"></div>
-                    <svg *ngIf="!loadingRepos[repo.repo_key]" 
-                         viewBox="0 0 24 24" 
-                         fill="none" 
-                         stroke="currentColor" 
-                         stroke-width="2">
-                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
-                    </svg>
-                </button>
-            </div>
-        </div>
-
-        <!-- ✅ ADD No results message -->
-        <div class="no-results" *ngIf="repoSearchText && filteredRepositories.length === 0">
-            <svg class="no-results-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="11" cy="11" r="8"></circle>
-                <path d="m21 21-4.35-4.35"></path>
-            </svg>
-            <div class="no-results-text">No repositories found</div>
-            <div class="no-results-hint">Try a different search term</div>
-        </div>
     </div>
 </div>
 
@@ -296,126 +202,213 @@ backToProjects(): void {
 
 
 
-
-/* ========================================
-   Search Container for Projects/Repos
-   ======================================== */
-
-.search-container {
-    padding: 12px 16px;
-    background-color: var(--bitbucket-bg-tertiary);
-    border-bottom: 1px solid var(--bitbucket-border-primary);
-    position: sticky;
-    top: 0;
-    z-index: 10;
-}
-
-.search-box {
-    display: flex;
+/* Clickable AI Comment Count */
+.ai-comment-count.clickable {
+    display: inline-flex;
     align-items: center;
-    gap: 8px;
-    background-color: var(--bitbucket-bg-secondary);
-    border: 1px solid var(--bitbucket-border-primary);
-    border-radius: 6px;
-    padding: 8px 12px;
-    transition: all 0.2s ease;
-}
-
-.search-box:focus-within {
-    border-color: var(--bitbucket-blue);
-    box-shadow: 0 0 0 2px rgba(91, 156, 255, 0.1);
-}
-
-.search-icon {
-    width: 16px;
-    height: 16px;
-    color: var(--bitbucket-text-secondary);
-    flex-shrink: 0;
-}
-
-.search-input {
-    flex: 1;
-    background: none;
-    border: none;
-    outline: none;
-    color: var(--bitbucket-text-primary);
-    font-size: 13px;
-    padding: 0;
-}
-
-.search-input::placeholder {
-    color: var(--bitbucket-text-secondary);
-}
-
-.clear-search-btn {
-    background: none;
-    border: none;
-    padding: 4px;
+    gap: 6px;
+    background: linear-gradient(135deg, var(--bitbucket-file-comparator-purple-bg) 0%, var(--bitbucket-file-comparator-purple-text) 100%);
+    color: white;
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-left: 12px;
+    box-shadow: 0 2px 6px rgba(124, 58, 237, 0.3);
     cursor: pointer;
-    display: flex;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    border: 2px solid transparent;
+}
+
+.ai-comment-count.clickable:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(124, 58, 237, 0.4);
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+.ai-comment-count.clickable:active {
+    transform: translateY(0);
+}
+
+/* Comment Navigation */
+.comment-navigation {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+}
+
+.comment-position {
+    font-size: 11px;
+    color: var(--bitbucket-file-comparator-text-secondary);
+    font-weight: 500;
+    padding: 2px 8px;
+    background: var(--bitbucket-file-comparator-bg-tertiary);
+    border-radius: 4px;
+}
+
+.nav-btn {
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    border-radius: 4px;
-    transition: all 0.2s ease;
-    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    background: var(--bitbucket-file-comparator-bg-tertiary);
+    border: 1px solid var(--bitbucket-file-comparator-border-primary);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    color: var(--bitbucket-file-comparator-text-primary);
 }
 
-.clear-search-btn:hover {
-    background-color: var(--bitbucket-border-primary);
+.nav-btn:hover:not(:disabled) {
+    background: var(--bitbucket-file-comparator-accent-primary);
+    border-color: var(--bitbucket-file-comparator-accent-primary);
+    color: white;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(0, 82, 204, 0.3);
 }
 
-.clear-search-btn svg {
-    width: 14px;
-    height: 14px;
-    color: var(--bitbucket-text-secondary);
+.nav-btn:active:not(:disabled) {
+    transform: translateY(0);
 }
 
-.search-results-count {
-    margin-top: 8px;
-    font-size: 11px;
-    color: var(--bitbucket-text-secondary);
-    text-align: center;
+.nav-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
 }
 
-/* No Results */
-.no-results {
-    padding: 48px 24px;
+.nav-btn svg {
+    display: block;
+}
+
+/* Comment Highlight Effect */
+@keyframes commentHighlight {
+    0%, 100% {
+        background-color: transparent;
+    }
+    50% {
+        background-color: rgba(0, 82, 204, 0.15);
+    }
+}
+
+.ai-comment.comment-highlight {
+    animation: commentHighlight 1s ease-in-out 2;
+    border-color: var(--bitbucket-file-comparator-accent-primary) !important;
+    box-shadow: 0 0 0 3px rgba(0, 82, 204, 0.2) !important;
+}
+
+/* Update comment header to accommodate navigation */
+.comment-header {
     display: flex;
-    flex-direction: column;
     align-items: center;
+    margin-bottom: 12px;
     gap: 8px;
-    text-align: center;
+    flex-wrap: wrap;
 }
 
-.no-results-icon {
-    width: 48px;
-    height: 48px;
-    color: var(--bitbucket-text-muted);
-    opacity: 0.5;
-    margin-bottom: 8px;
-}
-
-.no-results-text {
-    font-size: 14px;
-    color: var(--bitbucket-text-primary);
-    font-weight: 600;
-}
-
-.no-results-hint {
+.comment-time {
+    color: var(--bitbucket-file-comparator-text-secondary);
     font-size: 12px;
-    color: var(--bitbucket-text-secondary);
 }
 
-/* Light Mode */
-[data-theme="light"] .search-container {
-    background-color: var(--bitbucket-bg-tertiary);
-}
 
-[data-theme="light"] .search-box {
-    background-color: var(--bitbucket-bg-primary);
-}
 
-[data-theme="light"] .search-box:focus-within {
-    border-color: var(--bitbucket-blue);
-    background-color: var(--bitbucket-bg-tertiary);
+
+
+
+
+
+
+
+bindCommentEvents(commentElement: HTMLElement, fileIndex: number, commentIndex: number): void {
+  const commentId = this.getCommentId(fileIndex, commentIndex);
+  
+  // Find buttons within the cloned element
+  const acceptBtn = commentElement.querySelector('.btn-accept');
+  const rejectBtn = commentElement.querySelector('.btn-reject');
+  const modifyBtn = commentElement.querySelector('.btn-modify');
+  const saveBtn = commentElement.querySelector('.btn-save');
+  const cancelBtn = commentElement.querySelector('.btn-cancel');
+  const prevBtn = commentElement.querySelector('.nav-prev');
+  const nextBtn = commentElement.querySelector('.nav-next');
+  
+  // Find textarea for two-way binding
+  const textarea = commentElement.querySelector('.comment-body-editable') as HTMLTextAreaElement;
+  if (textarea) {
+    textarea.value = this.editingCommentText[commentId] || '';
+    textarea.addEventListener('input', (e) => {
+      const target = e.target as HTMLTextAreaElement;
+      this.editingCommentText[commentId] = target.value;
+    });
+  }
+
+  // Bind action events
+  if (acceptBtn) {
+    acceptBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!this.loadingComments[commentId]) {
+        this.acceptComment(fileIndex, commentIndex);
+      }
+    });
+  }
+
+  if (rejectBtn) {
+    rejectBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!this.loadingComments[commentId]) {
+        this.rejectComment(fileIndex, commentIndex);
+      }
+    });
+  }
+
+  if (modifyBtn) {
+    modifyBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!this.loadingComments[commentId]) {
+        this.modifyComment(fileIndex, commentIndex);
+      }
+    });
+  }
+
+  if (saveBtn) {
+    saveBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!this.loadingComments[commentId]) {
+        this.saveModifiedComment(fileIndex, commentIndex);
+      }
+    });
+  }
+
+  if (cancelBtn) {
+    cancelBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!this.loadingComments[commentId]) {
+        this.cancelModification(fileIndex, commentIndex);
+      }
+    });
+  }
+
+  // Bind navigation events
+  if (prevBtn) {
+    prevBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.goToPreviousComment();
+    });
+  }
+
+  if (nextBtn) {
+    nextBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.goToNextComment();
+    });
+  }
 }
