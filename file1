@@ -29,51 +29,32 @@ insertCommentsAtLines(file: FileData, fileIndex: number): void {
       if (commentInserted) return;
 
       if (this.viewMode === 'side-by-side') {
-        // In side-by-side mode, we need to find the correct side
-        const allCells = Array.from(row.querySelectorAll('td'));
+        // In side-by-side mode, look for line numbers on the RIGHT SIDE only
+        const lineNumberElements = row.querySelectorAll('.d2h-code-side-linenumber');
         
-        allCells.forEach((cell, cellIndex) => {
+        // In side-by-side, line numbers come in pairs: [left, right] or [left-old, left-new, right-old, right-new]
+        // We want to match the RIGHT side (new file) line numbers
+        Array.from(lineNumberElements).forEach((lineNumElement, index) => {
           if (commentInserted) return;
           
-          // Check if this cell IS a line number cell (not contains, but IS)
-          const isLineNumberCell = cell.classList.contains('d2h-code-side-linenumber');
+          // Check if this is a right-side line number
+          // Right side typically has certain parent structures
+          const parentTd = lineNumElement.closest('td');
+          const isRightSide = parentTd?.classList.contains('d2h-code-side-linenumber') && 
+                              (index % 2 === 1 || index >= lineNumberElements.length / 2);
           
-          if (!isLineNumberCell) return;
+          // Alternative: Check by position in the row
+          const allCells = Array.from(row.querySelectorAll('td'));
+          const cellIndex = allCells.indexOf(parentTd as HTMLTableCellElement);
+          const isRightSideByPosition = cellIndex >= allCells.length / 2;
           
-          const lineText = cell.textContent?.trim() || '';
+          // Use either method to determine right side
+          if (!isRightSide && !isRightSideByPosition) return;
+          
+          const lineText = lineNumElement.textContent?.trim() || '';
           const lineNum = parseInt(lineText);
 
-          // Check if this matches our comment line
           if (!isNaN(lineNum) && lineNum === comment.line) {
-            // Determine side based on cell position in the row
-            // In side-by-side: Line numbers alternate: [old-linenum][old-code][new-linenum][new-code]
-            // OR sometimes: [old-linenum][old-code][new-linenum][new-code]
-            // Count how many line number cells come before this one
-            
-            let lineNumCellsBefore = 0;
-            for (let i = 0; i < cellIndex; i++) {
-              if (allCells[i].classList.contains('d2h-code-side-linenumber')) {
-                lineNumCellsBefore++;
-              }
-            }
-            
-            // If this is the first line number cell (index 0), it's the left side (FROM/old)
-            // If this is the second line number cell (index 1), it's the right side (TO/new)
-            const isLeftSide = lineNumCellsBefore === 0;
-            const isRightSide = lineNumCellsBefore === 1;
-            
-            console.log(`Line ${lineNum}: cellIndex=${cellIndex}, lineNumCellsBefore=${lineNumCellsBefore}, isLeftSide=${isLeftSide}, isRightSide=${isRightSide}, commentSide=${comment.side}`);
-            
-            // Match the comment side with the diff side
-            const shouldShowComment = 
-              (comment.side === 'FROM' && isLeftSide) || 
-              (comment.side === 'TO' && isRightSide);
-            
-            if (!shouldShowComment) {
-              console.log(`Skipping comment - side mismatch`);
-              return; // Skip this line number, it's on the wrong side
-            }
-            
             const nextRow = row.nextElementSibling;
             if (nextRow && nextRow.classList.contains('comment-row')) {
               commentInserted = true;
@@ -85,10 +66,10 @@ insertCommentsAtLines(file: FileData, fileIndex: number): void {
 
             const commentCell = document.createElement('td');
             commentCell.className = 'comment-cell';
-            commentCell.setAttribute('colspan', String(allCells.length));
+            commentCell.setAttribute('colspan', '6');
             commentCell.style.padding = '0';
             commentCell.style.border = 'none';
-            commentCell.style.backgroundColor = 'var(--bitbucket-file-comparator-bg-overlay)';
+            commentCell.style.backgroundColor = '#f0f7ff';
 
             const wrapperDiv = document.createElement('div');
             wrapperDiv.className = 'comment-wrapper';
@@ -109,49 +90,16 @@ insertCommentsAtLines(file: FileData, fileIndex: number): void {
           }
         });
       } else {
-        // Line-by-line mode (unified view)
-        const lineNumberCells = row.querySelectorAll('.d2h-code-linenumber');
+        // Line-by-line mode (unified view) - existing logic
+        const lineNumberElements = row.querySelectorAll('.d2h-code-linenumber');
         
-        lineNumberCells.forEach((lineNumCell) => {
+        lineNumberElements.forEach((lineNumElement) => {
           if (commentInserted) return;
 
-          const lineText = lineNumCell.textContent?.trim() || '';
+          const lineText = lineNumElement.textContent?.trim() || '';
           const lineNum = parseInt(lineText);
 
           if (!isNaN(lineNum) && lineNum === comment.line) {
-            // In unified view, there are typically 2 line number cells: [old-line][new-line]
-            // Check which one this is
-            const allLineNumCells = Array.from(lineNumberCells);
-            const lineNumIndex = allLineNumCells.indexOf(lineNumCell);
-            
-            // First cell (index 0) is old line number (FROM)
-            // Second cell (index 1) is new line number (TO)
-            const isOldLineNum = lineNumIndex === 0;
-            const isNewLineNum = lineNumIndex === 1;
-            
-            // Also check the row's code line type
-            const codeLine = row.querySelector('.d2h-code-line');
-            const isAddition = codeLine?.classList.contains('d2h-ins');
-            const isDeletion = codeLine?.classList.contains('d2h-del');
-            const isContext = !isAddition && !isDeletion;
-            
-            // Match comment side with line type and line number position
-            let shouldShowComment = false;
-            
-            if (comment.side === 'TO') {
-              // TO comments: show on new line number in additions, or either line in context
-              shouldShowComment = (isNewLineNum && isAddition) || 
-                                 (isContext && isNewLineNum);
-            } else if (comment.side === 'FROM') {
-              // FROM comments: show on old line number in deletions, or either line in context
-              shouldShowComment = (isOldLineNum && isDeletion) || 
-                                 (isContext && isOldLineNum);
-            }
-            
-            if (!shouldShowComment) {
-              return; // Skip this line, wrong side
-            }
-            
             const nextRow = row.nextElementSibling;
             if (nextRow && nextRow.classList.contains('comment-row')) {
               return;
@@ -162,11 +110,10 @@ insertCommentsAtLines(file: FileData, fileIndex: number): void {
 
             const commentCell = document.createElement('td');
             commentCell.className = 'comment-cell';
-            const allCells = row.querySelectorAll('td');
-            commentCell.setAttribute('colspan', String(allCells.length));
+            commentCell.setAttribute('colspan', '4');
             commentCell.style.padding = '0';
             commentCell.style.border = 'none';
-            commentCell.style.backgroundColor = 'var(--bitbucket-file-comparator-bg-overlay)';
+            commentCell.style.backgroundColor = '#f0f7ff';
 
             const wrapperDiv = document.createElement('div');
             wrapperDiv.className = 'comment-wrapper';
@@ -190,7 +137,7 @@ insertCommentsAtLines(file: FileData, fileIndex: number): void {
     });
 
     if (!commentInserted) {
-      console.warn(`Could not insert comment for line ${comment.line} (${comment.side}) in file ${file.file_path}`);
+      console.warn(`Could not insert comment for line ${comment.line} in file ${file.file_path}`);
     }
   });
 }
