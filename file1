@@ -1,15 +1,56 @@
-isFullscreen: boolean = false;
+// ✅ ADD these search properties
+projectSearchText: string = '';
+repoSearchText: string = '';
 
-toggleFullscreen(): void {
-  this.isFullscreen = !this.isFullscreen;
-  
-  if (this.isFullscreen) {
-    // Add fullscreen class to body to prevent scrolling
-    document.body.style.overflow = 'hidden';
-  } else {
-    // Restore body scrolling
-    document.body.style.overflow = '';
+// ✅ ADD getter for filtered projects (around line 240)
+get filteredProjects(): Project[] {
+  if (!this.projectSearchText.trim()) {
+    return this.allProjects;
   }
+  
+  const searchLower = this.projectSearchText.toLowerCase();
+  return this.allProjects.filter(project => 
+    project.project_name.toLowerCase().includes(searchLower) ||
+    project.project_key.toLowerCase().includes(searchLower) ||
+    project.project_url.toLowerCase().includes(searchLower)
+  );
+}
+
+// ✅ ADD getter for filtered repositories (around line 250)
+get filteredRepositories(): Repository[] {
+  if (!this.currentProject) {
+    return [];
+  }
+  
+  const repos = this.repositoriesByProject[this.currentProject.project_key] || [];
+  
+  if (!this.repoSearchText.trim()) {
+    return repos;
+  }
+  
+  const searchLower = this.repoSearchText.toLowerCase();
+  return repos.filter(repo => 
+    repo.repo_name.toLowerCase().includes(searchLower) ||
+    repo.repo_url.toLowerCase().includes(searchLower)
+  );
+}
+
+// ✅ UPDATE showRepositories method to clear search
+showRepositories(projectKey: string): void {
+  this.currentProject = this.allProjects.find(p => p.project_key === projectKey) || null;
+  if (!this.currentProject) return;
+
+  this.repoSearchText = ''; // ✅ Clear repo search when switching projects
+  this.showAllProjectsView = false;
+  this.showAllReposView = true;
+}
+
+// ✅ UPDATE backToProjects method to clear search
+backToProjects(): void {
+  this.showAllReposView = false;
+  this.showAllProjectsView = true;
+  this.currentProject = null;
+  this.repoSearchText = ''; // ✅ Clear repo search
 }
 
 
@@ -17,46 +58,146 @@ toggleFullscreen(): void {
 
 
 
-<div class="pr-review-container" [class.fullscreen]="isFullscreen">
-    <div class="container">
-        <!-- Compact Toggle Header -->
-        <div class="compact-header">
-            <h2 class="review-title">AI Review</h2>
-            <div class="header-actions">
-                <button class="fullscreen-btn" (click)="toggleFullscreen()" [title]="isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'">
-                    <span class="fullscreen-icon" *ngIf="!isFullscreen">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
-                        </svg>
-                    </span>
-                    <span class="fullscreen-icon" *ngIf="isFullscreen">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/>
-                        </svg>
-                    </span>
-                </button>
-                <div class="view-toggle-switch">
-                    <input type="checkbox" id="viewToggle" [checked]="viewMode === 'side-by-side'" 
-                           (change)="toggleViewMode()" class="toggle-input">
-                    <label for="viewToggle" class="toggle-label">
-                        <span class="toggle-slider">
-                            <span class="toggle-option unified">Unified</span>
-                            <span class="toggle-option split">Split</span>
-                        </span>
-                    </label>
+
+
+
+
+
+
+
+
+
+<!-- ✅ UPDATE All Projects View -->
+<div id="all-projects-view" [class.hidden]="!showAllProjectsView">
+    <!-- ✅ ADD Search Box for Projects -->
+    <div class="search-container">
+        <div class="search-box">
+            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.35-4.35"></path>
+            </svg>
+            <input type="text" 
+                   class="search-input" 
+                   placeholder="Search projects..."
+                   [(ngModel)]="projectSearchText">
+            <button class="clear-search-btn" 
+                    *ngIf="projectSearchText"
+                    (click)="projectSearchText = ''">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            </button>
+        </div>
+        <div class="search-results-count" *ngIf="projectSearchText">
+            {{ filteredProjects.length }} of {{ allProjects.length }} projects
+        </div>
+    </div>
+
+    <!-- ✅ UPDATE to use filteredProjects -->
+    <div class="project-card" 
+         *ngFor="let project of filteredProjects; trackBy: trackByProjectKey"
+         (click)="showRepositories(project.project_key)">
+        <div class="project-name">{{ project.project_name }}</div>
+        <div class="project-info">{{ project.project_url }}</div>
+        <div class="repo-count">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+            </svg>
+            {{ getProjectRepoCount(project.project_key) }} repositories
+        </div>
+    </div>
+
+    <!-- ✅ ADD No results message -->
+    <div class="no-results" *ngIf="projectSearchText && filteredProjects.length === 0">
+        <svg class="no-results-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"></circle>
+            <path d="m21 21-4.35-4.35"></path>
+        </svg>
+        <div class="no-results-text">No projects found</div>
+        <div class="no-results-hint">Try a different search term</div>
+    </div>
+</div>
+
+
+
+
+
+
+
+
+
+<!-- ✅ UPDATE All Repository View -->
+<div id="all-repos-view" [class.hidden]="!showAllReposView">
+    <div class="view-header">
+        <button class="back-button" (click)="backToProjects()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M19 12H5M12 19l-7-7 7-7" />
+            </svg>
+        </button>
+        <div class="view-title">{{ currentProject?.project_name }}</div>
+    </div>
+
+    <!-- ✅ ADD Search Box for Repositories -->
+    <div class="search-container">
+        <div class="search-box">
+            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.35-4.35"></path>
+            </svg>
+            <input type="text" 
+                   class="search-input" 
+                   placeholder="Search repositories..."
+                   [(ngModel)]="repoSearchText">
+            <button class="clear-search-btn" 
+                    *ngIf="repoSearchText"
+                    (click)="repoSearchText = ''">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            </button>
+        </div>
+        <div class="search-results-count" *ngIf="repoSearchText">
+            {{ filteredRepositories.length }} of {{ getRepositoriesForProject(currentProject?.project_key || '').length }} repositories
+        </div>
+    </div>
+
+    <!-- ✅ UPDATE to use filteredRepositories -->
+    <div id="repos-list">
+        <div class="repo-card" 
+             *ngFor="let repo of filteredRepositories; trackBy: trackByRepoKey"
+             [class.loading]="loadingRepos[repo.repo_key]">
+            <div class="repo-header">
+                <div class="repo-info-section" (click)="$event.stopPropagation()">
+                    <div class="repo-name">{{ repo.repo_name }}</div>
+                    <div class="repo-description" [title]="repo.repo_url">
+                        {{ repo.repo_url }}
+                    </div>
                 </div>
+                <button class="star-button" 
+                        [class.favorited]="isFavorite(repo.repo_key)"
+                        (click)="toggleFavorite(repo.repo_key, currentProject?.project_key || '', $event)">
+                    <div class="spinner" *ngIf="loadingRepos[repo.repo_key]"></div>
+                    <svg *ngIf="!loadingRepos[repo.repo_key]" 
+                         viewBox="0 0 24 24" 
+                         fill="none" 
+                         stroke="currentColor" 
+                         stroke-width="2">
+                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                    </svg>
+                </button>
             </div>
         </div>
 
-        <!-- Rest of your existing content -->
-        <!-- File Navigation Tabs -->
-        <div class="file-navigation">
-            <!-- ... existing file tabs ... -->
-        </div>
-
-        <!-- Single File Container -->
-        <div id="files-container">
-            <!-- ... existing file content ... -->
+        <!-- ✅ ADD No results message -->
+        <div class="no-results" *ngIf="repoSearchText && filteredRepositories.length === 0">
+            <svg class="no-results-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.35-4.35"></path>
+            </svg>
+            <div class="no-results-text">No repositories found</div>
+            <div class="no-results-hint">Try a different search term</div>
         </div>
     </div>
 </div>
@@ -70,175 +211,211 @@ toggleFullscreen(): void {
 
 
 
-/* Header Actions Container */
-.header-actions {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
 
-/* Fullscreen Button */
-.fullscreen-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 36px;
-    height: 36px;
-    padding: 0;
-    background: var(--bitbucket-file-comparator-bg-tertiary);
-    border: 2px solid var(--bitbucket-file-comparator-border-primary);
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    color: var(--bitbucket-file-comparator-text-secondary);
-}
+<!-- ✅ UPDATE All Repository View -->
+<div id="all-repos-view" [class.hidden]="!showAllReposView">
+    <div class="view-header">
+        <button class="back-button" (click)="backToProjects()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M19 12H5M12 19l-7-7 7-7" />
+            </svg>
+        </button>
+        <div class="view-title">{{ currentProject?.project_name }}</div>
+    </div>
 
-.fullscreen-btn:hover {
-    background: var(--bitbucket-file-comparator-bg-primary);
-    border-color: var(--bitbucket-file-comparator-accent-primary);
-    color: var(--bitbucket-file-comparator-accent-primary);
-    transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(0, 82, 204, 0.15);
-}
+    <!-- ✅ ADD Search Box for Repositories -->
+    <div class="search-container">
+        <div class="search-box">
+            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.35-4.35"></path>
+            </svg>
+            <input type="text" 
+                   class="search-input" 
+                   placeholder="Search repositories..."
+                   [(ngModel)]="repoSearchText">
+            <button class="clear-search-btn" 
+                    *ngIf="repoSearchText"
+                    (click)="repoSearchText = ''">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            </button>
+        </div>
+        <div class="search-results-count" *ngIf="repoSearchText">
+            {{ filteredRepositories.length }} of {{ getRepositoriesForProject(currentProject?.project_key || '').length }} repositories
+        </div>
+    </div>
 
-.fullscreen-btn:active {
-    transform: translateY(0);
-}
+    <!-- ✅ UPDATE to use filteredRepositories -->
+    <div id="repos-list">
+        <div class="repo-card" 
+             *ngFor="let repo of filteredRepositories; trackBy: trackByRepoKey"
+             [class.loading]="loadingRepos[repo.repo_key]">
+            <div class="repo-header">
+                <div class="repo-info-section" (click)="$event.stopPropagation()">
+                    <div class="repo-name">{{ repo.repo_name }}</div>
+                    <div class="repo-description" [title]="repo.repo_url">
+                        {{ repo.repo_url }}
+                    </div>
+                </div>
+                <button class="star-button" 
+                        [class.favorited]="isFavorite(repo.repo_key)"
+                        (click)="toggleFavorite(repo.repo_key, currentProject?.project_key || '', $event)">
+                    <div class="spinner" *ngIf="loadingRepos[repo.repo_key]"></div>
+                    <svg *ngIf="!loadingRepos[repo.repo_key]" 
+                         viewBox="0 0 24 24" 
+                         fill="none" 
+                         stroke="currentColor" 
+                         stroke-width="2">
+                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                    </svg>
+                </button>
+            </div>
+        </div>
 
-.fullscreen-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    line-height: 1;
-}
+        <!-- ✅ ADD No results message -->
+        <div class="no-results" *ngIf="repoSearchText && filteredRepositories.length === 0">
+            <svg class="no-results-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.35-4.35"></path>
+            </svg>
+            <div class="no-results-text">No repositories found</div>
+            <div class="no-results-hint">Try a different search term</div>
+        </div>
+    </div>
+</div>
 
-.fullscreen-icon svg {
-    display: block;
-}
 
-/* Fullscreen Mode Styles */
-.pr-review-container.fullscreen {
-    position: fixed;
+
+
+
+
+
+
+
+
+
+/* ========================================
+   Search Container for Projects/Repos
+   ======================================== */
+
+.search-container {
+    padding: 12px 16px;
+    background-color: var(--bitbucket-bg-tertiary);
+    border-bottom: 1px solid var(--bitbucket-border-primary);
+    position: sticky;
     top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    width: 100vw;
-    height: 100vh;
-    z-index: 9999;
-    background: var(--bitbucket-file-comparator-bg-secondary);
-    overflow: auto;
-    margin: 0;
-    padding: 0;
-    animation: fullscreenEnter 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 10;
 }
 
-.pr-review-container.fullscreen .container {
-    max-width: none;
-    width: 100%;
-    height: 100%;
-    border-radius: 0;
-    box-shadow: none;
+.search-box {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background-color: var(--bitbucket-bg-secondary);
+    border: 1px solid var(--bitbucket-border-primary);
+    border-radius: 6px;
+    padding: 8px 12px;
+    transition: all 0.2s ease;
+}
+
+.search-box:focus-within {
+    border-color: var(--bitbucket-blue);
+    box-shadow: 0 0 0 2px rgba(91, 156, 255, 0.1);
+}
+
+.search-icon {
+    width: 16px;
+    height: 16px;
+    color: var(--bitbucket-text-secondary);
+    flex-shrink: 0;
+}
+
+.search-input {
+    flex: 1;
+    background: none;
+    border: none;
+    outline: none;
+    color: var(--bitbucket-text-primary);
+    font-size: 13px;
+    padding: 0;
+}
+
+.search-input::placeholder {
+    color: var(--bitbucket-text-secondary);
+}
+
+.clear-search-btn {
+    background: none;
+    border: none;
+    padding: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.clear-search-btn:hover {
+    background-color: var(--bitbucket-border-primary);
+}
+
+.clear-search-btn svg {
+    width: 14px;
+    height: 14px;
+    color: var(--bitbucket-text-secondary);
+}
+
+.search-results-count {
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--bitbucket-text-secondary);
+    text-align: center;
+}
+
+/* No Results */
+.no-results {
+    padding: 48px 24px;
     display: flex;
     flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    text-align: center;
 }
 
-.pr-review-container.fullscreen #files-container {
-    flex: 1;
-    overflow: auto;
+.no-results-icon {
+    width: 48px;
+    height: 48px;
+    color: var(--bitbucket-text-muted);
+    opacity: 0.5;
+    margin-bottom: 8px;
 }
 
-.pr-review-container.fullscreen .compact-header {
-    box-shadow: 0 2px 8px var(--bitbucket-file-comparator-comment-shadow);
-    position: sticky;
-    top: 0;
-    z-index: 100;
+.no-results-text {
+    font-size: 14px;
+    color: var(--bitbucket-text-primary);
+    font-weight: 600;
 }
 
-.pr-review-container.fullscreen .file-navigation {
-    position: sticky;
-    top: 64px;
-    z-index: 99;
-    box-shadow: 0 2px 8px var(--bitbucket-file-comparator-comment-shadow);
+.no-results-hint {
+    font-size: 12px;
+    color: var(--bitbucket-text-secondary);
 }
 
-/* Fullscreen Enter Animation */
-@keyframes fullscreenEnter {
-    from {
-        opacity: 0;
-        transform: scale(0.95);
-    }
-    to {
-        opacity: 1;
-        transform: scale(1);
-    }
+/* Light Mode */
+[data-theme="light"] .search-container {
+    background-color: var(--bitbucket-bg-tertiary);
 }
 
-/* Fullscreen Exit Animation */
-.pr-review-container:not(.fullscreen) {
-    animation: fullscreenExit 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+[data-theme="light"] .search-box {
+    background-color: var(--bitbucket-bg-primary);
 }
 
-@keyframes fullscreenExit {
-    from {
-        opacity: 1;
-        transform: scale(1);
-    }
-    to {
-        opacity: 0;
-        transform: scale(0.95);
-    }
-}
-
-/* Ensure fullscreen works properly with existing styles */
-.pr-review-container.fullscreen :host {
-    padding: 0;
-}
-
-/* Better scrollbar in fullscreen */
-.pr-review-container.fullscreen::-webkit-scrollbar {
-    width: 12px;
-}
-
-.pr-review-container.fullscreen::-webkit-scrollbar-track {
-    background: var(--bitbucket-file-comparator-bg-tertiary);
-}
-
-.pr-review-container.fullscreen::-webkit-scrollbar-thumb {
-    background: var(--bitbucket-file-comparator-border-secondary);
-    border-radius: 6px;
-    border: 3px solid var(--bitbucket-file-comparator-bg-tertiary);
-}
-
-.pr-review-container.fullscreen::-webkit-scrollbar-thumb:hover {
-    background: var(--bitbucket-file-comparator-accent-primary);
-}
-
-/* Fullscreen button in fullscreen mode */
-.pr-review-container.fullscreen .fullscreen-btn {
-    background: var(--bitbucket-file-comparator-accent-primary);
-    border-color: var(--bitbucket-file-comparator-accent-primary);
-    color: white;
-}
-
-.pr-review-container.fullscreen .fullscreen-btn:hover {
-    background: var(--bitbucket-file-comparator-accent-secondary);
-    border-color: var(--bitbucket-file-comparator-accent-secondary);
-}
-
-
-
-
-
-
-
-
-
-
-
-@HostListener('document:keydown.escape', ['$event'])
-handleEscapeKey(event: KeyboardEvent): void {
-  if (this.isFullscreen) {
-    this.toggleFullscreen();
-  }
+[data-theme="light"] .search-box:focus-within {
+    border-color: var(--bitbucket-blue);
+    background-color: var(--bitbucket-bg-tertiary);
 }
