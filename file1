@@ -1,174 +1,180 @@
-<!-- AI Comments (hidden, will be moved to appropriate lines) -->
-<div class="comments-hidden-container">
-    <div class="ai-comment-thread" 
-        *ngFor="let comment of responseData.files[selectedFileIndex].ai_comments; let commentIndex = index"
-        [attr.data-line]="comment.line" 
-        [id]="'comment-' + getCommentId(selectedFileIndex, commentIndex)">
+// Update these methods to always return true
+hasPreviousComment(): boolean {
+  return this.visibleComments.length > 1; // Always enabled if there are multiple comments
+}
 
-        <div [class]="getCommentClasses(selectedFileIndex, commentIndex)"
-            [id]="getCommentId(selectedFileIndex, commentIndex)">
+hasNextComment(): boolean {
+  return this.visibleComments.length > 1; // Always enabled if there are multiple comments
+}
 
-            <!-- Comment Header -->
-            <div class="comment-header">
-                <span class="ai-badge">AI Review</span>
-                <span class="severity-badge" [ngClass]="'severity-' + comment.severity">
-                    {{ comment.severity }}
-                </span>
+// Update navigation methods to handle wrap-around
+goToPreviousComment(): void {
+  if (this.visibleComments.length === 0) return;
+  
+  if (this.currentCommentIndex <= 0) {
+    // Wrap to last comment
+    const last = this.visibleComments[this.visibleComments.length - 1];
+    this.goToComment(last.fileIndex, last.commentIndex);
+  } else {
+    const prev = this.visibleComments[this.currentCommentIndex - 1];
+    this.goToComment(prev.fileIndex, prev.commentIndex);
+  }
+}
 
-                <span *ngIf="getCommentState(selectedFileIndex, commentIndex).status !== 'pending'"
-                    class="status-badge"
-                    [ngClass]="'status-' + getCommentState(selectedFileIndex, commentIndex).status">
-                    {{ getCommentState(selectedFileIndex, commentIndex).status }}
-                </span>
+goToNextComment(): void {
+  if (this.visibleComments.length === 0) return;
+  
+  if (this.currentCommentIndex >= this.visibleComments.length - 1) {
+    // Wrap to first comment
+    const first = this.visibleComments[0];
+    this.goToComment(first.fileIndex, first.commentIndex);
+  } else {
+    const next = this.visibleComments[this.currentCommentIndex + 1];
+    this.goToComment(next.fileIndex, next.commentIndex);
+  }
+}
 
-                <span class="comment-time">Line {{ comment.line }}</span>
-            </div>
 
-            <!-- Comment Body -->
-            <div *ngIf="!getCommentState(selectedFileIndex, commentIndex).isEditing" class="comment-body"
-                [id]="getCommentId(selectedFileIndex, commentIndex) + '-body'">
-                {{ getCommentState(selectedFileIndex, commentIndex).currentText }}
-            </div>
 
-            <!-- Edit Mode -->
-            <div *ngIf="getCommentState(selectedFileIndex, commentIndex).isEditing">
-                <textarea class="comment-body-editable"
-                    [(ngModel)]="editingCommentText[getCommentId(selectedFileIndex, commentIndex)]"
-                    [id]="getCommentId(selectedFileIndex, commentIndex) + '-textarea'">
-                </textarea>
-            </div>
 
-            <!-- Suggested Patch -->
-            <div class="suggested-patch" *ngIf="comment.suggested_patch">
-                <div class="suggested-patch-header">Suggested Fix:</div>
-                <div class="suggested-patch-code">{{ comment.suggested_patch }}</div>
-            </div>
 
-            <!-- Comment Actions -->
-            <div class="comment-actions" [id]="getCommentId(selectedFileIndex, commentIndex) + '-actions'">
 
-                <!-- Pending State Actions (Accept, Reject, Modify + Navigation) -->
-                <ng-container
-                    *ngIf="getCommentState(selectedFileIndex, commentIndex).status === 'pending' && !getCommentState(selectedFileIndex, commentIndex).isEditing">
-                    
-                    <!-- Main Action Buttons -->
-                    <button class="action-btn btn-accept"
-                        (click)="acceptComment(selectedFileIndex, commentIndex)">
-                        <span class="btn-icon">✓</span>
-                        <span class="btn-text">Accept</span>
-                    </button>
-                    <button class="action-btn btn-reject"
-                        (click)="rejectComment(selectedFileIndex, commentIndex)">
-                        <span class="btn-icon">✗</span>
-                        <span class="btn-text">Reject</span>
-                    </button>
-                    <button class="action-btn btn-modify"
-                        (click)="modifyComment(selectedFileIndex, commentIndex)">
-                        <span class="btn-icon">✎</span>
-                        <span class="btn-text">Modify</span>
-                    </button>
-                    
-                    <!-- Separator -->
-                    <div class="nav-separator"></div>
-                    
-                    <!-- Navigation Buttons -->
-                    <button 
-                        class="action-btn btn-nav btn-prev" 
-                        (click)="goToPreviousComment()"
-                        [disabled]="!hasPreviousComment()"
-                        [title]="'Previous comment (' + getCurrentCommentPosition() + ')'">
-                        <span class="btn-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <polyline points="15 18 9 12 15 6"></polyline>
-                            </svg>
-                        </span>
-                    </button>
-                    <button 
-                        class="action-btn btn-nav btn-next" 
-                        (click)="goToNextComment()"
-                        [disabled]="!hasNextComment()"
-                        [title]="'Next comment (' + getCurrentCommentPosition() + ')'">
-                        <span class="btn-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <polyline points="9 18 15 12 9 6"></polyline>
-                            </svg>
-                        </span>
-                    </button>
-                </ng-container>
 
-                <!-- Editing State Actions (Save, Cancel + Navigation) -->
-                <ng-container *ngIf="getCommentState(selectedFileIndex, commentIndex).isEditing">
-                    
-                    <!-- Edit Action Buttons -->
-                    <button class="action-btn btn-save"
-                        (click)="saveModifiedComment(selectedFileIndex, commentIndex)">
-                        <span class="btn-icon">💾</span>
-                        <span class="btn-text">Save</span>
-                    </button>
-                    <button class="action-btn btn-cancel"
-                        (click)="cancelModification(selectedFileIndex, commentIndex)">
-                        <span class="btn-icon">✕</span>
-                        <span class="btn-text">Cancel</span>
-                    </button>
-                    
-                    <!-- Separator -->
-                    <div class="nav-separator"></div>
-                    
-                    <!-- Navigation Buttons -->
-                    <button 
-                        class="action-btn btn-nav btn-prev" 
-                        (click)="goToPreviousComment()"
-                        [disabled]="!hasPreviousComment()"
-                        [title]="'Previous comment (' + getCurrentCommentPosition() + ')'">
-                        <span class="btn-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <polyline points="15 18 9 12 15 6"></polyline>
-                            </svg>
-                        </span>
-                    </button>
-                    <button 
-                        class="action-btn btn-nav btn-next" 
-                        (click)="goToNextComment()"
-                        [disabled]="!hasNextComment()"
-                        [title]="'Next comment (' + getCurrentCommentPosition() + ')'">
-                        <span class="btn-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <polyline points="9 18 15 12 9 6"></polyline>
-                            </svg>
-                        </span>
-                    </button>
-                </ng-container>
 
-                <!-- Accepted/Rejected State - Show Only Navigation -->
-                <ng-container
-                    *ngIf="getCommentState(selectedFileIndex, commentIndex).status !== 'pending' && !getCommentState(selectedFileIndex, commentIndex).isEditing">
-                    
-                    <!-- Only Navigation Buttons -->
-                    <button 
-                        class="action-btn btn-nav btn-prev" 
-                        (click)="goToPreviousComment()"
-                        [disabled]="!hasPreviousComment()"
-                        [title]="'Previous comment (' + getCurrentCommentPosition() + ')'">
-                        <span class="btn-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <polyline points="15 18 9 12 15 6"></polyline>
-                            </svg>
-                        </span>
-                    </button>
-                    <button 
-                        class="action-btn btn-nav btn-next" 
-                        (click)="goToNextComment()"
-                        [disabled]="!hasNextComment()"
-                        [title]="'Next comment (' + getCurrentCommentPosition() + ')'">
-                        <span class="btn-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <polyline points="9 18 15 12 9 6"></polyline>
-                            </svg>
-                        </span>
-                    </button>
-                </ng-container>
 
-            </div>
-        </div>
-    </div>
-</div>
+
+
+
+
+
+<!-- Navigation Buttons - Always Enabled (No [disabled] attribute) -->
+
+<!-- In Pending State -->
+<button 
+    class="action-btn btn-nav btn-prev" 
+    (click)="goToPreviousComment()"
+    [title]="'Previous comment (' + getCurrentCommentPosition() + ')'">
+    <span class="btn-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 18 9 12 15 6"></polyline>
+        </svg>
+    </span>
+</button>
+<button 
+    class="action-btn btn-nav btn-next" 
+    (click)="goToNextComment()"
+    [title]="'Next comment (' + getCurrentCommentPosition() + ')'">
+    <span class="btn-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="9 18 15 12 9 6"></polyline>
+        </svg>
+    </span>
+</button>
+
+<!-- In Editing State -->
+<button 
+    class="action-btn btn-nav btn-prev" 
+    (click)="goToPreviousComment()"
+    [title]="'Previous comment (' + getCurrentCommentPosition() + ')'">
+    <span class="btn-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 18 9 12 15 6"></polyline>
+        </svg>
+    </span>
+</button>
+<button 
+    class="action-btn btn-nav btn-next" 
+    (click)="goToNextComment()"
+    [title]="'Next comment (' + getCurrentCommentPosition() + ')'">
+    <span class="btn-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="9 18 15 12 9 6"></polyline>
+        </svg>
+    </span>
+</button>
+
+<!-- In Accepted/Rejected State -->
+<button 
+    class="action-btn btn-nav btn-prev" 
+    (click)="goToPreviousComment()"
+    [title]="'Previous comment (' + getCurrentCommentPosition() + ')'">
+    <span class="btn-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 18 9 12 15 6"></polyline>
+        </svg>
+    </span>
+</button>
+<button 
+    class="action-btn btn-nav btn-next" 
+    (click)="goToNextComment()"
+    [title]="'Next comment (' + getCurrentCommentPosition() + ')'">
+    <span class="btn-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="9 18 15 12 9 6"></polyline>
+        </svg>
+    </span>
+</button>
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* Navigation Buttons - Always enabled, remove disabled styles */
+.action-btn.btn-nav {
+    background: var(--bitbucket-file-comparator-bg-tertiary);
+    color: var(--bitbucket-file-comparator-text-primary);
+    border-color: var(--bitbucket-file-comparator-border-secondary);
+    padding: 6px 10px;
+    min-width: auto;
+}
+
+.action-btn.btn-nav:hover {
+    background: var(--bitbucket-file-comparator-accent-primary);
+    border-color: var(--bitbucket-file-comparator-accent-primary);
+    color: white;
+    box-shadow: 0 4px 12px rgba(0, 82, 204, 0.3);
+}
+
+/* Remove or comment out these disabled styles */
+/*
+.action-btn.btn-nav:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    background: var(--bitbucket-file-comparator-bg-tertiary);
+    border-color: var(--bitbucket-file-comparator-border-primary);
+}
+
+.action-btn.btn-nav:disabled:hover {
+    transform: none;
+    box-shadow: 0 1px 3px var(--bitbucket-file-comparator-comment-shadow);
+}
+*/
+
+.action-btn.btn-nav .btn-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.action-btn.btn-nav .btn-icon svg {
+    display: block;
+}
+
+/* Make nav buttons more compact */
+.action-btn.btn-prev,
+.action-btn.btn-next {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
