@@ -30,189 +30,128 @@ insertCommentsAtLines(file: FileData, fileIndex: number): void {
 
       if (this.viewMode === 'side-by-side') {
         // In side-by-side mode, handle left (FROM) and right (TO) sides
-        const lineNumberElements = row.querySelectorAll('.d2h-code-side-linenumber');
+        const allCells = row.querySelectorAll('td');
         
-        Array.from(lineNumberElements).forEach((lineNumElement, index) => {
+        allCells.forEach((cell, cellIndex) => {
           if (commentInserted) return;
+          
+          const lineNumElement = cell.querySelector('.d2h-code-side-linenumber');
+          if (!lineNumElement) return;
           
           const lineText = lineNumElement.textContent?.trim() || '';
           const lineNum = parseInt(lineText);
-
-          if (!isNaN(lineNum) && lineNum === comment.line) {
-            // Determine which side this line number is on
-            const parentCell = lineNumElement.closest('td');
-            const isLeftSide = parentCell?.classList.contains('d2h-code-side-linenumber') && 
-                              index % 2 === 0; // Even indices are typically left side
-            const isRightSide = parentCell?.classList.contains('d2h-code-side-linenumber') && 
-                               index % 2 === 1; // Odd indices are typically right side
-            
-            // Check if this matches the comment's side
-            const shouldInsertHere = (comment.side === 'FROM' && isLeftSide) || 
-                                    (comment.side === 'TO' && isRightSide);
-            
-            if (!shouldInsertHere) {
-              return; // Skip this line number, it's on the wrong side
-            }
-
-            const nextRow = row.nextElementSibling;
-            if (nextRow && nextRow.classList.contains('comment-row')) {
-              commentInserted = true;
-              return;
-            }
-
-            const commentRow = document.createElement('tr');
-            commentRow.className = 'comment-row';
-
-            const commentCell = document.createElement('td');
-            commentCell.className = 'comment-cell';
-            commentCell.setAttribute('colspan', '6');
-            commentCell.style.padding = '0';
-            commentCell.style.border = 'none';
-            commentCell.style.backgroundColor = '#f0f7ff';
-
-            const wrapperDiv = document.createElement('div');
-            wrapperDiv.className = 'comment-wrapper';
-            wrapperDiv.style.width = '100%';
-            wrapperDiv.style.display = 'block';
-
-            commentClone.style.display = 'block';
-            commentClone.style.visibility = 'visible';
-            commentClone.style.opacity = '1';
-
-            wrapperDiv.appendChild(commentClone);
-            commentCell.appendChild(wrapperDiv);
-            commentRow.appendChild(commentCell);
-
-            row.parentNode?.insertBefore(commentRow, row.nextSibling);
-
-            commentInserted = true;
+          
+          if (isNaN(lineNum) || lineNum !== comment.line) return;
+          
+          // In side-by-side, left columns are old file (FROM), right columns are new file (TO)
+          // Typically columns 0-1 are left side, columns 2-3 are right side (for 4 column layout)
+          // Or columns 0-2 are left side, columns 3-5 are right side (for 6 column layout)
+          const totalCells = allCells.length;
+          const isLeftSide = cellIndex < totalCells / 2;
+          const isRightSide = cellIndex >= totalCells / 2;
+          
+          // Check if this matches the comment's side
+          const shouldInsertHere = (comment.side === 'FROM' && isLeftSide) || 
+                                  (comment.side === 'TO' && isRightSide);
+          
+          if (!shouldInsertHere) {
+            return;
           }
+
+          const nextRow = row.nextElementSibling;
+          if (nextRow && nextRow.classList.contains('comment-row')) {
+            commentInserted = true;
+            return;
+          }
+
+          const commentRow = document.createElement('tr');
+          commentRow.className = 'comment-row';
+
+          const commentCell = document.createElement('td');
+          commentCell.className = 'comment-cell';
+          commentCell.setAttribute('colspan', totalCells.toString());
+          commentCell.style.padding = '0';
+          commentCell.style.border = 'none';
+          commentCell.style.backgroundColor = 'var(--bitbucket-file-comparator-bg-overlay)';
+
+          const wrapperDiv = document.createElement('div');
+          wrapperDiv.className = 'comment-wrapper';
+          wrapperDiv.style.width = '100%';
+          wrapperDiv.style.display = 'block';
+
+          commentClone.style.display = 'block';
+          commentClone.style.visibility = 'visible';
+          commentClone.style.opacity = '1';
+
+          wrapperDiv.appendChild(commentClone);
+          commentCell.appendChild(wrapperDiv);
+          commentRow.appendChild(commentCell);
+
+          row.parentNode?.insertBefore(commentRow, row.nextSibling);
+
+          commentInserted = true;
         });
       } else {
         // Line-by-line (unified) mode
-        const lineNumberElements = row.querySelectorAll('.d2h-code-linenumber');
+        const lineNumberCells = row.querySelectorAll('td.d2h-code-linenumber');
         
-        lineNumberElements.forEach((lineNumElement, index) => {
+        lineNumberCells.forEach((cell, index) => {
           if (commentInserted) return;
-
-          const lineText = lineNumElement.textContent?.trim() || '';
+          
+          const lineText = cell.textContent?.trim() || '';
           const lineNum = parseInt(lineText);
 
-          if (!isNaN(lineNum) && lineNum === comment.line) {
-            // In unified view, check if the row type matches the comment side
-            const codeLineElement = row.querySelector('.d2h-code-line');
-            const isDeletedLine = codeLineElement?.classList.contains('d2h-del');
-            const isAddedLine = codeLineElement?.classList.contains('d2h-ins');
-            const isContextLine = codeLineElement?.classList.contains('d2h-cntx');
-            
-            // Determine if we should insert the comment here
-            let shouldInsertHere = false;
-            
-            if (comment.side === 'FROM') {
-              // FROM comments go on deleted lines or context lines in old file
-              shouldInsertHere = isDeletedLine || (isContextLine && index === 0); // First line number for context
-            } else if (comment.side === 'TO') {
-              // TO comments go on added lines or context lines in new file
-              shouldInsertHere = isAddedLine || (isContextLine && index === 1); // Second line number for context
-            }
-            
-            if (!shouldInsertHere) {
-              return;
-            }
+          if (isNaN(lineNum) || lineNum !== comment.line) return;
 
-            const nextRow = row.nextElementSibling;
-            if (nextRow && nextRow.classList.contains('comment-row')) {
-              return;
-            }
-
-            const commentRow = document.createElement('tr');
-            commentRow.className = 'comment-row';
-
-            const commentCell = document.createElement('td');
-            commentCell.className = 'comment-cell';
-            commentCell.setAttribute('colspan', '4');
-            commentCell.style.padding = '0';
-            commentCell.style.border = 'none';
-            commentCell.style.backgroundColor = '#f0f7ff';
-
-            const wrapperDiv = document.createElement('div');
-            wrapperDiv.className = 'comment-wrapper';
-            wrapperDiv.style.width = '100%';
-            wrapperDiv.style.display = 'block';
-
-            commentClone.style.display = 'block';
-            commentClone.style.visibility = 'visible';
-            commentClone.style.opacity = '1';
-
-            wrapperDiv.appendChild(commentClone);
-            commentCell.appendChild(wrapperDiv);
-            commentRow.appendChild(commentCell);
-
-            row.parentNode?.insertBefore(commentRow, row.nextSibling);
-
-            commentInserted = true;
+          // In unified view:
+          // - Index 0 is old file line number (FROM)
+          // - Index 1 is new file line number (TO)
+          const shouldInsertHere = (comment.side === 'FROM' && index === 0) || 
+                                  (comment.side === 'TO' && index === 1);
+          
+          if (!shouldInsertHere) {
+            return;
           }
+
+          const nextRow = row.nextElementSibling;
+          if (nextRow && nextRow.classList.contains('comment-row')) {
+            commentInserted = true;
+            return;
+          }
+
+          const commentRow = document.createElement('tr');
+          commentRow.className = 'comment-row';
+
+          const commentCell = document.createElement('td');
+          commentCell.className = 'comment-cell';
+          commentCell.setAttribute('colspan', '4');
+          commentCell.style.padding = '0';
+          commentCell.style.border = 'none';
+          commentCell.style.backgroundColor = 'var(--bitbucket-file-comparator-bg-overlay)';
+
+          const wrapperDiv = document.createElement('div');
+          wrapperDiv.className = 'comment-wrapper';
+          wrapperDiv.style.width = '100%';
+          wrapperDiv.style.display = 'block';
+
+          commentClone.style.display = 'block';
+          commentClone.style.visibility = 'visible';
+          commentClone.style.opacity = '1';
+
+          wrapperDiv.appendChild(commentClone);
+          commentCell.appendChild(wrapperDiv);
+          commentRow.appendChild(commentCell);
+
+          row.parentNode?.insertBefore(commentRow, row.nextSibling);
+
+          commentInserted = true;
         });
       }
     });
 
     if (!commentInserted) {
       console.warn(`Could not insert comment for line ${comment.line} (side: ${comment.side}) in file ${file.file_path}`);
+      console.log('Comment details:', comment);
     }
   });
-}
-
-
-
-
-
-
-
-
-
-<!-- Comment Header -->
-<div class="comment-header">
-    <span class="ai-badge">AI Review</span>
-    <span class="severity-badge" [ngClass]="'severity-' + comment.severity">
-        {{ comment.severity }}
-    </span>
-    
-    <!-- Show side indicator -->
-    <span class="side-badge" [ngClass]="comment.side === 'FROM' ? 'side-old' : 'side-new'">
-        {{ comment.side === 'FROM' ? 'Old File' : 'New File' }}
-    </span>
-
-    <span *ngIf="getCommentState(selectedFileIndex, commentIndex).status !== 'pending'"
-        class="status-badge"
-        [ngClass]="'status-' + getCommentState(selectedFileIndex, commentIndex).status">
-        {{ getCommentState(selectedFileIndex, commentIndex).status }}
-    </span>
-
-    <span class="comment-time">Line {{ comment.line }}</span>
-</div>
-
-
-
-
-
-
-
-/* Side Badge */
-.side-badge {
-    display: inline-block;
-    padding: 3px 8px;
-    border-radius: 4px;
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-}
-
-.side-badge.side-old {
-    background-color: #fee2e2;
-    color: #991b1b;
-}
-
-.side-badge.side-new {
-    background-color: #dcfce7;
-    color: #166534;
 }
