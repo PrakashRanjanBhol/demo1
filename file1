@@ -1,37 +1,136 @@
-// Update these methods to always return true
-hasPreviousComment(): boolean {
-  return this.visibleComments.length > 1; // Always enabled if there are multiple comments
-}
-
-hasNextComment(): boolean {
-  return this.visibleComments.length > 1; // Always enabled if there are multiple comments
-}
-
-// Update navigation methods to handle wrap-around
-goToPreviousComment(): void {
-  if (this.visibleComments.length === 0) return;
+generateDiffString(file: FileData): string {
+  let diffString = `diff --git a/${file.file_path} b/${file.file_path}\n`;
+  diffString += `--- a/${file.file_path}\n`;
+  diffString += `+++ b/${file.file_path}\n`;
   
-  if (this.currentCommentIndex <= 0) {
-    // Wrap to last comment
-    const last = this.visibleComments[this.visibleComments.length - 1];
-    this.goToComment(last.fileIndex, last.commentIndex);
-  } else {
-    const prev = this.visibleComments[this.currentCommentIndex - 1];
-    this.goToComment(prev.fileIndex, prev.commentIndex);
-  }
-}
-
-goToNextComment(): void {
-  if (this.visibleComments.length === 0) return;
+  // Generate hunks by comparing old and new lines
+  const hunks = this.generateDiffHunks(file.old_lines, file.new_lines);
   
-  if (this.currentCommentIndex >= this.visibleComments.length - 1) {
-    // Wrap to first comment
-    const first = this.visibleComments[0];
-    this.goToComment(first.fileIndex, first.commentIndex);
-  } else {
-    const next = this.visibleComments[this.currentCommentIndex + 1];
-    this.goToComment(next.fileIndex, next.commentIndex);
+  hunks.forEach(hunk => {
+    diffString += hunk;
+  });
+  
+  return diffString;
+}
+
+// Add this helper method for proper diff generation
+generateDiffHunks(oldLines: string[], newLines: string[]): string[] {
+  const hunks: string[] = [];
+  
+  // Use a simple LCS (Longest Common Subsequence) based diff
+  const diff = this.computeDiff(oldLines, newLines);
+  
+  let hunkHeader = `@@ -1,${oldLines.length} +1,${newLines.length} @@\n`;
+  let hunkContent = '';
+  
+  diff.forEach(change => {
+    if (change.type === 'equal') {
+      hunkContent += ` ${change.value}\n`;
+    } else if (change.type === 'delete') {
+      hunkContent += `-${change.value}\n`;
+    } else if (change.type === 'insert') {
+      hunkContent += `+${change.value}\n`;
+    }
+  });
+  
+  hunks.push(hunkHeader + hunkContent);
+  
+  return hunks;
+}
+
+// Add this method for computing diff using Myers algorithm (simplified)
+computeDiff(oldLines: string[], newLines: string[]): Array<{type: string, value: string}> {
+  const result: Array<{type: string, value: string}> = [];
+  
+  // Build a map of new lines for quick lookup
+  const newLinesMap = new Map<string, number[]>();
+  newLines.forEach((line, index) => {
+    if (!newLinesMap.has(line)) {
+      newLinesMap.set(line, []);
+    }
+    newLinesMap.get(line)!.push(index);
+  });
+  
+  // Track which new lines have been matched
+  const matchedNewLines = new Set<number>();
+  
+  let oldIndex = 0;
+  let newIndex = 0;
+  
+  while (oldIndex < oldLines.length || newIndex < newLines.length) {
+    // If we've processed all old lines, add remaining new lines
+    if (oldIndex >= oldLines.length) {
+      while (newIndex < newLines.length) {
+        result.push({ type: 'insert', value: newLines[newIndex] });
+        newIndex++;
+      }
+      break;
+    }
+    
+    // If we've processed all new lines, add remaining old lines as deletions
+    if (newIndex >= newLines.length) {
+      while (oldIndex < oldLines.length) {
+        result.push({ type: 'delete', value: oldLines[oldIndex] });
+        oldIndex++;
+      }
+      break;
+    }
+    
+    const oldLine = oldLines[oldIndex];
+    const newLine = newLines[newIndex];
+    
+    // If lines match, they're equal
+    if (oldLine === newLine) {
+      result.push({ type: 'equal', value: oldLine });
+      matchedNewLines.add(newIndex);
+      oldIndex++;
+      newIndex++;
+      continue;
+    }
+    
+    // Check if old line exists later in new lines
+    const matchingNewIndices = newLinesMap.get(oldLine) || [];
+    const unmatchedNewIndex = matchingNewIndices.find(idx => 
+      idx >= newIndex && !matchedNewLines.has(idx)
+    );
+    
+    if (unmatchedNewIndex !== undefined) {
+      // Old line exists later, so current new lines are insertions
+      while (newIndex < unmatchedNewIndex) {
+        result.push({ type: 'insert', value: newLines[newIndex] });
+        matchedNewLines.add(newIndex);
+        newIndex++;
+      }
+      // Now they match
+      result.push({ type: 'equal', value: oldLine });
+      matchedNewLines.add(newIndex);
+      oldIndex++;
+      newIndex++;
+    } else {
+      // Check if new line exists later in old lines
+      let foundInOld = false;
+      for (let i = oldIndex + 1; i < oldLines.length; i++) {
+        if (oldLines[i] === newLine) {
+          foundInOld = true;
+          break;
+        }
+      }
+      
+      if (foundInOld) {
+        // New line exists later, so current old line is a deletion
+        result.push({ type: 'delete', value: oldLine });
+        oldIndex++;
+      } else {
+        // Neither found later - treat as modification (delete + insert)
+        result.push({ type: 'delete', value: oldLine });
+        result.push({ type: 'insert', value: newLine });
+        oldIndex++;
+        newIndex++;
+      }
+    }
   }
+  
+  return result;
 }
 
 
@@ -47,73 +146,6 @@ goToNextComment(): void {
 
 
 
-<!-- Navigation Buttons - Always Enabled (No [disabled] attribute) -->
-
-<!-- In Pending State -->
-<button 
-    class="action-btn btn-nav btn-prev" 
-    (click)="goToPreviousComment()"
-    [title]="'Previous comment (' + getCurrentCommentPosition() + ')'">
-    <span class="btn-icon">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="15 18 9 12 15 6"></polyline>
-        </svg>
-    </span>
-</button>
-<button 
-    class="action-btn btn-nav btn-next" 
-    (click)="goToNextComment()"
-    [title]="'Next comment (' + getCurrentCommentPosition() + ')'">
-    <span class="btn-icon">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="9 18 15 12 9 6"></polyline>
-        </svg>
-    </span>
-</button>
-
-<!-- In Editing State -->
-<button 
-    class="action-btn btn-nav btn-prev" 
-    (click)="goToPreviousComment()"
-    [title]="'Previous comment (' + getCurrentCommentPosition() + ')'">
-    <span class="btn-icon">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="15 18 9 12 15 6"></polyline>
-        </svg>
-    </span>
-</button>
-<button 
-    class="action-btn btn-nav btn-next" 
-    (click)="goToNextComment()"
-    [title]="'Next comment (' + getCurrentCommentPosition() + ')'">
-    <span class="btn-icon">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="9 18 15 12 9 6"></polyline>
-        </svg>
-    </span>
-</button>
-
-<!-- In Accepted/Rejected State -->
-<button 
-    class="action-btn btn-nav btn-prev" 
-    (click)="goToPreviousComment()"
-    [title]="'Previous comment (' + getCurrentCommentPosition() + ')'">
-    <span class="btn-icon">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="15 18 9 12 15 6"></polyline>
-        </svg>
-    </span>
-</button>
-<button 
-    class="action-btn btn-nav btn-next" 
-    (click)="goToNextComment()"
-    [title]="'Next comment (' + getCurrentCommentPosition() + ')'">
-    <span class="btn-icon">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="9 18 15 12 9 6"></polyline>
-        </svg>
-    </span>
-</button>
 
 
 
@@ -127,54 +159,96 @@ goToNextComment(): void {
 
 
 
-/* Navigation Buttons - Always enabled, remove disabled styles */
-.action-btn.btn-nav {
-    background: var(--bitbucket-file-comparator-bg-tertiary);
-    color: var(--bitbucket-file-comparator-text-primary);
-    border-color: var(--bitbucket-file-comparator-border-secondary);
-    padding: 6px 10px;
-    min-width: auto;
-}
 
-.action-btn.btn-nav:hover {
-    background: var(--bitbucket-file-comparator-accent-primary);
-    border-color: var(--bitbucket-file-comparator-accent-primary);
-    color: white;
-    box-shadow: 0 4px 12px rgba(0, 82, 204, 0.3);
-}
 
-/* Remove or comment out these disabled styles */
-/*
-.action-btn.btn-nav:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-    background: var(--bitbucket-file-comparator-bg-tertiary);
-    border-color: var(--bitbucket-file-comparator-border-primary);
-}
 
-.action-btn.btn-nav:disabled:hover {
-    transform: none;
-    box-shadow: 0 1px 3px var(--bitbucket-file-comparator-comment-shadow);
-}
-*/
 
-.action-btn.btn-nav .btn-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
 
-.action-btn.btn-nav .btn-icon svg {
-    display: block;
-}
 
-/* Make nav buttons more compact */
-.action-btn.btn-prev,
-.action-btn.btn-next {
-    width: 32px;
-    height: 32px;
-    padding: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
+
+
+
+
+generateDiffString(file: FileData): string {
+  let diffString = `diff --git a/${file.file_path} b/${file.file_path}\n`;
+  diffString += `--- a/${file.file_path}\n`;
+  diffString += `+++ b/${file.file_path}\n`;
+  diffString += `@@ -1,${file.old_lines.length} +1,${file.new_lines.length} @@\n`;
+
+  // Create sets for quick lookup
+  const oldLinesSet = new Set(file.old_lines);
+  const newLinesSet = new Set(file.new_lines);
+  
+  // Create arrays to track processed lines
+  const oldProcessed = new Array(file.old_lines.length).fill(false);
+  const newProcessed = new Array(file.new_lines.length).fill(false);
+  
+  let oldIdx = 0;
+  let newIdx = 0;
+  
+  while (oldIdx < file.old_lines.length || newIdx < file.new_lines.length) {
+    // Both indices within bounds
+    if (oldIdx < file.old_lines.length && newIdx < file.new_lines.length) {
+      const oldLine = file.old_lines[oldIdx];
+      const newLine = file.new_lines[newIdx];
+      
+      // Lines are the same - context line
+      if (oldLine === newLine) {
+        diffString += ` ${oldLine}\n`;
+        oldProcessed[oldIdx] = true;
+        newProcessed[newIdx] = true;
+        oldIdx++;
+        newIdx++;
+      }
+      // Old line doesn't exist in new lines - deletion
+      else if (!newLinesSet.has(oldLine)) {
+        diffString += `-${oldLine}\n`;
+        oldProcessed[oldIdx] = true;
+        oldIdx++;
+      }
+      // New line doesn't exist in old lines - insertion
+      else if (!oldLinesSet.has(newLine)) {
+        diffString += `+${newLine}\n`;
+        newProcessed[newIdx] = true;
+        newIdx++;
+      }
+      // Both exist but in different positions
+      else {
+        // Check if old line appears later in new lines
+        let foundOldInNew = false;
+        for (let i = newIdx + 1; i < file.new_lines.length; i++) {
+          if (file.new_lines[i] === oldLine && !newProcessed[i]) {
+            foundOldInNew = true;
+            break;
+          }
+        }
+        
+        if (foundOldInNew) {
+          // Old line exists later, so new line is an insertion
+          diffString += `+${newLine}\n`;
+          newProcessed[newIdx] = true;
+          newIdx++;
+        } else {
+          // Old line doesn't exist later, so it's a deletion
+          diffString += `-${oldLine}\n`;
+          oldProcessed[oldIdx] = true;
+          oldIdx++;
+        }
+      }
+    }
+    // Only old lines remaining - deletions
+    else if (oldIdx < file.old_lines.length) {
+      diffString += `-${file.old_lines[oldIdx]}\n`;
+      oldProcessed[oldIdx] = true;
+      oldIdx++;
+    }
+    // Only new lines remaining - insertions
+    else if (newIdx < file.new_lines.length) {
+      diffString += `+${file.new_lines[newIdx]}\n`;
+      newProcessed[newIdx] = true;
+      newIdx++;
+    }
+  }
+
+  return diffString;
 }
