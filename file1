@@ -29,26 +29,24 @@ insertCommentsAtLines(file: FileData, fileIndex: number): void {
       if (commentInserted) return;
 
       if (this.viewMode === 'side-by-side') {
-        // In side-by-side mode, handle left (FROM) and right (TO) sides
-        const allCells = row.querySelectorAll('td');
+        // In side-by-side mode, look for line numbers directly in the row
+        const lineNumberElements = row.querySelectorAll('.d2h-code-side-linenumber');
         
-        allCells.forEach((cell, cellIndex) => {
+        if (lineNumberElements.length === 0) return; // Skip rows without line numbers
+        
+        Array.from(lineNumberElements).forEach((lineNumElement, index) => {
           if (commentInserted) return;
-          
-          const lineNumElement = cell.querySelector('.d2h-code-side-linenumber');
-          if (!lineNumElement) return;
           
           const lineText = lineNumElement.textContent?.trim() || '';
           const lineNum = parseInt(lineText);
           
           if (isNaN(lineNum) || lineNum !== comment.line) return;
           
-          // In side-by-side, left columns are old file (FROM), right columns are new file (TO)
-          // Typically columns 0-1 are left side, columns 2-3 are right side (for 4 column layout)
-          // Or columns 0-2 are left side, columns 3-5 are right side (for 6 column layout)
-          const totalCells = allCells.length;
-          const isLeftSide = cellIndex < totalCells / 2;
-          const isRightSide = cellIndex >= totalCells / 2;
+          // In side-by-side mode:
+          // - Even indices (0, 2, 4...) are left side (old file/FROM)
+          // - Odd indices (1, 3, 5...) are right side (new file/TO)
+          const isLeftSide = index % 2 === 0;
+          const isRightSide = index % 2 === 1;
           
           // Check if this matches the comment's side
           const shouldInsertHere = (comment.side === 'FROM' && isLeftSide) || 
@@ -69,7 +67,10 @@ insertCommentsAtLines(file: FileData, fileIndex: number): void {
 
           const commentCell = document.createElement('td');
           commentCell.className = 'comment-cell';
-          commentCell.setAttribute('colspan', totalCells.toString());
+          
+          // Count total columns in the row
+          const totalColumns = row.querySelectorAll('td').length;
+          commentCell.setAttribute('colspan', totalColumns.toString());
           commentCell.style.padding = '0';
           commentCell.style.border = 'none';
           commentCell.style.backgroundColor = 'var(--bitbucket-file-comparator-bg-overlay)';
@@ -90,15 +91,18 @@ insertCommentsAtLines(file: FileData, fileIndex: number): void {
           row.parentNode?.insertBefore(commentRow, row.nextSibling);
 
           commentInserted = true;
+          console.log(`✓ Comment inserted for line ${comment.line} (side: ${comment.side})`);
         });
       } else {
         // Line-by-line (unified) mode
-        const lineNumberCells = row.querySelectorAll('td.d2h-code-linenumber');
+        const lineNumberElements = row.querySelectorAll('.d2h-code-linenumber');
         
-        lineNumberCells.forEach((cell, index) => {
+        if (lineNumberElements.length === 0) return; // Skip rows without line numbers
+        
+        Array.from(lineNumberElements).forEach((lineNumElement, index) => {
           if (commentInserted) return;
           
-          const lineText = cell.textContent?.trim() || '';
+          const lineText = lineNumElement.textContent?.trim() || '';
           const lineNum = parseInt(lineText);
 
           if (isNaN(lineNum) || lineNum !== comment.line) return;
@@ -145,13 +149,33 @@ insertCommentsAtLines(file: FileData, fileIndex: number): void {
           row.parentNode?.insertBefore(commentRow, row.nextSibling);
 
           commentInserted = true;
+          console.log(`✓ Comment inserted for line ${comment.line} (side: ${comment.side})`);
         });
       }
     });
 
     if (!commentInserted) {
       console.warn(`Could not insert comment for line ${comment.line} (side: ${comment.side}) in file ${file.file_path}`);
-      console.log('Comment details:', comment);
+      
+      // Debug: Show what line numbers are available
+      if (this.viewMode === 'side-by-side') {
+        const allLineNums = diffContainer.querySelectorAll('.d2h-code-side-linenumber');
+        console.log('Available side-by-side line numbers:', 
+          Array.from(allLineNums).map((el, idx) => ({
+            index: idx,
+            line: el.textContent?.trim(),
+            side: idx % 2 === 0 ? 'FROM (left)' : 'TO (right)'
+          }))
+        );
+      } else {
+        const allLineNums = diffContainer.querySelectorAll('.d2h-code-linenumber');
+        console.log('Available unified line numbers:', 
+          Array.from(allLineNums).map((el, idx) => ({
+            index: idx,
+            line: el.textContent?.trim()
+          }))
+        );
+      }
     }
   });
 }
