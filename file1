@@ -1,17 +1,3 @@
-// Replace this line:
-const tdIndex = allTds.indexOf(parentTd as HTMLTableCellElement);
-
-// With this optimized approach:
-const tdIndex = parentTd ? Array.prototype.indexOf.call(row.querySelectorAll('td'), parentTd) : -1;
-
-
-
-
-
-
-
-
-
 insertCommentsAtLines(file: FileData, fileIndex: number): void {
   file.ai_comments.forEach((comment, commentIndex) => {
     const commentId = this.getCommentId(fileIndex, commentIndex);
@@ -22,15 +8,20 @@ insertCommentsAtLines(file: FileData, fileIndex: number): void {
       return;
     }
 
+    // Clone the comment element to preserve it
     const commentClone = commentElement.cloneNode(true) as HTMLElement;
+
+    // Re-bind event listeners on the cloned element
     this.bindCommentEvents(commentClone, fileIndex, commentIndex);
 
+    // Find the diff container
     const diffContainer = document.querySelector(`#diff-output-${fileIndex}`);
     if (!diffContainer) {
       console.warn(`Diff container not found for file index: ${fileIndex}`);
       return;
     }
 
+    // Get all rows from the diff
     const rows = diffContainer.querySelectorAll('.d2h-diff-tbody tr');
     let commentInserted = false;
 
@@ -38,32 +29,55 @@ insertCommentsAtLines(file: FileData, fileIndex: number): void {
       if (commentInserted) return;
 
       if (this.viewMode === 'side-by-side') {
-        const lineNumberElements = row.querySelectorAll('.d2h-code-side-linenumber');
+        // In side-by-side mode, find the correct side based on position
+        const allCells = row.querySelectorAll('td');
         
-        Array.from(lineNumberElements).forEach((lineNumElement) => {
+        allCells.forEach((cell, cellIndex) => {
           if (commentInserted) return;
+          
+          const lineNumElement = cell.querySelector('.d2h-code-side-linenumber');
+          if (!lineNumElement) return;
           
           const lineText = lineNumElement.textContent?.trim() || '';
           const lineNum = parseInt(lineText);
 
+          // Check if this matches our comment line
           if (!isNaN(lineNum) && lineNum === comment.line) {
-            // Optimized side detection: check parent's parent structure
-            const parentTd = lineNumElement.closest('td');
-            if (!parentTd) return;
+            // Determine side based on cell index
+            // Typically in side-by-side: 
+            // Cell 0: left line number, Cell 1: left code
+            // Cell 2: right line number, Cell 3: right code
+            const totalCells = allCells.length;
+            const isLeftSide = cellIndex < totalCells / 2;
+            const isRightSide = cellIndex >= totalCells / 2;
             
-            // Check if this td has a previous sibling (means it's on the right side)
-            // In side-by-side: first 2 columns are left (FROM), next 2 are right (TO)
-            const prevSibling = parentTd.previousElementSibling;
-            const isRightSide = prevSibling !== null && prevSibling.previousElementSibling !== null;
-            const isLeftSide = !isRightSide;
+            // Alternative check: look at the actual line content classes
+            const codeCell = isLeftSide ? allCells[1] : allCells[3];
+            const hasDeleteClass = codeCell?.classList.contains('d2h-del');
+            const hasInsertClass = codeCell?.classList.contains('d2h-ins');
+            
+            // Refine side detection
+            let finalIsLeftSide = isLeftSide;
+            let finalIsRightSide = isRightSide;
+            
+            // If line has deletion, it's definitely left side (FROM)
+            if (hasDeleteClass) {
+              finalIsLeftSide = true;
+              finalIsRightSide = false;
+            }
+            // If line has insertion, it's definitely right side (TO)
+            if (hasInsertClass) {
+              finalIsLeftSide = false;
+              finalIsRightSide = true;
+            }
             
             // Match the comment side with the diff side
             const shouldShowComment = 
-              (comment.side === 'FROM' && isLeftSide) || 
-              (comment.side === 'TO' && isRightSide);
+              (comment.side === 'FROM' && finalIsLeftSide) || 
+              (comment.side === 'TO' && finalIsRightSide);
             
             if (!shouldShowComment) {
-              return;
+              return; // Skip this line number, it's on the wrong side
             }
             
             const nextRow = row.nextElementSibling;
@@ -101,7 +115,7 @@ insertCommentsAtLines(file: FileData, fileIndex: number): void {
           }
         });
       } else {
-        // Unified view remains the same
+        // Line-by-line mode (unified view)
         const lineNumberElements = row.querySelectorAll('.d2h-code-linenumber');
         
         lineNumberElements.forEach((lineNumElement) => {
@@ -111,17 +125,22 @@ insertCommentsAtLines(file: FileData, fileIndex: number): void {
           const lineNum = parseInt(lineText);
 
           if (!isNaN(lineNum) && lineNum === comment.line) {
+            // In unified view, check if the line is an addition or deletion
             const codeLine = row.querySelector('.d2h-code-line');
             const isAddition = codeLine?.classList.contains('d2h-ins');
             const isDeletion = codeLine?.classList.contains('d2h-del');
             const isContext = !isAddition && !isDeletion;
             
+            // Match comment side with line type
+            // TO comments should appear on additions
+            // FROM comments should appear on deletions
+            // Context lines can show either
             const shouldShowComment = 
-              (comment.side === 'TO' && (isAddition || isContext)) || 
-              (comment.side === 'FROM' && (isDeletion || isContext));
+              (comment.side === 'TO' && (isAddition || (isContext && !isDeletion))) || 
+              (comment.side === 'FROM' && (isDeletion || (isContext && !isAddition)));
             
             if (!shouldShowComment) {
-              return;
+              return; // Skip this line, wrong side
             }
             
             const nextRow = row.nextElementSibling;
