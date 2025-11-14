@@ -1,81 +1,167 @@
-if (this.viewMode === 'side-by-side') {
-  // In side-by-side mode, we need to find the correct side
-  const lineNumberElements = row.querySelectorAll('.d2h-code-side-linenumber');
-  
-  Array.from(lineNumberElements).forEach((lineNumElement, index) => {
-    if (commentInserted) return;
-    
-    const lineText = lineNumElement.textContent?.trim() || '';
-    const lineNum = parseInt(lineText);
+// Replace this line:
+const tdIndex = allTds.indexOf(parentTd as HTMLTableCellElement);
 
-    // Check if this matches our comment line
-    if (!isNaN(lineNum) && lineNum === comment.line) {
-      // Determine which side this line number is on
-      // In side-by-side, there are typically 2 line numbers per row
-      // index 0 = left side (FROM/old), index 1 = right side (TO/new)
-      const isLeftSide = index === 0;
-      const isRightSide = index === 1;
-      
-      // Alternative: Check parent element classes
-      const parentCell = lineNumElement.closest('td');
-      const hasDeletedClass = parentCell?.classList.contains('d2h-del') || 
-                             parentCell?.parentElement?.classList.contains('d2h-del');
-      const hasInsertedClass = parentCell?.classList.contains('d2h-ins') || 
-                              parentCell?.parentElement?.classList.contains('d2h-ins');
-      
-      // Determine side based on both index and classes
-      let commentSide: 'FROM' | 'TO' | null = null;
-      
-      if (hasDeletedClass || isLeftSide) {
-        commentSide = 'FROM';
-      } else if (hasInsertedClass || isRightSide) {
-        commentSide = 'TO';
+// With this optimized approach:
+const tdIndex = parentTd ? Array.prototype.indexOf.call(row.querySelectorAll('td'), parentTd) : -1;
+
+
+
+
+
+
+
+
+
+insertCommentsAtLines(file: FileData, fileIndex: number): void {
+  file.ai_comments.forEach((comment, commentIndex) => {
+    const commentId = this.getCommentId(fileIndex, commentIndex);
+    let commentElement = document.getElementById(`comment-${commentId}`);
+
+    if (!commentElement) {
+      console.warn(`Comment element not found in DOM: comment-${commentId}`);
+      return;
+    }
+
+    const commentClone = commentElement.cloneNode(true) as HTMLElement;
+    this.bindCommentEvents(commentClone, fileIndex, commentIndex);
+
+    const diffContainer = document.querySelector(`#diff-output-${fileIndex}`);
+    if (!diffContainer) {
+      console.warn(`Diff container not found for file index: ${fileIndex}`);
+      return;
+    }
+
+    const rows = diffContainer.querySelectorAll('.d2h-diff-tbody tr');
+    let commentInserted = false;
+
+    rows.forEach((row) => {
+      if (commentInserted) return;
+
+      if (this.viewMode === 'side-by-side') {
+        const lineNumberElements = row.querySelectorAll('.d2h-code-side-linenumber');
+        
+        Array.from(lineNumberElements).forEach((lineNumElement) => {
+          if (commentInserted) return;
+          
+          const lineText = lineNumElement.textContent?.trim() || '';
+          const lineNum = parseInt(lineText);
+
+          if (!isNaN(lineNum) && lineNum === comment.line) {
+            // Optimized side detection: check parent's parent structure
+            const parentTd = lineNumElement.closest('td');
+            if (!parentTd) return;
+            
+            // Check if this td has a previous sibling (means it's on the right side)
+            // In side-by-side: first 2 columns are left (FROM), next 2 are right (TO)
+            const prevSibling = parentTd.previousElementSibling;
+            const isRightSide = prevSibling !== null && prevSibling.previousElementSibling !== null;
+            const isLeftSide = !isRightSide;
+            
+            // Match the comment side with the diff side
+            const shouldShowComment = 
+              (comment.side === 'FROM' && isLeftSide) || 
+              (comment.side === 'TO' && isRightSide);
+            
+            if (!shouldShowComment) {
+              return;
+            }
+            
+            const nextRow = row.nextElementSibling;
+            if (nextRow && nextRow.classList.contains('comment-row')) {
+              commentInserted = true;
+              return;
+            }
+
+            const commentRow = document.createElement('tr');
+            commentRow.className = 'comment-row';
+
+            const commentCell = document.createElement('td');
+            commentCell.className = 'comment-cell';
+            commentCell.setAttribute('colspan', '6');
+            commentCell.style.padding = '0';
+            commentCell.style.border = 'none';
+            commentCell.style.backgroundColor = 'var(--bitbucket-file-comparator-bg-overlay)';
+
+            const wrapperDiv = document.createElement('div');
+            wrapperDiv.className = 'comment-wrapper';
+            wrapperDiv.style.width = '100%';
+            wrapperDiv.style.display = 'block';
+
+            commentClone.style.display = 'block';
+            commentClone.style.visibility = 'visible';
+            commentClone.style.opacity = '1';
+
+            wrapperDiv.appendChild(commentClone);
+            commentCell.appendChild(wrapperDiv);
+            commentRow.appendChild(commentCell);
+
+            row.parentNode?.insertBefore(commentRow, row.nextSibling);
+
+            commentInserted = true;
+          }
+        });
+      } else {
+        // Unified view remains the same
+        const lineNumberElements = row.querySelectorAll('.d2h-code-linenumber');
+        
+        lineNumberElements.forEach((lineNumElement) => {
+          if (commentInserted) return;
+
+          const lineText = lineNumElement.textContent?.trim() || '';
+          const lineNum = parseInt(lineText);
+
+          if (!isNaN(lineNum) && lineNum === comment.line) {
+            const codeLine = row.querySelector('.d2h-code-line');
+            const isAddition = codeLine?.classList.contains('d2h-ins');
+            const isDeletion = codeLine?.classList.contains('d2h-del');
+            const isContext = !isAddition && !isDeletion;
+            
+            const shouldShowComment = 
+              (comment.side === 'TO' && (isAddition || isContext)) || 
+              (comment.side === 'FROM' && (isDeletion || isContext));
+            
+            if (!shouldShowComment) {
+              return;
+            }
+            
+            const nextRow = row.nextElementSibling;
+            if (nextRow && nextRow.classList.contains('comment-row')) {
+              return;
+            }
+
+            const commentRow = document.createElement('tr');
+            commentRow.className = 'comment-row';
+
+            const commentCell = document.createElement('td');
+            commentCell.className = 'comment-cell';
+            commentCell.setAttribute('colspan', '4');
+            commentCell.style.padding = '0';
+            commentCell.style.border = 'none';
+            commentCell.style.backgroundColor = 'var(--bitbucket-file-comparator-bg-overlay)';
+
+            const wrapperDiv = document.createElement('div');
+            wrapperDiv.className = 'comment-wrapper';
+            wrapperDiv.style.width = '100%';
+            wrapperDiv.style.display = 'block';
+
+            commentClone.style.display = 'block';
+            commentClone.style.visibility = 'visible';
+            commentClone.style.opacity = '1';
+
+            wrapperDiv.appendChild(commentClone);
+            commentCell.appendChild(wrapperDiv);
+            commentRow.appendChild(commentCell);
+
+            row.parentNode?.insertBefore(commentRow, row.nextSibling);
+
+            commentInserted = true;
+          }
+        });
       }
-      
-      // If we couldn't determine from classes, use index
-      if (commentSide === null) {
-        commentSide = isLeftSide ? 'FROM' : 'TO';
-      }
-      
-      // Match the comment side with the diff side
-      const shouldShowComment = comment.side === commentSide;
-      
-      if (!shouldShowComment) {
-        return; // Skip this line number, it's on the wrong side
-      }
-      
-      const nextRow = row.nextElementSibling;
-      if (nextRow && nextRow.classList.contains('comment-row')) {
-        commentInserted = true;
-        return;
-      }
+    });
 
-      const commentRow = document.createElement('tr');
-      commentRow.className = 'comment-row';
-
-      const commentCell = document.createElement('td');
-      commentCell.className = 'comment-cell';
-      commentCell.setAttribute('colspan', '6');
-      commentCell.style.padding = '0';
-      commentCell.style.border = 'none';
-      commentCell.style.backgroundColor = '#f0f7ff';
-
-      const wrapperDiv = document.createElement('div');
-      wrapperDiv.className = 'comment-wrapper';
-      wrapperDiv.style.width = '100%';
-      wrapperDiv.style.display = 'block';
-
-      commentClone.style.display = 'block';
-      commentClone.style.visibility = 'visible';
-      commentClone.style.opacity = '1';
-
-      wrapperDiv.appendChild(commentClone);
-      commentCell.appendChild(wrapperDiv);
-      commentRow.appendChild(commentCell);
-
-      row.parentNode?.insertBefore(commentRow, row.nextSibling);
-
-      commentInserted = true;
+    if (!commentInserted) {
+      console.warn(`Could not insert comment for line ${comment.line} (${comment.side}) in file ${file.file_path}`);
     }
   });
 }
