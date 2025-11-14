@@ -1,29 +1,123 @@
-/* Comment row side-specific styling */
-.pr-review-container ::ng-deep .comment-row[data-comment-side="FROM"] {
-    background-color: rgba(220, 38, 38, 0.05) !important;
+/* Diff container - Allow horizontal scroll for code only */
+.diff-container {
+    padding: 0;
+    position: relative;
+    overflow: visible;
+    width: 100%;
 }
 
-.pr-review-container ::ng-deep .comment-row[data-comment-side="TO"] {
-    background-color: rgba(34, 197, 94, 0.05) !important;
+/* Diff wrapper - Scrollable for wide code */
+.pr-review-container ::ng-deep .d2h-wrapper {
+    border: none !important;
+    overflow-x: auto;
+    overflow-y: visible;
+    max-width: 100%;
 }
 
-/* Side-by-side: Left side (FROM) comments */
-.pr-review-container ::ng-deep .d2h-file-side-diff .comment-row[data-comment-side="FROM"] .comment-cell {
-    background-color: rgba(220, 38, 38, 0.05) !important;
+/* Diff table - Can be wider than container */
+.pr-review-container ::ng-deep .d2h-diff-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: auto;
+    min-width: 100%;
 }
 
-/* Side-by-side: Right side (TO) comments */
-.pr-review-container ::ng-deep .d2h-file-side-diff .comment-row[data-comment-side="TO"] .comment-cell {
-    background-color: rgba(34, 197, 94, 0.05) !important;
+/* Comment row - Break out of table flow */
+.pr-review-container ::ng-deep .comment-row {
+    background-color: var(--bitbucket-file-comparator-bg-overlay) !important;
+    display: table-row !important;
+    animation: fadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Comment border based on side */
-.pr-review-container .ai-comment-thread[data-comment-side="FROM"] {
-    border-left-color: #dc2626 !important;
+.pr-review-container ::ng-deep .comment-row .comment-cell {
+    padding: 0 !important;
+    border: none !important;
+    background-color: var(--bitbucket-file-comparator-bg-overlay) !important;
+    display: table-cell !important;
+    position: relative !important;
 }
 
-.pr-review-container .ai-comment-thread[data-comment-side="TO"] {
-    border-left-color: #16a34a !important;
+/* Comment wrapper - Fixed to viewport width */
+.pr-review-container ::ng-deep .comment-wrapper {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    padding: 10px 20px !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    position: relative !important;
+    left: 0 !important;
+    /* Calculate width based on viewport, accounting for scrollbar and padding */
+    width: calc(100vw - 80px) !important;
+    max-width: 1400px !important;
+}
+
+/* In fullscreen mode, adjust comment width */
+.pr-review-container.fullscreen ::ng-deep .comment-wrapper {
+    width: calc(100vw - 40px) !important;
+    max-width: none !important;
+}
+
+/* Comment thread - Fit within wrapper */
+.pr-review-container ::ng-deep .comment-row .ai-comment-thread {
+    width: 100% !important;
+    max-width: 100% !important;
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    position: relative !important;
+    left: 0 !important;
+    top: 0 !important;
+    box-sizing: border-box !important;
+}
+
+/* Comment box - Fit within thread */
+.pr-review-container ::ng-deep .comment-row .ai-comment {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    overflow-wrap: break-word !important;
+    word-wrap: break-word !important;
+    word-break: break-word !important;
+    margin: 8px 0 !important;
+}
+
+/* Alternative approach - Position comment absolutely within container */
+.pr-review-container ::ng-deep .comment-row {
+    position: relative;
+}
+
+.pr-review-container ::ng-deep .comment-row .comment-cell {
+    position: static !important;
+    overflow: visible !important;
+}
+
+/* For better control, use container queries approach */
+@media (max-width: 1920px) {
+    .pr-review-container ::ng-deep .comment-wrapper {
+        width: calc(100vw - 100px) !important;
+    }
+}
+
+@media (max-width: 1440px) {
+    .pr-review-container ::ng-deep .comment-wrapper {
+        width: calc(100vw - 80px) !important;
+    }
+}
+
+@media (max-width: 1024px) {
+    .pr-review-container ::ng-deep .comment-wrapper {
+        width: calc(100vw - 60px) !important;
+    }
+}
+
+@media (max-width: 768px) {
+    .pr-review-container ::ng-deep .comment-wrapper {
+        width: calc(100vw - 40px) !important;
+    }
 }
 
 
@@ -37,8 +131,158 @@
 
 
 
-<div class="ai-comment-thread" 
-    *ngFor="let comment of responseData.files[selectedFileIndex].ai_comments; let commentIndex = index"
-    [attr.data-line]="comment.line"
-    [attr.data-comment-side]="comment.side"
-    [id]="'comment-' + getCommentId(selectedFileIndex, commentIndex)">
+// Add this after inserting comments
+adjustCommentWidth(commentElement: HTMLElement): void {
+  const diffContainer = commentElement.closest('.diff-container');
+  if (diffContainer) {
+    const containerWidth = diffContainer.clientWidth;
+    const wrapper = commentElement.closest('.comment-wrapper') as HTMLElement;
+    if (wrapper) {
+      wrapper.style.width = `${containerWidth}px`;
+      wrapper.style.maxWidth = `${containerWidth}px`;
+    }
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+insertCommentsAtLines(file: FileData, fileIndex: number): void {
+  file.ai_comments.forEach((comment, commentIndex) => {
+    const commentId = this.getCommentId(fileIndex, commentIndex);
+    let commentElement = document.getElementById(`comment-${commentId}`);
+
+    if (!commentElement) {
+      console.warn(`Comment element not found in DOM: comment-${commentId}`);
+      return;
+    }
+
+    const commentClone = commentElement.cloneNode(true) as HTMLElement;
+    this.bindCommentEvents(commentClone, fileIndex, commentIndex);
+
+    const diffContainer = document.querySelector(`#diff-output-${fileIndex}`);
+    if (!diffContainer) {
+      console.warn(`Diff container not found for file index: ${fileIndex}`);
+      return;
+    }
+
+    const rows = diffContainer.querySelectorAll('.d2h-diff-tbody tr');
+    let commentInserted = false;
+
+    rows.forEach((row) => {
+      if (commentInserted) return;
+
+      if (this.viewMode === 'side-by-side') {
+        const lineNumberElements = row.querySelectorAll('.d2h-code-side-linenumber');
+        
+        Array.from(lineNumberElements).forEach((lineNumElement, index) => {
+          if (commentInserted) return;
+          
+          const lineText = lineNumElement.textContent?.trim() || '';
+          const lineNum = parseInt(lineText);
+
+          if (!isNaN(lineNum) && lineNum === comment.line) {
+            const nextRow = row.nextElementSibling;
+            if (nextRow && nextRow.classList.contains('comment-row')) {
+              commentInserted = true;
+              return;
+            }
+
+            const commentRow = document.createElement('tr');
+            commentRow.className = 'comment-row';
+
+            const commentCell = document.createElement('td');
+            commentCell.className = 'comment-cell';
+            commentCell.setAttribute('colspan', '6');
+            commentCell.style.padding = '0';
+            commentCell.style.border = 'none';
+            commentCell.style.backgroundColor = '#f0f7ff';
+
+            const wrapperDiv = document.createElement('div');
+            wrapperDiv.className = 'comment-wrapper';
+            wrapperDiv.style.display = 'block';
+
+            commentClone.style.display = 'block';
+            commentClone.style.visibility = 'visible';
+            commentClone.style.opacity = '1';
+
+            wrapperDiv.appendChild(commentClone);
+            commentCell.appendChild(wrapperDiv);
+            commentRow.appendChild(commentCell);
+
+            row.parentNode?.insertBefore(commentRow, row.nextSibling);
+
+            // Adjust comment width to match container
+            setTimeout(() => {
+              const containerWidth = diffContainer.clientWidth;
+              wrapperDiv.style.width = `${containerWidth - 40}px`;
+              wrapperDiv.style.maxWidth = `${containerWidth - 40}px`;
+            }, 100);
+
+            commentInserted = true;
+          }
+        });
+      } else {
+        const lineNumberElements = row.querySelectorAll('.d2h-code-linenumber');
+        
+        lineNumberElements.forEach((lineNumElement) => {
+          if (commentInserted) return;
+
+          const lineText = lineNumElement.textContent?.trim() || '';
+          const lineNum = parseInt(lineText);
+
+          if (!isNaN(lineNum) && lineNum === comment.line) {
+            const nextRow = row.nextElementSibling;
+            if (nextRow && nextRow.classList.contains('comment-row')) {
+              return;
+            }
+
+            const commentRow = document.createElement('tr');
+            commentRow.className = 'comment-row';
+
+            const commentCell = document.createElement('td');
+            commentCell.className = 'comment-cell';
+            commentCell.setAttribute('colspan', '4');
+            commentCell.style.padding = '0';
+            commentCell.style.border = 'none';
+            commentCell.style.backgroundColor = '#f0f7ff';
+
+            const wrapperDiv = document.createElement('div');
+            wrapperDiv.className = 'comment-wrapper';
+            wrapperDiv.style.display = 'block';
+
+            commentClone.style.display = 'block';
+            commentClone.style.visibility = 'visible';
+            commentClone.style.opacity = '1';
+
+            wrapperDiv.appendChild(commentClone);
+            commentCell.appendChild(wrapperDiv);
+            commentRow.appendChild(commentCell);
+
+            row.parentNode?.insertBefore(commentRow, row.nextSibling);
+
+            // Adjust comment width to match container
+            setTimeout(() => {
+              const containerWidth = diffContainer.clientWidth;
+              wrapperDiv.style.width = `${containerWidth - 40}px`;
+              wrapperDiv.style.maxWidth = `${containerWidth - 40}px`;
+            }, 100);
+
+            commentInserted = true;
+          }
+        });
+      }
+    });
+
+    if (!commentInserted) {
+      console.warn(`Could not insert comment for line ${comment.line} in file ${file.file_path}`);
+    }
+  });
+}
