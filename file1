@@ -29,12 +29,13 @@ insertCommentsAtLines(file: FileData, fileIndex: number): void {
       if (commentInserted) return;
 
       if (this.viewMode === 'side-by-side') {
-        // In side-by-side mode, find the correct side based on position
-        const allCells = row.querySelectorAll('td');
+        // In side-by-side mode, we need to find the correct side
+        const allCells = Array.from(row.querySelectorAll('td'));
         
         allCells.forEach((cell, cellIndex) => {
           if (commentInserted) return;
           
+          // Check if this cell contains a line number
           const lineNumElement = cell.querySelector('.d2h-code-side-linenumber');
           if (!lineNumElement) return;
           
@@ -43,38 +44,50 @@ insertCommentsAtLines(file: FileData, fileIndex: number): void {
 
           // Check if this matches our comment line
           if (!isNaN(lineNum) && lineNum === comment.line) {
-            // Determine side based on cell index
-            // Typically in side-by-side: 
-            // Cell 0: left line number, Cell 1: left code
-            // Cell 2: right line number, Cell 3: right code
-            const totalCells = allCells.length;
-            const isLeftSide = cellIndex < totalCells / 2;
-            const isRightSide = cellIndex >= totalCells / 2;
+            // Determine side based on cell position and classes
+            // In side-by-side diff, the structure is typically:
+            // [line-num-old] [code-old] [line-num-new] [code-new]
+            // So we check the cell index or look for specific classes
             
-            // Alternative check: look at the actual line content classes
-            const codeCell = isLeftSide ? allCells[1] : allCells[3];
-            const hasDeleteClass = codeCell?.classList.contains('d2h-del');
-            const hasInsertClass = codeCell?.classList.contains('d2h-ins');
+            let isLeftSide = false;
+            let isRightSide = false;
             
-            // Refine side detection
-            let finalIsLeftSide = isLeftSide;
-            let finalIsRightSide = isRightSide;
+            // Method 1: Check by examining nearby cells and their content
+            // Look at the next sibling cell to see if it has code
+            const nextCell = allCells[cellIndex + 1];
+            const hasCodeInNextCell = nextCell?.querySelector('.d2h-code-side-line') !== null;
             
-            // If line has deletion, it's definitely left side (FROM)
-            if (hasDeleteClass) {
-              finalIsLeftSide = true;
-              finalIsRightSide = false;
+            if (hasCodeInNextCell) {
+              const codeCell = nextCell.querySelector('.d2h-code-side-line');
+              // Check if this code cell is for deletions (left/FROM) or regular (right/TO)
+              if (codeCell?.classList.contains('d2h-code-side-deleted')) {
+                isLeftSide = true;
+              } else if (codeCell?.classList.contains('d2h-code-side-emptyplaceholder')) {
+                // Empty placeholder means this is a pure insertion on the other side
+                // So this line number is on the left (old side)
+                isLeftSide = true;
+              } else {
+                isRightSide = true;
+              }
             }
-            // If line has insertion, it's definitely right side (TO)
-            if (hasInsertClass) {
-              finalIsLeftSide = false;
-              finalIsRightSide = true;
+            
+            // Method 2: Check by cell index position
+            // Typically indices 0-1 are left side, 2-3 are right side
+            if (!isLeftSide && !isRightSide) {
+              const totalCells = allCells.length;
+              const midPoint = totalCells / 2;
+              
+              if (cellIndex < midPoint) {
+                isLeftSide = true;
+              } else {
+                isRightSide = true;
+              }
             }
             
             // Match the comment side with the diff side
             const shouldShowComment = 
-              (comment.side === 'FROM' && finalIsLeftSide) || 
-              (comment.side === 'TO' && finalIsRightSide);
+              (comment.side === 'FROM' && isLeftSide) || 
+              (comment.side === 'TO' && isRightSide);
             
             if (!shouldShowComment) {
               return; // Skip this line number, it's on the wrong side
@@ -132,12 +145,11 @@ insertCommentsAtLines(file: FileData, fileIndex: number): void {
             const isContext = !isAddition && !isDeletion;
             
             // Match comment side with line type
-            // TO comments should appear on additions
-            // FROM comments should appear on deletions
-            // Context lines can show either
+            // TO comments should appear on additions or context lines
+            // FROM comments should appear on deletions or context lines
             const shouldShowComment = 
-              (comment.side === 'TO' && (isAddition || (isContext && !isDeletion))) || 
-              (comment.side === 'FROM' && (isDeletion || (isContext && !isAddition)));
+              (comment.side === 'TO' && (isAddition || isContext)) || 
+              (comment.side === 'FROM' && (isDeletion || isContext));
             
             if (!shouldShowComment) {
               return; // Skip this line, wrong side
