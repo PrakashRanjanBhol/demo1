@@ -29,68 +29,93 @@ insertCommentsAtLines(file: FileData, fileIndex: number): void {
       if (commentInserted) return;
 
       if (this.viewMode === 'side-by-side') {
-        // In side-by-side mode, look for line numbers on the RIGHT SIDE only
+        // In side-by-side mode, handle left (FROM) and right (TO) sides
         const lineNumberElements = row.querySelectorAll('.d2h-code-side-linenumber');
         
-        // In side-by-side, line numbers come in pairs: [left, right] or [left-old, left-new, right-old, right-new]
-        // We want to match the RIGHT side (new file) line numbers
         Array.from(lineNumberElements).forEach((lineNumElement, index) => {
           if (commentInserted) return;
-          
-          // Check if this is a right-side line number
-          // Right side typically has certain parent structures
-          const parentTd = lineNumElement.closest('td');
-          const isRightSide = parentTd?.classList.contains('d2h-code-side-linenumber') && 
-                              (index % 2 === 1 || index >= lineNumberElements.length / 2);
-          
-          // Alternative: Check by position in the row
-          const allCells = Array.from(row.querySelectorAll('td'));
-          const cellIndex = allCells.indexOf(parentTd as HTMLTableCellElement);
-          const isRightSideByPosition = cellIndex >= allCells.length / 2;
-          
-          // Use either method to determine right side
-          if (!isRightSide && !isRightSideByPosition) return;
           
           const lineText = lineNumElement.textContent?.trim() || '';
           const lineNum = parseInt(lineText);
 
+          // Check if this matches our comment line
           if (!isNaN(lineNum) && lineNum === comment.line) {
-            const nextRow = row.nextElementSibling;
-            if (nextRow && nextRow.classList.contains('comment-row')) {
+            // Determine if this is left side (index 0 or 2) or right side (index 1 or 3)
+            // In side-by-side, structure is usually: [left-linenum, left-code, right-linenum, right-code]
+            // Or for each row: [left-linenum, right-linenum] depending on structure
+            
+            const parentCell = lineNumElement.closest('td');
+            const isLeftSide = parentCell?.classList.contains('d2h-code-linenumber') && 
+                               row.children[0] === parentCell;
+            const isRightSide = !isLeftSide;
+            
+            // Check if this side matches the comment's side
+            const commentShouldBeOnLeft = comment.side === 'FROM';
+            const commentShouldBeOnRight = comment.side === 'TO';
+            
+            // Only insert if we're on the correct side
+            if ((commentShouldBeOnLeft && isLeftSide) || (commentShouldBeOnRight && isRightSide)) {
+              const nextRow = row.nextElementSibling;
+              if (nextRow && nextRow.classList.contains('comment-row')) {
+                commentInserted = true;
+                return;
+              }
+
+              const commentRow = document.createElement('tr');
+              commentRow.className = 'comment-row';
+              
+              // Add data attribute to indicate which side the comment is on
+              commentRow.setAttribute('data-comment-side', comment.side);
+
+              const commentCell = document.createElement('td');
+              commentCell.className = 'comment-cell';
+              
+              // In side-by-side, comments should span their respective side
+              // For left side (FROM), span columns 0-1
+              // For right side (TO), span columns 2-3
+              if (comment.side === 'FROM') {
+                commentCell.setAttribute('colspan', '2');
+                commentCell.style.borderRight = '1px solid ' + 'var(--bitbucket-file-comparator-border-primary)';
+              } else {
+                commentCell.setAttribute('colspan', '2');
+                // Add empty cell for left side to maintain table structure
+                const emptyCell = document.createElement('td');
+                emptyCell.setAttribute('colspan', '2');
+                emptyCell.style.border = 'none';
+                commentRow.appendChild(emptyCell);
+              }
+              
+              commentCell.style.padding = '0';
+              commentCell.style.border = 'none';
+              commentCell.style.backgroundColor = '#f0f7ff';
+
+              const wrapperDiv = document.createElement('div');
+              wrapperDiv.className = 'comment-wrapper';
+              wrapperDiv.style.width = '100%';
+              wrapperDiv.style.display = 'block';
+
+              commentClone.style.display = 'block';
+              commentClone.style.visibility = 'visible';
+              commentClone.style.opacity = '1';
+
+              wrapperDiv.appendChild(commentClone);
+              commentCell.appendChild(wrapperDiv);
+              
+              if (comment.side === 'TO') {
+                commentRow.appendChild(commentCell);
+              } else {
+                commentRow.insertBefore(commentCell, commentRow.firstChild);
+              }
+
+              row.parentNode?.insertBefore(commentRow, row.nextSibling);
+
               commentInserted = true;
-              return;
             }
-
-            const commentRow = document.createElement('tr');
-            commentRow.className = 'comment-row';
-
-            const commentCell = document.createElement('td');
-            commentCell.className = 'comment-cell';
-            commentCell.setAttribute('colspan', '6');
-            commentCell.style.padding = '0';
-            commentCell.style.border = 'none';
-            commentCell.style.backgroundColor = '#f0f7ff';
-
-            const wrapperDiv = document.createElement('div');
-            wrapperDiv.className = 'comment-wrapper';
-            wrapperDiv.style.width = '100%';
-            wrapperDiv.style.display = 'block';
-
-            commentClone.style.display = 'block';
-            commentClone.style.visibility = 'visible';
-            commentClone.style.opacity = '1';
-
-            wrapperDiv.appendChild(commentClone);
-            commentCell.appendChild(wrapperDiv);
-            commentRow.appendChild(commentCell);
-
-            row.parentNode?.insertBefore(commentRow, row.nextSibling);
-
-            commentInserted = true;
           }
         });
       } else {
-        // Line-by-line mode (unified view) - existing logic
+        // Line-by-line mode (unified view)
+        // In unified view, show all comments (both FROM and TO)
         const lineNumberElements = row.querySelectorAll('.d2h-code-linenumber');
         
         lineNumberElements.forEach((lineNumElement) => {
@@ -100,6 +125,18 @@ insertCommentsAtLines(file: FileData, fileIndex: number): void {
           const lineNum = parseInt(lineText);
 
           if (!isNaN(lineNum) && lineNum === comment.line) {
+            // In unified view, check if the line type matches the comment side
+            const codeLine = row.querySelector('.d2h-code-line');
+            const isDeletedLine = codeLine?.classList.contains('d2h-del');
+            const isAddedLine = codeLine?.classList.contains('d2h-ins');
+            const isContextLine = !isDeletedLine && !isAddedLine;
+            
+            // Show FROM comments on deleted lines, TO comments on added/context lines
+            const shouldShow = (comment.side === 'FROM' && (isDeletedLine || isContextLine)) ||
+                              (comment.side === 'TO' && (isAddedLine || isContextLine));
+            
+            if (!shouldShow) return;
+            
             const nextRow = row.nextElementSibling;
             if (nextRow && nextRow.classList.contains('comment-row')) {
               return;
@@ -107,6 +144,7 @@ insertCommentsAtLines(file: FileData, fileIndex: number): void {
 
             const commentRow = document.createElement('tr');
             commentRow.className = 'comment-row';
+            commentRow.setAttribute('data-comment-side', comment.side);
 
             const commentCell = document.createElement('td');
             commentCell.className = 'comment-cell';
@@ -137,7 +175,7 @@ insertCommentsAtLines(file: FileData, fileIndex: number): void {
     });
 
     if (!commentInserted) {
-      console.warn(`Could not insert comment for line ${comment.line} in file ${file.file_path}`);
+      console.warn(`Could not insert comment for line ${comment.line} (side: ${comment.side}) in file ${file.file_path}`);
     }
   });
 }
