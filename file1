@@ -35,54 +35,34 @@ insertCommentsAtLines(file: FileData, fileIndex: number): void {
         allCells.forEach((cell, cellIndex) => {
           if (commentInserted) return;
           
-          // Check if this cell contains a line number
-          const lineNumElement = cell.querySelector('.d2h-code-side-linenumber');
-          if (!lineNumElement) return;
+          // Check if this cell IS a line number cell (not contains, but IS)
+          const isLineNumberCell = cell.classList.contains('d2h-code-side-linenumber');
           
-          const lineText = lineNumElement.textContent?.trim() || '';
+          if (!isLineNumberCell) return;
+          
+          const lineText = cell.textContent?.trim() || '';
           const lineNum = parseInt(lineText);
 
           // Check if this matches our comment line
           if (!isNaN(lineNum) && lineNum === comment.line) {
-            // Determine side based on cell position and classes
-            // In side-by-side diff, the structure is typically:
-            // [line-num-old] [code-old] [line-num-new] [code-new]
-            // So we check the cell index or look for specific classes
+            // Determine side based on cell position in the row
+            // In side-by-side: Line numbers alternate: [old-linenum][old-code][new-linenum][new-code]
+            // OR sometimes: [old-linenum][old-code][new-linenum][new-code]
+            // Count how many line number cells come before this one
             
-            let isLeftSide = false;
-            let isRightSide = false;
-            
-            // Method 1: Check by examining nearby cells and their content
-            // Look at the next sibling cell to see if it has code
-            const nextCell = allCells[cellIndex + 1];
-            const hasCodeInNextCell = nextCell?.querySelector('.d2h-code-side-line') !== null;
-            
-            if (hasCodeInNextCell) {
-              const codeCell = nextCell.querySelector('.d2h-code-side-line');
-              // Check if this code cell is for deletions (left/FROM) or regular (right/TO)
-              if (codeCell?.classList.contains('d2h-code-side-deleted')) {
-                isLeftSide = true;
-              } else if (codeCell?.classList.contains('d2h-code-side-emptyplaceholder')) {
-                // Empty placeholder means this is a pure insertion on the other side
-                // So this line number is on the left (old side)
-                isLeftSide = true;
-              } else {
-                isRightSide = true;
+            let lineNumCellsBefore = 0;
+            for (let i = 0; i < cellIndex; i++) {
+              if (allCells[i].classList.contains('d2h-code-side-linenumber')) {
+                lineNumCellsBefore++;
               }
             }
             
-            // Method 2: Check by cell index position
-            // Typically indices 0-1 are left side, 2-3 are right side
-            if (!isLeftSide && !isRightSide) {
-              const totalCells = allCells.length;
-              const midPoint = totalCells / 2;
-              
-              if (cellIndex < midPoint) {
-                isLeftSide = true;
-              } else {
-                isRightSide = true;
-              }
-            }
+            // If this is the first line number cell (index 0), it's the left side (FROM/old)
+            // If this is the second line number cell (index 1), it's the right side (TO/new)
+            const isLeftSide = lineNumCellsBefore === 0;
+            const isRightSide = lineNumCellsBefore === 1;
+            
+            console.log(`Line ${lineNum}: cellIndex=${cellIndex}, lineNumCellsBefore=${lineNumCellsBefore}, isLeftSide=${isLeftSide}, isRightSide=${isRightSide}, commentSide=${comment.side}`);
             
             // Match the comment side with the diff side
             const shouldShowComment = 
@@ -90,6 +70,7 @@ insertCommentsAtLines(file: FileData, fileIndex: number): void {
               (comment.side === 'TO' && isRightSide);
             
             if (!shouldShowComment) {
+              console.log(`Skipping comment - side mismatch`);
               return; // Skip this line number, it's on the wrong side
             }
             
@@ -104,7 +85,7 @@ insertCommentsAtLines(file: FileData, fileIndex: number): void {
 
             const commentCell = document.createElement('td');
             commentCell.className = 'comment-cell';
-            commentCell.setAttribute('colspan', '6');
+            commentCell.setAttribute('colspan', String(allCells.length));
             commentCell.style.padding = '0';
             commentCell.style.border = 'none';
             commentCell.style.backgroundColor = 'var(--bitbucket-file-comparator-bg-overlay)';
@@ -129,27 +110,43 @@ insertCommentsAtLines(file: FileData, fileIndex: number): void {
         });
       } else {
         // Line-by-line mode (unified view)
-        const lineNumberElements = row.querySelectorAll('.d2h-code-linenumber');
+        const lineNumberCells = row.querySelectorAll('.d2h-code-linenumber');
         
-        lineNumberElements.forEach((lineNumElement) => {
+        lineNumberCells.forEach((lineNumCell) => {
           if (commentInserted) return;
 
-          const lineText = lineNumElement.textContent?.trim() || '';
+          const lineText = lineNumCell.textContent?.trim() || '';
           const lineNum = parseInt(lineText);
 
           if (!isNaN(lineNum) && lineNum === comment.line) {
-            // In unified view, check if the line is an addition or deletion
+            // In unified view, there are typically 2 line number cells: [old-line][new-line]
+            // Check which one this is
+            const allLineNumCells = Array.from(lineNumberCells);
+            const lineNumIndex = allLineNumCells.indexOf(lineNumCell);
+            
+            // First cell (index 0) is old line number (FROM)
+            // Second cell (index 1) is new line number (TO)
+            const isOldLineNum = lineNumIndex === 0;
+            const isNewLineNum = lineNumIndex === 1;
+            
+            // Also check the row's code line type
             const codeLine = row.querySelector('.d2h-code-line');
             const isAddition = codeLine?.classList.contains('d2h-ins');
             const isDeletion = codeLine?.classList.contains('d2h-del');
             const isContext = !isAddition && !isDeletion;
             
-            // Match comment side with line type
-            // TO comments should appear on additions or context lines
-            // FROM comments should appear on deletions or context lines
-            const shouldShowComment = 
-              (comment.side === 'TO' && (isAddition || isContext)) || 
-              (comment.side === 'FROM' && (isDeletion || isContext));
+            // Match comment side with line type and line number position
+            let shouldShowComment = false;
+            
+            if (comment.side === 'TO') {
+              // TO comments: show on new line number in additions, or either line in context
+              shouldShowComment = (isNewLineNum && isAddition) || 
+                                 (isContext && isNewLineNum);
+            } else if (comment.side === 'FROM') {
+              // FROM comments: show on old line number in deletions, or either line in context
+              shouldShowComment = (isOldLineNum && isDeletion) || 
+                                 (isContext && isOldLineNum);
+            }
             
             if (!shouldShowComment) {
               return; // Skip this line, wrong side
@@ -165,7 +162,8 @@ insertCommentsAtLines(file: FileData, fileIndex: number): void {
 
             const commentCell = document.createElement('td');
             commentCell.className = 'comment-cell';
-            commentCell.setAttribute('colspan', '4');
+            const allCells = row.querySelectorAll('td');
+            commentCell.setAttribute('colspan', String(allCells.length));
             commentCell.style.padding = '0';
             commentCell.style.border = 'none';
             commentCell.style.backgroundColor = 'var(--bitbucket-file-comparator-bg-overlay)';
