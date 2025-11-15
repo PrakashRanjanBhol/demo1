@@ -1,9 +1,744 @@
+<div class="container">
+  <div class="header">
+    <h1>Code Diff Viewer</h1>
+    <div style="display: flex; gap: 15px; align-items: center;">
+      <button 
+        class="toggle-btn" 
+        *ngIf="showGoToFirstComment" 
+        (click)="goToFirstComment()">
+        ⬆ First Comment
+      </button>
+      <div class="view-toggle">
+        <button 
+          class="toggle-btn" 
+          [class.active]="currentView === 'unified'"
+          (click)="switchView('unified')">
+          Unified
+        </button>
+        <button 
+          class="toggle-btn" 
+          [class.active]="currentView === 'side-by-side'"
+          (click)="switchView('side-by-side')">
+          Side by Side
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="file-selector">
+    <select (change)="onFileSelect($event)">
+      <option value="">Select a file to view diff...</option>
+      <option *ngFor="let file of diffData.files; let i = index" [value]="i">
+        {{ file.file_path }}
+      </option>
+    </select>
+  </div>
+
+  <div class="diff-container">
+    <p class="empty-state" *ngIf="currentFileIndex < 0">
+      Please select a file to view the diff
+    </p>
+    <div *ngIf="currentFileIndex >= 0" [innerHTML]="renderedDiff"></div>
+  </div>
+
+  <div class="stats" *ngIf="showStats">
+    <div class="stat-item">
+      <span>Changes:</span>
+      <span class="stat-added">+{{ addedLines }}</span>
+      <span class="stat-deleted">-{{ deletedLines }}</span>
+    </div>
+    <div class="stat-item">
+      <span>{{ commentsCount }} AI Comment{{ commentsCount !== 1 ? 's' : '' }}</span>
+    </div>
+    <div class="stat-item" style="margin-left: auto;">
+      <button 
+        class="toggle-btn" 
+        (click)="exportCommentData()" 
+        style="padding: 6px 12px; font-size: 12px;">
+        Export Comment Decisions
+      </button>
+    </div>
+  </div>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:host {
+  display: block;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background-color: #f5f7fa;
+  padding: 20px;
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+.container {
+  max-width: 1400px;
+  margin: 0 auto;
+  background-color: white;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 10px 30px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.header {
+  background-color: #ffffff;
+  border-bottom: 1px solid #e5e7eb;
+  color: #111827;
+  padding: 24px 30px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header h1 {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  color: #111827;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header h1::before {
+  content: '';
+  width: 4px;
+  height: 28px;
+  background: linear-gradient(to bottom, #3b82f6, #2563eb);
+  border-radius: 2px;
+}
+
+.view-toggle {
+  display: flex;
+  gap: 8px;
+  background-color: #f9fafb;
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+
+.toggle-btn {
+  padding: 8px 16px;
+  background-color: transparent;
+  color: #6b7280;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.toggle-btn:hover {
+  background-color: #f3f4f6;
+  color: #374151;
+}
+
+.toggle-btn.active {
+  background-color: #3b82f6;
+  color: white;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.toggle-btn.active:hover {
+  background-color: #2563eb;
+}
+
+.file-selector {
+  background-color: #fafbfc;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 16px 30px;
+}
+
+.file-selector select {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  background-color: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: #374151;
+}
+
+.file-selector select:hover {
+  border-color: #3b82f6;
+}
+
+.file-selector select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.diff-container {
+  padding: 30px;
+  background-color: #ffffff;
+}
+
+.file-header {
+  background-color: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-bottom: none;
+  color: #374151;
+  padding: 12px 16px;
+  border-radius: 6px 6px 0 0;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.file-header::before {
+  content: '📄';
+  font-size: 16px;
+}
+
+/* Unified View */
+::ng-deep .unified-view {
+  border: 1px solid #e5e7eb;
+  border-top: none;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-size: 13px;
+  border-radius: 0 0 6px 6px;
+  overflow: hidden;
+}
+
+::ng-deep .diff-line {
+  display: flex;
+  border-bottom: 1px solid #f3f4f6;
+  min-height: 24px;
+  transition: background-color 0.15s ease;
+}
+
+::ng-deep .diff-line:hover {
+  background-color: #fafbfc !important;
+}
+
+::ng-deep .line-numbers {
+  display: flex;
+  flex-shrink: 0;
+  background-color: #f9fafb;
+  border-right: 1px solid #e5e7eb;
+}
+
+::ng-deep .line-number {
+  width: 50px;
+  padding: 4px 8px;
+  text-align: right;
+  color: #9ca3af;
+  font-size: 12px;
+  user-select: none;
+  border-right: 1px solid #f3f4f6;
+  font-weight: 500;
+}
+
+::ng-deep .line-number:last-child {
+  border-right: none;
+}
+
+::ng-deep .line-content {
+  flex: 1;
+  padding: 4px 12px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  line-height: 1.6;
+  min-width: 0;
+  color: #1f2937;
+}
+
+::ng-deep .diff-line.added {
+  background-color: #ecfdf5;
+}
+
+::ng-deep .diff-line.added .line-numbers {
+  background-color: #d1fae5;
+}
+
+::ng-deep .diff-line.deleted {
+  background-color: #fef2f2;
+}
+
+::ng-deep .diff-line.deleted .line-numbers {
+  background-color: #fecaca;
+}
+
+::ng-deep .diff-line.context {
+  background-color: white;
+}
+
+/* Side by Side View */
+::ng-deep .side-by-side-view {
+  display: table;
+  width: 100%;
+  border: 1px solid #dfe1e6;
+  border-top: none;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-size: 13px;
+  border-collapse: collapse;
+}
+
+::ng-deep .side-header-row {
+  display: table-row;
+}
+
+::ng-deep .side-header {
+  display: table-cell;
+  background-color: #f4f5f7;
+  padding: 8px 15px;
+  font-weight: 600;
+  border-bottom: 2px solid #dfe1e6;
+  color: #172b4d;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  width: 50%;
+}
+
+::ng-deep .side-row {
+  display: table-row;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+::ng-deep .side-cell {
+  display: table-cell;
+  width: 50%;
+  border-bottom: 1px solid #f0f0f0;
+  vertical-align: top;
+}
+
+::ng-deep .side-cell-inner {
+  display: flex;
+  min-height: 24px;
+}
+
+::ng-deep .side-line-number {
+  width: 50px;
+  padding: 4px 8px;
+  text-align: right;
+  color: #6b778c;
+  font-size: 12px;
+  background-color: #fafbfc;
+  border-right: 1px solid #dfe1e6;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+::ng-deep .side-line-content {
+  flex: 1;
+  padding: 4px 12px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  line-height: 1.5;
+  min-width: 0;
+}
+
+::ng-deep .side-cell.deleted .side-cell-inner {
+  background-color: #ffebe6;
+}
+
+::ng-deep .side-cell.deleted .side-line-number {
+  background-color: #ffd5cc;
+}
+
+::ng-deep .side-cell.added .side-cell-inner {
+  background-color: #e3fcef;
+}
+
+::ng-deep .side-cell.added .side-line-number {
+  background-color: #d3f5e3;
+}
+
+::ng-deep .side-cell.empty .side-cell-inner {
+  background-color: #fafbfc;
+  opacity: 0.3;
+}
+
+::ng-deep .side-cell.empty .side-line-number {
+  background-color: #f4f5f7;
+}
+
+/* AI Comments */
+::ng-deep .ai-comment {
+  background-color: #fffbeb;
+  border: 2px solid #fbbf24;
+  border-left: 4px solid #f59e0b;
+  border-radius: 8px;
+  padding: 16px;
+  margin: 12px 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 13px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  position: relative;
+}
+
+::ng-deep .ai-comment::before {
+  content: '💬 AI COMMENT';
+  position: absolute;
+  top: -11px;
+  left: 12px;
+  background-color: #f59e0b;
+  color: white;
+  padding: 2px 10px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+::ng-deep .ai-comment.accepted {
+  background-color: #f0fdf4;
+  border-color: #10b981;
+  border-left-color: #059669;
+}
+
+::ng-deep .ai-comment.accepted::before {
+  content: '✓ ACCEPTED';
+  background-color: #10b981;
+}
+
+::ng-deep .ai-comment.rejected {
+  background-color: #fef2f2;
+  border-color: #ef4444;
+  border-left-color: #dc2626;
+  opacity: 0.85;
+}
+
+::ng-deep .ai-comment.rejected::before {
+  content: '✗ REJECTED';
+  background-color: #ef4444;
+}
+
+::ng-deep .comment-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  margin-top: 8px;
+}
+
+::ng-deep .comment-severity {
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+::ng-deep .comment-severity.error {
+  background-color: #de350b;
+  color: white;
+}
+
+::ng-deep .comment-severity.warning {
+  background-color: #ff8b00;
+  color: white;
+}
+
+::ng-deep .comment-severity.suggestion {
+  background-color: #00875a;
+  color: white;
+}
+
+::ng-deep .comment-line-info {
+  font-size: 11px;
+  color: #6b778c;
+  font-weight: 600;
+  background-color: rgba(107, 119, 140, 0.1);
+  padding: 4px 8px;
+  border-radius: 3px;
+}
+
+::ng-deep .comment-text-display {
+  margin: 10px 0;
+  line-height: 1.6;
+  color: #172b4d;
+  padding: 10px;
+  background-color: rgba(255, 255, 255, 0.5);
+  border-radius: 4px;
+  border-left: 3px solid #dfe1e6;
+}
+
+::ng-deep .comment-text {
+  margin: 8px 0;
+  line-height: 1.6;
+  color: #172b4d;
+}
+
+::ng-deep .comment-text-input {
+  width: 100%;
+  padding: 10px;
+  border: 2px solid #0052cc;
+  border-radius: 4px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+  min-height: 80px;
+  margin: 10px 0;
+}
+
+::ng-deep .comment-text-input:focus {
+  outline: none;
+  border-color: #0052cc;
+  box-shadow: 0 0 0 3px rgba(0, 82, 204, 0.1);
+}
+
+::ng-deep .suggested-patch {
+  background-color: #f4f5f7;
+  border: 2px dashed #0052cc;
+  border-left: 4px solid #0052cc;
+  padding: 12px;
+  margin-top: 12px;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  border-radius: 4px;
+  position: relative;
+}
+
+::ng-deep .suggested-patch-label {
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: #0052cc;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+::ng-deep .comment-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #dfe1e6;
+  flex-wrap: wrap;
+}
+
+::ng-deep .comment-nav {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+  padding-left: 8px;
+  border-left: 1px solid #dfe1e6;
+}
+
+::ng-deep .comment-btn {
+  padding: 8px 14px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+::ng-deep .comment-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+::ng-deep .comment-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+::ng-deep .comment-btn.accept {
+  background-color: #10b981;
+  color: white;
+}
+
+::ng-deep .comment-btn.accept:hover:not(:disabled) {
+  background-color: #059669;
+}
+
+::ng-deep .comment-btn.reject {
+  background-color: #ef4444;
+  color: white;
+}
+
+::ng-deep .comment-btn.reject:hover:not(:disabled) {
+  background-color: #dc2626;
+}
+
+::ng-deep .comment-btn.modify {
+  background-color: #3b82f6;
+  color: white;
+}
+
+::ng-deep .comment-btn.modify:hover:not(:disabled) {
+  background-color: #2563eb;
+}
+
+::ng-deep .comment-btn.save {
+  background-color: #10b981;
+  color: white;
+}
+
+::ng-deep .comment-btn.save:hover:not(:disabled) {
+  background-color: #059669;
+}
+
+::ng-deep .comment-btn.cancel {
+  background-color: #6b7280;
+  color: white;
+}
+
+::ng-deep .comment-btn.cancel:hover:not(:disabled) {
+  background-color: #4b5563;
+}
+
+::ng-deep .comment-btn.nav {
+  background-color: #f4f5f7;
+  color: #172b4d;
+  border: 1px solid #dfe1e6;
+  font-weight: 500;
+}
+
+::ng-deep .comment-btn.nav:hover:not(:disabled) {
+  background-color: #ebecf0;
+  border-color: #c1c7d0;
+}
+
+::ng-deep .comment-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+  background-color: #f4f5f7 !important;
+  color: #a5adba !important;
+  border-color: #e1e4e8 !important;
+}
+
+::ng-deep .comment-btn:disabled:hover {
+  transform: none;
+  box-shadow: none;
+  background-color: #f4f5f7 !important;
+}
+
+::ng-deep .comment-btn.nav:disabled {
+  background-color: #fafbfc !important;
+  color: #c1c7d0 !important;
+  border-color: #f0f0f0 !important;
+}
+
+::ng-deep .comment-status {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-left: 8px;
+}
+
+::ng-deep .comment-status.accepted {
+  background-color: #00875a;
+  color: white;
+}
+
+::ng-deep .comment-status.rejected {
+  background-color: #de350b;
+  color: white;
+}
+
+.stats {
+  background-color: #fafbfc;
+  padding: 16px 30px;
+  border-top: 1px solid #e5e7eb;
+  font-size: 13px;
+  color: #6b7280;
+  display: flex;
+  gap: 30px;
+}
+
+.stat-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+
+.stat-added {
+  color: #10b981;
+  font-weight: 700;
+}
+
+.stat-deleted {
+  color: #ef4444;
+  font-weight: 700;
+}
+
+.empty-state {
+  color: #868e96;
+  text-align: center;
+  padding: 80px 40px;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.empty-state::before {
+  content: '📂';
+  display: block;
+  font-size: 64px;
+  margin-bottom: 20px;
+  opacity: 0.5;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import { Component, OnInit } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import * as Diff from 'diff';
 
-// TypeScript interfaces for type safety
-interface AIComment {
+interface Comment {
   file_path: string;
   line: number;
   side: 'TO' | 'FROM';
@@ -16,536 +751,35 @@ interface DiffFile {
   file_path: string;
   old_lines: string[];
   new_lines: string[];
-  ai_comments: AIComment[];
+  ai_comments: Comment[];
 }
 
-interface DiffData {
-  files: DiffFile[];
-}
-
-interface DiffOperation {
-  type: 'added' | 'removed' | 'context';
-  oldLine: string | null;
-  newLine: string | null;
-  oldLineNum: number | null;
-  newLineNum: number | null;
+interface CommentState {
+  status: 'pending' | 'accepted' | 'rejected';
+  modifiedText: string | null;
 }
 
 @Component({
   selector: 'app-code-diff-viewer',
-  standalone: true,
-  imports: [CommonModule],
-  template: `
-    <div class="container">
-      <div class="header">
-        <h1>Code Diff Viewer</h1>
-        <div class="view-toggle">
-          <button 
-            class="toggle-btn" 
-            [class.active]="currentView === 'unified'"
-            (click)="switchView('unified')">
-            Unified
-          </button>
-          <button 
-            class="toggle-btn" 
-            [class.active]="currentView === 'side-by-side'"
-            (click)="switchView('side-by-side')">
-            Side by Side
-          </button>
-        </div>
-      </div>
-
-      <div class="file-selector">
-        <select [(ngModel)]="currentFileIndex" (change)="onFileChange()">
-          <option [value]="-1">Select a file to view diff...</option>
-          <option *ngFor="let file of diffData.files; let i = index" [value]="i">
-            {{ file.file_path }}
-          </option>
-        </select>
-      </div>
-
-      <div class="diff-container" id="diffContainer">
-        <ng-container *ngIf="currentFileIndex === -1">
-          <p class="empty-state">Please select a file to view the diff</p>
-        </ng-container>
-
-        <ng-container *ngIf="currentFileIndex !== -1">
-          <div class="file-header">{{ currentFile?.file_path }}</div>
-
-          <!-- Unified View -->
-          <div *ngIf="currentView === 'unified'" class="unified-view">
-            <ng-container *ngFor="let op of diffOperations">
-              <div class="diff-line" 
-                   [class.added]="op.type === 'added'"
-                   [class.deleted]="op.type === 'removed'"
-                   [class.context]="op.type === 'context'">
-                <div class="line-numbers">
-                  <div class="line-number">{{ op.oldLineNum || '' }}</div>
-                  <div class="line-number">{{ op.newLineNum || '' }}</div>
-                </div>
-                <div class="line-content">{{ getLineContent(op) }}</div>
-              </div>
-              
-              <!-- AI Comment for this line -->
-              <div *ngIf="getCommentForLine(op)" class="ai-comment">
-                <div class="comment-header">
-                  <span class="comment-severity" [ngClass]="getCommentForLine(op)!.severity">
-                    {{ getCommentForLine(op)!.severity }}
-                  </span>
-                  <span class="comment-line-info">Line {{ getCommentForLine(op)!.line }}</span>
-                </div>
-                <div class="comment-text">{{ getCommentForLine(op)!.comment_text }}</div>
-                <div *ngIf="getCommentForLine(op)!.suggested_patch" class="suggested-patch">
-                  <div class="suggested-patch-label">💡 Suggested Fix:</div>
-                  {{ getCommentForLine(op)!.suggested_patch }}
-                </div>
-              </div>
-            </ng-container>
-          </div>
-
-          <!-- Side by Side View -->
-          <div *ngIf="currentView === 'side-by-side'" class="side-by-side-view">
-            <!-- Left Panel (Original) -->
-            <div class="side-panel">
-              <div class="side-header">Original</div>
-              <ng-container *ngFor="let op of diffOperations">
-                <div class="side-line" 
-                     [class.deleted]="op.type === 'removed' || (op.type === 'context' && op.oldLine !== op.newLine && op.oldLine && op.newLine)"
-                     [class.empty]="op.type === 'added'">
-                  <div class="side-line-number">{{ op.oldLineNum || '' }}</div>
-                  <div class="side-line-content">{{ op.oldLine || '' }}</div>
-                </div>
-                <div *ngIf="op.oldLineNum && findCommentForLine(op.oldLineNum, 'FROM')" 
-                     class="ai-comment">
-                  <div class="comment-header">
-                    <span class="comment-severity" 
-                          [ngClass]="findCommentForLine(op.oldLineNum, 'FROM')!.severity">
-                      {{ findCommentForLine(op.oldLineNum, 'FROM')!.severity }}
-                    </span>
-                    <span class="comment-line-info">
-                      Line {{ findCommentForLine(op.oldLineNum, 'FROM')!.line }}
-                    </span>
-                  </div>
-                  <div class="comment-text">
-                    {{ findCommentForLine(op.oldLineNum, 'FROM')!.comment_text }}
-                  </div>
-                  <div *ngIf="findCommentForLine(op.oldLineNum, 'FROM')!.suggested_patch" 
-                       class="suggested-patch">
-                    <div class="suggested-patch-label">💡 Suggested Fix:</div>
-                    {{ findCommentForLine(op.oldLineNum, 'FROM')!.suggested_patch }}
-                  </div>
-                </div>
-              </ng-container>
-            </div>
-
-            <!-- Right Panel (Modified) -->
-            <div class="side-panel">
-              <div class="side-header">Modified</div>
-              <ng-container *ngFor="let op of diffOperations">
-                <div class="side-line" 
-                     [class.added]="op.type === 'added' || (op.type === 'context' && op.oldLine !== op.newLine && op.oldLine && op.newLine)"
-                     [class.empty]="op.type === 'removed'">
-                  <div class="side-line-number">{{ op.newLineNum || '' }}</div>
-                  <div class="side-line-content">{{ op.newLine || '' }}</div>
-                </div>
-                <div *ngIf="op.newLineNum && findCommentForLine(op.newLineNum, 'TO')" 
-                     class="ai-comment">
-                  <div class="comment-header">
-                    <span class="comment-severity" 
-                          [ngClass]="findCommentForLine(op.newLineNum, 'TO')!.severity">
-                      {{ findCommentForLine(op.newLineNum, 'TO')!.severity }}
-                    </span>
-                    <span class="comment-line-info">
-                      Line {{ findCommentForLine(op.newLineNum, 'TO')!.line }}
-                    </span>
-                  </div>
-                  <div class="comment-text">
-                    {{ findCommentForLine(op.newLineNum, 'TO')!.comment_text }}
-                  </div>
-                  <div *ngIf="findCommentForLine(op.newLineNum, 'TO')!.suggested_patch" 
-                       class="suggested-patch">
-                    <div class="suggested-patch-label">💡 Suggested Fix:</div>
-                    {{ findCommentForLine(op.newLineNum, 'TO')!.suggested_patch }}
-                  </div>
-                </div>
-              </ng-container>
-            </div>
-          </div>
-        </ng-container>
-      </div>
-
-      <div class="stats" [class.hidden]="currentFileIndex === -1">
-        <div class="stat-item">
-          <span>Changes:</span>
-          <span class="stat-added">+{{ addedLines }}</span>
-          <span class="stat-deleted">-{{ deletedLines }}</span>
-        </div>
-        <div class="stat-item">
-          <span>{{ commentsCount }} AI Comment{{ commentsCount !== 1 ? 's' : '' }}</span>
-        </div>
-      </div>
-    </div>
-  `,
-  styles: [`
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    :host {
-      display: block;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-      background-color: #f5f5f5;
-      padding: 20px;
-      line-height: 1.5;
-    }
-
-    .container {
-      max-width: 1400px;
-      margin: 0 auto;
-      background-color: white;
-      border-radius: 8px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-      overflow: hidden;
-    }
-
-    .header {
-      background-color: #0052cc;
-      color: white;
-      padding: 20px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .header h1 {
-      font-size: 24px;
-      font-weight: 600;
-    }
-
-    .view-toggle {
-      display: flex;
-      gap: 10px;
-    }
-
-    .toggle-btn {
-      padding: 8px 16px;
-      background-color: rgba(255, 255, 255, 0.2);
-      color: white;
-      border: 1px solid rgba(255, 255, 255, 0.3);
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 14px;
-      transition: all 0.2s;
-    }
-
-    .toggle-btn:hover {
-      background-color: rgba(255, 255, 255, 0.3);
-    }
-
-    .toggle-btn.active {
-      background-color: white;
-      color: #0052cc;
-      border-color: white;
-    }
-
-    .file-selector {
-      background-color: #f4f5f7;
-      border-bottom: 2px solid #dfe1e6;
-      padding: 15px 20px;
-    }
-
-    .file-selector select {
-      width: 100%;
-      padding: 10px;
-      border: 2px solid #dfe1e6;
-      border-radius: 3px;
-      font-size: 14px;
-      background-color: white;
-      cursor: pointer;
-    }
-
-    .diff-container {
-      padding: 20px;
-    }
-
-    .file-header {
-      background-color: #f4f5f7;
-      padding: 10px 15px;
-      border: 1px solid #dfe1e6;
-      border-radius: 3px 3px 0 0;
-      font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
-      font-size: 14px;
-      font-weight: 600;
-      color: #172b4d;
-    }
-
-    /* Unified View */
-    .unified-view {
-      border: 1px solid #dfe1e6;
-      border-top: none;
-      font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
-      font-size: 13px;
-    }
-
-    .diff-line {
-      display: flex;
-      border-bottom: 1px solid #f0f0f0;
-      min-height: 24px;
-    }
-
-    .line-numbers {
-      display: flex;
-      flex-shrink: 0;
-      background-color: #fafbfc;
-      border-right: 1px solid #dfe1e6;
-    }
-
-    .line-number {
-      width: 50px;
-      padding: 4px 8px;
-      text-align: right;
-      color: #6b778c;
-      font-size: 12px;
-      user-select: none;
-      border-right: 1px solid #e8e8e8;
-    }
-
-    .line-number:last-child {
-      border-right: none;
-    }
-
-    .line-content {
-      flex: 1;
-      padding: 4px 12px;
-      white-space: pre-wrap;
-      word-wrap: break-word;
-      overflow-wrap: break-word;
-      line-height: 1.5;
-      min-width: 0;
-    }
-
-    .diff-line.added {
-      background-color: #e3fcef;
-    }
-
-    .diff-line.added .line-numbers {
-      background-color: #d3f5e3;
-    }
-
-    .diff-line.deleted {
-      background-color: #ffebe6;
-    }
-
-    .diff-line.deleted .line-numbers {
-      background-color: #ffd5cc;
-    }
-
-    .diff-line.context {
-      background-color: white;
-    }
-
-    /* Side by Side View */
-    .side-by-side-view {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 1px;
-      background-color: #dfe1e6;
-      border: 1px solid #dfe1e6;
-      border-top: none;
-      font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
-      font-size: 13px;
-    }
-
-    .side-panel {
-      background-color: white;
-    }
-
-    .side-header {
-      background-color: #f4f5f7;
-      padding: 8px 15px;
-      font-weight: 600;
-      border-bottom: 2px solid #dfe1e6;
-      color: #172b4d;
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    .side-line {
-      display: flex;
-      border-bottom: 1px solid #f0f0f0;
-      min-height: 24px;
-    }
-
-    .side-line-number {
-      width: 50px;
-      padding: 4px 8px;
-      text-align: right;
-      color: #6b778c;
-      font-size: 12px;
-      background-color: #fafbfc;
-      border-right: 1px solid #dfe1e6;
-      user-select: none;
-      flex-shrink: 0;
-    }
-
-    .side-line-content {
-      flex: 1;
-      padding: 4px 12px;
-      white-space: pre-wrap;
-      word-wrap: break-word;
-      overflow-wrap: break-word;
-      line-height: 1.5;
-      min-width: 0;
-    }
-
-    .side-line.deleted {
-      background-color: #ffebe6;
-    }
-
-    .side-line.deleted .side-line-number {
-      background-color: #ffd5cc;
-    }
-
-    .side-line.added {
-      background-color: #e3fcef;
-    }
-
-    .side-line.added .side-line-number {
-      background-color: #d3f5e3;
-    }
-
-    .side-line.empty {
-      background-color: #fafbfc;
-      opacity: 0.3;
-    }
-
-    .side-line.empty .side-line-number {
-      background-color: #f4f5f7;
-    }
-
-    /* AI Comments */
-    .ai-comment {
-      background-color: #fffae6;
-      border-left: 4px solid #ffab00;
-      padding: 12px 15px;
-      margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-      font-size: 13px;
-      border-bottom: 1px solid #f0f0f0;
-    }
-
-    .comment-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 8px;
-    }
-
-    .comment-severity {
-      padding: 3px 10px;
-      border-radius: 3px;
-      font-size: 11px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    .comment-severity.error {
-      background-color: #de350b;
-      color: white;
-    }
-
-    .comment-severity.warning {
-      background-color: #ff8b00;
-      color: white;
-    }
-
-    .comment-severity.suggestion {
-      background-color: #00875a;
-      color: white;
-    }
-
-    .comment-line-info {
-      font-size: 11px;
-      color: #6b778c;
-      font-weight: 600;
-    }
-
-    .comment-text {
-      margin: 8px 0;
-      line-height: 1.6;
-      color: #172b4d;
-    }
-
-    .suggested-patch {
-      background-color: #f4f5f7;
-      border-left: 3px solid #0052cc;
-      padding: 10px;
-      margin-top: 10px;
-      font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
-      font-size: 12px;
-      white-space: pre-wrap;
-      border-radius: 3px;
-    }
-
-    .suggested-patch-label {
-      font-weight: 600;
-      margin-bottom: 6px;
-      color: #0052cc;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-    }
-
-    .stats {
-      background-color: #f4f5f7;
-      padding: 10px 20px;
-      border-top: 2px solid #dfe1e6;
-      font-size: 13px;
-      color: #6b778c;
-      display: flex;
-      gap: 20px;
-    }
-
-    .stat-item {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-    }
-
-    .stat-added {
-      color: #00875a;
-      font-weight: 600;
-    }
-
-    .stat-deleted {
-      color: #de350b;
-      font-weight: 600;
-    }
-
-    .hidden {
-      display: none;
-    }
-
-    .empty-state {
-      color: #6b778c;
-      text-align: center;
-      padding: 40px;
-    }
-  `]
+  templateUrl: './code-diff-viewer.component.html',
+  styleUrls: ['./code-diff-viewer.component.css']
 })
 export class CodeDiffViewerComponent implements OnInit {
   currentView: 'unified' | 'side-by-side' = 'unified';
   currentFileIndex: number = -1;
-  diffOperations: DiffOperation[] = [];
-  unifiedDiffOperations: DiffOperation[] = [];
-  sideBySideDiffOperations: DiffOperation[] = [];
+  selectedFile: DiffFile | null = null;
+  
   addedLines: number = 0;
   deletedLines: number = 0;
   commentsCount: number = 0;
-
-  diffData: DiffData = {
+  
+  renderedDiff: string = '';
+  showStats: boolean = false;
+  showGoToFirstComment: boolean = false;
+  
+  commentStates: { [key: string]: CommentState } = {};
+  
+  diffData: { files: DiffFile[] } = {
     files: [
       {
         file_path: "src/app/services/auth.service.ts",
@@ -689,7 +923,7 @@ export class CodeDiffViewerComponent implements OnInit {
           "",
           "@Component({",
           "  selector: 'app-login',",
-          "  templateUrl: './login.component.html',",
+          "  templateUrl: './login.component.html'",
           "  styleUrls: ['./login.component.scss']",
           "})",
           "export class LoginComponent implements OnDestroy {",
@@ -835,260 +1069,584 @@ export class CodeDiffViewerComponent implements OnInit {
     ]
   };
 
-  get currentFile(): DiffFile | undefined {
-    return this.currentFileIndex >= 0 ? this.diffData.files[this.currentFileIndex] : undefined;
+  ngOnInit(): void {
+    // Component initialized
   }
 
-  ngOnInit(): void {
-    // Component initialization
+  onFileSelect(event: Event): void {
+    const select = event.target as HTMLSelectElement;
+    this.currentFileIndex = parseInt(select.value);
+    if (!isNaN(this.currentFileIndex) && this.currentFileIndex >= 0) {
+      this.selectedFile = this.diffData.files[this.currentFileIndex];
+      this.renderDiff();
+    }
   }
 
   switchView(view: 'unified' | 'side-by-side'): void {
     this.currentView = view;
     if (this.currentFileIndex >= 0) {
-      // Switch to the appropriate diff operations
-      this.diffOperations = view === 'unified' ? this.unifiedDiffOperations : this.sideBySideDiffOperations;
+      this.renderDiff();
     }
   }
 
-  onFileChange(): void {
-    if (this.currentFileIndex >= 0) {
-      this.calculateDiff();
+  renderDiff(): void {
+    if (!this.selectedFile) return;
+
+    if (this.currentView === 'unified') {
+      this.renderedDiff = this.renderUnifiedView(this.selectedFile);
+    } else {
+      this.renderedDiff = this.renderSideBySideView(this.selectedFile);
     }
+
+    this.updateStats(this.selectedFile);
+    setTimeout(() => this.updateCommentNavigation(), 0);
+    this.updateGoToFirstCommentButton();
   }
 
-  calculateDiff(): void {
-    const file = this.currentFile;
-    if (!file) return;
+  renderUnifiedView(file: DiffFile): string {
+    let html = `<div class="file-header">${this.escapeHtml(file.file_path)}</div>`;
+    html += '<div class="unified-view">';
 
     const oldText = file.old_lines.join('\n');
     const newText = file.new_lines.join('\n');
-
-    this.diffOperations = this.diffLines(oldText, newText);
-    this.updateStats(file);
-  }
-
-  // Use jsdiff library for accurate line-based diff
-  diffLines(oldText: string, newText: string): DiffOperation[] {
+    
     const diff = Diff.diffLines(oldText, newText);
-
-    // First pass: collect all changes
-    const changes: Array<{
-      type: 'added' | 'removed' | 'context';
-      lines: string[];
-    }> = [];
+    
+    let oldLineNum = 1;
+    let newLineNum = 1;
 
     diff.forEach(part => {
       const lines = part.value.split('\n');
-      // Remove empty last line if it exists
+      if (lines[lines.length - 1] === '') {
+        lines.pop();
+      }
+
+      lines.forEach(line => {
+        if (part.added) {
+          html += `<div class="diff-line added">`;
+          html += `<div class="line-numbers">`;
+          html += `<div class="line-number"></div>`;
+          html += `<div class="line-number">${newLineNum}</div>`;
+          html += `</div>`;
+          html += `<div class="line-content">${this.escapeHtml(line)}</div>`;
+          html += `</div>`;
+
+          const comment = this.findCommentForLine(file, newLineNum, 'TO');
+          if (comment) {
+            html += this.renderComment(comment);
+          }
+          newLineNum++;
+        } else if (part.removed) {
+          html += `<div class="diff-line deleted">`;
+          html += `<div class="line-numbers">`;
+          html += `<div class="line-number">${oldLineNum}</div>`;
+          html += `<div class="line-number"></div>`;
+          html += `</div>`;
+          html += `<div class="line-content">${this.escapeHtml(line)}</div>`;
+          html += `</div>`;
+
+          const comment = this.findCommentForLine(file, oldLineNum, 'FROM');
+          if (comment) {
+            html += this.renderComment(comment);
+          }
+          oldLineNum++;
+        } else {
+          html += `<div class="diff-line context">`;
+          html += `<div class="line-numbers">`;
+          html += `<div class="line-number">${oldLineNum}</div>`;
+          html += `<div class="line-number">${newLineNum}</div>`;
+          html += `</div>`;
+          html += `<div class="line-content">${this.escapeHtml(line)}</div>`;
+          html += `</div>`;
+          oldLineNum++;
+          newLineNum++;
+        }
+      });
+    });
+
+    html += '</div>';
+    return html;
+  }
+
+  renderSideBySideView(file: DiffFile): string {
+    let html = `<div class="file-header">${this.escapeHtml(file.file_path)}</div>`;
+    html += '<div class="side-by-side-view">';
+    
+    html += '<div class="side-header-row">';
+    html += '<div class="side-header">Original</div>';
+    html += '<div class="side-header">Modified</div>';
+    html += '</div>';
+
+    const oldText = file.old_lines.join('\n');
+    const newText = file.new_lines.join('\n');
+    
+    const diff = Diff.diffLines(oldText, newText);
+    
+    let oldLineNum = 1;
+    let newLineNum = 1;
+
+    diff.forEach(part => {
+      const lines = part.value.split('\n');
       if (lines[lines.length - 1] === '') {
         lines.pop();
       }
 
       if (part.added) {
-        changes.push({ type: 'added', lines });
+        lines.forEach(line => {
+          html += '<div class="side-row">';
+          
+          html += '<div class="side-cell empty">';
+          html += '<div class="side-cell-inner">';
+          html += '<div class="side-line-number"></div>';
+          html += '<div class="side-line-content"></div>';
+          html += '</div>';
+          html += '</div>';
+          
+          html += '<div class="side-cell added">';
+          html += '<div class="side-cell-inner">';
+          html += `<div class="side-line-number">${newLineNum}</div>`;
+          html += `<div class="side-line-content">${this.escapeHtml(line)}</div>`;
+          html += '</div>';
+          const comment = this.findCommentForLine(file, newLineNum, 'TO');
+          if (comment) {
+            html += this.renderComment(comment);
+          }
+          html += '</div>';
+          
+          html += '</div>';
+          newLineNum++;
+        });
       } else if (part.removed) {
-        changes.push({ type: 'removed', lines });
+        lines.forEach(line => {
+          html += '<div class="side-row">';
+          
+          html += '<div class="side-cell deleted">';
+          html += '<div class="side-cell-inner">';
+          html += `<div class="side-line-number">${oldLineNum}</div>`;
+          html += `<div class="side-line-content">${this.escapeHtml(line)}</div>`;
+          html += '</div>';
+          const comment = this.findCommentForLine(file, oldLineNum, 'FROM');
+          if (comment) {
+            html += this.renderComment(comment);
+          }
+          html += '</div>';
+          
+          html += '<div class="side-cell empty">';
+          html += '<div class="side-cell-inner">';
+          html += '<div class="side-line-number"></div>';
+          html += '<div class="side-line-content"></div>';
+          html += '</div>';
+          html += '</div>';
+          
+          html += '</div>';
+          oldLineNum++;
+        });
       } else {
-        changes.push({ type: 'context', lines });
+        lines.forEach(line => {
+          html += '<div class="side-row">';
+          
+          html += '<div class="side-cell">';
+          html += '<div class="side-cell-inner">';
+          html += `<div class="side-line-number">${oldLineNum}</div>`;
+          html += `<div class="side-line-content">${this.escapeHtml(line)}</div>`;
+          html += '</div>';
+          html += '</div>';
+          
+          html += '<div class="side-cell">';
+          html += '<div class="side-cell-inner">';
+          html += `<div class="side-line-number">${newLineNum}</div>`;
+          html += `<div class="side-line-content">${this.escapeHtml(line)}</div>`;
+          html += '</div>';
+          html += '</div>';
+          
+          html += '</div>';
+          oldLineNum++;
+          newLineNum++;
+        });
       }
     });
 
-    // Build UNIFIED operations (Bitbucket style: group ALL removed, then ALL added)
-    const unifiedOps: DiffOperation[] = [];
-    let unifiedOldLineNum = 1;
-    let unifiedNewLineNum = 1;
+    html += '</div>';
+    return html;
+  }
 
-    let i = 0;
-    while (i < changes.length) {
-      const current = changes[i];
-
-      if (current.type === 'context') {
-        // Context lines - unchanged
-        current.lines.forEach(line => {
-          unifiedOps.push({
-            type: 'context',
-            oldLine: line,
-            newLine: line,
-            oldLineNum: unifiedOldLineNum++,
-            newLineNum: unifiedNewLineNum++
-          });
-        });
-        i++;
-      } else if (current.type === 'removed') {
-        // Start of a change block - collect ALL consecutive removed lines first
-        const removedLines: string[] = [];
-        const addedLines: string[] = [];
-        
-        // Collect all removed lines
-        while (i < changes.length && changes[i].type === 'removed') {
-          removedLines.push(...changes[i].lines);
-          i++;
-        }
-        
-        // Collect all added lines that immediately follow
-        while (i < changes.length && changes[i].type === 'added') {
-          addedLines.push(...changes[i].lines);
-          i++;
-        }
-        
-        // First, add ALL removed lines as a block
-        removedLines.forEach(line => {
-          unifiedOps.push({
-            type: 'removed',
-            oldLine: line,
-            newLine: null,
-            oldLineNum: unifiedOldLineNum++,
-            newLineNum: null
-          });
-        });
-        
-        // Then, add ALL added lines as a block
-        addedLines.forEach(line => {
-          unifiedOps.push({
-            type: 'added',
-            oldLine: null,
-            newLine: line,
-            oldLineNum: null,
-            newLineNum: unifiedNewLineNum++
-          });
-        });
-      } else if (current.type === 'added') {
-        // Added block without any removed block before it
-        current.lines.forEach(line => {
-          unifiedOps.push({
-            type: 'added',
-            oldLine: null,
-            newLine: line,
-            oldLineNum: null,
-            newLineNum: unifiedNewLineNum++
-          });
-        });
-        i++;
-      }
+  renderComment(comment: Comment): string {
+    const commentId = `comment-${comment.line}-${comment.side}`;
+    const savedState = this.getCommentState(this.selectedFile!.file_path, comment.line, comment.side);
+    const status = savedState.status;
+    const displayText = savedState.modifiedText || comment.comment_text;
+    
+    let commentClass = 'ai-comment';
+    if (status === 'accepted') commentClass += ' accepted';
+    else if (status === 'rejected') commentClass += ' rejected';
+    
+    let html = `<div class="${commentClass}" id="${commentId}" data-status="${status}" data-file-path="${this.escapeHtml(this.selectedFile!.file_path)}" data-line="${comment.line}" data-side="${comment.side}">`;
+    html += `<div class="comment-header">`;
+    html += `<div>`;
+    html += `<span class="comment-severity ${comment.severity}">${comment.severity}</span>`;
+    
+    if (status === 'accepted' || status === 'rejected') {
+      html += `<span class="comment-status ${status}" style="display: inline-block;">${status.toUpperCase()}</span>`;
+    } else {
+      html += `<span class="comment-status" style="display: none;"></span>`;
     }
-
-    // Build SIDE-BY-SIDE operations (pair removed and added blocks)
-    const sideBySideOps: DiffOperation[] = [];
-    let j = 0;
-    let sideOldLineNum = 1;
-    let sideNewLineNum = 1;
-
-    while (j < changes.length) {
-      const current = changes[j];
-
-      if (current.type === 'context') {
-        // Context lines - unchanged
-        current.lines.forEach(line => {
-          sideBySideOps.push({
-            type: 'context',
-            oldLine: line,
-            newLine: line,
-            oldLineNum: sideOldLineNum++,
-            newLineNum: sideNewLineNum++
-          });
-        });
-        j++;
-      } else if (current.type === 'removed') {
-        // Start of a change block - collect removed and added lines
-        const removedLines: string[] = [];
-        const addedLines: string[] = [];
-        
-        // Collect all consecutive removed lines
-        while (j < changes.length && changes[j].type === 'removed') {
-          removedLines.push(...changes[j].lines);
-          j++;
-        }
-        
-        // Collect all consecutive added lines that follow
-        while (j < changes.length && changes[j].type === 'added') {
-          addedLines.push(...changes[j].lines);
-          j++;
-        }
-        
-        // Pair them side-by-side
-        const maxLength = Math.max(removedLines.length, addedLines.length);
-        
-        for (let k = 0; k < maxLength; k++) {
-          if (k < removedLines.length && k < addedLines.length) {
-            // Both sides have content - this is a paired change
-            sideBySideOps.push({
-              type: 'context', // We'll style them differently in the template
-              oldLine: removedLines[k],
-              newLine: addedLines[k],
-              oldLineNum: sideOldLineNum++,
-              newLineNum: sideNewLineNum++
-            });
-          } else if (k < removedLines.length) {
-            // Only removed side has content
-            sideBySideOps.push({
-              type: 'removed',
-              oldLine: removedLines[k],
-              newLine: null,
-              oldLineNum: sideOldLineNum++,
-              newLineNum: null
-            });
-          } else {
-            // Only added side has content
-            sideBySideOps.push({
-              type: 'added',
-              oldLine: null,
-              newLine: addedLines[k],
-              oldLineNum: null,
-              newLineNum: sideNewLineNum++
-            });
-          }
-        }
-      } else if (current.type === 'added') {
-        // Added block without any removed block before it
-        current.lines.forEach(line => {
-          sideBySideOps.push({
-            type: 'added',
-            oldLine: null,
-            newLine: line,
-            oldLineNum: null,
-            newLineNum: sideNewLineNum++
-          });
-        });
-        j++;
-      }
+    
+    html += `</div>`;
+    html += `<span class="comment-line-info">Line ${comment.line}</span>`;
+    html += `</div>`;
+    html += `<div class="comment-text-display">${this.escapeHtml(displayText)}</div>`;
+    html += `<textarea class="comment-text-input" style="display: none;">${this.escapeHtml(displayText)}</textarea>`;
+    
+    if (comment.suggested_patch) {
+      html += `<div class="suggested-patch">`;
+      html += `<div class="suggested-patch-label">💡 Suggested Fix:</div>`;
+      html += this.escapeHtml(comment.suggested_patch);
+      html += `</div>`;
     }
+    
+    html += `<div class="comment-actions">`;
+    
+    const disabled = (status === 'accepted' || status === 'rejected') ? ' disabled' : '';
+    
+    html += `<button class="comment-btn accept"${disabled}>✓ Accept</button>`;
+    html += `<button class="comment-btn reject"${disabled}>✗ Reject</button>`;
+    html += `<button class="comment-btn modify"${disabled}>✎ Modify</button>`;
+    html += `<button class="comment-btn save" style="display: none;">💾 Save</button>`;
+    html += `<button class="comment-btn cancel" style="display: none;">Cancel</button>`;
+    html += `<div class="comment-nav">`;
+    html += `<button class="comment-btn nav prev-comment">← Previous</button>`;
+    html += `<button class="comment-btn nav next-comment">Next →</button>`;
+    html += `</div>`;
+    html += `</div>`;
+    
+    html += `</div>`;
+    return html;
+  }
 
-    // Store both versions
-    this.unifiedDiffOperations = unifiedOps;
-    this.sideBySideDiffOperations = sideBySideOps;
-
-    // Return the appropriate one based on current view
-    return this.currentView === 'unified' ? unifiedOps : sideBySideOps;
+  findCommentForLine(file: DiffFile, lineNum: number, side: 'TO' | 'FROM'): Comment | undefined {
+    return file.ai_comments.find(comment => 
+      comment.line === lineNum && comment.side === side
+    );
   }
 
   updateStats(file: DiffFile): void {
-    this.addedLines = this.diffOperations.filter(op => op.type === 'added').length;
-    this.deletedLines = this.diffOperations.filter(op => op.type === 'removed').length;
+    const oldText = file.old_lines.join('\n');
+    const newText = file.new_lines.join('\n');
+    const diff = Diff.diffLines(oldText, newText);
+
+    let addedCount = 0;
+    let deletedCount = 0;
+
+    diff.forEach(part => {
+      const lines = part.value.split('\n');
+      if (lines[lines.length - 1] === '') {
+        lines.pop();
+      }
+      
+      if (part.added) {
+        addedCount += lines.length;
+      } else if (part.removed) {
+        deletedCount += lines.length;
+      }
+    });
+
+    this.addedLines = addedCount;
+    this.deletedLines = deletedCount;
     this.commentsCount = file.ai_comments.length;
+    this.showStats = true;
   }
 
-  getLineContent(op: DiffOperation): string {
-    if (op.type === 'added') return op.newLine || '';
-    if (op.type === 'removed') return op.oldLine || '';
-    return op.oldLine || op.newLine || '';
-  }
-
-  getCommentForLine(op: DiffOperation): AIComment | null {
-    if (!this.currentFile) return null;
+  updateCommentNavigation(): void {
+    const comments = document.querySelectorAll('.ai-comment');
     
-    if (op.type === 'added' && op.newLineNum) {
-      return this.findCommentForLine(op.newLineNum, 'TO');
-    } else if (op.type === 'removed' && op.oldLineNum) {
-      return this.findCommentForLine(op.oldLineNum, 'FROM');
-    }
-    return null;
+    comments.forEach((commentEl, index) => {
+      const prevBtn = commentEl.querySelector('.prev-comment') as HTMLButtonElement;
+      const nextBtn = commentEl.querySelector('.next-comment') as HTMLButtonElement;
+      
+      if (prevBtn) {
+        prevBtn.disabled = index === 0;
+        prevBtn.onclick = () => this.goToPreviousComment(commentEl.id);
+      }
+      
+      if (nextBtn) {
+        nextBtn.disabled = index === comments.length - 1;
+        nextBtn.onclick = () => this.goToNextComment(commentEl.id);
+      }
+
+      const acceptBtn = commentEl.querySelector('.accept') as HTMLButtonElement;
+      const rejectBtn = commentEl.querySelector('.reject') as HTMLButtonElement;
+      const modifyBtn = commentEl.querySelector('.modify') as HTMLButtonElement;
+      const saveBtn = commentEl.querySelector('.save') as HTMLButtonElement;
+      const cancelBtn = commentEl.querySelector('.cancel') as HTMLButtonElement;
+
+      if (acceptBtn) acceptBtn.onclick = () => this.acceptComment(commentEl.id);
+      if (rejectBtn) rejectBtn.onclick = () => this.rejectComment(commentEl.id);
+      if (modifyBtn) modifyBtn.onclick = () => this.modifyComment(commentEl.id);
+      if (saveBtn) saveBtn.onclick = () => this.saveComment(commentEl.id);
+      if (cancelBtn) cancelBtn.onclick = () => this.cancelModify(commentEl.id);
+    });
   }
 
-  findCommentForLine(lineNum: number, side: 'TO' | 'FROM'): AIComment | null {
-    if (!this.currentFile) return null;
-    return this.currentFile.ai_comments.find(
-      comment => comment.line === lineNum && comment.side === side
-    ) || null;
+  updateGoToFirstCommentButton(): void {
+    const comments = document.querySelectorAll('.ai-comment');
+    this.showGoToFirstComment = comments.length > 0;
+  }
+
+  goToNextComment(currentCommentId: string): void {
+    const comments = Array.from(document.querySelectorAll('.ai-comment'));
+    const currentIndex = comments.findIndex(c => c.id === currentCommentId);
+    
+    if (currentIndex >= 0 && currentIndex < comments.length - 1) {
+      const nextComment = comments[currentIndex + 1] as HTMLElement;
+      nextComment.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      this.highlightComment(nextComment);
+    }
+  }
+
+  goToPreviousComment(currentCommentId: string): void {
+    const comments = Array.from(document.querySelectorAll('.ai-comment'));
+    const currentIndex = comments.findIndex(c => c.id === currentCommentId);
+    
+    if (currentIndex > 0) {
+      const prevComment = comments[currentIndex - 1] as HTMLElement;
+      prevComment.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      this.highlightComment(prevComment);
+    }
+  }
+
+  goToFirstComment(): void {
+    const comments = document.querySelectorAll('.ai-comment');
+    if (comments.length > 0) {
+      const firstComment = comments[0] as HTMLElement;
+      firstComment.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      this.highlightComment(firstComment);
+    }
+  }
+
+  highlightComment(comment: HTMLElement): void {
+    comment.style.transition = 'box-shadow 0.3s';
+    comment.style.boxShadow = '0 0 10px rgba(0, 82, 204, 0.5)';
+    setTimeout(() => {
+      comment.style.boxShadow = '';
+    }, 1000);
+  }
+
+  acceptComment(commentId: string): void {
+    const commentEl = document.getElementById(commentId);
+    if (!commentEl) return;
+
+    commentEl.classList.add('accepted');
+    commentEl.classList.remove('rejected');
+    commentEl.dataset['status'] = 'accepted';
+
+    const statusBadge = commentEl.querySelector('.comment-status') as HTMLElement;
+    if (statusBadge) {
+      statusBadge.textContent = 'ACCEPTED';
+      statusBadge.className = 'comment-status accepted';
+      statusBadge.style.display = 'inline-block';
+    }
+
+    this.disableActionButtons(commentEl);
+
+    const filePath = commentEl.dataset['filePath'] || '';
+    const line = parseInt(commentEl.dataset['line'] || '0');
+    const side = commentEl.dataset['side'] as 'TO' | 'FROM';
+    const displayText = (commentEl.querySelector('.comment-text-display') as HTMLElement)?.textContent || '';
+    
+    this.saveCommentState(filePath, line, side, 'accepted', displayText);
+  }
+
+  rejectComment(commentId: string): void {
+    const commentEl = document.getElementById(commentId);
+    if (!commentEl) return;
+
+    commentEl.classList.add('rejected');
+    commentEl.classList.remove('accepted');
+    commentEl.dataset['status'] = 'rejected';
+
+    const statusBadge = commentEl.querySelector('.comment-status') as HTMLElement;
+    if (statusBadge) {
+      statusBadge.textContent = 'REJECTED';
+      statusBadge.className = 'comment-status rejected';
+      statusBadge.style.display = 'inline-block';
+    }
+
+    this.disableActionButtons(commentEl);
+
+    const filePath = commentEl.dataset['filePath'] || '';
+    const line = parseInt(commentEl.dataset['line'] || '0');
+    const side = commentEl.dataset['side'] as 'TO' | 'FROM';
+    const displayText = (commentEl.querySelector('.comment-text-display') as HTMLElement)?.textContent || '';
+    
+    this.saveCommentState(filePath, line, side, 'rejected', displayText);
+  }
+
+  modifyComment(commentId: string): void {
+    const commentEl = document.getElementById(commentId);
+    if (!commentEl) return;
+
+    const displayText = commentEl.querySelector('.comment-text-display') as HTMLElement;
+    const textarea = commentEl.querySelector('.comment-text-input') as HTMLTextAreaElement;
+    
+    if (displayText && textarea) {
+      displayText.style.display = 'none';
+      textarea.style.display = 'block';
+
+      const acceptBtn = commentEl.querySelector('.comment-btn.accept') as HTMLButtonElement;
+      const rejectBtn = commentEl.querySelector('.comment-btn.reject') as HTMLButtonElement;
+      const modifyBtn = commentEl.querySelector('.comment-btn.modify') as HTMLButtonElement;
+      const saveBtn = commentEl.querySelector('.comment-btn.save') as HTMLButtonElement;
+      const cancelBtn = commentEl.querySelector('.comment-btn.cancel') as HTMLButtonElement;
+
+      if (acceptBtn) acceptBtn.style.display = 'none';
+      if (rejectBtn) rejectBtn.style.display = 'none';
+      if (modifyBtn) modifyBtn.style.display = 'none';
+      if (saveBtn) saveBtn.style.display = 'inline-block';
+      if (cancelBtn) cancelBtn.style.display = 'inline-block';
+
+      textarea.focus();
+    }
+  }
+
+  saveComment(commentId: string): void {
+    const commentEl = document.getElementById(commentId);
+    if (!commentEl) return;
+
+    const displayText = commentEl.querySelector('.comment-text-display') as HTMLElement;
+    const textarea = commentEl.querySelector('.comment-text-input') as HTMLTextAreaElement;
+
+    if (displayText && textarea) {
+      displayText.textContent = textarea.value;
+      displayText.style.display = 'block';
+      textarea.style.display = 'none';
+
+      const acceptBtn = commentEl.querySelector('.comment-btn.accept') as HTMLButtonElement;
+      const rejectBtn = commentEl.querySelector('.comment-btn.reject') as HTMLButtonElement;
+      const modifyBtn = commentEl.querySelector('.comment-btn.modify') as HTMLButtonElement;
+      const saveBtn = commentEl.querySelector('.comment-btn.save') as HTMLButtonElement;
+      const cancelBtn = commentEl.querySelector('.comment-btn.cancel') as HTMLButtonElement;
+
+      if (acceptBtn) acceptBtn.style.display = 'inline-block';
+      if (rejectBtn) rejectBtn.style.display = 'inline-block';
+      if (modifyBtn) modifyBtn.style.display = 'inline-block';
+      if (saveBtn) saveBtn.style.display = 'none';
+      if (cancelBtn) cancelBtn.style.display = 'none';
+
+      const filePath = commentEl.dataset['filePath'] || '';
+      const line = parseInt(commentEl.dataset['line'] || '0');
+      const side = commentEl.dataset['side'] as 'TO' | 'FROM';
+      const status = commentEl.dataset['status'] as 'pending' | 'accepted' | 'rejected';
+      
+      this.saveCommentState(filePath, line, side, status, textarea.value);
+    }
+  }
+
+  cancelModify(commentId: string): void {
+    const commentEl = document.getElementById(commentId);
+    if (!commentEl) return;
+
+    const displayText = commentEl.querySelector('.comment-text-display') as HTMLElement;
+    const textarea = commentEl.querySelector('.comment-text-input') as HTMLTextAreaElement;
+
+    if (displayText && textarea) {
+      textarea.value = displayText.textContent || '';
+      displayText.style.display = 'block';
+      textarea.style.display = 'none';
+
+      const acceptBtn = commentEl.querySelector('.comment-btn.accept') as HTMLButtonElement;
+      const rejectBtn = commentEl.querySelector('.comment-btn.reject') as HTMLButtonElement;
+      const modifyBtn = commentEl.querySelector('.comment-btn.modify') as HTMLButtonElement;
+      const saveBtn = commentEl.querySelector('.comment-btn.save') as HTMLButtonElement;
+      const cancelBtn = commentEl.querySelector('.comment-btn.cancel') as HTMLButtonElement;
+
+      if (acceptBtn) acceptBtn.style.display = 'inline-block';
+      if (rejectBtn) rejectBtn.style.display = 'inline-block';
+      if (modifyBtn) modifyBtn.style.display = 'inline-block';
+      if (saveBtn) saveBtn.style.display = 'none';
+      if (cancelBtn) cancelBtn.style.display = 'none';
+    }
+  }
+
+  disableActionButtons(commentEl: HTMLElement): void {
+    const acceptBtn = commentEl.querySelector('.comment-btn.accept') as HTMLButtonElement;
+    const rejectBtn = commentEl.querySelector('.comment-btn.reject') as HTMLButtonElement;
+    const modifyBtn = commentEl.querySelector('.comment-btn.modify') as HTMLButtonElement;
+
+    if (acceptBtn) acceptBtn.disabled = true;
+    if (rejectBtn) rejectBtn.disabled = true;
+    if (modifyBtn) modifyBtn.disabled = true;
+  }
+
+  getCommentKey(filePath: string, line: number, side: string): string {
+    return `${filePath}-${line}-${side}`;
+  }
+
+  saveCommentState(filePath: string, line: number, side: string, status: 'pending' | 'accepted' | 'rejected', modifiedText: string): void {
+    const key = this.getCommentKey(filePath, line, side);
+    this.commentStates[key] = {
+      status: status,
+      modifiedText: modifiedText
+    };
+  }
+
+  getCommentState(filePath: string, line: number, side: string): CommentState {
+    const key = this.getCommentKey(filePath, line, side);
+    return this.commentStates[key] || { status: 'pending', modifiedText: null };
+  }
+
+  exportCommentData(): void {
+    const data = this.getCommentStatuses();
+    const acceptedCount = data.filter(d => d.status === 'accepted').length;
+    const rejectedCount = data.filter(d => d.status === 'rejected').length;
+    const pendingCount = data.filter(d => d.status === 'pending').length;
+    
+    const jsonStr = JSON.stringify(data, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'comment-review-results.json';
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    alert(`Comment data exported!\n\nTotal: ${data.length}\nAccepted: ${acceptedCount}\nRejected: ${rejectedCount}\nPending: ${pendingCount}\n\nFile downloaded: comment-review-results.json`);
+  }
+
+  getCommentStatuses(): any[] {
+    const statuses: any[] = [];
+    
+    for (const key in this.commentStates) {
+      const state = this.commentStates[key];
+      const [filePath, lineStr, side] = key.split('-');
+      const line = parseInt(lineStr);
+      
+      const file = this.diffData.files.find(f => f.file_path === filePath);
+      if (file) {
+        const comment = file.ai_comments.find(c => 
+          c.line === line && c.side === side
+        );
+        
+        if (comment) {
+          statuses.push({
+            file: filePath,
+            line: line,
+            side: side,
+            status: state.status,
+            originalText: comment.comment_text,
+            modifiedText: state.modifiedText,
+            severity: comment.severity,
+            suggestedPatch: comment.suggested_patch
+          });
+        }
+      }
+    }
+
+    return statuses;
+  }
+
+  escapeHtml(text: string): string {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
   }
 }
