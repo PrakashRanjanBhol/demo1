@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ViewChild, ElementRef, AfterViewChecked } from '@angular/core';
 import * as Diff from 'diff';
 
 interface Comment {
@@ -20,6 +20,15 @@ interface DiffFile {
 interface CommentState {
   status: 'pending' | 'accepted' | 'rejected';
   modifiedText: string | null;
+  isEditing: boolean;
+}
+
+interface DiffLine {
+  type: 'added' | 'deleted' | 'context';
+  oldLineNum?: number;
+  newLineNum?: number;
+  content: string;
+  comment?: Comment;
 }
 
 @Component({
@@ -27,7 +36,7 @@ interface CommentState {
   templateUrl: './code-diff-viewer.component.html',
   styleUrls: ['./code-diff-viewer.component.css']
 })
-export class CodeDiffViewerComponent implements OnInit {
+export class CodeDiffViewerComponent implements OnInit, AfterViewChecked {
   currentView: 'unified' | 'side-by-side' = 'unified';
   currentFileIndex: number = -1;
   selectedFile: DiffFile | null = null;
@@ -36,11 +45,14 @@ export class CodeDiffViewerComponent implements OnInit {
   deletedLines: number = 0;
   commentsCount: number = 0;
   
-  renderedDiff: string = '';
+  diffLines: DiffLine[] = [];
+  sideBySideRows: any[] = [];
   showStats: boolean = false;
   showGoToFirstComment: boolean = false;
   
   commentStates: { [key: string]: CommentState } = {};
+  
+  private needsScrollUpdate = false;
   
   diffData: { files: DiffFile[] } = {
     files: [
@@ -336,6 +348,13 @@ export class CodeDiffViewerComponent implements OnInit {
     // Component initialized
   }
 
+  ngAfterViewChecked(): void {
+    // This runs after view is checked, good place to update navigation
+    if (this.needsScrollUpdate) {
+      this.needsScrollUpdate = false;
+    }
+  }
+
   onFileSelect(event: Event): void {
     const select = event.target as HTMLSelectElement;
     this.currentFileIndex = parseInt(select.value);
@@ -356,20 +375,19 @@ export class CodeDiffViewerComponent implements OnInit {
     if (!this.selectedFile) return;
 
     if (this.currentView === 'unified') {
-      this.renderedDiff = this.renderUnifiedView(this.selectedFile);
+      this.diffLines = this.generateUnifiedDiff(this.selectedFile);
+      this.sideBySideRows = [];
     } else {
-      this.renderedDiff = this.renderSideBySideView(this.selectedFile);
+      this.sideBySideRows = this.generateSideBySideDiff(this.selectedFile);
+      this.diffLines = [];
     }
 
     this.updateStats(this.selectedFile);
-    setTimeout(() => this.updateCommentNavigation(), 0);
     this.updateGoToFirstCommentButton();
   }
 
-  renderUnifiedView(file: DiffFile): string {
-    let html = `<div class="file-header">${this.escapeHtml(file.file_path)}</div>`;
-    html += '<div class="unified-view">';
-
+  generateUnifiedDiff(file: DiffFile): DiffLine[] {
+    const lines: DiffLine[] = [];
     const oldText = file.old_lines.join('\n');
     const newText = file.new_lines.join('\n');
     
@@ -379,67 +397,48 @@ export class CodeDiffViewerComponent implements OnInit {
     let newLineNum = 1;
 
     diff.forEach(part => {
-      const lines = part.value.split('\n');
-      if (lines[lines.length - 1] === '') {
-        lines.pop();
+      const partLines = part.value.split('\n');
+      if (partLines[partLines.length - 1] === '') {
+        partLines.pop();
       }
 
-      lines.forEach(line => {
+      partLines.forEach(lineContent => {
         if (part.added) {
-          html += `<div class="diff-line added">`;
-          html += `<div class="line-numbers">`;
-          html += `<div class="line-number"></div>`;
-          html += `<div class="line-number">${newLineNum}</div>`;
-          html += `</div>`;
-          html += `<div class="line-content">${this.escapeHtml(line)}</div>`;
-          html += `</div>`;
-
           const comment = this.findCommentForLine(file, newLineNum, 'TO');
-          if (comment) {
-            html += this.renderComment(comment);
-          }
+          lines.push({
+            type: 'added',
+            newLineNum: newLineNum,
+            content: lineContent,
+            comment: comment
+          });
           newLineNum++;
         } else if (part.removed) {
-          html += `<div class="diff-line deleted">`;
-          html += `<div class="line-numbers">`;
-          html += `<div class="line-number">${oldLineNum}</div>`;
-          html += `<div class="line-number"></div>`;
-          html += `</div>`;
-          html += `<div class="line-content">${this.escapeHtml(line)}</div>`;
-          html += `</div>`;
-
           const comment = this.findCommentForLine(file, oldLineNum, 'FROM');
-          if (comment) {
-            html += this.renderComment(comment);
-          }
+          lines.push({
+            type: 'deleted',
+            oldLineNum: oldLineNum,
+            content: lineContent,
+            comment: comment
+          });
           oldLineNum++;
         } else {
-          html += `<div class="diff-line context">`;
-          html += `<div class="line-numbers">`;
-          html += `<div class="line-number">${oldLineNum}</div>`;
-          html += `<div class="line-number">${newLineNum}</div>`;
-          html += `</div>`;
-          html += `<div class="line-content">${this.escapeHtml(line)}</div>`;
-          html += `</div>`;
+          lines.push({
+            type: 'context',
+            oldLineNum: oldLineNum,
+            newLineNum: newLineNum,
+            content: lineContent
+          });
           oldLineNum++;
           newLineNum++;
         }
       });
     });
 
-    html += '</div>';
-    return html;
+    return lines;
   }
 
-  renderSideBySideView(file: DiffFile): string {
-    let html = `<div class="file-header">${this.escapeHtml(file.file_path)}</div>`;
-    html += '<div class="side-by-side-view">';
-    
-    html += '<div class="side-header-row">';
-    html += '<div class="side-header">Original</div>';
-    html += '<div class="side-header">Modified</div>';
-    html += '</div>';
-
+  generateSideBySideDiff(file: DiffFile): any[] {
+    const rows: any[] = [];
     const oldText = file.old_lines.join('\n');
     const newText = file.new_lines.join('\n');
     
@@ -449,141 +448,42 @@ export class CodeDiffViewerComponent implements OnInit {
     let newLineNum = 1;
 
     diff.forEach(part => {
-      const lines = part.value.split('\n');
-      if (lines[lines.length - 1] === '') {
-        lines.pop();
+      const partLines = part.value.split('\n');
+      if (partLines[partLines.length - 1] === '') {
+        partLines.pop();
       }
 
       if (part.added) {
-        lines.forEach(line => {
-          html += '<div class="side-row">';
-          
-          html += '<div class="side-cell empty">';
-          html += '<div class="side-cell-inner">';
-          html += '<div class="side-line-number"></div>';
-          html += '<div class="side-line-content"></div>';
-          html += '</div>';
-          html += '</div>';
-          
-          html += '<div class="side-cell added">';
-          html += '<div class="side-cell-inner">';
-          html += `<div class="side-line-number">${newLineNum}</div>`;
-          html += `<div class="side-line-content">${this.escapeHtml(line)}</div>`;
-          html += '</div>';
+        partLines.forEach(lineContent => {
           const comment = this.findCommentForLine(file, newLineNum, 'TO');
-          if (comment) {
-            html += this.renderComment(comment);
-          }
-          html += '</div>';
-          
-          html += '</div>';
+          rows.push({
+            left: { type: 'empty', lineNum: null, content: '' },
+            right: { type: 'added', lineNum: newLineNum, content: lineContent, comment: comment }
+          });
           newLineNum++;
         });
       } else if (part.removed) {
-        lines.forEach(line => {
-          html += '<div class="side-row">';
-          
-          html += '<div class="side-cell deleted">';
-          html += '<div class="side-cell-inner">';
-          html += `<div class="side-line-number">${oldLineNum}</div>`;
-          html += `<div class="side-line-content">${this.escapeHtml(line)}</div>`;
-          html += '</div>';
+        partLines.forEach(lineContent => {
           const comment = this.findCommentForLine(file, oldLineNum, 'FROM');
-          if (comment) {
-            html += this.renderComment(comment);
-          }
-          html += '</div>';
-          
-          html += '<div class="side-cell empty">';
-          html += '<div class="side-cell-inner">';
-          html += '<div class="side-line-number"></div>';
-          html += '<div class="side-line-content"></div>';
-          html += '</div>';
-          html += '</div>';
-          
-          html += '</div>';
+          rows.push({
+            left: { type: 'deleted', lineNum: oldLineNum, content: lineContent, comment: comment },
+            right: { type: 'empty', lineNum: null, content: '' }
+          });
           oldLineNum++;
         });
       } else {
-        lines.forEach(line => {
-          html += '<div class="side-row">';
-          
-          html += '<div class="side-cell">';
-          html += '<div class="side-cell-inner">';
-          html += `<div class="side-line-number">${oldLineNum}</div>`;
-          html += `<div class="side-line-content">${this.escapeHtml(line)}</div>`;
-          html += '</div>';
-          html += '</div>';
-          
-          html += '<div class="side-cell">';
-          html += '<div class="side-cell-inner">';
-          html += `<div class="side-line-number">${newLineNum}</div>`;
-          html += `<div class="side-line-content">${this.escapeHtml(line)}</div>`;
-          html += '</div>';
-          html += '</div>';
-          
-          html += '</div>';
+        partLines.forEach(lineContent => {
+          rows.push({
+            left: { type: 'context', lineNum: oldLineNum, content: lineContent },
+            right: { type: 'context', lineNum: newLineNum, content: lineContent }
+          });
           oldLineNum++;
           newLineNum++;
         });
       }
     });
 
-    html += '</div>';
-    return html;
-  }
-
-  renderComment(comment: Comment): string {
-    const commentId = `comment-${comment.line}-${comment.side}`;
-    const savedState = this.getCommentState(this.selectedFile!.file_path, comment.line, comment.side);
-    const status = savedState.status;
-    const displayText = savedState.modifiedText || comment.comment_text;
-    
-    let commentClass = 'ai-comment';
-    if (status === 'accepted') commentClass += ' accepted';
-    else if (status === 'rejected') commentClass += ' rejected';
-    
-    let html = `<div class="${commentClass}" id="${commentId}" data-status="${status}" data-file-path="${this.escapeHtml(this.selectedFile!.file_path)}" data-line="${comment.line}" data-side="${comment.side}">`;
-    html += `<div class="comment-header">`;
-    html += `<div>`;
-    html += `<span class="comment-severity ${comment.severity}">${comment.severity}</span>`;
-    
-    if (status === 'accepted' || status === 'rejected') {
-      html += `<span class="comment-status ${status}" style="display: inline-block;">${status.toUpperCase()}</span>`;
-    } else {
-      html += `<span class="comment-status" style="display: none;"></span>`;
-    }
-    
-    html += `</div>`;
-    html += `<span class="comment-line-info">Line ${comment.line}</span>`;
-    html += `</div>`;
-    html += `<div class="comment-text-display">${this.escapeHtml(displayText)}</div>`;
-    html += `<textarea class="comment-text-input" style="display: none;">${this.escapeHtml(displayText)}</textarea>`;
-    
-    if (comment.suggested_patch) {
-      html += `<div class="suggested-patch">`;
-      html += `<div class="suggested-patch-label">💡 Suggested Fix:</div>`;
-      html += this.escapeHtml(comment.suggested_patch);
-      html += `</div>`;
-    }
-    
-    html += `<div class="comment-actions">`;
-    
-    const disabled = (status === 'accepted' || status === 'rejected') ? ' disabled' : '';
-    
-    html += `<button class="comment-btn accept"${disabled}>✓ Accept</button>`;
-    html += `<button class="comment-btn reject"${disabled}>✗ Reject</button>`;
-    html += `<button class="comment-btn modify"${disabled}>✎ Modify</button>`;
-    html += `<button class="comment-btn save" style="display: none;">💾 Save</button>`;
-    html += `<button class="comment-btn cancel" style="display: none;">Cancel</button>`;
-    html += `<div class="comment-nav">`;
-    html += `<button class="comment-btn nav prev-comment">← Previous</button>`;
-    html += `<button class="comment-btn nav next-comment">Next →</button>`;
-    html += `</div>`;
-    html += `</div>`;
-    
-    html += `</div>`;
-    return html;
+    return rows;
   }
 
   findCommentForLine(file: DiffFile, lineNum: number, side: 'TO' | 'FROM'): Comment | undefined {
@@ -619,273 +519,160 @@ export class CodeDiffViewerComponent implements OnInit {
     this.showStats = true;
   }
 
-  updateCommentNavigation(): void {
-    const comments = document.querySelectorAll('.ai-comment');
-    
-    comments.forEach((commentEl, index) => {
-      const prevBtn = commentEl.querySelector('.prev-comment') as HTMLButtonElement;
-      const nextBtn = commentEl.querySelector('.next-comment') as HTMLButtonElement;
-      
-      if (prevBtn) {
-        prevBtn.disabled = index === 0;
-        prevBtn.onclick = (e) => {
-          e.preventDefault();
-          this.goToPreviousComment(commentEl.id);
-        };
-      }
-      
-      if (nextBtn) {
-        nextBtn.disabled = index === comments.length - 1;
-        nextBtn.onclick = (e) => {
-          e.preventDefault();
-          this.goToNextComment(commentEl.id);
-        };
-      }
-
-      const acceptBtn = commentEl.querySelector('.accept') as HTMLButtonElement;
-      const rejectBtn = commentEl.querySelector('.reject') as HTMLButtonElement;
-      const modifyBtn = commentEl.querySelector('.modify') as HTMLButtonElement;
-      const saveBtn = commentEl.querySelector('.save') as HTMLButtonElement;
-      const cancelBtn = commentEl.querySelector('.cancel') as HTMLButtonElement;
-
-      if (acceptBtn) {
-        acceptBtn.onclick = (e) => {
-          e.preventDefault();
-          this.acceptComment(commentEl.id);
-        };
-      }
-      if (rejectBtn) {
-        rejectBtn.onclick = (e) => {
-          e.preventDefault();
-          this.rejectComment(commentEl.id);
-        };
-      }
-      if (modifyBtn) {
-        modifyBtn.onclick = (e) => {
-          e.preventDefault();
-          this.modifyComment(commentEl.id);
-        };
-      }
-      if (saveBtn) {
-        saveBtn.onclick = (e) => {
-          e.preventDefault();
-          this.saveComment(commentEl.id);
-        };
-      }
-      if (cancelBtn) {
-        cancelBtn.onclick = (e) => {
-          e.preventDefault();
-          this.cancelModify(commentEl.id);
-        };
-      }
-    });
-  }
-
   updateGoToFirstCommentButton(): void {
-    const comments = document.querySelectorAll('.ai-comment');
-    this.showGoToFirstComment = comments.length > 0;
+    this.showGoToFirstComment = this.commentsCount > 0;
   }
 
-  goToNextComment(currentCommentId: string): void {
-    const comments = Array.from(document.querySelectorAll('.ai-comment'));
-    const currentIndex = comments.findIndex(c => c.id === currentCommentId);
+  goToNextComment(comment: Comment): void {
+    const allComments = this.getAllComments();
+    const currentIndex = allComments.findIndex(c => 
+      c.line === comment.line && c.side === comment.side
+    );
     
-    if (currentIndex >= 0 && currentIndex < comments.length - 1) {
-      const nextComment = comments[currentIndex + 1] as HTMLElement;
-      nextComment.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      this.highlightComment(nextComment);
+    if (currentIndex >= 0 && currentIndex < allComments.length - 1) {
+      const nextComment = allComments[currentIndex + 1];
+      this.scrollToComment(nextComment);
     }
   }
 
-  goToPreviousComment(currentCommentId: string): void {
-    const comments = Array.from(document.querySelectorAll('.ai-comment'));
-    const currentIndex = comments.findIndex(c => c.id === currentCommentId);
+  goToPreviousComment(comment: Comment): void {
+    const allComments = this.getAllComments();
+    const currentIndex = allComments.findIndex(c => 
+      c.line === comment.line && c.side === comment.side
+    );
     
     if (currentIndex > 0) {
-      const prevComment = comments[currentIndex - 1] as HTMLElement;
-      prevComment.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      this.highlightComment(prevComment);
+      const prevComment = allComments[currentIndex - 1];
+      this.scrollToComment(prevComment);
     }
   }
 
   goToFirstComment(): void {
-    const comments = document.querySelectorAll('.ai-comment');
-    if (comments.length > 0) {
-      const firstComment = comments[0] as HTMLElement;
-      firstComment.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      this.highlightComment(firstComment);
+    const allComments = this.getAllComments();
+    if (allComments.length > 0) {
+      this.scrollToComment(allComments[0]);
     }
   }
 
-  highlightComment(comment: HTMLElement): void {
-    comment.style.transition = 'box-shadow 0.3s';
-    comment.style.boxShadow = '0 0 10px rgba(0, 82, 204, 0.5)';
+  scrollToComment(comment: Comment): void {
     setTimeout(() => {
-      comment.style.boxShadow = '';
+      const commentId = `comment-${comment.line}-${comment.side}`;
+      const element = document.getElementById(commentId);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        this.highlightComment(element);
+      }
+    }, 100);
+  }
+
+  highlightComment(element: HTMLElement): void {
+    element.style.transition = 'box-shadow 0.3s';
+    element.style.boxShadow = '0 0 10px rgba(0, 82, 204, 0.5)';
+    setTimeout(() => {
+      element.style.boxShadow = '';
     }, 1000);
   }
 
-  acceptComment(commentId: string): void {
-    const commentEl = document.getElementById(commentId);
-    if (!commentEl) return;
+  getAllComments(): Comment[] {
+    if (!this.selectedFile) return [];
+    return this.selectedFile.ai_comments;
+  }
 
-    commentEl.classList.add('accepted');
-    commentEl.classList.remove('rejected');
-    commentEl.dataset['status'] = 'accepted';
+  isFirstComment(comment: Comment): boolean {
+    const allComments = this.getAllComments();
+    return allComments.length > 0 && 
+           allComments[0].line === comment.line && 
+           allComments[0].side === comment.side;
+  }
 
-    const statusBadge = commentEl.querySelector('.comment-status') as HTMLElement;
-    if (statusBadge) {
-      statusBadge.textContent = 'ACCEPTED';
-      statusBadge.className = 'comment-status accepted';
-      statusBadge.style.display = 'inline-block';
-    }
+  isLastComment(comment: Comment): boolean {
+    const allComments = this.getAllComments();
+    return allComments.length > 0 && 
+           allComments[allComments.length - 1].line === comment.line && 
+           allComments[allComments.length - 1].side === comment.side;
+  }
 
-    this.disableActionButtons(commentEl);
+  acceptComment(comment: Comment): void {
+    const state = this.getCommentState(this.selectedFile!.file_path, comment.line, comment.side);
+    const text = state.modifiedText || comment.comment_text;
+    this.saveCommentState(this.selectedFile!.file_path, comment.line, comment.side, 'accepted', text, false);
+  }
 
-    const filePath = commentEl.dataset['filePath'] || '';
-    const line = parseInt(commentEl.dataset['line'] || '0');
-    const side = commentEl.dataset['side'] as 'TO' | 'FROM';
-    const displayText = (commentEl.querySelector('.comment-text-display') as HTMLElement)?.textContent || '';
+  rejectComment(comment: Comment): void {
+    const state = this.getCommentState(this.selectedFile!.file_path, comment.line, comment.side);
+    const text = state.modifiedText || comment.comment_text;
+    this.saveCommentState(this.selectedFile!.file_path, comment.line, comment.side, 'rejected', text, false);
+  }
+
+  modifyComment(comment: Comment): void {
+    const key = this.getCommentKey(this.selectedFile!.file_path, comment.line, comment.side);
+    const currentState = this.commentStates[key] || { 
+      status: 'pending', 
+      modifiedText: comment.comment_text,
+      isEditing: false 
+    };
     
-    this.saveCommentState(filePath, line, side, 'accepted', displayText);
+    this.commentStates[key] = {
+      ...currentState,
+      isEditing: true
+    };
   }
 
-  rejectComment(commentId: string): void {
-    const commentEl = document.getElementById(commentId);
-    if (!commentEl) return;
+  saveCommentModification(comment: Comment, newText: string): void {
+    const state = this.getCommentState(this.selectedFile!.file_path, comment.line, comment.side);
+    this.saveCommentState(this.selectedFile!.file_path, comment.line, comment.side, state.status, newText, false);
+  }
 
-    commentEl.classList.add('rejected');
-    commentEl.classList.remove('accepted');
-    commentEl.dataset['status'] = 'rejected';
-
-    const statusBadge = commentEl.querySelector('.comment-status') as HTMLElement;
-    if (statusBadge) {
-      statusBadge.textContent = 'REJECTED';
-      statusBadge.className = 'comment-status rejected';
-      statusBadge.style.display = 'inline-block';
-    }
-
-    this.disableActionButtons(commentEl);
-
-    const filePath = commentEl.dataset['filePath'] || '';
-    const line = parseInt(commentEl.dataset['line'] || '0');
-    const side = commentEl.dataset['side'] as 'TO' | 'FROM';
-    const displayText = (commentEl.querySelector('.comment-text-display') as HTMLElement)?.textContent || '';
+  cancelModify(comment: Comment): void {
+    const key = this.getCommentKey(this.selectedFile!.file_path, comment.line, comment.side);
+    const currentState = this.commentStates[key] || { 
+      status: 'pending', 
+      modifiedText: comment.comment_text,
+      isEditing: false 
+    };
     
-    this.saveCommentState(filePath, line, side, 'rejected', displayText);
-  }
-
-  modifyComment(commentId: string): void {
-    const commentEl = document.getElementById(commentId);
-    if (!commentEl) return;
-
-    const displayText = commentEl.querySelector('.comment-text-display') as HTMLElement;
-    const textarea = commentEl.querySelector('.comment-text-input') as HTMLTextAreaElement;
-    
-    if (displayText && textarea) {
-      displayText.style.display = 'none';
-      textarea.style.display = 'block';
-
-      const acceptBtn = commentEl.querySelector('.comment-btn.accept') as HTMLButtonElement;
-      const rejectBtn = commentEl.querySelector('.comment-btn.reject') as HTMLButtonElement;
-      const modifyBtn = commentEl.querySelector('.comment-btn.modify') as HTMLButtonElement;
-      const saveBtn = commentEl.querySelector('.comment-btn.save') as HTMLButtonElement;
-      const cancelBtn = commentEl.querySelector('.comment-btn.cancel') as HTMLButtonElement;
-
-      if (acceptBtn) acceptBtn.style.display = 'none';
-      if (rejectBtn) rejectBtn.style.display = 'none';
-      if (modifyBtn) modifyBtn.style.display = 'none';
-      if (saveBtn) saveBtn.style.display = 'inline-block';
-      if (cancelBtn) cancelBtn.style.display = 'inline-block';
-
-      textarea.focus();
-    }
-  }
-
-  saveComment(commentId: string): void {
-    const commentEl = document.getElementById(commentId);
-    if (!commentEl) return;
-
-    const displayText = commentEl.querySelector('.comment-text-display') as HTMLElement;
-    const textarea = commentEl.querySelector('.comment-text-input') as HTMLTextAreaElement;
-
-    if (displayText && textarea) {
-      displayText.textContent = textarea.value;
-      displayText.style.display = 'block';
-      textarea.style.display = 'none';
-
-      const acceptBtn = commentEl.querySelector('.comment-btn.accept') as HTMLButtonElement;
-      const rejectBtn = commentEl.querySelector('.comment-btn.reject') as HTMLButtonElement;
-      const modifyBtn = commentEl.querySelector('.comment-btn.modify') as HTMLButtonElement;
-      const saveBtn = commentEl.querySelector('.comment-btn.save') as HTMLButtonElement;
-      const cancelBtn = commentEl.querySelector('.comment-btn.cancel') as HTMLButtonElement;
-
-      if (acceptBtn) acceptBtn.style.display = 'inline-block';
-      if (rejectBtn) rejectBtn.style.display = 'inline-block';
-      if (modifyBtn) modifyBtn.style.display = 'inline-block';
-      if (saveBtn) saveBtn.style.display = 'none';
-      if (cancelBtn) cancelBtn.style.display = 'none';
-
-      const filePath = commentEl.dataset['filePath'] || '';
-      const line = parseInt(commentEl.dataset['line'] || '0');
-      const side = commentEl.dataset['side'] as 'TO' | 'FROM';
-      const status = commentEl.dataset['status'] as 'pending' | 'accepted' | 'rejected';
-      
-      this.saveCommentState(filePath, line, side, status, textarea.value);
-    }
-  }
-
-  cancelModify(commentId: string): void {
-    const commentEl = document.getElementById(commentId);
-    if (!commentEl) return;
-
-    const displayText = commentEl.querySelector('.comment-text-display') as HTMLElement;
-    const textarea = commentEl.querySelector('.comment-text-input') as HTMLTextAreaElement;
-
-    if (displayText && textarea) {
-      textarea.value = displayText.textContent || '';
-      displayText.style.display = 'block';
-      textarea.style.display = 'none';
-
-      const acceptBtn = commentEl.querySelector('.comment-btn.accept') as HTMLButtonElement;
-      const rejectBtn = commentEl.querySelector('.comment-btn.reject') as HTMLButtonElement;
-      const modifyBtn = commentEl.querySelector('.comment-btn.modify') as HTMLButtonElement;
-      const saveBtn = commentEl.querySelector('.comment-btn.save') as HTMLButtonElement;
-      const cancelBtn = commentEl.querySelector('.comment-btn.cancel') as HTMLButtonElement;
-
-      if (acceptBtn) acceptBtn.style.display = 'inline-block';
-      if (rejectBtn) rejectBtn.style.display = 'inline-block';
-      if (modifyBtn) modifyBtn.style.display = 'inline-block';
-      if (saveBtn) saveBtn.style.display = 'none';
-      if (cancelBtn) cancelBtn.style.display = 'none';
-    }
-  }
-
-  disableActionButtons(commentEl: HTMLElement): void {
-    const acceptBtn = commentEl.querySelector('.comment-btn.accept') as HTMLButtonElement;
-    const rejectBtn = commentEl.querySelector('.comment-btn.reject') as HTMLButtonElement;
-    const modifyBtn = commentEl.querySelector('.comment-btn.modify') as HTMLButtonElement;
-
-    if (acceptBtn) acceptBtn.disabled = true;
-    if (rejectBtn) rejectBtn.disabled = true;
-    if (modifyBtn) modifyBtn.disabled = true;
+    this.commentStates[key] = {
+      ...currentState,
+      isEditing: false
+    };
   }
 
   getCommentKey(filePath: string, line: number, side: string): string {
     return `${filePath}-${line}-${side}`;
   }
 
-  saveCommentState(filePath: string, line: number, side: string, status: 'pending' | 'accepted' | 'rejected', modifiedText: string): void {
+  saveCommentState(filePath: string, line: number, side: string, status: 'pending' | 'accepted' | 'rejected', modifiedText: string, isEditing: boolean): void {
     const key = this.getCommentKey(filePath, line, side);
     this.commentStates[key] = {
       status: status,
-      modifiedText: modifiedText
+      modifiedText: modifiedText,
+      isEditing: isEditing
     };
   }
 
   getCommentState(filePath: string, line: number, side: string): CommentState {
     const key = this.getCommentKey(filePath, line, side);
-    return this.commentStates[key] || { status: 'pending', modifiedText: null };
+    return this.commentStates[key] || { status: 'pending', modifiedText: null, isEditing: false };
+  }
+
+  getCommentDisplayText(comment: Comment): string {
+    const state = this.getCommentState(this.selectedFile!.file_path, comment.line, comment.side);
+    return state.modifiedText || comment.comment_text;
+  }
+
+  isCommentEditing(comment: Comment): boolean {
+    const state = this.getCommentState(this.selectedFile!.file_path, comment.line, comment.side);
+    return state.isEditing;
+  }
+
+  isCommentDisabled(comment: Comment): boolean {
+    const state = this.getCommentState(this.selectedFile!.file_path, comment.line, comment.side);
+    return state.status === 'accepted' || state.status === 'rejected';
+  }
+
+  getCommentStatus(comment: Comment): string {
+    const state = this.getCommentState(this.selectedFile!.file_path, comment.line, comment.side);
+    return state.status;
   }
 
   exportCommentData(): void {
@@ -937,13 +724,18 @@ export class CodeDiffViewerComponent implements OnInit {
 
     return statuses;
   }
-
-  escapeHtml(text: string): string {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-  }
 }
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1008,7 +800,326 @@ export class CodeDiffViewerComponent implements OnInit {
     <p class="empty-state" *ngIf="currentFileIndex < 0">
       Please select a file to view the diff
     </p>
-    <div *ngIf="currentFileIndex >= 0" [innerHTML]="renderedDiff"></div>
+
+    <!-- Unified View -->
+    <ng-container *ngIf="currentFileIndex >= 0 && currentView === 'unified'">
+      <div class="file-header">{{ selectedFile?.file_path }}</div>
+      <div class="unified-view">
+        <ng-container *ngFor="let line of diffLines">
+          <div class="diff-line" [ngClass]="line.type">
+            <div class="line-numbers">
+              <div class="line-number">{{ line.oldLineNum || '' }}</div>
+              <div class="line-number">{{ line.newLineNum || '' }}</div>
+            </div>
+            <div class="line-content">{{ line.content }}</div>
+          </div>
+
+          <!-- AI Comment for this line -->
+          <div *ngIf="line.comment" 
+               class="ai-comment" 
+               [ngClass]="{
+                 'accepted': getCommentStatus(line.comment) === 'accepted',
+                 'rejected': getCommentStatus(line.comment) === 'rejected'
+               }"
+               [id]="'comment-' + line.comment.line + '-' + line.comment.side">
+            <div class="comment-header">
+              <div>
+                <span class="comment-severity" [ngClass]="line.comment.severity">
+                  {{ line.comment.severity }}
+                </span>
+                <span class="comment-status" 
+                      [ngClass]="getCommentStatus(line.comment)"
+                      *ngIf="getCommentStatus(line.comment) !== 'pending'">
+                  {{ getCommentStatus(line.comment).toUpperCase() }}
+                </span>
+              </div>
+              <span class="comment-line-info">Line {{ line.comment.line }}</span>
+            </div>
+
+            <div class="comment-text-display" *ngIf="!isCommentEditing(line.comment)">
+              {{ getCommentDisplayText(line.comment) }}
+            </div>
+
+            <textarea 
+              class="comment-text-input" 
+              *ngIf="isCommentEditing(line.comment)"
+              [(ngModel)]="commentStates[getCommentKey(selectedFile!.file_path, line.comment.line, line.comment.side)].modifiedText"
+              [value]="getCommentDisplayText(line.comment)">
+            </textarea>
+
+            <div class="suggested-patch" *ngIf="line.comment.suggested_patch">
+              <div class="suggested-patch-label">💡 Suggested Fix:</div>
+              {{ line.comment.suggested_patch }}
+            </div>
+
+            <div class="comment-actions">
+              <button 
+                class="comment-btn accept" 
+                (click)="acceptComment(line.comment)"
+                [disabled]="isCommentDisabled(line.comment)"
+                *ngIf="!isCommentEditing(line.comment)">
+                ✓ Accept
+              </button>
+              <button 
+                class="comment-btn reject" 
+                (click)="rejectComment(line.comment)"
+                [disabled]="isCommentDisabled(line.comment)"
+                *ngIf="!isCommentEditing(line.comment)">
+                ✗ Reject
+              </button>
+              <button 
+                class="comment-btn modify" 
+                (click)="modifyComment(line.comment)"
+                [disabled]="isCommentDisabled(line.comment)"
+                *ngIf="!isCommentEditing(line.comment)">
+                ✎ Modify
+              </button>
+
+              <button 
+                class="comment-btn save" 
+                (click)="saveCommentModification(line.comment, commentStates[getCommentKey(selectedFile!.file_path, line.comment.line, line.comment.side)]?.modifiedText || getCommentDisplayText(line.comment))"
+                *ngIf="isCommentEditing(line.comment)">
+                💾 Save
+              </button>
+              <button 
+                class="comment-btn cancel" 
+                (click)="cancelModify(line.comment)"
+                *ngIf="isCommentEditing(line.comment)">
+                Cancel
+              </button>
+
+              <div class="comment-nav">
+                <button 
+                  class="comment-btn nav prev-comment" 
+                  (click)="goToPreviousComment(line.comment)"
+                  [disabled]="isFirstComment(line.comment)">
+                  ← Previous
+                </button>
+                <button 
+                  class="comment-btn nav next-comment" 
+                  (click)="goToNextComment(line.comment)"
+                  [disabled]="isLastComment(line.comment)">
+                  Next →
+                </button>
+              </div>
+            </div>
+          </div>
+        </ng-container>
+      </div>
+    </ng-container>
+
+    <!-- Side by Side View -->
+    <ng-container *ngIf="currentFileIndex >= 0 && currentView === 'side-by-side'">
+      <div class="file-header">{{ selectedFile?.file_path }}</div>
+      <div class="side-by-side-view">
+        <div class="side-header-row">
+          <div class="side-header">Original</div>
+          <div class="side-header">Modified</div>
+        </div>
+
+        <ng-container *ngFor="let row of sideBySideRows">
+          <div class="side-row">
+            <!-- Left Cell -->
+            <div class="side-cell" [ngClass]="row.left.type">
+              <div class="side-cell-inner">
+                <div class="side-line-number">{{ row.left.lineNum || '' }}</div>
+                <div class="side-line-content">{{ row.left.content }}</div>
+              </div>
+
+              <!-- Comment on left side -->
+              <div *ngIf="row.left.comment" 
+                   class="ai-comment" 
+                   [ngClass]="{
+                     'accepted': getCommentStatus(row.left.comment) === 'accepted',
+                     'rejected': getCommentStatus(row.left.comment) === 'rejected'
+                   }"
+                   [id]="'comment-' + row.left.comment.line + '-' + row.left.comment.side">
+                <div class="comment-header">
+                  <div>
+                    <span class="comment-severity" [ngClass]="row.left.comment.severity">
+                      {{ row.left.comment.severity }}
+                    </span>
+                    <span class="comment-status" 
+                          [ngClass]="getCommentStatus(row.left.comment)"
+                          *ngIf="getCommentStatus(row.left.comment) !== 'pending'">
+                      {{ getCommentStatus(row.left.comment).toUpperCase() }}
+                    </span>
+                  </div>
+                  <span class="comment-line-info">Line {{ row.left.comment.line }}</span>
+                </div>
+
+                <div class="comment-text-display" *ngIf="!isCommentEditing(row.left.comment)">
+                  {{ getCommentDisplayText(row.left.comment) }}
+                </div>
+
+                <textarea 
+                  class="comment-text-input" 
+                  *ngIf="isCommentEditing(row.left.comment)"
+                  [(ngModel)]="commentStates[getCommentKey(selectedFile!.file_path, row.left.comment.line, row.left.comment.side)].modifiedText"
+                  [value]="getCommentDisplayText(row.left.comment)">
+                </textarea>
+
+                <div class="suggested-patch" *ngIf="row.left.comment.suggested_patch">
+                  <div class="suggested-patch-label">💡 Suggested Fix:</div>
+                  {{ row.left.comment.suggested_patch }}
+                </div>
+
+                <div class="comment-actions">
+                  <button 
+                    class="comment-btn accept" 
+                    (click)="acceptComment(row.left.comment)"
+                    [disabled]="isCommentDisabled(row.left.comment)"
+                    *ngIf="!isCommentEditing(row.left.comment)">
+                    ✓ Accept
+                  </button>
+                  <button 
+                    class="comment-btn reject" 
+                    (click)="rejectComment(row.left.comment)"
+                    [disabled]="isCommentDisabled(row.left.comment)"
+                    *ngIf="!isCommentEditing(row.left.comment)">
+                    ✗ Reject
+                  </button>
+                  <button 
+                    class="comment-btn modify" 
+                    (click)="modifyComment(row.left.comment)"
+                    [disabled]="isCommentDisabled(row.left.comment)"
+                    *ngIf="!isCommentEditing(row.left.comment)">
+                    ✎ Modify
+                  </button>
+
+                  <button 
+                    class="comment-btn save" 
+                    (click)="saveCommentModification(row.left.comment, commentStates[getCommentKey(selectedFile!.file_path, row.left.comment.line, row.left.comment.side)]?.modifiedText || getCommentDisplayText(row.left.comment))"
+                    *ngIf="isCommentEditing(row.left.comment)">
+                    💾 Save
+                  </button>
+                  <button 
+                    class="comment-btn cancel" 
+                    (click)="cancelModify(row.left.comment)"
+                    *ngIf="isCommentEditing(row.left.comment)">
+                    Cancel
+                  </button>
+
+                  <div class="comment-nav">
+                    <button 
+                      class="comment-btn nav prev-comment" 
+                      (click)="goToPreviousComment(row.left.comment)"
+                      [disabled]="isFirstComment(row.left.comment)">
+                      ← Previous
+                    </button>
+                    <button 
+                      class="comment-btn nav next-comment" 
+                      (click)="goToNextComment(row.left.comment)"
+                      [disabled]="isLastComment(row.left.comment)">
+                      Next →
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right Cell -->
+            <div class="side-cell" [ngClass]="row.right.type">
+              <div class="side-cell-inner">
+                <div class="side-line-number">{{ row.right.lineNum || '' }}</div>
+                <div class="side-line-content">{{ row.right.content }}</div>
+              </div>
+
+              <!-- Comment on right side -->
+              <div *ngIf="row.right.comment" 
+                   class="ai-comment" 
+                   [ngClass]="{
+                     'accepted': getCommentStatus(row.right.comment) === 'accepted',
+                     'rejected': getCommentStatus(row.right.comment) === 'rejected'
+                   }"
+                   [id]="'comment-' + row.right.comment.line + '-' + row.right.comment.side">
+                <div class="comment-header">
+                  <div>
+                    <span class="comment-severity" [ngClass]="row.right.comment.severity">
+                      {{ row.right.comment.severity }}
+                    </span>
+                    <span class="comment-status" 
+                          [ngClass]="getCommentStatus(row.right.comment)"
+                          *ngIf="getCommentStatus(row.right.comment) !== 'pending'">
+                      {{ getCommentStatus(row.right.comment).toUpperCase() }}
+                    </span>
+                  </div>
+                  <span class="comment-line-info">Line {{ row.right.comment.line }}</span>
+                </div>
+
+                <div class="comment-text-display" *ngIf="!isCommentEditing(row.right.comment)">
+                  {{ getCommentDisplayText(row.right.comment) }}
+                </div>
+
+                <textarea 
+                  class="comment-text-input" 
+                  *ngIf="isCommentEditing(row.right.comment)"
+                  [(ngModel)]="commentStates[getCommentKey(selectedFile!.file_path, row.right.comment.line, row.right.comment.side)].modifiedText"
+                  [value]="getCommentDisplayText(row.right.comment)">
+                </textarea>
+
+                <div class="suggested-patch" *ngIf="row.right.comment.suggested_patch">
+                  <div class="suggested-patch-label">💡 Suggested Fix:</div>
+                  {{ row.right.comment.suggested_patch }}
+                </div>
+
+                <div class="comment-actions">
+                  <button 
+                    class="comment-btn accept" 
+                    (click)="acceptComment(row.right.comment)"
+                    [disabled]="isCommentDisabled(row.right.comment)"
+                    *ngIf="!isCommentEditing(row.right.comment)">
+                    ✓ Accept
+                  </button>
+                  <button 
+                    class="comment-btn reject" 
+                    (click)="rejectComment(row.right.comment)"
+                    [disabled]="isCommentDisabled(row.right.comment)"
+                    *ngIf="!isCommentEditing(row.right.comment)">
+                    ✗ Reject
+                  </button>
+                  <button 
+                    class="comment-btn modify" 
+                    (click)="modifyComment(row.right.comment)"
+                    [disabled]="isCommentDisabled(row.right.comment)"
+                    *ngIf="!isCommentEditing(row.right.comment)">
+                    ✎ Modify
+                  </button>
+
+                  <button 
+                    class="comment-btn save" 
+                    (click)="saveCommentModification(row.right.comment, commentStates[getCommentKey(selectedFile!.file_path, row.right.comment.line, row.right.comment.side)]?.modifiedText || getCommentDisplayText(row.right.comment))"
+                    *ngIf="isCommentEditing(row.right.comment)">
+                    💾 Save
+                  </button>
+                  <button 
+                    class="comment-btn cancel" 
+                    (click)="cancelModify(row.right.comment)"
+                    *ngIf="isCommentEditing(row.right.comment)">
+                    Cancel
+                  </button>
+
+                  <div class="comment-nav">
+                    <button 
+                      class="comment-btn nav prev-comment" 
+                      (click)="goToPreviousComment(row.right.comment)"
+                      [disabled]="isFirstComment(row.right.comment)">
+                      ← Previous
+                    </button>
+                    <button 
+                      class="comment-btn nav next-comment" 
+                      (click)="goToNextComment(row.right.comment)"
+                      [disabled]="isLastComment(row.right.comment)">
+                      Next →
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </ng-container>
+      </div>
+    </ng-container>
   </div>
 
   <div class="stats" *ngIf="showStats">
@@ -1030,7 +1141,6 @@ export class CodeDiffViewerComponent implements OnInit {
     </div>
   </div>
 </div>
-
 
 
 
@@ -1208,7 +1318,7 @@ export class CodeDiffViewerComponent implements OnInit {
 }
 
 /* Unified View */
-::ng-deep .unified-view {
+.unified-view {
   border: 1px solid #e5e7eb;
   border-top: none;
   font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
@@ -1217,25 +1327,25 @@ export class CodeDiffViewerComponent implements OnInit {
   overflow: hidden;
 }
 
-::ng-deep .diff-line {
+.diff-line {
   display: flex;
   border-bottom: 1px solid #f3f4f6;
   min-height: 24px;
   transition: background-color 0.15s ease;
 }
 
-::ng-deep .diff-line:hover {
+.diff-line:hover {
   background-color: #fafbfc !important;
 }
 
-::ng-deep .line-numbers {
+.line-numbers {
   display: flex;
   flex-shrink: 0;
   background-color: #f9fafb;
   border-right: 1px solid #e5e7eb;
 }
 
-::ng-deep .line-number {
+.line-number {
   width: 50px;
   padding: 4px 8px;
   text-align: right;
@@ -1246,11 +1356,11 @@ export class CodeDiffViewerComponent implements OnInit {
   font-weight: 500;
 }
 
-::ng-deep .line-number:last-child {
+.line-number:last-child {
   border-right: none;
 }
 
-::ng-deep .line-content {
+.line-content {
   flex: 1;
   padding: 4px 12px;
   white-space: pre-wrap;
@@ -1261,28 +1371,28 @@ export class CodeDiffViewerComponent implements OnInit {
   color: #1f2937;
 }
 
-::ng-deep .diff-line.added {
+.diff-line.added {
   background-color: #ecfdf5;
 }
 
-::ng-deep .diff-line.added .line-numbers {
+.diff-line.added .line-numbers {
   background-color: #d1fae5;
 }
 
-::ng-deep .diff-line.deleted {
+.diff-line.deleted {
   background-color: #fef2f2;
 }
 
-::ng-deep .diff-line.deleted .line-numbers {
+.diff-line.deleted .line-numbers {
   background-color: #fecaca;
 }
 
-::ng-deep .diff-line.context {
+.diff-line.context {
   background-color: white;
 }
 
 /* Side by Side View */
-::ng-deep .side-by-side-view {
+.side-by-side-view {
   display: table;
   width: 100%;
   border: 1px solid #dfe1e6;
@@ -1292,11 +1402,11 @@ export class CodeDiffViewerComponent implements OnInit {
   border-collapse: collapse;
 }
 
-::ng-deep .side-header-row {
+.side-header-row {
   display: table-row;
 }
 
-::ng-deep .side-header {
+.side-header {
   display: table-cell;
   background-color: #f4f5f7;
   padding: 8px 15px;
@@ -1309,24 +1419,24 @@ export class CodeDiffViewerComponent implements OnInit {
   width: 50%;
 }
 
-::ng-deep .side-row {
+.side-row {
   display: table-row;
   border-bottom: 1px solid #f0f0f0;
 }
 
-::ng-deep .side-cell {
+.side-cell {
   display: table-cell;
   width: 50%;
   border-bottom: 1px solid #f0f0f0;
   vertical-align: top;
 }
 
-::ng-deep .side-cell-inner {
+.side-cell-inner {
   display: flex;
   min-height: 24px;
 }
 
-::ng-deep .side-line-number {
+.side-line-number {
   width: 50px;
   padding: 4px 8px;
   text-align: right;
@@ -1338,7 +1448,7 @@ export class CodeDiffViewerComponent implements OnInit {
   flex-shrink: 0;
 }
 
-::ng-deep .side-line-content {
+.side-line-content {
   flex: 1;
   padding: 4px 12px;
   white-space: pre-wrap;
@@ -1348,33 +1458,33 @@ export class CodeDiffViewerComponent implements OnInit {
   min-width: 0;
 }
 
-::ng-deep .side-cell.deleted .side-cell-inner {
+.side-cell.deleted .side-cell-inner {
   background-color: #ffebe6;
 }
 
-::ng-deep .side-cell.deleted .side-line-number {
+.side-cell.deleted .side-line-number {
   background-color: #ffd5cc;
 }
 
-::ng-deep .side-cell.added .side-cell-inner {
+.side-cell.added .side-cell-inner {
   background-color: #e3fcef;
 }
 
-::ng-deep .side-cell.added .side-line-number {
+.side-cell.added .side-line-number {
   background-color: #d3f5e3;
 }
 
-::ng-deep .side-cell.empty .side-cell-inner {
+.side-cell.empty .side-cell-inner {
   background-color: #fafbfc;
   opacity: 0.3;
 }
 
-::ng-deep .side-cell.empty .side-line-number {
+.side-cell.empty .side-line-number {
   background-color: #f4f5f7;
 }
 
 /* AI Comments */
-::ng-deep .ai-comment {
+.ai-comment {
   background-color: #fffbeb;
   border: 2px solid #fbbf24;
   border-left: 4px solid #f59e0b;
@@ -1387,7 +1497,7 @@ export class CodeDiffViewerComponent implements OnInit {
   position: relative;
 }
 
-::ng-deep .ai-comment::before {
+.ai-comment::before {
   content: '💬 AI COMMENT';
   position: absolute;
   top: -11px;
@@ -1401,30 +1511,30 @@ export class CodeDiffViewerComponent implements OnInit {
   letter-spacing: 0.5px;
 }
 
-::ng-deep .ai-comment.accepted {
+.ai-comment.accepted {
   background-color: #f0fdf4;
   border-color: #10b981;
   border-left-color: #059669;
 }
 
-::ng-deep .ai-comment.accepted::before {
+.ai-comment.accepted::before {
   content: '✓ ACCEPTED';
   background-color: #10b981;
 }
 
-::ng-deep .ai-comment.rejected {
+.ai-comment.rejected {
   background-color: #fef2f2;
   border-color: #ef4444;
   border-left-color: #dc2626;
   opacity: 0.85;
 }
 
-::ng-deep .ai-comment.rejected::before {
+.ai-comment.rejected::before {
   content: '✗ REJECTED';
   background-color: #ef4444;
 }
 
-::ng-deep .comment-header {
+.comment-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -1432,7 +1542,7 @@ export class CodeDiffViewerComponent implements OnInit {
   margin-top: 8px;
 }
 
-::ng-deep .comment-severity {
+.comment-severity {
   padding: 4px 12px;
   border-radius: 4px;
   font-size: 11px;
@@ -1441,22 +1551,22 @@ export class CodeDiffViewerComponent implements OnInit {
   letter-spacing: 0.5px;
 }
 
-::ng-deep .comment-severity.error {
+.comment-severity.error {
   background-color: #de350b;
   color: white;
 }
 
-::ng-deep .comment-severity.warning {
+.comment-severity.warning {
   background-color: #ff8b00;
   color: white;
 }
 
-::ng-deep .comment-severity.suggestion {
+.comment-severity.suggestion {
   background-color: #00875a;
   color: white;
 }
 
-::ng-deep .comment-line-info {
+.comment-line-info {
   font-size: 11px;
   color: #6b778c;
   font-weight: 600;
@@ -1465,7 +1575,7 @@ export class CodeDiffViewerComponent implements OnInit {
   border-radius: 3px;
 }
 
-::ng-deep .comment-text-display {
+.comment-text-display {
   margin: 10px 0;
   line-height: 1.6;
   color: #172b4d;
@@ -1475,13 +1585,13 @@ export class CodeDiffViewerComponent implements OnInit {
   border-left: 3px solid #dfe1e6;
 }
 
-::ng-deep .comment-text {
+.comment-text {
   margin: 8px 0;
   line-height: 1.6;
   color: #172b4d;
 }
 
-::ng-deep .comment-text-input {
+.comment-text-input {
   width: 100%;
   padding: 10px;
   border: 2px solid #0052cc;
@@ -1494,13 +1604,13 @@ export class CodeDiffViewerComponent implements OnInit {
   margin: 10px 0;
 }
 
-::ng-deep .comment-text-input:focus {
+.comment-text-input:focus {
   outline: none;
   border-color: #0052cc;
   box-shadow: 0 0 0 3px rgba(0, 82, 204, 0.1);
 }
 
-::ng-deep .suggested-patch {
+.suggested-patch {
   background-color: #f4f5f7;
   border: 2px dashed #0052cc;
   border-left: 4px solid #0052cc;
@@ -1513,7 +1623,7 @@ export class CodeDiffViewerComponent implements OnInit {
   position: relative;
 }
 
-::ng-deep .suggested-patch-label {
+.suggested-patch-label {
   font-weight: 700;
   margin-bottom: 8px;
   color: #0052cc;
@@ -1523,7 +1633,7 @@ export class CodeDiffViewerComponent implements OnInit {
   letter-spacing: 0.5px;
 }
 
-::ng-deep .comment-actions {
+.comment-actions {
   display: flex;
   gap: 8px;
   margin-top: 10px;
@@ -1532,7 +1642,7 @@ export class CodeDiffViewerComponent implements OnInit {
   flex-wrap: wrap;
 }
 
-::ng-deep .comment-nav {
+.comment-nav {
   display: flex;
   gap: 8px;
   margin-left: auto;
@@ -1540,7 +1650,7 @@ export class CodeDiffViewerComponent implements OnInit {
   border-left: 1px solid #dfe1e6;
 }
 
-::ng-deep .comment-btn {
+.comment-btn {
   padding: 8px 14px;
   border: none;
   border-radius: 6px;
@@ -1551,73 +1661,73 @@ export class CodeDiffViewerComponent implements OnInit {
   white-space: nowrap;
 }
 
-::ng-deep .comment-btn:hover:not(:disabled) {
+.comment-btn:hover:not(:disabled) {
   transform: translateY(-1px);
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
-::ng-deep .comment-btn:active:not(:disabled) {
+.comment-btn:active:not(:disabled) {
   transform: translateY(0);
 }
 
-::ng-deep .comment-btn.accept {
+.comment-btn.accept {
   background-color: #10b981;
   color: white;
 }
 
-::ng-deep .comment-btn.accept:hover:not(:disabled) {
+.comment-btn.accept:hover:not(:disabled) {
   background-color: #059669;
 }
 
-::ng-deep .comment-btn.reject {
+.comment-btn.reject {
   background-color: #ef4444;
   color: white;
 }
 
-::ng-deep .comment-btn.reject:hover:not(:disabled) {
+.comment-btn.reject:hover:not(:disabled) {
   background-color: #dc2626;
 }
 
-::ng-deep .comment-btn.modify {
+.comment-btn.modify {
   background-color: #3b82f6;
   color: white;
 }
 
-::ng-deep .comment-btn.modify:hover:not(:disabled) {
+.comment-btn.modify:hover:not(:disabled) {
   background-color: #2563eb;
 }
 
-::ng-deep .comment-btn.save {
+.comment-btn.save {
   background-color: #10b981;
   color: white;
 }
 
-::ng-deep .comment-btn.save:hover:not(:disabled) {
+.comment-btn.save:hover:not(:disabled) {
   background-color: #059669;
 }
 
-::ng-deep .comment-btn.cancel {
+.comment-btn.cancel {
   background-color: #6b7280;
   color: white;
 }
 
-::ng-deep .comment-btn.cancel:hover:not(:disabled) {
+.comment-btn.cancel:hover:not(:disabled) {
   background-color: #4b5563;
 }
 
-::ng-deep .comment-btn.nav {
+.comment-btn.nav {
   background-color: #f4f5f7;
   color: #172b4d;
   border: 1px solid #dfe1e6;
   font-weight: 500;
 }
 
-::ng-deep .comment-btn.nav:hover:not(:disabled) {
+.comment-btn.nav:hover:not(:disabled) {
   background-color: #ebecf0;
   border-color: #c1c7d0;
 }
 
-::ng-deep .comment-btn:disabled {
+.comment-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
   transform: none;
@@ -1626,19 +1736,19 @@ export class CodeDiffViewerComponent implements OnInit {
   border-color: #e1e4e8 !important;
 }
 
-::ng-deep .comment-btn:disabled:hover {
+.comment-btn:disabled:hover {
   transform: none;
   box-shadow: none;
   background-color: #f4f5f7 !important;
 }
 
-::ng-deep .comment-btn.nav:disabled {
+.comment-btn.nav:disabled {
   background-color: #fafbfc !important;
   color: #c1c7d0 !important;
   border-color: #f0f0f0 !important;
 }
 
-::ng-deep .comment-status {
+.comment-status {
   display: inline-block;
   padding: 4px 8px;
   border-radius: 3px;
@@ -1647,12 +1757,12 @@ export class CodeDiffViewerComponent implements OnInit {
   margin-left: 8px;
 }
 
-::ng-deep .comment-status.accepted {
+.comment-status.accepted {
   background-color: #00875a;
   color: white;
 }
 
-::ng-deep .comment-status.rejected {
+.comment-status.rejected {
   background-color: #de350b;
   color: white;
 }
