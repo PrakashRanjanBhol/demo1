@@ -1,137 +1,976 @@
-/* Code line wrapping - Bitbucket style */
-.pr-review-container ::ng-deep .d2h-code-line-ctn,
-.pr-review-container ::ng-deep .d2h-code-side-line-ctn {
-    color: var(--bitbucket-file-comparator-text-primary) !important;
-    white-space: pre-wrap !important;
-    word-wrap: break-word !important;
-    word-break: break-word !important;
-    overflow-wrap: break-word !important;
-    padding-left: 8px !important;
-    padding-right: 8px !important;
+import { Component, OnInit } from '@angular/core';
+import { CommonModule } from '@angular/common';
+
+// TypeScript interfaces for type safety
+interface AIComment {
+  file_path: string;
+  line: number;
+  side: 'TO' | 'FROM';
+  comment_text: string;
+  severity: 'error' | 'warning' | 'suggestion';
+  suggested_patch: string | null;
 }
 
-/* Ensure code cells allow wrapping */
-.pr-review-container ::ng-deep .d2h-code-line,
-.pr-review-container ::ng-deep .d2h-code-side-line {
-    background-color: var(--bitbucket-file-comparator-bg-primary) !important;
-    color: var(--bitbucket-file-comparator-text-primary) !important;
-    width: auto;
-    overflow: visible !important;
-    vertical-align: top !important;
+interface DiffFile {
+  file_path: string;
+  old_lines: string[];
+  new_lines: string[];
+  ai_comments: AIComment[];
 }
 
-/* Line number cells - Keep at top and minimal width */
-.pr-review-container ::ng-deep .d2h-code-linenumber,
-.pr-review-container ::ng-deep .d2h-code-side-linenumber {
-    background-color: var(--bitbucket-file-comparator-bg-tertiary) !important;
-    border-color: var(--bitbucket-file-comparator-border-primary) !important;
-    color: var(--bitbucket-file-comparator-text-secondary) !important;
-    width: 1%;
-    min-width: 50px;
-    max-width: 50px;
-    white-space: nowrap;
-    text-align: right;
-    padding-right: 10px;
-    padding-left: 10px;
-    vertical-align: top !important;
-    position: relative;
+interface DiffData {
+  files: DiffFile[];
 }
 
-/* Remove horizontal scroll on diff wrapper */
-.pr-review-container ::ng-deep .d2h-wrapper {
-    border: none !important;
-    overflow-x: auto !important;
-    max-width: 100%;
+interface DiffOperation {
+  type: 'added' | 'removed' | 'context';
+  oldLine: string | null;
+  newLine: string | null;
+  oldLineNum: number | null;
+  newLineNum: number | null;
 }
 
-/* Ensure table handles wrapping properly */
-.pr-review-container ::ng-deep .d2h-diff-table {
-    width: 100%;
-    border-collapse: collapse;
-    table-layout: fixed;
-}
+@Component({
+  selector: 'app-code-diff-viewer',
+  standalone: true,
+  imports: [CommonModule],
+  template: `
+    <div class="container">
+      <div class="header">
+        <h1>Code Diff Viewer</h1>
+        <div class="view-toggle">
+          <button 
+            class="toggle-btn" 
+            [class.active]="currentView === 'unified'"
+            (click)="switchView('unified')">
+            Unified
+          </button>
+          <button 
+            class="toggle-btn" 
+            [class.active]="currentView === 'side-by-side'"
+            (click)="switchView('side-by-side')">
+            Side by Side
+          </button>
+        </div>
+      </div>
 
-/* Fixed width for line number columns in unified view */
-.pr-review-container ::ng-deep .d2h-file-diff .d2h-code-linenumber {
-    width: 50px !important;
-}
+      <div class="file-selector">
+        <select [(ngModel)]="currentFileIndex" (change)="onFileChange()">
+          <option [value]="-1">Select a file to view diff...</option>
+          <option *ngFor="let file of diffData.files; let i = index" [value]="i">
+            {{ file.file_path }}
+          </option>
+        </select>
+      </div>
 
-/* Fixed width for line number columns in side-by-side view */
-.pr-review-container ::ng-deep .d2h-file-side-diff .d2h-code-side-linenumber {
-    width: 50px !important;
-}
+      <div class="diff-container" id="diffContainer">
+        <ng-container *ngIf="currentFileIndex === -1">
+          <p class="empty-state">Please select a file to view the diff</p>
+        </ng-container>
 
-/* Code columns take remaining space */
-.pr-review-container ::ng-deep .d2h-file-diff .d2h-code-line {
-    width: calc(50% - 50px) !important;
-}
+        <ng-container *ngIf="currentFileIndex !== -1">
+          <div class="file-header">{{ currentFile?.file_path }}</div>
 
-.pr-review-container ::ng-deep .d2h-file-side-diff .d2h-code-side-line {
-    width: calc(25% - 25px) !important;
-}
+          <!-- Unified View -->
+          <div *ngIf="currentView === 'unified'" class="unified-view">
+            <ng-container *ngFor="let op of diffOperations">
+              <div class="diff-line" 
+                   [class.added]="op.type === 'added'"
+                   [class.deleted]="op.type === 'removed'"
+                   [class.context]="op.type === 'context'">
+                <div class="line-numbers">
+                  <div class="line-number">{{ op.oldLineNum || '' }}</div>
+                  <div class="line-number">{{ op.newLineNum || '' }}</div>
+                </div>
+                <div class="line-content">{{ getLineContent(op) }}</div>
+              </div>
+              
+              <!-- AI Comment for this line -->
+              <div *ngIf="getCommentForLine(op)" class="ai-comment">
+                <div class="comment-header">
+                  <span class="comment-severity" [ngClass]="getCommentForLine(op)!.severity">
+                    {{ getCommentForLine(op)!.severity }}
+                  </span>
+                  <span class="comment-line-info">Line {{ getCommentForLine(op)!.line }}</span>
+                </div>
+                <div class="comment-text">{{ getCommentForLine(op)!.comment_text }}</div>
+                <div *ngIf="getCommentForLine(op)!.suggested_patch" class="suggested-patch">
+                  <div class="suggested-patch-label">💡 Suggested Fix:</div>
+                  {{ getCommentForLine(op)!.suggested_patch }}
+                </div>
+              </div>
+            </ng-container>
+          </div>
 
-/* Handle long strings in code */
-.pr-review-container ::ng-deep .d2h-code-line-ctn code,
-.pr-review-container ::ng-deep .d2h-code-side-line-ctn code {
-    white-space: pre-wrap !important;
-    word-wrap: break-word !important;
-    overflow-wrap: break-word !important;
-}
+          <!-- Side by Side View -->
+          <div *ngIf="currentView === 'side-by-side'" class="side-by-side-view">
+            <!-- Left Panel (Original) -->
+            <div class="side-panel">
+              <div class="side-header">Original</div>
+              <ng-container *ngFor="let op of diffOperations">
+                <div class="side-line" 
+                     [class.deleted]="op.type === 'removed'"
+                     [class.empty]="op.type === 'added'">
+                  <div class="side-line-number">{{ op.oldLineNum || '' }}</div>
+                  <div class="side-line-content">{{ op.oldLine || '' }}</div>
+                </div>
+                <div *ngIf="op.oldLineNum && findCommentForLine(op.oldLineNum, 'FROM')" 
+                     class="ai-comment">
+                  <div class="comment-header">
+                    <span class="comment-severity" 
+                          [ngClass]="findCommentForLine(op.oldLineNum, 'FROM')!.severity">
+                      {{ findCommentForLine(op.oldLineNum, 'FROM')!.severity }}
+                    </span>
+                    <span class="comment-line-info">
+                      Line {{ findCommentForLine(op.oldLineNum, 'FROM')!.line }}
+                    </span>
+                  </div>
+                  <div class="comment-text">
+                    {{ findCommentForLine(op.oldLineNum, 'FROM')!.comment_text }}
+                  </div>
+                  <div *ngIf="findCommentForLine(op.oldLineNum, 'FROM')!.suggested_patch" 
+                       class="suggested-patch">
+                    <div class="suggested-patch-label">💡 Suggested Fix:</div>
+                    {{ findCommentForLine(op.oldLineNum, 'FROM')!.suggested_patch }}
+                  </div>
+                </div>
+              </ng-container>
+            </div>
 
-/* For very long unbreakable strings (like URLs), allow breaking anywhere */
-.pr-review-container ::ng-deep .d2h-code-line-ctn,
-.pr-review-container ::ng-deep .d2h-code-side-line-ctn {
-    overflow-wrap: anywhere !important;
-    display: block;
-}
+            <!-- Right Panel (Modified) -->
+            <div class="side-panel">
+              <div class="side-header">Modified</div>
+              <ng-container *ngFor="let op of diffOperations">
+                <div class="side-line" 
+                     [class.added]="op.type === 'added'"
+                     [class.empty]="op.type === 'removed'">
+                  <div class="side-line-number">{{ op.newLineNum || '' }}</div>
+                  <div class="side-line-content">{{ op.newLine || '' }}</div>
+                </div>
+                <div *ngIf="op.newLineNum && findCommentForLine(op.newLineNum, 'TO')" 
+                     class="ai-comment">
+                  <div class="comment-header">
+                    <span class="comment-severity" 
+                          [ngClass]="findCommentForLine(op.newLineNum, 'TO')!.severity">
+                      {{ findCommentForLine(op.newLineNum, 'TO')!.severity }}
+                    </span>
+                    <span class="comment-line-info">
+                      Line {{ findCommentForLine(op.newLineNum, 'TO')!.line }}
+                    </span>
+                  </div>
+                  <div class="comment-text">
+                    {{ findCommentForLine(op.newLineNum, 'TO')!.comment_text }}
+                  </div>
+                  <div *ngIf="findCommentForLine(op.newLineNum, 'TO')!.suggested_patch" 
+                       class="suggested-patch">
+                    <div class="suggested-patch-label">💡 Suggested Fix:</div>
+                    {{ findCommentForLine(op.newLineNum, 'TO')!.suggested_patch }}
+                  </div>
+                </div>
+              </ng-container>
+            </div>
+          </div>
+        </ng-container>
+      </div>
 
-/* Side-by-side mode specific wrapping */
-.pr-review-container ::ng-deep .d2h-file-side-diff td {
-    overflow: visible !important;
-    vertical-align: top !important;
-}
+      <div class="stats" [class.hidden]="currentFileIndex === -1">
+        <div class="stat-item">
+          <span>Changes:</span>
+          <span class="stat-added">+{{ addedLines }}</span>
+          <span class="stat-deleted">-{{ deletedLines }}</span>
+        </div>
+        <div class="stat-item">
+          <span>{{ commentsCount }} AI Comment{{ commentsCount !== 1 ? 's' : '' }}</span>
+        </div>
+      </div>
+    </div>
+  `,
+  styles: [`
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
 
-/* Better wrapping for inline changes (ins/del tags) */
-.pr-review-container ::ng-deep .d2h-code-line ins,
-.pr-review-container ::ng-deep .d2h-code-side-line ins,
-.pr-review-container ::ng-deep .d2h-code-line del,
-.pr-review-container ::ng-deep .d2h-code-side-line del {
-    white-space: pre-wrap !important;
-    word-wrap: break-word !important;
-    overflow-wrap: break-word !important;
-    text-decoration: none !important;
-}
+    :host {
+      display: block;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background-color: #f5f5f5;
+      padding: 20px;
+      line-height: 1.5;
+    }
 
-/* Container styles */
-.diff-container {
-    padding: 0;
-    position: relative;
-    overflow: auto;
-    width: 100%;
-    max-width: 100%;
-}
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      background-color: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      overflow: hidden;
+    }
 
-.file-section {
-    overflow: visible;
-    width: 100%;
-    max-width: 100%;
-}
+    .header {
+      background-color: #0052cc;
+      color: white;
+      padding: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
 
-/* Scrollbar for diff container if needed */
-.diff-container::-webkit-scrollbar {
-    height: 8px;
-    width: 8px;
-}
+    .header h1 {
+      font-size: 24px;
+      font-weight: 600;
+    }
 
-.diff-container::-webkit-scrollbar-track {
-    background: var(--bitbucket-file-comparator-bg-tertiary);
-}
+    .view-toggle {
+      display: flex;
+      gap: 10px;
+    }
 
-.diff-container::-webkit-scrollbar-thumb {
-    background: var(--bitbucket-file-comparator-border-secondary);
-    border-radius: 4px;
-}
+    .toggle-btn {
+      padding: 8px 16px;
+      background-color: rgba(255, 255, 255, 0.2);
+      color: white;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
 
-.diff-container::-webkit-scrollbar-thumb:hover {
-    background: var(--bitbucket-file-comparator-text-secondary);
+    .toggle-btn:hover {
+      background-color: rgba(255, 255, 255, 0.3);
+    }
+
+    .toggle-btn.active {
+      background-color: white;
+      color: #0052cc;
+      border-color: white;
+    }
+
+    .file-selector {
+      background-color: #f4f5f7;
+      border-bottom: 2px solid #dfe1e6;
+      padding: 15px 20px;
+    }
+
+    .file-selector select {
+      width: 100%;
+      padding: 10px;
+      border: 2px solid #dfe1e6;
+      border-radius: 3px;
+      font-size: 14px;
+      background-color: white;
+      cursor: pointer;
+    }
+
+    .diff-container {
+      padding: 20px;
+    }
+
+    .file-header {
+      background-color: #f4f5f7;
+      padding: 10px 15px;
+      border: 1px solid #dfe1e6;
+      border-radius: 3px 3px 0 0;
+      font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+      font-size: 14px;
+      font-weight: 600;
+      color: #172b4d;
+    }
+
+    /* Unified View */
+    .unified-view {
+      border: 1px solid #dfe1e6;
+      border-top: none;
+      font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+      font-size: 13px;
+    }
+
+    .diff-line {
+      display: flex;
+      border-bottom: 1px solid #f0f0f0;
+      min-height: 24px;
+    }
+
+    .line-numbers {
+      display: flex;
+      flex-shrink: 0;
+      background-color: #fafbfc;
+      border-right: 1px solid #dfe1e6;
+    }
+
+    .line-number {
+      width: 50px;
+      padding: 4px 8px;
+      text-align: right;
+      color: #6b778c;
+      font-size: 12px;
+      user-select: none;
+      border-right: 1px solid #e8e8e8;
+    }
+
+    .line-number:last-child {
+      border-right: none;
+    }
+
+    .line-content {
+      flex: 1;
+      padding: 4px 12px;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+      line-height: 1.5;
+      min-width: 0;
+    }
+
+    .diff-line.added {
+      background-color: #e3fcef;
+    }
+
+    .diff-line.added .line-numbers {
+      background-color: #d3f5e3;
+    }
+
+    .diff-line.deleted {
+      background-color: #ffebe6;
+    }
+
+    .diff-line.deleted .line-numbers {
+      background-color: #ffd5cc;
+    }
+
+    .diff-line.context {
+      background-color: white;
+    }
+
+    /* Side by Side View */
+    .side-by-side-view {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1px;
+      background-color: #dfe1e6;
+      border: 1px solid #dfe1e6;
+      border-top: none;
+      font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+      font-size: 13px;
+    }
+
+    .side-panel {
+      background-color: white;
+    }
+
+    .side-header {
+      background-color: #f4f5f7;
+      padding: 8px 15px;
+      font-weight: 600;
+      border-bottom: 2px solid #dfe1e6;
+      color: #172b4d;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .side-line {
+      display: flex;
+      border-bottom: 1px solid #f0f0f0;
+      min-height: 24px;
+    }
+
+    .side-line-number {
+      width: 50px;
+      padding: 4px 8px;
+      text-align: right;
+      color: #6b778c;
+      font-size: 12px;
+      background-color: #fafbfc;
+      border-right: 1px solid #dfe1e6;
+      user-select: none;
+      flex-shrink: 0;
+    }
+
+    .side-line-content {
+      flex: 1;
+      padding: 4px 12px;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+      line-height: 1.5;
+      min-width: 0;
+    }
+
+    .side-line.deleted {
+      background-color: #ffebe6;
+    }
+
+    .side-line.deleted .side-line-number {
+      background-color: #ffd5cc;
+    }
+
+    .side-line.added {
+      background-color: #e3fcef;
+    }
+
+    .side-line.added .side-line-number {
+      background-color: #d3f5e3;
+    }
+
+    .side-line.empty {
+      background-color: #fafbfc;
+      opacity: 0.3;
+    }
+
+    .side-line.empty .side-line-number {
+      background-color: #f4f5f7;
+    }
+
+    /* AI Comments */
+    .ai-comment {
+      background-color: #fffae6;
+      border-left: 4px solid #ffab00;
+      padding: 12px 15px;
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      font-size: 13px;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    .comment-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .comment-severity {
+      padding: 3px 10px;
+      border-radius: 3px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .comment-severity.error {
+      background-color: #de350b;
+      color: white;
+    }
+
+    .comment-severity.warning {
+      background-color: #ff8b00;
+      color: white;
+    }
+
+    .comment-severity.suggestion {
+      background-color: #00875a;
+      color: white;
+    }
+
+    .comment-line-info {
+      font-size: 11px;
+      color: #6b778c;
+      font-weight: 600;
+    }
+
+    .comment-text {
+      margin: 8px 0;
+      line-height: 1.6;
+      color: #172b4d;
+    }
+
+    .suggested-patch {
+      background-color: #f4f5f7;
+      border-left: 3px solid #0052cc;
+      padding: 10px;
+      margin-top: 10px;
+      font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+      border-radius: 3px;
+    }
+
+    .suggested-patch-label {
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: #0052cc;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    }
+
+    .stats {
+      background-color: #f4f5f7;
+      padding: 10px 20px;
+      border-top: 2px solid #dfe1e6;
+      font-size: 13px;
+      color: #6b778c;
+      display: flex;
+      gap: 20px;
+    }
+
+    .stat-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .stat-added {
+      color: #00875a;
+      font-weight: 600;
+    }
+
+    .stat-deleted {
+      color: #de350b;
+      font-weight: 600;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .empty-state {
+      color: #6b778c;
+      text-align: center;
+      padding: 40px;
+    }
+  `]
+})
+export class CodeDiffViewerComponent implements OnInit {
+  currentView: 'unified' | 'side-by-side' = 'unified';
+  currentFileIndex: number = -1;
+  diffOperations: DiffOperation[] = [];
+  addedLines: number = 0;
+  deletedLines: number = 0;
+  commentsCount: number = 0;
+
+  diffData: DiffData = {
+    files: [
+      {
+        file_path: "src/app/services/auth.service.ts",
+        old_lines: [
+          "import { Injectable } from '@angular/core';",
+          "import { HttpClient } from '@angular/common/http';",
+          "import { Observable } from 'rxjs';",
+          "",
+          "@Injectable({",
+          "  providedIn: 'root'",
+          "})",
+          "export class AuthService {",
+          "  private apiUrl = 'http://localhost:3000/api';",
+          "",
+          "  constructor(private http: HttpClient) { }",
+          "",
+          "  login(username: string, password: string): Observable<any> {",
+          "    return this.http.post(`${this.apiUrl}/login`, { username, password });",
+          "  }",
+          "}"
+        ],
+        new_lines: [
+          "import { Injectable } from '@angular/core';",
+          "import { HttpClient, HttpHeaders } from '@angular/common/http';",
+          "import { Observable, throwError } from 'rxjs';",
+          "import { catchError, tap } from 'rxjs/operators';",
+          "import { environment } from '../../environments/environment';",
+          "",
+          "@Injectable({",
+          "  providedIn: 'root'",
+          "})",
+          "export class AuthService {",
+          "  private apiUrl = environment.apiUrl;",
+          "  private tokenKey = 'auth_token';",
+          "",
+          "  constructor(private http: HttpClient) { }",
+          "",
+          "  login(username: string, password: string): Observable<any> {",
+          "    if (!username || !password) {",
+          "      return throwError('Username and password are required');",
+          "    }",
+          "",
+          "    const headers = new HttpHeaders({ 'Content-Type': 'application/json' });",
+          "    ",
+          "    return this.http.post(`${this.apiUrl}/auth/login`, ",
+          "      { username, password },",
+          "      { headers }",
+          "    ).pipe(",
+          "      tap((response: any) => {",
+          "        if (response.token) {",
+          "          localStorage.setItem(this.tokenKey, response.token);",
+          "        }",
+          "      }),",
+          "      catchError(error => {",
+          "        console.error('Login error:', error);",
+          "        return throwError(error);",
+          "      })",
+          "    );",
+          "  }",
+          "",
+          "  logout(): void {",
+          "    localStorage.removeItem(this.tokenKey);",
+          "  }",
+          "",
+          "  getToken(): string | null {",
+          "    return localStorage.getItem(this.tokenKey);",
+          "  }",
+          "",
+          "  isAuthenticated(): boolean {",
+          "    return !!this.getToken();",
+          "  }",
+          "}"
+        ],
+        ai_comments: [
+          {
+            file_path: "src/app/services/auth.service.ts",
+            line: 11,
+            side: "TO",
+            comment_text: "Good practice using environment variables instead of hardcoded URLs. This makes the application more flexible across different environments.",
+            severity: "suggestion",
+            suggested_patch: null
+          },
+          {
+            file_path: "src/app/services/auth.service.ts",
+            line: 17,
+            side: "TO",
+            comment_text: "Input validation is good, but consider using a more descriptive error object instead of a plain string for better error handling.",
+            severity: "warning",
+            suggested_patch: "      return throwError(() => new Error('Username and password are required'));"
+          },
+          {
+            file_path: "src/app/services/auth.service.ts",
+            line: 28,
+            side: "TO",
+            comment_text: "Security concern: Storing tokens in localStorage is vulnerable to XSS attacks. Consider using httpOnly cookies or sessionStorage with additional security measures.",
+            severity: "error",
+            suggested_patch: null
+          },
+          {
+            file_path: "src/app/services/auth.service.ts",
+            line: 32,
+            side: "TO",
+            comment_text: "Console.error in production code can expose sensitive information. Use a proper logging service with environment-based log levels.",
+            severity: "warning",
+            suggested_patch: "        // Use logging service instead of console.error"
+          }
+        ]
+      },
+      {
+        file_path: "src/app/components/login/login.component.ts",
+        old_lines: [
+          "import { Component } from '@angular/core';",
+          "import { AuthService } from '../../services/auth.service';",
+          "",
+          "@Component({",
+          "  selector: 'app-login',",
+          "  templateUrl: './login.component.html',",
+          "  styleUrls: ['./login.component.scss']",
+          "})",
+          "export class LoginComponent {",
+          "  username = '';",
+          "  password = '';",
+          "",
+          "  constructor(private authService: AuthService) { }",
+          "",
+          "  onSubmit() {",
+          "    this.authService.login(this.username, this.password).subscribe(",
+          "      response => {",
+          "        console.log('Login successful');",
+          "      }",
+          "    );",
+          "  }",
+          "}"
+        ],
+        new_lines: [
+          "import { Component, OnDestroy } from '@angular/core';",
+          "import { Router } from '@angular/router';",
+          "import { AuthService } from '../../services/auth.service';",
+          "import { Subject } from 'rxjs';",
+          "import { takeUntil } from 'rxjs/operators';",
+          "",
+          "@Component({",
+          "  selector: 'app-login',",
+          "  templateUrl: './login.component.html',",
+          "  styleUrls: ['./login.component.scss']",
+          "})",
+          "export class LoginComponent implements OnDestroy {",
+          "  username = '';",
+          "  password = '';",
+          "  isLoading = false;",
+          "  errorMessage = '';",
+          "  private destroy$ = new Subject<void>();",
+          "",
+          "  constructor(",
+          "    private authService: AuthService,",
+          "    private router: Router",
+          "  ) { }",
+          "",
+          "  ngOnDestroy(): void {",
+          "    this.destroy$.next();",
+          "    this.destroy$.complete();",
+          "  }",
+          "",
+          "  onSubmit(): void {",
+          "    if (!this.username.trim() || !this.password.trim()) {",
+          "      this.errorMessage = 'Please enter both username and password';",
+          "      return;",
+          "    }",
+          "",
+          "    this.isLoading = true;",
+          "    this.errorMessage = '';",
+          "",
+          "    this.authService.login(this.username, this.password)",
+          "      .pipe(takeUntil(this.destroy$))",
+          "      .subscribe({",
+          "        next: (response) => {",
+          "          this.isLoading = false;",
+          "          this.router.navigate(['/dashboard']);",
+          "        },",
+          "        error: (error) => {",
+          "          this.isLoading = false;",
+          "          this.errorMessage = error.message || 'Login failed. Please try again.';",
+          "        }",
+          "      });",
+          "  }",
+          "",
+          "  clearError(): void {",
+          "    this.errorMessage = '';",
+          "  }",
+          "}"
+        ],
+        ai_comments: [
+          {
+            file_path: "src/app/components/login/login.component.ts",
+            line: 17,
+            side: "TO",
+            comment_text: "Excellent addition of the destroy$ subject for proper subscription cleanup. This prevents memory leaks.",
+            severity: "suggestion",
+            suggested_patch: null
+          },
+          {
+            file_path: "src/app/components/login/login.component.ts",
+            line: 29,
+            side: "TO",
+            comment_text: "Good client-side validation, but remember this should also be validated on the server side for security.",
+            severity: "suggestion",
+            suggested_patch: null
+          },
+          {
+            file_path: "src/app/components/login/login.component.ts",
+            line: 34,
+            side: "TO",
+            comment_text: "Consider disabling the submit button while isLoading is true to prevent multiple submissions.",
+            severity: "suggestion",
+            suggested_patch: null
+          },
+          {
+            file_path: "src/app/components/login/login.component.ts",
+            line: 45,
+            side: "TO",
+            comment_text: "Generic error messages are good for security, but consider logging detailed errors for debugging purposes.",
+            severity: "suggestion",
+            suggested_patch: "          this.errorMessage = 'Login failed. Please try again.';\n          console.debug('Login error details:', error);"
+          }
+        ]
+      },
+      {
+        file_path: "src/app/guards/auth.guard.ts",
+        old_lines: [],
+        new_lines: [
+          "import { Injectable } from '@angular/core';",
+          "import { CanActivate, ActivatedRouteSnapshot, RouterStateSnapshot, Router } from '@angular/router';",
+          "import { AuthService } from '../services/auth.service';",
+          "",
+          "@Injectable({",
+          "  providedIn: 'root'",
+          "})",
+          "export class AuthGuard implements CanActivate {",
+          "",
+          "  constructor(",
+          "    private authService: AuthService,",
+          "    private router: Router",
+          "  ) { }",
+          "",
+          "  canActivate(",
+          "    route: ActivatedRouteSnapshot,",
+          "    state: RouterStateSnapshot",
+          "  ): boolean {",
+          "    if (this.authService.isAuthenticated()) {",
+          "      return true;",
+          "    }",
+          "",
+          "    this.router.navigate(['/login'], {",
+          "      queryParams: { returnUrl: state.url }",
+          "    });",
+          "    return false;",
+          "  }",
+          "}"
+        ],
+        ai_comments: [
+          {
+            file_path: "src/app/guards/auth.guard.ts",
+            line: 19,
+            side: "TO",
+            comment_text: "The authentication check looks good. However, consider also validating the token's expiration and integrity, not just its presence.",
+            severity: "warning",
+            suggested_patch: null
+          },
+          {
+            file_path: "src/app/guards/auth.guard.ts",
+            line: 24,
+            side: "TO",
+            comment_text: "Great addition of returnUrl query parameter! This provides better user experience by redirecting users back to their intended destination after login.",
+            severity: "suggestion",
+            suggested_patch: null
+          },
+          {
+            file_path: "src/app/guards/auth.guard.ts",
+            line: 15,
+            side: "TO",
+            comment_text: "Consider making canActivate return Observable<boolean> instead of just boolean to support async token validation.",
+            severity: "suggestion",
+            suggested_patch: "  canActivate(\n    route: ActivatedRouteSnapshot,\n    state: RouterStateSnapshot\n  ): Observable<boolean> | boolean {"
+          }
+        ]
+      }
+    ]
+  };
+
+  get currentFile(): DiffFile | undefined {
+    return this.currentFileIndex >= 0 ? this.diffData.files[this.currentFileIndex] : undefined;
+  }
+
+  ngOnInit(): void {
+    // Component initialization
+  }
+
+  switchView(view: 'unified' | 'side-by-side'): void {
+    this.currentView = view;
+    if (this.currentFileIndex >= 0) {
+      this.calculateDiff();
+    }
+  }
+
+  onFileChange(): void {
+    if (this.currentFileIndex >= 0) {
+      this.calculateDiff();
+    }
+  }
+
+  calculateDiff(): void {
+    const file = this.currentFile;
+    if (!file) return;
+
+    const oldText = file.old_lines.join('\n');
+    const newText = file.new_lines.join('\n');
+
+    this.diffOperations = this.diffLines(oldText, newText);
+    this.updateStats(file);
+  }
+
+  // Simple line-based diff algorithm (similar to jsdiff library)
+  diffLines(oldText: string, newText: string): DiffOperation[] {
+    const oldLines = oldText.split('\n');
+    const newLines = newText.split('\n');
+    const operations: DiffOperation[] = [];
+    
+    let oldIndex = 0;
+    let newIndex = 0;
+
+    while (oldIndex < oldLines.length || newIndex < newLines.length) {
+      if (oldIndex < oldLines.length && newIndex < newLines.length && 
+          oldLines[oldIndex] === newLines[newIndex]) {
+        // Context line (unchanged)
+        operations.push({
+          type: 'context',
+          oldLine: oldLines[oldIndex],
+          newLine: newLines[newIndex],
+          oldLineNum: oldIndex + 1,
+          newLineNum: newIndex + 1
+        });
+        oldIndex++;
+        newIndex++;
+      } else {
+        // Check if there's a match ahead in new lines
+        const matchInNew = newLines.slice(newIndex).findIndex(line => line === oldLines[oldIndex]);
+        const matchInOld = oldLines.slice(oldIndex).findIndex(line => line === newLines[newIndex]);
+
+        if (matchInNew !== -1 && (matchInOld === -1 || matchInNew <= matchInOld)) {
+          // Lines were added
+          for (let i = 0; i < matchInNew; i++) {
+            operations.push({
+              type: 'added',
+              oldLine: null,
+              newLine: newLines[newIndex],
+              oldLineNum: null,
+              newLineNum: newIndex + 1
+            });
+            newIndex++;
+          }
+        } else if (matchInOld !== -1) {
+          // Lines were removed
+          for (let i = 0; i < matchInOld; i++) {
+            operations.push({
+              type: 'removed',
+              oldLine: oldLines[oldIndex],
+              newLine: null,
+              oldLineNum: oldIndex + 1,
+              newLineNum: null
+            });
+            oldIndex++;
+          }
+        } else {
+          // No match found, treat as removed and added
+          if (oldIndex < oldLines.length) {
+            operations.push({
+              type: 'removed',
+              oldLine: oldLines[oldIndex],
+              newLine: null,
+              oldLineNum: oldIndex + 1,
+              newLineNum: null
+            });
+            oldIndex++;
+          }
+          if (newIndex < newLines.length) {
+            operations.push({
+              type: 'added',
+              oldLine: null,
+              newLine: newLines[newIndex],
+              oldLineNum: null,
+              newLineNum: newIndex + 1
+            });
+            newIndex++;
+          }
+        }
+      }
+    }
+
+    return operations;
+  }
+
+  updateStats(file: DiffFile): void {
+    this.addedLines = this.diffOperations.filter(op => op.type === 'added').length;
+    this.deletedLines = this.diffOperations.filter(op => op.type === 'removed').length;
+    this.commentsCount = file.ai_comments.length;
+  }
+
+  getLineContent(op: DiffOperation): string {
+    if (op.type === 'added') return op.newLine || '';
+    if (op.type === 'removed') return op.oldLine || '';
+    return op.oldLine || op.newLine || '';
+  }
+
+  getCommentForLine(op: DiffOperation): AIComment | null {
+    if (!this.currentFile) return null;
+    
+    if (op.type === 'added' && op.newLineNum) {
+      return this.findCommentForLine(op.newLineNum, 'TO');
+    } else if (op.type === 'removed' && op.oldLineNum) {
+      return this.findCommentForLine(op.oldLineNum, 'FROM');
+    }
+    return null;
+  }
+
+  findCommentForLine(lineNum: number, side: 'TO' | 'FROM'): AIComment | null {
+    if (!this.currentFile) return null;
+    return this.currentFile.ai_comments.find(
+      comment => comment.line === lineNum && comment.side === side
+    ) || null;
+  }
 }
