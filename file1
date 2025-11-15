@@ -539,6 +539,8 @@ export class CodeDiffViewerComponent implements OnInit {
   currentView: 'unified' | 'side-by-side' = 'unified';
   currentFileIndex: number = -1;
   diffOperations: DiffOperation[] = [];
+  unifiedDiffOperations: DiffOperation[] = [];
+  sideBySideDiffOperations: DiffOperation[] = [];
   addedLines: number = 0;
   deletedLines: number = 0;
   commentsCount: number = 0;
@@ -844,7 +846,8 @@ export class CodeDiffViewerComponent implements OnInit {
   switchView(view: 'unified' | 'side-by-side'): void {
     this.currentView = view;
     if (this.currentFileIndex >= 0) {
-      this.calculateDiff();
+      // Switch to the appropriate diff operations
+      this.diffOperations = view === 'unified' ? this.unifiedDiffOperations : this.sideBySideDiffOperations;
     }
   }
 
@@ -869,9 +872,6 @@ export class CodeDiffViewerComponent implements OnInit {
   diffLines(oldText: string, newText: string): DiffOperation[] {
     const diff = Diff.diffLines(oldText, newText);
 
-    let oldLineNum = 1;
-    let newLineNum = 1;
-
     // First pass: collect all changes
     const changes: Array<{
       type: 'added' | 'removed' | 'context';
@@ -894,9 +894,50 @@ export class CodeDiffViewerComponent implements OnInit {
       }
     });
 
-    // Second pass: pair removed and added blocks for side-by-side view
-    const operations: DiffOperation[] = [];
+    // Build UNIFIED operations (Bitbucket style: show removed then added sequentially)
+    const unifiedOps: DiffOperation[] = [];
+    let unifiedOldLineNum = 1;
+    let unifiedNewLineNum = 1;
+
+    changes.forEach(change => {
+      if (change.type === 'context') {
+        change.lines.forEach(line => {
+          unifiedOps.push({
+            type: 'context',
+            oldLine: line,
+            newLine: line,
+            oldLineNum: unifiedOldLineNum++,
+            newLineNum: unifiedNewLineNum++
+          });
+        });
+      } else if (change.type === 'removed') {
+        change.lines.forEach(line => {
+          unifiedOps.push({
+            type: 'removed',
+            oldLine: line,
+            newLine: null,
+            oldLineNum: unifiedOldLineNum++,
+            newLineNum: null
+          });
+        });
+      } else if (change.type === 'added') {
+        change.lines.forEach(line => {
+          unifiedOps.push({
+            type: 'added',
+            oldLine: null,
+            newLine: line,
+            oldLineNum: null,
+            newLineNum: unifiedNewLineNum++
+          });
+        });
+      }
+    });
+
+    // Build SIDE-BY-SIDE operations (pair removed and added blocks)
+    const sideBySideOps: DiffOperation[] = [];
     let i = 0;
+    let sideOldLineNum = 1;
+    let sideNewLineNum = 1;
 
     while (i < changes.length) {
       const current = changes[i];
@@ -904,12 +945,12 @@ export class CodeDiffViewerComponent implements OnInit {
       if (current.type === 'context') {
         // Context lines - unchanged
         current.lines.forEach(line => {
-          operations.push({
+          sideBySideOps.push({
             type: 'context',
             oldLine: line,
             newLine: line,
-            oldLineNum: oldLineNum++,
-            newLineNum: newLineNum++
+            oldLineNum: sideOldLineNum++,
+            newLineNum: sideNewLineNum++
           });
         });
         i++;
@@ -921,31 +962,31 @@ export class CodeDiffViewerComponent implements OnInit {
 
         for (let j = 0; j < maxLength; j++) {
           if (j < removed.length && j < added.length) {
-            // Both sides have content - this is a change
-            operations.push({
+            // Both sides have content - this is a paired change
+            sideBySideOps.push({
               type: 'context', // We'll style them differently in the template
               oldLine: removed[j],
               newLine: added[j],
-              oldLineNum: oldLineNum++,
-              newLineNum: newLineNum++
+              oldLineNum: sideOldLineNum++,
+              newLineNum: sideNewLineNum++
             });
           } else if (j < removed.length) {
             // Only removed side has content
-            operations.push({
+            sideBySideOps.push({
               type: 'removed',
               oldLine: removed[j],
               newLine: null,
-              oldLineNum: oldLineNum++,
+              oldLineNum: sideOldLineNum++,
               newLineNum: null
             });
           } else {
             // Only added side has content
-            operations.push({
+            sideBySideOps.push({
               type: 'added',
               oldLine: null,
               newLine: added[j],
               oldLineNum: null,
-              newLineNum: newLineNum++
+              newLineNum: sideNewLineNum++
             });
           }
         }
@@ -953,11 +994,11 @@ export class CodeDiffViewerComponent implements OnInit {
       } else if (current.type === 'removed') {
         // Removed block without corresponding added block
         current.lines.forEach(line => {
-          operations.push({
+          sideBySideOps.push({
             type: 'removed',
             oldLine: line,
             newLine: null,
-            oldLineNum: oldLineNum++,
+            oldLineNum: sideOldLineNum++,
             newLineNum: null
           });
         });
@@ -965,19 +1006,24 @@ export class CodeDiffViewerComponent implements OnInit {
       } else if (current.type === 'added') {
         // Added block without corresponding removed block
         current.lines.forEach(line => {
-          operations.push({
+          sideBySideOps.push({
             type: 'added',
             oldLine: null,
             newLine: line,
             oldLineNum: null,
-            newLineNum: newLineNum++
+            newLineNum: sideNewLineNum++
           });
         });
         i++;
       }
     }
 
-    return operations;
+    // Store both versions
+    this.unifiedDiffOperations = unifiedOps;
+    this.sideBySideDiffOperations = sideBySideOps;
+
+    // Return the appropriate one based on current view
+    return this.currentView === 'unified' ? unifiedOps : sideBySideOps;
   }
 
   updateStats(file: DiffFile): void {
