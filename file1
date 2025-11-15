@@ -894,14 +894,18 @@ export class CodeDiffViewerComponent implements OnInit {
       }
     });
 
-    // Build UNIFIED operations (Bitbucket style: show removed then added sequentially)
+    // Build UNIFIED operations (Bitbucket style: group ALL removed, then ALL added)
     const unifiedOps: DiffOperation[] = [];
     let unifiedOldLineNum = 1;
     let unifiedNewLineNum = 1;
 
-    changes.forEach(change => {
-      if (change.type === 'context') {
-        change.lines.forEach(line => {
+    let i = 0;
+    while (i < changes.length) {
+      const current = changes[i];
+
+      if (current.type === 'context') {
+        // Context lines - unchanged
+        current.lines.forEach(line => {
           unifiedOps.push({
             type: 'context',
             oldLine: line,
@@ -910,8 +914,26 @@ export class CodeDiffViewerComponent implements OnInit {
             newLineNum: unifiedNewLineNum++
           });
         });
-      } else if (change.type === 'removed') {
-        change.lines.forEach(line => {
+        i++;
+      } else if (current.type === 'removed') {
+        // Start of a change block - collect ALL consecutive removed lines first
+        const removedLines: string[] = [];
+        const addedLines: string[] = [];
+        
+        // Collect all removed lines
+        while (i < changes.length && changes[i].type === 'removed') {
+          removedLines.push(...changes[i].lines);
+          i++;
+        }
+        
+        // Collect all added lines that immediately follow
+        while (i < changes.length && changes[i].type === 'added') {
+          addedLines.push(...changes[i].lines);
+          i++;
+        }
+        
+        // First, add ALL removed lines as a block
+        removedLines.forEach(line => {
           unifiedOps.push({
             type: 'removed',
             oldLine: line,
@@ -920,8 +942,9 @@ export class CodeDiffViewerComponent implements OnInit {
             newLineNum: null
           });
         });
-      } else if (change.type === 'added') {
-        change.lines.forEach(line => {
+        
+        // Then, add ALL added lines as a block
+        addedLines.forEach(line => {
           unifiedOps.push({
             type: 'added',
             oldLine: null,
@@ -930,17 +953,29 @@ export class CodeDiffViewerComponent implements OnInit {
             newLineNum: unifiedNewLineNum++
           });
         });
+      } else if (current.type === 'added') {
+        // Added block without any removed block before it
+        current.lines.forEach(line => {
+          unifiedOps.push({
+            type: 'added',
+            oldLine: null,
+            newLine: line,
+            oldLineNum: null,
+            newLineNum: unifiedNewLineNum++
+          });
+        });
+        i++;
       }
-    });
+    }
 
     // Build SIDE-BY-SIDE operations (pair removed and added blocks)
     const sideBySideOps: DiffOperation[] = [];
-    let i = 0;
+    let j = 0;
     let sideOldLineNum = 1;
     let sideNewLineNum = 1;
 
-    while (i < changes.length) {
-      const current = changes[i];
+    while (j < changes.length) {
+      const current = changes[j];
 
       if (current.type === 'context') {
         // Context lines - unchanged
@@ -953,28 +988,42 @@ export class CodeDiffViewerComponent implements OnInit {
             newLineNum: sideNewLineNum++
           });
         });
-        i++;
-      } else if (current.type === 'removed' && i + 1 < changes.length && changes[i + 1].type === 'added') {
-        // Pair of removed and added blocks - these are changes
-        const removed = current.lines;
-        const added = changes[i + 1].lines;
-        const maxLength = Math.max(removed.length, added.length);
-
-        for (let j = 0; j < maxLength; j++) {
-          if (j < removed.length && j < added.length) {
+        j++;
+      } else if (current.type === 'removed') {
+        // Start of a change block - collect removed and added lines
+        const removedLines: string[] = [];
+        const addedLines: string[] = [];
+        
+        // Collect all consecutive removed lines
+        while (j < changes.length && changes[j].type === 'removed') {
+          removedLines.push(...changes[j].lines);
+          j++;
+        }
+        
+        // Collect all consecutive added lines that follow
+        while (j < changes.length && changes[j].type === 'added') {
+          addedLines.push(...changes[j].lines);
+          j++;
+        }
+        
+        // Pair them side-by-side
+        const maxLength = Math.max(removedLines.length, addedLines.length);
+        
+        for (let k = 0; k < maxLength; k++) {
+          if (k < removedLines.length && k < addedLines.length) {
             // Both sides have content - this is a paired change
             sideBySideOps.push({
               type: 'context', // We'll style them differently in the template
-              oldLine: removed[j],
-              newLine: added[j],
+              oldLine: removedLines[k],
+              newLine: addedLines[k],
               oldLineNum: sideOldLineNum++,
               newLineNum: sideNewLineNum++
             });
-          } else if (j < removed.length) {
+          } else if (k < removedLines.length) {
             // Only removed side has content
             sideBySideOps.push({
               type: 'removed',
-              oldLine: removed[j],
+              oldLine: removedLines[k],
               newLine: null,
               oldLineNum: sideOldLineNum++,
               newLineNum: null
@@ -984,27 +1033,14 @@ export class CodeDiffViewerComponent implements OnInit {
             sideBySideOps.push({
               type: 'added',
               oldLine: null,
-              newLine: added[j],
+              newLine: addedLines[k],
               oldLineNum: null,
               newLineNum: sideNewLineNum++
             });
           }
         }
-        i += 2; // Skip both the removed and added blocks
-      } else if (current.type === 'removed') {
-        // Removed block without corresponding added block
-        current.lines.forEach(line => {
-          sideBySideOps.push({
-            type: 'removed',
-            oldLine: line,
-            newLine: null,
-            oldLineNum: sideOldLineNum++,
-            newLineNum: null
-          });
-        });
-        i++;
       } else if (current.type === 'added') {
-        // Added block without corresponding removed block
+        // Added block without any removed block before it
         current.lines.forEach(line => {
           sideBySideOps.push({
             type: 'added',
@@ -1014,7 +1050,7 @@ export class CodeDiffViewerComponent implements OnInit {
             newLineNum: sideNewLineNum++
           });
         });
-        i++;
+        j++;
       }
     }
 
