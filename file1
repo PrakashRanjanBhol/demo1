@@ -110,7 +110,7 @@ interface DiffOperation {
               <div class="side-header">Original</div>
               <ng-container *ngFor="let op of diffOperations">
                 <div class="side-line" 
-                     [class.deleted]="op.type === 'removed'"
+                     [class.deleted]="op.type === 'removed' || (op.type === 'context' && op.oldLine !== op.newLine && op.oldLine && op.newLine)"
                      [class.empty]="op.type === 'added'">
                   <div class="side-line-number">{{ op.oldLineNum || '' }}</div>
                   <div class="side-line-content">{{ op.oldLine || '' }}</div>
@@ -143,7 +143,7 @@ interface DiffOperation {
               <div class="side-header">Modified</div>
               <ng-container *ngFor="let op of diffOperations">
                 <div class="side-line" 
-                     [class.added]="op.type === 'added'"
+                     [class.added]="op.type === 'added' || (op.type === 'context' && op.oldLine !== op.newLine && op.oldLine && op.newLine)"
                      [class.empty]="op.type === 'removed'">
                   <div class="side-line-number">{{ op.newLineNum || '' }}</div>
                   <div class="side-line-content">{{ op.newLine || '' }}</div>
@@ -867,11 +867,16 @@ export class CodeDiffViewerComponent implements OnInit {
 
   // Use jsdiff library for accurate line-based diff
   diffLines(oldText: string, newText: string): DiffOperation[] {
-    const operations: DiffOperation[] = [];
     const diff = Diff.diffLines(oldText, newText);
 
     let oldLineNum = 1;
     let newLineNum = 1;
+
+    // First pass: collect all changes
+    const changes: Array<{
+      type: 'added' | 'removed' | 'context';
+      lines: string[];
+    }> = [];
 
     diff.forEach(part => {
       const lines = part.value.split('\n');
@@ -880,27 +885,25 @@ export class CodeDiffViewerComponent implements OnInit {
         lines.pop();
       }
 
-      lines.forEach(line => {
-        if (part.added) {
-          // Added line
-          operations.push({
-            type: 'added',
-            oldLine: null,
-            newLine: line,
-            oldLineNum: null,
-            newLineNum: newLineNum++
-          });
-        } else if (part.removed) {
-          // Deleted line
-          operations.push({
-            type: 'removed',
-            oldLine: line,
-            newLine: null,
-            oldLineNum: oldLineNum++,
-            newLineNum: null
-          });
-        } else {
-          // Context line (unchanged)
+      if (part.added) {
+        changes.push({ type: 'added', lines });
+      } else if (part.removed) {
+        changes.push({ type: 'removed', lines });
+      } else {
+        changes.push({ type: 'context', lines });
+      }
+    });
+
+    // Second pass: pair removed and added blocks for side-by-side view
+    const operations: DiffOperation[] = [];
+    let i = 0;
+
+    while (i < changes.length) {
+      const current = changes[i];
+
+      if (current.type === 'context') {
+        // Context lines - unchanged
+        current.lines.forEach(line => {
           operations.push({
             type: 'context',
             oldLine: line,
@@ -908,9 +911,71 @@ export class CodeDiffViewerComponent implements OnInit {
             oldLineNum: oldLineNum++,
             newLineNum: newLineNum++
           });
+        });
+        i++;
+      } else if (current.type === 'removed' && i + 1 < changes.length && changes[i + 1].type === 'added') {
+        // Pair of removed and added blocks - these are changes
+        const removed = current.lines;
+        const added = changes[i + 1].lines;
+        const maxLength = Math.max(removed.length, added.length);
+
+        for (let j = 0; j < maxLength; j++) {
+          if (j < removed.length && j < added.length) {
+            // Both sides have content - this is a change
+            operations.push({
+              type: 'context', // We'll style them differently in the template
+              oldLine: removed[j],
+              newLine: added[j],
+              oldLineNum: oldLineNum++,
+              newLineNum: newLineNum++
+            });
+          } else if (j < removed.length) {
+            // Only removed side has content
+            operations.push({
+              type: 'removed',
+              oldLine: removed[j],
+              newLine: null,
+              oldLineNum: oldLineNum++,
+              newLineNum: null
+            });
+          } else {
+            // Only added side has content
+            operations.push({
+              type: 'added',
+              oldLine: null,
+              newLine: added[j],
+              oldLineNum: null,
+              newLineNum: newLineNum++
+            });
+          }
         }
-      });
-    });
+        i += 2; // Skip both the removed and added blocks
+      } else if (current.type === 'removed') {
+        // Removed block without corresponding added block
+        current.lines.forEach(line => {
+          operations.push({
+            type: 'removed',
+            oldLine: line,
+            newLine: null,
+            oldLineNum: oldLineNum++,
+            newLineNum: null
+          });
+        });
+        i++;
+      } else if (current.type === 'added') {
+        // Added block without corresponding removed block
+        current.lines.forEach(line => {
+          operations.push({
+            type: 'added',
+            oldLine: null,
+            newLine: line,
+            oldLineNum: null,
+            newLineNum: newLineNum++
+          });
+        });
+        i++;
+      }
+    }
 
     return operations;
   }
