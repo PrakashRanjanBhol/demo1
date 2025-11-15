@@ -1,18 +1,656 @@
-import { trigger, transition, style, animate } from '@angular/animations';
+// diff-viewer.component.ts
+import { Component, OnInit } from '@angular/core';
+import * as Diff from 'diff';
+
+// Interfaces
+interface DiffFile {
+  file_path: string;
+  old_lines: string[];
+  new_lines: string[];
+  ai_comments: AIComment[];
+}
+
+interface AIComment {
+  file_path: string;
+  line: number;
+  side: 'TO' | 'FROM';
+  comment_text: string;
+  severity: 'error' | 'warning' | 'suggestion';
+  suggested_patch: string | null;
+}
+
+interface CommentState {
+  status: 'pending' | 'accepted' | 'rejected';
+  modifiedText: string | null;
+}
+
+interface DiffLine {
+  type: 'added' | 'deleted' | 'context';
+  oldLineNum?: number;
+  newLineNum?: number;
+  content: string;
+  comment?: AIComment;
+}
+
+interface DiffStats {
+  addedLines: number;
+  deletedLines: number;
+  commentsCount: number;
+}
 
 @Component({
-  animations: [
-    trigger('fadeInOut', [
-      transition(':enter', [
-        style({ opacity: 0, transform: 'scale(0.9) translateY(-5px)' }),
-        animate('300ms ease-out', style({ opacity: 1, transform: 'scale(1) translateY(0)' }))
-      ]),
-      transition(':leave', [
-        animate('250ms ease-in', style({ opacity: 0, transform: 'scale(0.9) translateY(-5px)' }))
-      ])
-    ])
-  ]
+  selector: 'app-diff-viewer',
+  templateUrl: './diff-viewer.component.html',
+  styleUrls: ['./diff-viewer.component.scss']
 })
+export class DiffViewerComponent implements OnInit {
+  files: DiffFile[] = [];
+  selectedFile: DiffFile | null = null;
+  selectedFileIndex: number = -1;
+  currentView: 'unified' | 'side-by-side' = 'unified';
+  diffLines: DiffLine[] = [];
+  stats: DiffStats | null = null;
+
+  // Track editing state and comment states
+  editingComments = new Map<string, string>(); // commentId -> editText
+  commentStates = new Map<string, CommentState>();
+
+  ngOnInit(): void {
+    this.loadMockData();
+  }
+
+  private loadMockData(): void {
+    this.files = [
+      {
+        file_path: "src/app/services/auth.service.ts",
+        old_lines: [
+          "import { Injectable } from '@angular/core';",
+          "import { HttpClient } from '@angular/common/http';",
+          "import { Observable } from 'rxjs';",
+          "",
+          "@Injectable({",
+          "  providedIn: 'root'",
+          "})",
+          "export class AuthService {",
+          "  private apiUrl = 'http://localhost:3000/api';",
+          "",
+          "  constructor(private http: HttpClient) { }",
+          "",
+          "  login(username: string, password: string): Observable<any> {",
+          "    return this.http.post(`${this.apiUrl}/login`, { username, password });",
+          "  }",
+          "}"
+        ],
+        new_lines: [
+          "import { Injectable } from '@angular/core';",
+          "import { HttpClient, HttpHeaders } from '@angular/common/http';",
+          "import { Observable, throwError } from 'rxjs';",
+          "import { catchError, tap } from 'rxjs/operators';",
+          "import { environment } from '../../environments/environment';",
+          "",
+          "@Injectable({",
+          "  providedIn: 'root'",
+          "})",
+          "export class AuthService {",
+          "  private apiUrl = environment.apiUrl;",
+          "  private tokenKey = 'auth_token';",
+          "",
+          "  constructor(private http: HttpClient) { }",
+          "",
+          "  login(username: string, password: string): Observable<any> {",
+          "    if (!username || !password) {",
+          "      return throwError('Username and password are required');",
+          "    }",
+          "",
+          "    const headers = new HttpHeaders({ 'Content-Type': 'application/json' });",
+          "    ",
+          "    return this.http.post(`${this.apiUrl}/auth/login`, ",
+          "      { username, password },",
+          "      { headers }",
+          "    ).pipe(",
+          "      tap((response: any) => {",
+          "        if (response.token) {",
+          "          localStorage.setItem(this.tokenKey, response.token);",
+          "        }",
+          "      }),",
+          "      catchError(error => {",
+          "        console.error('Login error:', error);",
+          "        return throwError(error);",
+          "      })",
+          "    );",
+          "  }",
+          "",
+          "  logout(): void {",
+          "    localStorage.removeItem(this.tokenKey);",
+          "  }",
+          "",
+          "  getToken(): string | null {",
+          "    return localStorage.getItem(this.tokenKey);",
+          "  }",
+          "",
+          "  isAuthenticated(): boolean {",
+          "    return !!this.getToken();",
+          "  }",
+          "}"
+        ],
+        ai_comments: [
+          {
+            file_path: "src/app/services/auth.service.ts",
+            line: 11,
+            side: "TO",
+            comment_text: "Good practice using environment variables instead of hardcoded URLs. This makes the application more flexible across different environments.",
+            severity: "suggestion",
+            suggested_patch: null
+          },
+          {
+            file_path: "src/app/services/auth.service.ts",
+            line: 17,
+            side: "TO",
+            comment_text: "Input validation is good, but consider using a more descriptive error object instead of a plain string for better error handling.",
+            severity: "warning",
+            suggested_patch: "      return throwError(() => new Error('Username and password are required'));"
+          },
+          {
+            file_path: "src/app/services/auth.service.ts",
+            line: 28,
+            side: "TO",
+            comment_text: "Security concern: Storing tokens in localStorage is vulnerable to XSS attacks. Consider using httpOnly cookies or sessionStorage with additional security measures.",
+            severity: "error",
+            suggested_patch: null
+          },
+          {
+            file_path: "src/app/services/auth.service.ts",
+            line: 32,
+            side: "TO",
+            comment_text: "Console.error in production code can expose sensitive information. Use a proper logging service with environment-based log levels.",
+            severity: "warning",
+            suggested_patch: "        // Use logging service instead of console.error"
+          }
+        ]
+      },
+      {
+        file_path: "src/app/components/login/login.component.ts",
+        old_lines: [
+          "import { Component } from '@angular/core';",
+          "import { AuthService } from '../../services/auth.service';",
+          "",
+          "@Component({",
+          "  selector: 'app-login',",
+          "  templateUrl: './login.component.html',",
+          "  styleUrls: ['./login.component.scss']",
+          "})",
+          "export class LoginComponent {",
+          "  username = '';",
+          "  password = '';",
+          "",
+          "  constructor(private authService: AuthService) { }",
+          "",
+          "  onSubmit() {",
+          "    this.authService.login(this.username, this.password).subscribe(",
+          "      response => {",
+          "        console.log('Login successful');",
+          "      }",
+          "    );",
+          "  }",
+          "}"
+        ],
+        new_lines: [
+          "import { Component, OnDestroy } from '@angular/core';",
+          "import { Router } from '@angular/router';",
+          "import { AuthService } from '../../services/auth.service';",
+          "import { Subject } from 'rxjs';",
+          "import { takeUntil } from 'rxjs/operators';",
+          "",
+          "@Component({",
+          "  selector: 'app-login',",
+          "  templateUrl: './login.component.html'",
+          "  styleUrls: ['./login.component.scss']",
+          "})",
+          "export class LoginComponent implements OnDestroy {",
+          "  username = '';",
+          "  password = '';",
+          "  isLoading = false;",
+          "  errorMessage = '';",
+          "  private destroy$ = new Subject<void>();",
+          "",
+          "  constructor(",
+          "    private authService: AuthService,",
+          "    private router: Router",
+          "  ) { }",
+          "",
+          "  ngOnDestroy(): void {",
+          "    this.destroy$.next();",
+          "    this.destroy$.complete();",
+          "  }",
+          "",
+          "  onSubmit(): void {",
+          "    if (!this.username.trim() || !this.password.trim()) {",
+          "      this.errorMessage = 'Please enter both username and password';",
+          "      return;",
+          "    }",
+          "",
+          "    this.isLoading = true;",
+          "    this.errorMessage = '';",
+          "",
+          "    this.authService.login(this.username, this.password)",
+          "      .pipe(takeUntil(this.destroy$))",
+          "      .subscribe({",
+          "        next: (response) => {",
+          "          this.isLoading = false;",
+          "          this.router.navigate(['/dashboard']);",
+          "        },",
+          "        error: (error) => {",
+          "          this.isLoading = false;",
+          "          this.errorMessage = error.message || 'Login failed. Please try again.';",
+          "        }",
+          "      });",
+          "  }",
+          "",
+          "  clearError(): void {",
+          "    this.errorMessage = '';",
+          "  }",
+          "}"
+        ],
+        ai_comments: [
+          {
+            file_path: "src/app/components/login/login.component.ts",
+            line: 17,
+            side: "TO",
+            comment_text: "Excellent addition of the destroy$ subject for proper subscription cleanup. This prevents memory leaks.",
+            severity: "suggestion",
+            suggested_patch: null
+          },
+          {
+            file_path: "src/app/components/login/login.component.ts",
+            line: 29,
+            side: "TO",
+            comment_text: "Good client-side validation, but remember this should also be validated on the server side for security.",
+            severity: "suggestion",
+            suggested_patch: null
+          },
+          {
+            file_path: "src/app/components/login/login.component.ts",
+            line: 34,
+            side: "TO",
+            comment_text: "Consider disabling the submit button while isLoading is true to prevent multiple submissions.",
+            severity: "suggestion",
+            suggested_patch: null
+          },
+          {
+            file_path: "src/app/components/login/login.component.ts",
+            line: 45,
+            side: "TO",
+            comment_text: "Generic error messages are good for security, but consider logging detailed errors for debugging purposes.",
+            severity: "suggestion",
+            suggested_patch: "          this.errorMessage = 'Login failed. Please try again.';\n          console.debug('Login error details:', error);"
+          }
+        ]
+      },
+      {
+        file_path: "src/app/guards/auth.guard.ts",
+        old_lines: [],
+        new_lines: [
+          "import { Injectable } from '@angular/core';",
+          "import { CanActivate, ActivatedRouteSnapshot, RouterStateSnapshot, Router } from '@angular/router';",
+          "import { AuthService } from '../services/auth.service';",
+          "",
+          "@Injectable({",
+          "  providedIn: 'root'",
+          "})",
+          "export class AuthGuard implements CanActivate {",
+          "",
+          "  constructor(",
+          "    private authService: AuthService,",
+          "    private router: Router",
+          "  ) { }",
+          "",
+          "  canActivate(",
+          "    route: ActivatedRouteSnapshot,",
+          "    state: RouterStateSnapshot",
+          "  ): boolean {",
+          "    if (this.authService.isAuthenticated()) {",
+          "      return true;",
+          "    }",
+          "",
+          "    this.router.navigate(['/login'], {",
+          "      queryParams: { returnUrl: state.url }",
+          "    });",
+          "    return false;",
+          "  }",
+          "}"
+        ],
+        ai_comments: [
+          {
+            file_path: "src/app/guards/auth.guard.ts",
+            line: 19,
+            side: "TO",
+            comment_text: "The authentication check looks good. However, consider also validating the token's expiration and integrity, not just its presence.",
+            severity: "warning",
+            suggested_patch: null
+          },
+          {
+            file_path: "src/app/guards/auth.guard.ts",
+            line: 24,
+            side: "TO",
+            comment_text: "Great addition of returnUrl query parameter! This provides better user experience by redirecting users back to their intended destination after login.",
+            severity: "suggestion",
+            suggested_patch: null
+          },
+          {
+            file_path: "src/app/guards/auth.guard.ts",
+            line: 15,
+            side: "TO",
+            comment_text: "Consider making canActivate return Observable<boolean> instead of just boolean to support async token validation.",
+            severity: "suggestion",
+            suggested_patch: "  canActivate(\n    route: ActivatedRouteSnapshot,\n    state: RouterStateSnapshot\n  ): Observable<boolean> | boolean {"
+          }
+        ]
+      }
+    ];
+  }
+
+  onFileSelect(index: number): void {
+    if (index >= 0 && index < this.files.length) {
+      this.selectedFileIndex = index;
+      this.selectedFile = this.files[index];
+      this.renderDiff();
+    }
+  }
+
+  switchView(view: 'unified' | 'side-by-side'): void {
+    this.currentView = view;
+    if (this.selectedFile) {
+      this.renderDiff();
+    }
+  }
+
+  private renderDiff(): void {
+    if (!this.selectedFile) return;
+
+    this.diffLines = this.generateUnifiedDiff(this.selectedFile);
+    this.stats = this.calculateStats(this.selectedFile);
+  }
+
+  private generateUnifiedDiff(file: DiffFile): DiffLine[] {
+    const oldText = file.old_lines.join('\n');
+    const newText = file.new_lines.join('\n');
+    const diff = Diff.diffLines(oldText, newText);
+
+    const lines: DiffLine[] = [];
+    let oldLineNum = 1;
+    let newLineNum = 1;
+
+    diff.forEach(part => {
+      const lineTexts = part.value.split('\n');
+      if (lineTexts[lineTexts.length - 1] === '') {
+        lineTexts.pop();
+      }
+
+      lineTexts.forEach(lineText => {
+        if (part.added) {
+          const comment = this.findCommentForLine(file, newLineNum, 'TO');
+          lines.push({
+            type: 'added',
+            newLineNum,
+            content: lineText,
+            comment
+          });
+          newLineNum++;
+        } else if (part.removed) {
+          const comment = this.findCommentForLine(file, oldLineNum, 'FROM');
+          lines.push({
+            type: 'deleted',
+            oldLineNum,
+            content: lineText,
+            comment
+          });
+          oldLineNum++;
+        } else {
+          lines.push({
+            type: 'context',
+            oldLineNum,
+            newLineNum,
+            content: lineText
+          });
+          oldLineNum++;
+          newLineNum++;
+        }
+      });
+    });
+
+    return lines;
+  }
+
+  private calculateStats(file: DiffFile): DiffStats {
+    const oldText = file.old_lines.join('\n');
+    const newText = file.new_lines.join('\n');
+    const diff = Diff.diffLines(oldText, newText);
+
+    let addedLines = 0;
+    let deletedLines = 0;
+
+    diff.forEach(part => {
+      const lines = part.value.split('\n');
+      if (lines[lines.length - 1] === '') {
+        lines.pop();
+      }
+
+      if (part.added) {
+        addedLines += lines.length;
+      } else if (part.removed) {
+        deletedLines += lines.length;
+      }
+    });
+
+    return {
+      addedLines,
+      deletedLines,
+      commentsCount: file.ai_comments.length
+    };
+  }
+
+  private findCommentForLine(file: DiffFile, lineNum: number, side: 'TO' | 'FROM'): AIComment | undefined {
+    return file.ai_comments.find(comment =>
+      comment.line === lineNum && comment.side === side
+    );
+  }
+
+  // Comment State Management
+  private getCommentKey(filePath: string, line: number, side: string): string {
+    return `${filePath}-${line}-${side}`;
+  }
+
+  getCommentState(comment: AIComment): CommentState {
+    if (!this.selectedFile) return { status: 'pending', modifiedText: null };
+    const key = this.getCommentKey(this.selectedFile.file_path, comment.line, comment.side);
+    return this.commentStates.get(key) || { status: 'pending', modifiedText: null };
+  }
+
+  private saveCommentState(filePath: string, line: number, side: string, status: 'pending' | 'accepted' | 'rejected', modifiedText: string | null): void {
+    const key = this.getCommentKey(filePath, line, side);
+    this.commentStates.set(key, { status, modifiedText });
+  }
+
+  getCommentId(comment: AIComment): string {
+    return `comment-${comment.line}-${comment.side}`;
+  }
+
+  getDisplayText(comment: AIComment): string {
+    const state = this.getCommentState(comment);
+    return state.modifiedText || comment.comment_text;
+  }
+
+  isEditing(comment: AIComment): boolean {
+    return this.editingComments.has(this.getCommentId(comment));
+  }
+
+  getEditText(comment: AIComment): string {
+    return this.editingComments.get(this.getCommentId(comment)) || '';
+  }
+
+  setEditText(comment: AIComment, text: string): void {
+    this.editingComments.set(this.getCommentId(comment), text);
+  }
+
+  isActionDisabled(comment: AIComment): boolean {
+    const state = this.getCommentState(comment);
+    return state.status === 'accepted' || state.status === 'rejected';
+  }
+
+  acceptComment(comment: AIComment): void {
+    if (!this.selectedFile || this.isActionDisabled(comment)) return;
+
+    const displayText = this.getDisplayText(comment);
+    this.saveCommentState(
+      this.selectedFile.file_path,
+      comment.line,
+      comment.side,
+      'accepted',
+      displayText
+    );
+  }
+
+  rejectComment(comment: AIComment): void {
+    if (!this.selectedFile || this.isActionDisabled(comment)) return;
+
+    const displayText = this.getDisplayText(comment);
+    this.saveCommentState(
+      this.selectedFile.file_path,
+      comment.line,
+      comment.side,
+      'rejected',
+      displayText
+    );
+  }
+
+  modifyComment(comment: AIComment): void {
+    if (this.isActionDisabled(comment)) return;
+    const displayText = this.getDisplayText(comment);
+    this.editingComments.set(this.getCommentId(comment), displayText);
+  }
+
+  saveComment(comment: AIComment): void {
+    if (!this.selectedFile) return;
+
+    const newText = this.getEditText(comment);
+    const state = this.getCommentState(comment);
+    this.saveCommentState(
+      this.selectedFile.file_path,
+      comment.line,
+      comment.side,
+      state.status,
+      newText
+    );
+    this.editingComments.delete(this.getCommentId(comment));
+  }
+
+  cancelModify(comment: AIComment): void {
+    this.editingComments.delete(this.getCommentId(comment));
+  }
+
+  scrollToComment(index: number): void {
+    setTimeout(() => {
+      const commentElements = document.querySelectorAll('.ai-comment');
+      if (commentElements[index]) {
+        commentElements[index].scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+        const element = commentElements[index] as HTMLElement;
+        element.style.transition = 'box-shadow 0.3s';
+        element.style.boxShadow = '0 0 10px rgba(59, 130, 246, 0.5)';
+        setTimeout(() => {
+          element.style.boxShadow = '';
+        }, 1000);
+      }
+    }, 100);
+  }
+
+  goToFirstComment(): void {
+    this.scrollToComment(0);
+  }
+
+  goToNextComment(currentComment: AIComment): void {
+    if (!this.selectedFile) return;
+
+    const currentIndex = this.selectedFile.ai_comments.indexOf(currentComment);
+    if (currentIndex >= 0 && currentIndex < this.selectedFile.ai_comments.length - 1) {
+      this.scrollToComment(currentIndex + 1);
+    }
+  }
+
+  goToPreviousComment(currentComment: AIComment): void {
+    if (!this.selectedFile) return;
+
+    const currentIndex = this.selectedFile.ai_comments.indexOf(currentComment);
+    if (currentIndex > 0) {
+      this.scrollToComment(currentIndex - 1);
+    }
+  }
+
+  isFirstComment(comment: AIComment): boolean {
+    if (!this.selectedFile) return false;
+    return this.selectedFile.ai_comments.indexOf(comment) === 0;
+  }
+
+  isLastComment(comment: AIComment): boolean {
+    if (!this.selectedFile) return false;
+    const index = this.selectedFile.ai_comments.indexOf(comment);
+    return index === this.selectedFile.ai_comments.length - 1;
+  }
+
+  exportComments(): void {
+    const data: any[] = [];
+
+    this.commentStates.forEach((state, key) => {
+      const [filePath, line, side] = key.split('-');
+      const file = this.files.find(f => f.file_path === filePath);
+
+      if (file) {
+        const comment = file.ai_comments.find(c =>
+          c.line === parseInt(line) && c.side === side
+        );
+
+        if (comment) {
+          data.push({
+            file: filePath,
+            line: parseInt(line),
+            side: side,
+            status: state.status,
+            originalText: comment.comment_text,
+            modifiedText: state.modifiedText,
+            severity: comment.severity,
+            suggestedPatch: comment.suggested_patch
+          });
+        }
+      }
+    });
+
+    const accepted = data.filter(d => d.status === 'accepted').length;
+    const rejected = data.filter(d => d.status === 'rejected').length;
+    const pending = data.filter(d => d.status === 'pending').length;
+
+    const jsonStr = JSON.stringify(data, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'comment-review-results.json';
+    a.click();
+    URL.revokeObjectURL(url);
+
+    alert(
+      `Comment data exported!\n\n` +
+      `Total: ${data.length}\n` +
+      `Accepted: ${accepted}\n` +
+      `Rejected: ${rejected}\n` +
+      `Pending: ${pending}\n\n` +
+      `File downloaded: comment-review-results.json`
+    );
+  }
+
+  hasComments(): boolean {
+    return this.selectedFile ? this.selectedFile.ai_comments.length > 0 : false;
+  }
+}
 
 
 
@@ -22,9 +660,1009 @@ import { trigger, transition, style, animate } from '@angular/animations';
 
 
 
-<div class="bitbucket-expand" 
-     *ngIf="showIcon" 
-     @fadeInOut
-     (click)="handleClick()">
-  <!-- icon content -->
+
+
+
+
+
+
+
+
+
+<!-- diff-viewer.component.html -->
+<div class="container">
+    <div class="header">
+        <h1>Code Diff Viewer</h1>
+        <div class="header-actions">
+            <button *ngIf="hasComments()" class="toggle-btn" (click)="goToFirstComment()">
+                ⬆ First Comment
+            </button>
+            <div class="view-toggle">
+                <button class="toggle-btn" [class.active]="currentView === 'unified'" (click)="switchView('unified')">
+                    Unified
+                </button>
+                <button class="toggle-btn" [class.active]="currentView === 'side-by-side'"
+                    (click)="switchView('side-by-side')">
+                    Side by Side
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="file-selector">
+        <select [(ngModel)]="selectedFileIndex" (change)="onFileSelect(selectedFileIndex)">
+            <option [value]="-1">Select a file to view diff...</option>
+            <option *ngFor="let file of files; let i = index" [value]="i">
+                {{ file.file_path }}
+            </option>
+        </select>
+    </div>
+
+    <div class="diff-container">
+        <ng-container *ngIf="!selectedFile">
+            <p class="empty-state">Please select a file to view the diff</p>
+        </ng-container>
+
+        <ng-container *ngIf="selectedFile">
+            <!-- Unified View -->
+            <div *ngIf="currentView === 'unified'">
+                <div class="file-header">📄 {{ selectedFile.file_path }}</div>
+                <div class="unified-view">
+                    <ng-container *ngFor="let line of diffLines">
+                        <div class="diff-line" [ngClass]="line.type">
+                            <div class="line-numbers">
+                                <div class="line-number">{{ line.oldLineNum || '' }}</div>
+                                <div class="line-number">{{ line.newLineNum || '' }}</div>
+                            </div>
+                            <div class="line-content">{{ line.content }}</div>
+                        </div>
+
+                        <!-- Inline Comment Box -->
+                        <div *ngIf="line.comment" class="ai-comment" [id]="getCommentId(line.comment)" [ngClass]="{
+                'accepted': getCommentState(line.comment).status === 'accepted',
+                'rejected': getCommentState(line.comment).status === 'rejected'
+              }">
+
+                            <div class="comment-header">
+                                <div>
+                                    <span class="comment-severity" [ngClass]="line.comment.severity">
+                                        {{ line.comment.severity }}
+                                    </span>
+                                    <span class="comment-status"
+                                        *ngIf="getCommentState(line.comment).status !== 'pending'"
+                                        [ngClass]="getCommentState(line.comment).status">
+                                        {{ getCommentState(line.comment).status.toUpperCase() }}
+                                    </span>
+                                </div>
+                                <span class="comment-line-info">Line {{ line.comment.line }}</span>
+                            </div>
+
+                            <div class="comment-text-display" *ngIf="!isEditing(line.comment)">
+                                {{ getDisplayText(line.comment) }}
+                            </div>
+
+                            <textarea class="comment-text-input" *ngIf="isEditing(line.comment)"
+                                [value]="getEditText(line.comment)"
+                                (input)="setEditText(line.comment, $any($event.target).value)" rows="4">
+              </textarea>
+
+                            <div class="suggested-patch" *ngIf="line.comment.suggested_patch">
+                                <div class="suggested-patch-label">💡 Suggested Fix:</div>
+                                <pre>{{ line.comment.suggested_patch }}</pre>
+                            </div>
+
+                            <div class="comment-actions">
+                                <button class="comment-btn accept" *ngIf="!isEditing(line.comment)"
+                                    [disabled]="isActionDisabled(line.comment)" (click)="acceptComment(line.comment)">
+                                    ✓ Accept
+                                </button>
+                                <button class="comment-btn reject" *ngIf="!isEditing(line.comment)"
+                                    [disabled]="isActionDisabled(line.comment)" (click)="rejectComment(line.comment)">
+                                    ✗ Reject
+                                </button>
+                                <button class="comment-btn modify" *ngIf="!isEditing(line.comment)"
+                                    [disabled]="isActionDisabled(line.comment)" (click)="modifyComment(line.comment)">
+                                    ✎ Modify
+                                </button>
+                                <button class="comment-btn save" *ngIf="isEditing(line.comment)"
+                                    (click)="saveComment(line.comment)">
+                                    💾 Save
+                                </button>
+                                <button class="comment-btn cancel" *ngIf="isEditing(line.comment)"
+                                    (click)="cancelModify(line.comment)">
+                                    Cancel
+                                </button>
+
+                                <div class="comment-nav">
+                                    <button class="comment-btn nav prev-comment"
+                                        [disabled]="isFirstComment(line.comment)"
+                                        (click)="goToPreviousComment(line.comment)">
+                                        ← Previous
+                                    </button>
+                                    <button class="comment-btn nav next-comment"
+                                        [disabled]="isLastComment(line.comment)"
+                                        (click)="goToNextComment(line.comment)">
+                                        Next →
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </ng-container>
+                </div>
+            </div>
+
+            <!-- Side by Side View -->
+            <div *ngIf="currentView === 'side-by-side'">
+                <div class="file-header">📄 {{ selectedFile.file_path }}</div>
+                <div class="side-by-side-view">
+                    <div class="side-header-row">
+                        <div class="side-header">Original</div>
+                        <div class="side-header">Modified</div>
+                    </div>
+
+                    <ng-container *ngFor="let line of diffLines">
+                        <div class="side-row">
+                            <!-- Left side (Original) -->
+                            <div class="side-cell" [ngClass]="{
+                     'deleted': line.type === 'deleted',
+                     'empty': line.type === 'added'
+                   }">
+                                <div class="side-cell-inner">
+                                    <div class="side-line-number">{{ line.oldLineNum || '' }}</div>
+                                    <div class="side-line-content">{{ line.type !== 'added' ? line.content : '' }}</div>
+                                </div>
+
+                                <!-- Comment on left side (FROM) -->
+                                <div *ngIf="line.comment && line.comment.side === 'FROM'" class="ai-comment"
+                                    [id]="getCommentId(line.comment)" [ngClass]="{
+                    'accepted': getCommentState(line.comment).status === 'accepted',
+                    'rejected': getCommentState(line.comment).status === 'rejected'
+                  }">
+
+                                    <div class="comment-header">
+                                        <div>
+                                            <span class="comment-severity" [ngClass]="line.comment.severity">
+                                                {{ line.comment.severity }}
+                                            </span>
+                                            <span class="comment-status"
+                                                *ngIf="getCommentState(line.comment).status !== 'pending'"
+                                                [ngClass]="getCommentState(line.comment).status">
+                                                {{ getCommentState(line.comment).status.toUpperCase() }}
+                                            </span>
+                                        </div>
+                                        <span class="comment-line-info">Line {{ line.comment.line }}</span>
+                                    </div>
+
+                                    <div class="comment-text-display" *ngIf="!isEditing(line.comment)">
+                                        {{ getDisplayText(line.comment) }}
+                                    </div>
+
+                                    <textarea class="comment-text-input" *ngIf="isEditing(line.comment)"
+                                        [value]="getEditText(line.comment)"
+                                        (input)="setEditText(line.comment, $any($event.target).value)" rows="4">
+                  </textarea>
+
+                                    <div class="suggested-patch" *ngIf="line.comment.suggested_patch">
+                                        <div class="suggested-patch-label">💡 Suggested Fix:</div>
+                                        <pre>{{ line.comment.suggested_patch }}</pre>
+                                    </div>
+
+                                    <div class="comment-actions">
+                                        <button class="comment-btn accept" *ngIf="!isEditing(line.comment)"
+                                            [disabled]="isActionDisabled(line.comment)"
+                                            (click)="acceptComment(line.comment)">
+                                            ✓ Accept
+                                        </button>
+                                        <button class="comment-btn reject" *ngIf="!isEditing(line.comment)"
+                                            [disabled]="isActionDisabled(line.comment)"
+                                            (click)="rejectComment(line.comment)">
+                                            ✗ Reject
+                                        </button>
+                                        <button class="comment-btn modify" *ngIf="!isEditing(line.comment)"
+                                            [disabled]="isActionDisabled(line.comment)"
+                                            (click)="modifyComment(line.comment)">
+                                            ✎ Modify
+                                        </button>
+                                        <button class="comment-btn save" *ngIf="isEditing(line.comment)"
+                                            (click)="saveComment(line.comment)">
+                                            💾 Save
+                                        </button>
+                                        <button class="comment-btn cancel" *ngIf="isEditing(line.comment)"
+                                            (click)="cancelModify(line.comment)">
+                                            Cancel
+                                        </button>
+
+                                        <div class="comment-nav">
+                                            <button class="comment-btn nav prev-comment"
+                                                [disabled]="isFirstComment(line.comment)"
+                                                (click)="goToPreviousComment(line.comment)">
+                                                ← Previous
+                                            </button>
+                                            <button class="comment-btn nav next-comment"
+                                                [disabled]="isLastComment(line.comment)"
+                                                (click)="goToNextComment(line.comment)">
+                                                Next →
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Right side (Modified) -->
+                            <div class="side-cell" [ngClass]="{
+                     'added': line.type === 'added',
+                     'empty': line.type === 'deleted'
+                   }">
+                                <div class="side-cell-inner">
+                                    <div class="side-line-number">{{ line.newLineNum || '' }}</div>
+                                    <div class="side-line-content">{{ line.type !== 'deleted' ? line.content : '' }}
+                                    </div>
+                                </div>
+
+                                <!-- Comment on right side (TO) -->
+                                <div *ngIf="line.comment && line.comment.side === 'TO'" class="ai-comment"
+                                    [id]="getCommentId(line.comment)" [ngClass]="{
+                    'accepted': getCommentState(line.comment).status === 'accepted',
+                    'rejected': getCommentState(line.comment).status === 'rejected'
+                  }">
+
+                                    <div class="comment-header">
+                                        <div>
+                                            <span class="comment-severity" [ngClass]="line.comment.severity">
+                                                {{ line.comment.severity }}
+                                            </span>
+                                            <span class="comment-status"
+                                                *ngIf="getCommentState(line.comment).status !== 'pending'"
+                                                [ngClass]="getCommentState(line.comment).status">
+                                                {{ getCommentState(line.comment).status.toUpperCase() }}
+                                            </span>
+                                        </div>
+                                        <span class="comment-line-info">Line {{ line.comment.line }}</span>
+                                    </div>
+
+                                    <div class="comment-text-display" *ngIf="!isEditing(line.comment)">
+                                        {{ getDisplayText(line.comment) }}
+                                    </div>
+
+                                    <textarea class="comment-text-input" *ngIf="isEditing(line.comment)"
+                                        [value]="getEditText(line.comment)"
+                                        (input)="setEditText(line.comment, $any($event.target).value)" rows="4">
+                  </textarea>
+
+                                    <div class="suggested-patch" *ngIf="line.comment.suggested_patch">
+                                        <div class="suggested-patch-label">💡 Suggested Fix:</div>
+                                        <pre>{{ line.comment.suggested_patch }}</pre>
+                                    </div>
+
+                                    <div class="comment-actions">
+                                        <button class="comment-btn accept" *ngIf="!isEditing(line.comment)"
+                                            [disabled]="isActionDisabled(line.comment)"
+                                            (click)="acceptComment(line.comment)">
+                                            ✓ Accept
+                                        </button>
+                                        <button class="comment-btn reject" *ngIf="!isEditing(line.comment)"
+                                            [disabled]="isActionDisabled(line.comment)"
+                                            (click)="rejectComment(line.comment)">
+                                            ✗ Reject
+                                        </button>
+                                        <button class="comment-btn modify" *ngIf="!isEditing(line.comment)"
+                                            [disabled]="isActionDisabled(line.comment)"
+                                            (click)="modifyComment(line.comment)">
+                                            ✎ Modify
+                                        </button>
+                                        <button class="comment-btn save" *ngIf="isEditing(line.comment)"
+                                            (click)="saveComment(line.comment)">
+                                            💾 Save
+                                        </button>
+                                        <button class="comment-btn cancel" *ngIf="isEditing(line.comment)"
+                                            (click)="cancelModify(line.comment)">
+                                            Cancel
+                                        </button>
+
+                                        <div class="comment-nav">
+                                            <button class="comment-btn nav prev-comment"
+                                                [disabled]="isFirstComment(line.comment)"
+                                                (click)="goToPreviousComment(line.comment)">
+                                                ← Previous
+                                            </button>
+                                            <button class="comment-btn nav next-comment"
+                                                [disabled]="isLastComment(line.comment)"
+                                                (click)="goToNextComment(line.comment)">
+                                                Next →
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </ng-container>
+                </div>
+            </div>
+        </ng-container>
+    </div>
+
+    <div class="stats" *ngIf="stats">
+        <div class="stat-item">
+            <span>Changes:</span>
+            <span class="stat-added">+{{ stats.addedLines }}</span>
+            <span class="stat-deleted">-{{ stats.deletedLines }}</span>
+        </div>
+        <div class="stat-item">
+            <span>{{ stats.commentsCount }} AI Comment{{ stats.commentsCount !== 1 ? 's' : '' }}</span>
+        </div>
+        <div class="stat-item export-btn-container">
+            <button class="toggle-btn export-btn" (click)="exportComments()">
+                Export Comment Decisions
+            </button>
+        </div>
+    </div>
 </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// diff-viewer.component.scss
+* {
+    box-sizing: border-box;
+}
+
+:host {
+    display: block;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background-color: #f5f7fa;
+    padding: 20px;
+    line-height: 1.5;
+    min-height: 100vh;
+}
+
+.container {
+    max-width: 1400px;
+    margin: 0 auto;
+    background-color: white;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 10px 30px rgba(0, 0, 0, 0.08);
+    overflow: hidden;
+    animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.header {
+    background-color: #ffffff;
+    border-bottom: 1px solid #e5e7eb;
+    color: #111827;
+    padding: 24px 30px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    h1 {
+        font-size: 24px;
+        font-weight: 700;
+        letter-spacing: -0.5px;
+        color: #111827;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin: 0;
+
+        &::before {
+            content: '';
+            width: 4px;
+            height: 28px;
+            background: linear-gradient(to bottom, #3b82f6, #2563eb);
+            border-radius: 2px;
+        }
+    }
+}
+
+.header-actions {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+}
+
+.view-toggle {
+    display: flex;
+    gap: 8px;
+    background-color: #f9fafb;
+    padding: 4px;
+    border-radius: 8px;
+    border: 1px solid #e5e7eb;
+}
+
+.toggle-btn {
+    padding: 8px 16px;
+    background-color: transparent;
+    color: #6b7280;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: all 0.2s ease;
+    position: relative;
+
+    &:hover {
+        background-color: #f3f4f6;
+        color: #374151;
+    }
+
+    &.active {
+        background-color: #3b82f6;
+        color: white;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+
+        &:hover {
+            background-color: #2563eb;
+        }
+    }
+}
+
+.file-selector {
+    background-color: #fafbfc;
+    border-bottom: 1px solid #e5e7eb;
+    padding: 16px 30px;
+
+    select {
+        width: 100%;
+        padding: 10px 14px;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        font-size: 14px;
+        font-weight: 500;
+        background-color: white;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        color: #374151;
+
+        &:hover {
+            border-color: #3b82f6;
+        }
+
+        &:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+    }
+}
+
+.diff-container {
+    padding: 30px;
+    background-color: #ffffff;
+}
+
+.file-header {
+    background-color: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-bottom: none;
+    color: #374151;
+    padding: 12px 16px;
+    border-radius: 6px 6px 0 0;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+// Unified View
+.unified-view {
+    border: 1px solid #e5e7eb;
+    border-top: none;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+    font-size: 13px;
+    border-radius: 0 0 6px 6px;
+    overflow: hidden;
+}
+
+.diff-line {
+    display: flex;
+    border-bottom: 1px solid #f3f4f6;
+    min-height: 24px;
+    transition: background-color 0.15s ease;
+
+    &:hover {
+        background-color: #fafbfc !important;
+    }
+
+    &.added {
+        background-color: #ecfdf5;
+
+        .line-numbers {
+            background-color: #d1fae5;
+        }
+    }
+
+    &.deleted {
+        background-color: #fef2f2;
+
+        .line-numbers {
+            background-color: #fecaca;
+        }
+    }
+
+    &.context {
+        background-color: white;
+    }
+}
+
+.line-numbers {
+    display: flex;
+    flex-shrink: 0;
+    background-color: #f9fafb;
+    border-right: 1px solid #e5e7eb;
+}
+
+.line-number {
+    width: 50px;
+    padding: 4px 8px;
+    text-align: right;
+    color: #9ca3af;
+    font-size: 12px;
+    user-select: none;
+    border-right: 1px solid #f3f4f6;
+    font-weight: 500;
+
+    &:last-child {
+        border-right: none;
+    }
+}
+
+.line-content {
+    flex: 1;
+    padding: 4px 12px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    line-height: 1.6;
+    min-width: 0;
+    color: #1f2937;
+}
+
+// Side by Side View
+.side-by-side-view {
+    display: table;
+    width: 100%;
+    border: 1px solid #dfe1e6;
+    border-top: none;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+    font-size: 13px;
+    border-collapse: collapse;
+}
+
+.side-header-row {
+    display: table-row;
+}
+
+.side-header {
+    display: table-cell;
+    background-color: #f4f5f7;
+    padding: 8px 15px;
+    font-weight: 600;
+    border-bottom: 2px solid #dfe1e6;
+    color: #172b4d;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    width: 50%;
+}
+
+.side-row {
+    display: table-row;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.side-cell {
+    display: table-cell;
+    width: 50%;
+    border-bottom: 1px solid #f0f0f0;
+    vertical-align: top;
+
+    &.deleted .side-cell-inner {
+        background-color: #ffebe6;
+    }
+
+    &.deleted .side-line-number {
+        background-color: #ffd5cc;
+    }
+
+    &.added .side-cell-inner {
+        background-color: #e3fcef;
+    }
+
+    &.added .side-line-number {
+        background-color: #d3f5e3;
+    }
+
+    &.empty .side-cell-inner {
+        background-color: #fafbfc;
+        opacity: 0.3;
+    }
+
+    &.empty .side-line-number {
+        background-color: #f4f5f7;
+    }
+}
+
+.side-cell-inner {
+    display: flex;
+    min-height: 24px;
+}
+
+.side-line-number {
+    width: 50px;
+    padding: 4px 8px;
+    text-align: right;
+    color: #6b778c;
+    font-size: 12px;
+    background-color: #fafbfc;
+    border-right: 1px solid #dfe1e6;
+    user-select: none;
+    flex-shrink: 0;
+}
+
+.side-line-content {
+    flex: 1;
+    padding: 4px 12px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    line-height: 1.5;
+    min-width: 0;
+}
+
+// AI Comments
+.ai-comment {
+    background-color: #fffbeb;
+    border: 2px solid #fbbf24;
+    border-left: 4px solid #f59e0b;
+    border-radius: 8px;
+    padding: 16px;
+    margin: 12px 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    font-size: 13px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    position: relative;
+
+    &::before {
+        content: '💬 AI COMMENT';
+        position: absolute;
+        top: -11px;
+        left: 12px;
+        background-color: #f59e0b;
+        color: white;
+        padding: 2px 10px;
+        border-radius: 4px;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+    }
+
+    &.accepted {
+        background-color: #f0fdf4;
+        border-color: #10b981;
+        border-left-color: #059669;
+
+        &::before {
+            content: '✓ ACCEPTED';
+            background-color: #10b981;
+        }
+    }
+
+    &.rejected {
+        background-color: #fef2f2;
+        border-color: #ef4444;
+        border-left-color: #dc2626;
+        opacity: 0.85;
+
+        &::before {
+            content: '✗ REJECTED';
+            background-color: #ef4444;
+        }
+    }
+}
+
+.comment-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    margin-top: 8px;
+}
+
+.comment-severity {
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+
+    &.error {
+        background-color: #de350b;
+        color: white;
+    }
+
+    &.warning {
+        background-color: #ff8b00;
+        color: white;
+    }
+
+    &.suggestion {
+        background-color: #00875a;
+        color: white;
+    }
+}
+
+.comment-line-info {
+    font-size: 11px;
+    color: #6b778c;
+    font-weight: 600;
+    background-color: rgba(107, 119, 140, 0.1);
+    padding: 4px 8px;
+    border-radius: 3px;
+}
+
+.comment-text-display {
+    margin: 10px 0;
+    line-height: 1.6;
+    color: #172b4d;
+    padding: 10px;
+    background-color: rgba(255, 255, 255, 0.5);
+    border-radius: 4px;
+    border-left: 3px solid #dfe1e6;
+}
+
+.comment-text-input {
+    width: 100%;
+    padding: 10px;
+    border: 2px solid #0052cc;
+    border-radius: 4px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    font-size: 13px;
+    line-height: 1.6;
+    resize: vertical;
+    min-height: 80px;
+    margin: 10px 0;
+
+    &:focus {
+        outline: none;
+        border-color: #0052cc;
+        box-shadow: 0 0 0 3px rgba(0, 82, 204, 0.1);
+    }
+}
+
+.suggested-patch {
+    background-color: #f4f5f7;
+    border: 2px dashed #0052cc;
+    border-left: 4px solid #0052cc;
+    padding: 12px;
+    margin-top: 12px;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+    font-size: 12px;
+    white-space: pre-wrap;
+    border-radius: 4px;
+    position: relative;
+
+    pre {
+        margin: 0;
+        white-space: pre-wrap;
+    }
+}
+
+.suggested-patch-label {
+    font-weight: 700;
+    margin-bottom: 8px;
+    color: #0052cc;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.comment-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #dfe1e6;
+    flex-wrap: wrap;
+}
+
+.comment-nav {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+    padding-left: 8px;
+    border-left: 1px solid #dfe1e6;
+}
+
+.comment-btn {
+    padding: 8px 14px;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+
+    &:hover:not(:disabled) {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    &:active:not(:disabled) {
+        transform: translateY(0);
+    }
+
+    &.accept {
+        background-color: #10b981;
+        color: white;
+
+        &:hover:not(:disabled) {
+            background-color: #059669;
+        }
+    }
+
+    &.reject {
+        background-color: #ef4444;
+        color: white;
+
+        &:hover:not(:disabled) {
+            background-color: #dc2626;
+        }
+    }
+
+    &.modify {
+        background-color: #3b82f6;
+        color: white;
+
+        &:hover:not(:disabled) {
+            background-color: #2563eb;
+        }
+    }
+
+    &.save {
+        background-color: #10b981;
+        color: white;
+
+        &:hover:not(:disabled) {
+            background-color: #059669;
+        }
+    }
+
+    &.cancel {
+        background-color: #6b7280;
+        color: white;
+
+        &:hover:not(:disabled) {
+            background-color: #4b5563;
+        }
+    }
+
+    &.nav {
+        background-color: #f4f5f7;
+        color: #172b4d;
+        border: 1px solid #dfe1e6;
+        font-weight: 500;
+
+        &:hover:not(:disabled) {
+            background-color: #ebecf0;
+            border-color: #c1c7d0;
+        }
+    }
+
+    &:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+        transform: none;
+        background-color: #f4f5f7 !important;
+        color: #a5adba !important;
+        border-color: #e1e4e8 !important;
+
+        &:hover {
+            transform: none;
+            box-shadow: none;
+            background-color: #f4f5f7 !important;
+        }
+    }
+
+    &.nav:disabled {
+        background-color: #fafbfc !important;
+        color: #c1c7d0 !important;
+        border-color: #f0f0f0 !important;
+    }
+}
+
+.comment-status {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-left: 8px;
+
+    &.accepted {
+        background-color: #00875a;
+        color: white;
+    }
+
+    &.rejected {
+        background-color: #de350b;
+        color: white;
+    }
+}
+
+.stats {
+    background-color: #fafbfc;
+    padding: 16px 30px;
+    border-top: 1px solid #e5e7eb;
+    font-size: 13px;
+    color: #6b7280;
+    display: flex;
+    gap: 30px;
+    align-items: center;
+}
+
+.stat-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 500;
+
+    &.export-btn-container {
+        margin-left: auto;
+    }
+}
+
+.stat-added {
+    color: #10b981;
+    font-weight: 700;
+}
+
+.stat-deleted {
+    color: #ef4444;
+    font-weight: 700;
+}
+
+.export-btn {
+    padding: 6px 12px;
+    font-size: 12px;
+}
+
+.empty-state {
+    color: #868e96;
+    text-align: center;
+    padding: 80px 40px;
+    font-size: 16px;
+    font-weight: 500;
+
+    &::before {
+        content: '📂';
+        display: block;
+        font-size: 64px;
+        margin-bottom: 20px;
+        opacity: 0.5;
+    }
+}
