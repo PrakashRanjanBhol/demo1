@@ -1,5 +1,6 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import * as Diff from 'diff';
 
 // TypeScript interfaces for type safety
 interface AIComment {
@@ -864,82 +865,52 @@ export class CodeDiffViewerComponent implements OnInit {
     this.updateStats(file);
   }
 
-  // Simple line-based diff algorithm (similar to jsdiff library)
+  // Use jsdiff library for accurate line-based diff
   diffLines(oldText: string, newText: string): DiffOperation[] {
-    const oldLines = oldText.split('\n');
-    const newLines = newText.split('\n');
     const operations: DiffOperation[] = [];
-    
-    let oldIndex = 0;
-    let newIndex = 0;
+    const diff = Diff.diffLines(oldText, newText);
 
-    while (oldIndex < oldLines.length || newIndex < newLines.length) {
-      if (oldIndex < oldLines.length && newIndex < newLines.length && 
-          oldLines[oldIndex] === newLines[newIndex]) {
-        // Context line (unchanged)
-        operations.push({
-          type: 'context',
-          oldLine: oldLines[oldIndex],
-          newLine: newLines[newIndex],
-          oldLineNum: oldIndex + 1,
-          newLineNum: newIndex + 1
-        });
-        oldIndex++;
-        newIndex++;
-      } else {
-        // Check if there's a match ahead in new lines
-        const matchInNew = newLines.slice(newIndex).findIndex(line => line === oldLines[oldIndex]);
-        const matchInOld = oldLines.slice(oldIndex).findIndex(line => line === newLines[newIndex]);
+    let oldLineNum = 1;
+    let newLineNum = 1;
 
-        if (matchInNew !== -1 && (matchInOld === -1 || matchInNew <= matchInOld)) {
-          // Lines were added
-          for (let i = 0; i < matchInNew; i++) {
-            operations.push({
-              type: 'added',
-              oldLine: null,
-              newLine: newLines[newIndex],
-              oldLineNum: null,
-              newLineNum: newIndex + 1
-            });
-            newIndex++;
-          }
-        } else if (matchInOld !== -1) {
-          // Lines were removed
-          for (let i = 0; i < matchInOld; i++) {
-            operations.push({
-              type: 'removed',
-              oldLine: oldLines[oldIndex],
-              newLine: null,
-              oldLineNum: oldIndex + 1,
-              newLineNum: null
-            });
-            oldIndex++;
-          }
-        } else {
-          // No match found, treat as removed and added
-          if (oldIndex < oldLines.length) {
-            operations.push({
-              type: 'removed',
-              oldLine: oldLines[oldIndex],
-              newLine: null,
-              oldLineNum: oldIndex + 1,
-              newLineNum: null
-            });
-            oldIndex++;
-          }
-          if (newIndex < newLines.length) {
-            operations.push({
-              type: 'added',
-              oldLine: null,
-              newLine: newLines[newIndex],
-              oldLineNum: null,
-              newLineNum: newIndex + 1
-            });
-            newIndex++;
-          }
-        }
+    diff.forEach(part => {
+      const lines = part.value.split('\n');
+      // Remove empty last line if it exists
+      if (lines[lines.length - 1] === '') {
+        lines.pop();
       }
-    }
+
+      lines.forEach(line => {
+        if (part.added) {
+          // Added line
+          operations.push({
+            type: 'added',
+            oldLine: null,
+            newLine: line,
+            oldLineNum: null,
+            newLineNum: newLineNum++
+          });
+        } else if (part.removed) {
+          // Deleted line
+          operations.push({
+            type: 'removed',
+            oldLine: line,
+            newLine: null,
+            oldLineNum: oldLineNum++,
+            newLineNum: null
+          });
+        } else {
+          // Context line (unchanged)
+          operations.push({
+            type: 'context',
+            oldLine: line,
+            newLine: line,
+            oldLineNum: oldLineNum++,
+            newLineNum: newLineNum++
+          });
+        }
+      });
+    });
 
     return operations;
   }
