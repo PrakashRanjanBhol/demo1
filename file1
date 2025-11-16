@@ -1,136 +1,36 @@
-private generateUnifiedDiff(file: DiffFile): DiffLine[] {
-  const oldText = file.old_lines.join('\n');
-  const newText = file.new_lines.join('\n');
-  const diff = Diff.diffLines(oldText, newText);
-
-  const lines: DiffLine[] = [];
-  let oldLineNum = 1;
-  let newLineNum = 1;
-
-  diff.forEach(part => {
-    const lineTexts = part.value.split('\n');
-    if (lineTexts[lineTexts.length - 1] === '') {
-      lineTexts.pop();
-    }
-
-    lineTexts.forEach(lineText => {
-      if (part.added) {
-        const comment = this.findCommentForLine(file, newLineNum, 'TO');
-        lines.push({
-          type: 'added',
-          newLineNum,
-          content: this.highlightSyntax(lineText, file.file_path),
-          comment
-        });
-        newLineNum++;
-      } else if (part.removed) {
-        const comment = this.findCommentForLine(file, oldLineNum, 'FROM');
-        lines.push({
-          type: 'deleted',
-          oldLineNum,
-          content: this.highlightSyntax(lineText, file.file_path),
-          comment
-        });
-        oldLineNum++;
-      } else {
-        // Check for comments on both old and new line numbers for context lines
-        const oldComment = this.findCommentForLine(file, oldLineNum, 'FROM');
-        const newComment = this.findCommentForLine(file, newLineNum, 'TO');
-        
-        lines.push({
-          type: 'context',
-          oldLineNum,
-          newLineNum,
-          content: this.highlightSyntax(lineText, file.file_path),
-          comment: newComment || oldComment // Prioritize 'TO' comments, fallback to 'FROM'
-        });
-        oldLineNum++;
-        newLineNum++;
-      }
+lineTexts.forEach(lineText => {
+  if (part.added) {
+    const comment = this.findCommentForLine(file, newLineNum, 'TO');
+    lines.push({
+      type: 'added',
+      newLineNum,
+      content: this.highlightSyntax(lineText, file.file_path),
+      comment
     });
-  });
-
-  return lines;
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-interface DiffLine {
-  type: 'added' | 'deleted' | 'context';
-  oldLineNum?: number;
-  newLineNum?: number;
-  content: string;
-  comment?: AIComment;
-  oldComment?: AIComment; // Add this for FROM side comments on context lines
-  newComment?: AIComment; // Add this for TO side comments on context lines
-}
-
-
-
-
-
-
-
-// In the context line section:
-const oldComment = this.findCommentForLine(file, oldLineNum, 'FROM');
-const newComment = this.findCommentForLine(file, newLineNum, 'TO');
-
-lines.push({
-  type: 'context',
-  oldLineNum,
-  newLineNum,
-  content: this.highlightSyntax(lineText, file.file_path),
-  comment: newComment || oldComment, // Keep for backward compatibility
-  oldComment: oldComment,
-  newComment: newComment
+    newLineNum++;
+  } else if (part.removed) {
+    const comment = this.findCommentForLine(file, oldLineNum, 'FROM');
+    lines.push({
+      type: 'deleted',
+      oldLineNum,
+      content: this.highlightSyntax(lineText, file.file_path),
+      comment
+    });
+    oldLineNum++;
+  } else {
+    // Changed: Check for comments on context lines too
+    const commentFrom = this.findCommentForLine(file, oldLineNum, 'FROM');
+    const commentTo = this.findCommentForLine(file, newLineNum, 'TO');
+    const comment = commentTo || commentFrom; // Prioritize TO comments
+    
+    lines.push({
+      type: 'context',
+      oldLineNum,
+      newLineNum,
+      content: this.highlightSyntax(lineText, file.file_path),
+      comment
+    });
+    oldLineNum++;
+    newLineNum++;
+  }
 });
-
-
-
-
-
-
-
-
-
-<!-- After the diff-line div in unified view -->
-<!-- Comment from FROM side -->
-<div 
-  *ngIf="line.oldComment"
-  class="ai-comment" 
-  [id]="getCommentId(line.oldComment)"
-  [ngClass]="{
-    'accepted': getCommentState(line.oldComment).status === 'accepted',
-    'rejected': getCommentState(line.oldComment).status === 'rejected',
-    'processing': isProcessing(line.oldComment)
-  }">
-  <!-- Same comment structure as before -->
-</div>
-
-<!-- Comment from TO side -->
-<div 
-  *ngIf="line.newComment"
-  class="ai-comment" 
-  [id]="getCommentId(line.newComment)"
-  [ngClass]="{
-    'accepted': getCommentState(line.newComment).status === 'accepted',
-    'rejected': getCommentState(line.newComment).status === 'rejected',
-    'processing': isProcessing(line.newComment)
-  }">
-  <!-- Same comment structure as before -->
-</div>
-
-
