@@ -1,36 +1,59 @@
-lineTexts.forEach(lineText => {
-  if (part.added) {
-    const comment = this.findCommentForLine(file, newLineNum, 'TO');
-    lines.push({
-      type: 'added',
-      newLineNum,
-      content: this.highlightSyntax(lineText, file.file_path),
-      comment
-    });
-    newLineNum++;
-  } else if (part.removed) {
-    const comment = this.findCommentForLine(file, oldLineNum, 'FROM');
-    lines.push({
-      type: 'deleted',
-      oldLineNum,
-      content: this.highlightSyntax(lineText, file.file_path),
-      comment
-    });
-    oldLineNum++;
-  } else {
-    // Changed: Check for comments on context lines too
-    const commentFrom = this.findCommentForLine(file, oldLineNum, 'FROM');
-    const commentTo = this.findCommentForLine(file, newLineNum, 'TO');
-    const comment = commentTo || commentFrom; // Prioritize TO comments
-    
-    lines.push({
-      type: 'context',
-      oldLineNum,
-      newLineNum,
-      content: this.highlightSyntax(lineText, file.file_path),
-      comment
-    });
-    oldLineNum++;
-    newLineNum++;
+scrollToComment(index: number): void {
+  setTimeout(() => {
+    const commentElements = document.querySelectorAll('.ai-comment');
+    if (commentElements[index]) {
+      commentElements[index].scrollIntoView({ behavior: 'smooth', block: 'center' });
+      
+      const element = commentElements[index] as HTMLElement;
+      element.style.transition = 'box-shadow 0.3s';
+      element.style.boxShadow = '0 0 10px rgba(59, 130, 246, 0.5)';
+      setTimeout(() => {
+        element.style.boxShadow = '';
+      }, 1000);
+    }
+  }, 100);
+}
+
+goToNextComment(currentComment: AIComment): void {
+  if (!this.selectedFile) return;
+  
+  // Get all visible comments in DOM order
+  const commentElements = Array.from(document.querySelectorAll('.ai-comment'));
+  const currentId = this.getCommentId(currentComment);
+  const currentIndex = commentElements.findIndex(el => el.id === currentId);
+  
+  if (currentIndex >= 0 && currentIndex < commentElements.length - 1) {
+    this.scrollToComment(currentIndex + 1);
   }
-});
+}
+
+goToPreviousComment(currentComment: AIComment): void {
+  if (!this.selectedFile) return;
+  
+  // Get all visible comments in DOM order
+  const commentElements = Array.from(document.querySelectorAll('.ai-comment'));
+  const currentId = this.getCommentId(currentComment);
+  const currentIndex = commentElements.findIndex(el => el.id === currentId);
+  
+  if (currentIndex > 0) {
+    this.scrollToComment(currentIndex - 1);
+  }
+}
+
+isFirstComment(comment: AIComment): boolean {
+  // Check if this is the first visible comment in the DOM
+  const commentElements = Array.from(document.querySelectorAll('.ai-comment'));
+  if (commentElements.length === 0) return true;
+  
+  const currentId = this.getCommentId(comment);
+  return commentElements[0]?.id === currentId;
+}
+
+isLastComment(comment: AIComment): boolean {
+  // Check if this is the last visible comment in the DOM
+  const commentElements = Array.from(document.querySelectorAll('.ai-comment'));
+  if (commentElements.length === 0) return true;
+  
+  const currentId = this.getCommentId(comment);
+  return commentElements[commentElements.length - 1]?.id === currentId;
+}
