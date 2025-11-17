@@ -1,31 +1,314 @@
-// Add this method to reset all state
+// Add these new properties for caching
+private commentStateCache = new Map<string, {
+  state: CommentState;
+  displayText: string;
+  isEditing: boolean;
+  isProcessing: boolean;
+  isActionDisabled: boolean;
+  processingAction: 'accept' | 'reject' | 'save' | null;
+}>();
+
+private commentNavigationCache = new Map<string, {
+  isFirst: boolean;
+  isLast: boolean;
+}>();
+
+// Add this method to clear cache when needed
+private clearCommentCache(): void {
+  this.commentStateCache.clear();
+  this.commentNavigationCache.clear();
+}
+
+// Update renderDiff to clear cache
+private renderDiff(): void {
+  if (!this.selectedFile) return;
+
+  this.diffLines = this.generateUnifiedDiff(this.selectedFile);
+  this.stats = this.calculateStats(this.selectedFile);
+  this.clearCommentCache(); // Clear cache when diff changes
+  this.updateCommentNavigationCache(); // Rebuild navigation cache
+}
+
+// New method to get cached comment data
+getCommentData(comment: AIComment): any {
+  const commentId = this.getCommentId(comment);
+  
+  if (!this.commentStateCache.has(commentId)) {
+    const state = this.getCommentState(comment);
+    const processingAction = this.processingComments.get(commentId) || null;
+    
+    this.commentStateCache.set(commentId, {
+      state: state,
+      displayText: state.modifiedText || comment.comment_text,
+      isEditing: this.editingComments.has(commentId),
+      isProcessing: this.processingComments.has(commentId),
+      isActionDisabled: state.status === 'accepted' || state.status === 'rejected' || this.processingComments.has(commentId),
+      processingAction: processingAction
+    });
+  }
+  
+  return this.commentStateCache.get(commentId);
+}
+
+// Update navigation cache
+private updateCommentNavigationCache(): void {
+  this.commentNavigationCache.clear();
+  
+  // Wait for DOM to be ready
+  setTimeout(() => {
+    const commentElements = Array.from(document.querySelectorAll('.ai-comment'));
+    
+    commentElements.forEach((element, index) => {
+      const commentId = element.id;
+      this.commentNavigationCache.set(commentId, {
+        isFirst: index === 0,
+        isLast: index === commentElements.length - 1
+      });
+    });
+  }, 50);
+}
+
+// Update navigation methods
+getCommentNavigation(comment: AIComment): { isFirst: boolean; isLast: boolean } {
+  const commentId = this.getCommentId(comment);
+  return this.commentNavigationCache.get(commentId) || { isFirst: false, isLast: false };
+}
+
+// Update existing methods to invalidate cache
+
+acceptComment(comment: AIComment): void {
+  const commentData = this.getCommentData(comment);
+  if (!this.selectedFile || commentData.isActionDisabled) return;
+  
+  const commentId = this.getCommentId(comment);
+  this.processingComments.set(commentId, 'accept');
+  this.commentStateCache.delete(commentId); // Invalidate cache
+  
+  setTimeout(() => {
+    const state = this.getCommentState(comment);
+    const textToSave = state.modifiedText || comment.comment_text;
+    
+    this.saveCommentState(
+      this.selectedFile!.file_path,
+      comment.line,
+      comment.side,
+      'accepted',
+      textToSave
+    );
+    this.processingComments.delete(commentId);
+    this.commentStateCache.delete(commentId); // Invalidate cache again
+  }, 800);
+}
+
+rejectComment(comment: AIComment): void {
+  const commentData = this.getCommentData(comment);
+  if (!this.selectedFile || commentData.isActionDisabled) return;
+  
+  const commentId = this.getCommentId(comment);
+  this.processingComments.set(commentId, 'reject');
+  this.commentStateCache.delete(commentId); // Invalidate cache
+  
+  setTimeout(() => {
+    const state = this.getCommentState(comment);
+    const textToSave = state.modifiedText || comment.comment_text;
+    
+    this.saveCommentState(
+      this.selectedFile!.file_path,
+      comment.line,
+      comment.side,
+      'rejected',
+      textToSave
+    );
+    this.processingComments.delete(commentId);
+    this.commentStateCache.delete(commentId); // Invalidate cache again
+  }, 800);
+}
+
+modifyComment(comment: AIComment): void {
+  const commentData = this.getCommentData(comment);
+  if (commentData.isActionDisabled) return;
+  
+  const commentId = this.getCommentId(comment);
+  this.editingComments.set(commentId, commentData.displayText);
+  this.commentStateCache.delete(commentId); // Invalidate cache
+}
+
+saveComment(comment: AIComment): void {
+  if (!this.selectedFile) return;
+  
+  const commentId = this.getCommentId(comment);
+  this.processingComments.set(commentId, 'save');
+  this.commentStateCache.delete(commentId); // Invalidate cache
+  
+  setTimeout(() => {
+    const newText = this.getEditText(comment);
+    const state = this.getCommentState(comment);
+    this.saveCommentState(
+      this.selectedFile!.file_path,
+      comment.line,
+      comment.side,
+      state.status,
+      newText
+    );
+    this.editingComments.delete(commentId);
+    this.processingComments.delete(commentId);
+    this.commentStateCache.delete(commentId); // Invalidate cache again
+  }, 800);
+}
+
+cancelModify(comment: AIComment): void {
+  const commentId = this.getCommentId(comment);
+  this.editingComments.delete(commentId);
+  this.commentStateCache.delete(commentId); // Invalidate cache
+}
+
+setEditText(comment: AIComment, text: string): void {
+  const commentId = this.getCommentId(comment);
+  this.editingComments.set(commentId, text);
+  this.commentStateCache.delete(commentId); // Invalidate cache
+}
+
+// Update reset method
 resetComponentState(): void {
-  // Clear files and selection
   this.files = [];
   this.selectedFile = null;
   this.selectedFileIndex = -1;
   this.diffLines = [];
   this.stats = null;
   
-  // Clear all comment states
   this.editingComments.clear();
   this.commentStates.clear();
   this.processingComments.clear();
   
-  // Reset to default view
+  // Clear caches
+  this.clearCommentCache();
+  
   this.currentView = 'unified';
 }
 
-// Call this method before loading new PR data
-loadNewPRData(newFiles: DiffFile[]): void {
-  // Reset everything first
-  this.resetComponentState();
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- For Unified View and Side-by-Side View, replace the comment block with: -->
+<div 
+  *ngIf="line.comment"
+  class="ai-comment" 
+  [id]="getCommentId(line.comment)"
+  [ngClass]="{
+    'accepted': getCommentData(line.comment).state.status === 'accepted',
+    'rejected': getCommentData(line.comment).state.status === 'rejected',
+    'processing': getCommentData(line.comment).isProcessing
+  }">
   
-  // Load new files
-  this.files = newFiles;
-  
-  // Optionally auto-select first file if exists
-  if (this.files.length > 0) {
-    this.onFileSelect(0);
-  }
-}
+  <div class="comment-header">
+    <div>
+      <span class="comment-severity" [ngClass]="line.comment.severity">
+        {{ line.comment.severity }}
+      </span>
+      <span 
+        class="comment-status" 
+        *ngIf="getCommentData(line.comment).state.status !== 'pending'"
+        [ngClass]="getCommentData(line.comment).state.status">
+        {{ getCommentData(line.comment).state.status.toUpperCase() }}
+      </span>
+    </div>
+    <span class="comment-line-info">Line {{ line.comment.line }}</span>
+  </div>
+
+  <div class="comment-text-display" *ngIf="!getCommentData(line.comment).isEditing">
+    {{ getCommentData(line.comment).displayText }}
+  </div>
+
+  <textarea 
+    class="comment-text-input" 
+    *ngIf="getCommentData(line.comment).isEditing"
+    [value]="getEditText(line.comment)"
+    (input)="setEditText(line.comment, $any($event.target).value)"
+    rows="4">
+  </textarea>
+
+  <div class="suggested-patch" *ngIf="line.comment.suggested_patch">
+    <div class="suggested-patch-label">💡 Suggested Fix:</div>
+    <pre>{{ line.comment.suggested_patch }}</pre>
+  </div>
+
+  <div class="comment-actions">
+    <button 
+      class="comment-btn accept" 
+      *ngIf="!getCommentData(line.comment).isEditing && getCommentData(line.comment).state.status === 'pending'"
+      [disabled]="getCommentData(line.comment).isActionDisabled"
+      (click)="acceptComment(line.comment)">
+      <span *ngIf="getCommentData(line.comment).processingAction !== 'accept'">✓ Accept</span>
+      <span *ngIf="getCommentData(line.comment).processingAction === 'accept'" class="spinner-container">
+        <span class="spinner"></span>
+        <span>Accepting...</span>
+      </span>
+    </button>
+    <button 
+      class="comment-btn reject" 
+      *ngIf="!getCommentData(line.comment).isEditing && getCommentData(line.comment).state.status === 'pending'"
+      [disabled]="getCommentData(line.comment).isActionDisabled"
+      (click)="rejectComment(line.comment)">
+      <span *ngIf="getCommentData(line.comment).processingAction !== 'reject'">✗ Reject</span>
+      <span *ngIf="getCommentData(line.comment).processingAction === 'reject'" class="spinner-container">
+        <span class="spinner"></span>
+        <span>Rejecting...</span>
+      </span>
+    </button>
+    <button 
+      class="comment-btn modify" 
+      *ngIf="!getCommentData(line.comment).isEditing && getCommentData(line.comment).state.status === 'pending'"
+      [disabled]="getCommentData(line.comment).isActionDisabled"
+      (click)="modifyComment(line.comment)">
+      ✎ Modify
+    </button>
+    <button 
+      class="comment-btn save" 
+      *ngIf="getCommentData(line.comment).isEditing"
+      [disabled]="getCommentData(line.comment).isProcessing"
+      (click)="saveComment(line.comment)">
+      <span *ngIf="getCommentData(line.comment).processingAction !== 'save'">💾 Save</span>
+      <span *ngIf="getCommentData(line.comment).processingAction === 'save'" class="spinner-container">
+        <span class="spinner"></span>
+        <span>Saving...</span>
+      </span>
+    </button>
+    <button 
+      class="comment-btn cancel" 
+      *ngIf="getCommentData(line.comment).isEditing"
+      [disabled]="getCommentData(line.comment).isProcessing"
+      (click)="cancelModify(line.comment)">
+      Cancel
+    </button>
+    
+    <div class="comment-nav">
+      <button 
+        class="comment-btn nav prev-comment"
+        [disabled]="getCommentNavigation(line.comment).isFirst || getCommentData(line.comment).isProcessing"
+        (click)="goToPreviousComment(line.comment)"
+        title="Previous Comment">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
+        </svg>
+      </button>
+      <button 
+        class="comment-btn nav next-comment"
+        [disabled]="getCommentNavigation(line.comment).isLast || getCommentData(line.comment).isProcessing"
+        (click)="goToNextComment(line.comment)"
+        title="Next Comment">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</div>
