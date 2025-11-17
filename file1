@@ -6,9 +6,9 @@ interface FileInfo {
   repository: string;
   content: string;
   type: string;
-  renderedContent?: SafeHtml; // Add this
-  currentLoadedLines?: number; // Add this
-  totalLines?: number; // Add this
+  renderedContent?: SafeHtml;
+  currentLoadedLines?: number;
+  totalLines?: number;
 }
 
 
@@ -20,14 +20,18 @@ private renderFileContent(file: FileInfo): void {
 
   const fileType = file.type || 'plaintext';
   const lines = file.content.split('\n');
-  file.totalLines = lines.length;
+  
+  // Set total lines only once
+  if (!file.totalLines) {
+    file.totalLines = lines.length;
+  }
   
   // Initialize currentLoadedLines if not set
   if (!file.currentLoadedLines) {
-    file.currentLoadedLines = this.LINES_PER_LOAD;
+    file.currentLoadedLines = Math.min(this.LINES_PER_LOAD, file.totalLines);
   }
 
-  // Get the content to display (limited lines)
+  // Get only the chunk to display
   const contentToDisplay = lines.slice(0, file.currentLoadedLines).join('\n');
 
   let renderedContent: SafeHtml;
@@ -51,9 +55,9 @@ private renderFileContent(file: FileInfo): void {
     );
   }
 
-  // Update the file object with rendered content
   file.renderedContent = renderedContent;
 }
+
 
 
 
@@ -66,10 +70,13 @@ selectFile(file: FileInfo): void {
   this.selectedFile = file;
   this.activeView = 'file';
   
-  // Reset or initialize loading state
-  if (!file.currentLoadedLines) {
-    file.currentLoadedLines = this.LINES_PER_LOAD;
+  // Calculate total lines first time
+  if (!file.totalLines) {
+    file.totalLines = file.content.split('\n').length;
   }
+  
+  // Start with first chunk
+  file.currentLoadedLines = Math.min(this.LINES_PER_LOAD, file.totalLines);
   
   this.renderFileContent(file);
 }
@@ -78,22 +85,38 @@ selectFile(file: FileInfo): void {
 
 
 
-// Load more lines
+
+
+
+
+
+// Load more lines (just re-render with more lines, no API call)
 loadMoreLines(): void {
   if (!this.selectedFile || this.isLoading) return;
   
   this.isLoading = true;
   
-  // Simulate async loading (remove setTimeout for real implementation)
+  // Use setTimeout to avoid blocking UI thread
   setTimeout(() => {
-    if (this.selectedFile) {
-      this.selectedFile.currentLoadedLines = 
-        (this.selectedFile.currentLoadedLines || this.LINES_PER_LOAD) + this.LINES_PER_LOAD;
+    if (this.selectedFile && this.selectedFile.totalLines) {
+      // Load next chunk
+      const newLoadedLines = Math.min(
+        (this.selectedFile.currentLoadedLines || 0) + this.LINES_PER_LOAD,
+        this.selectedFile.totalLines
+      );
+      
+      this.selectedFile.currentLoadedLines = newLoadedLines;
       this.renderFileContent(this.selectedFile);
     }
     this.isLoading = false;
-  }, 100);
+  }, 50); // Small delay to prevent UI freeze
 }
+
+
+
+
+
+
 
 
 
@@ -105,19 +128,16 @@ loadMoreLines(): void {
 // Get lines info text
 getLinesInfo(): string {
   if (!this.selectedFile || !this.selectedFile.totalLines) return '';
-  const loaded = Math.min(
-    this.selectedFile.currentLoadedLines || this.LINES_PER_LOAD, 
-    this.selectedFile.totalLines
-  );
+  const loaded = this.selectedFile.currentLoadedLines || 0;
   return `Showing ${loaded} of ${this.selectedFile.totalLines} lines`;
 }
 
-// Check if there are more lines
+// Check if there are more lines to render
 get hasMoreLines(): boolean {
   if (!this.selectedFile || !this.selectedFile.totalLines) return false;
-  return this.selectedFile.totalLines > (this.selectedFile.currentLoadedLines || this.LINES_PER_LOAD);
+  const loaded = this.selectedFile.currentLoadedLines || 0;
+  return loaded < this.selectedFile.totalLines;
 }
-
 
 
 
@@ -129,44 +149,10 @@ get hasMoreLines(): boolean {
 changeView(view: string): void {
   this.currentView = view;
   if (this.selectedFile) {
+    // Re-render current loaded content in new view
     this.renderFileContent(this.selectedFile);
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-<!-- File Content with Code Viewer -->
-<div class="content-view file-viewer-content" [class.active]="activeView === 'file' && selectedFile" *ngIf="selectedFile">
-  <div class="file-content-wrapper">
-    <div [innerHTML]="selectedFile.renderedContent"></div>
-    
-    <!-- Load More Section -->
-    <div class="load-more-section" *ngIf="hasMoreLines">
-      <div class="lines-info">{{ getLinesInfo() }}</div>
-      <button class="load-more-btn" (click)="loadMoreLines()" [disabled]="isLoading">
-        <svg *ngIf="!isLoading" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="6 9 12 15 18 9"/>
-        </svg>
-        <svg *ngIf="isLoading" class="spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"/>
-        </svg>
-        <span>{{ isLoading ? 'Loading...' : 'Load More Lines' }}</span>
-      </button>
-    </div>
-  </div>
-</div>
-
-
-
-
 
 
 
