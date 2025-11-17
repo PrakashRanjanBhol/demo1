@@ -1,9 +1,200 @@
-// ✅ Keep this private for internal use in toggleFavorite
-private isFavorite(repoKey: string): boolean {
-  return Object.values(this.favoriteRepositories).some(repos => 
-    repos.some(repo => repo.repo_key === repoKey)
-  );
+// Add these properties
+private readonly LINES_PER_LOAD = 5000;
+currentLoadedLines: number = 5000;
+totalLines: number = 0;
+hasMoreLines: boolean = false;
+isLoading: boolean = false;
+
+
+
+
+
+
+
+
+private renderFileContent(): void {
+  if (!this.selectedFile) return;
+
+  const fileType = this.selectedFile.type || 'plaintext';
+  const lines = this.selectedFile.content.split('\n');
+  this.totalLines = lines.length;
+  this.hasMoreLines = this.totalLines > this.currentLoadedLines;
+
+  // Get the content to display (limited lines)
+  const contentToDisplay = lines.slice(0, this.currentLoadedLines).join('\n');
+
+  if (fileType === 'markdown') {
+    this.showViewToggle = true;
+    if (this.currentView === 'preview') {
+      this.renderedContent = this.sanitizer.bypassSecurityTrustHtml(
+        this.renderMarkdownView(contentToDisplay)
+      );
+    } else {
+      this.renderedContent = this.sanitizer.bypassSecurityTrustHtml(
+        this.renderCodeView(contentToDisplay, 'markdown')
+      );
+    }
+  } else {
+    this.showViewToggle = false;
+    this.currentView = 'code';
+    this.renderedContent = this.sanitizer.bypassSecurityTrustHtml(
+      this.renderCodeView(contentToDisplay, fileType)
+    );
+  }
 }
 
-// OR rename it to checkIsFavorite to avoid confusion
-// (already done above)
+
+
+
+
+
+// Method to switch to File view
+selectFile(file: FileInfo): void {
+  this.selectedFile = file;
+  this.activeView = 'file';
+  this.currentLoadedLines = this.LINES_PER_LOAD; // Reset to initial load
+  this.renderFileContent();
+}
+
+
+
+
+
+
+
+// Load more lines
+loadMoreLines(): void {
+  if (!this.selectedFile || this.isLoading) return;
+  
+  this.isLoading = true;
+  
+  // Simulate async loading (remove setTimeout for real implementation)
+  setTimeout(() => {
+    this.currentLoadedLines += this.LINES_PER_LOAD;
+    this.renderFileContent();
+    this.isLoading = false;
+  }, 100);
+}
+
+// Get lines info text
+getLinesInfo(): string {
+  if (!this.selectedFile) return '';
+  return `Showing ${Math.min(this.currentLoadedLines, this.totalLines)} of ${this.totalLines} lines`;
+}
+
+
+
+
+
+
+
+
+
+
+<!-- File Content with Code Viewer -->
+<div class="content-view file-viewer-content" [class.active]="activeView === 'file' && selectedFile" *ngIf="selectedFile">
+  <div class="file-content-wrapper">
+    <div [innerHTML]="renderedContent"></div>
+    
+    <!-- Load More Section -->
+    <div class="load-more-section" *ngIf="hasMoreLines">
+      <div class="lines-info">{{ getLinesInfo() }}</div>
+      <button class="load-more-btn" (click)="loadMoreLines()" [disabled]="isLoading">
+        <svg *ngIf="!isLoading" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+        <svg *ngIf="isLoading" class="spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+        </svg>
+        <span>{{ isLoading ? 'Loading...' : 'Load More Lines' }}</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+
+
+
+
+
+
+
+
+
+/* Load More Section */
+.load-more-section {
+  padding: 24px;
+  background: var(--bitbucket-file-view-bg-content);
+  border-top: 1px solid var(--bitbucket-file-border-primary);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.lines-info {
+  font-size: 13px;
+  color: var(--bitbucket-file-text-tertiary);
+  font-weight: 500;
+}
+
+.load-more-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 24px;
+  background: var(--bitbucket-file-accent-blue);
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.load-more-btn:hover:not(:disabled) {
+  background: var(--bitbucket-file-accent-green);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.load-more-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.load-more-btn svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.load-more-btn .spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Dark mode adjustments */
+[data-theme="dark"] .load-more-section {
+  background: var(--bitbucket-file-view-bg-content);
+}
+
+[data-theme="dark"] .load-more-btn:hover:not(:disabled) {
+  box-shadow: 0 4px 12px rgba(96, 165, 250, 0.3);
+}
+
+
+
+
+
+
+
