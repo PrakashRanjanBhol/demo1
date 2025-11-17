@@ -1,12 +1,4 @@
-// ❌ REMOVE getter
-// get filteredRepositories(): Repository[] {
-//   ...
-// }
-
-// ✅ ADD property
-filteredRepositoriesList: Repository[] = [];
-
-// ✅ ADD update method
+// ✅ UPDATE updateFilteredRepositories to add isFavorite flag
 private updateFilteredRepositories(): void {
   if (!this.currentProject) {
     this.filteredRepositoriesList = [];
@@ -15,40 +7,33 @@ private updateFilteredRepositories(): void {
   
   const repos = this.repositoriesByProject[this.currentProject.project_key] || [];
   
-  if (!this.repoSearchText.trim()) {
-    this.filteredRepositoriesList = repos;
-    return;
+  let reposToFilter = repos;
+  
+  if (this.repoSearchText.trim()) {
+    const searchLower = this.repoSearchText.toLowerCase();
+    reposToFilter = repos.filter(repo => 
+      repo.repo_name.toLowerCase().includes(searchLower) ||
+      repo.repo_url.toLowerCase().includes(searchLower)
+    );
   }
   
-  const searchLower = this.repoSearchText.toLowerCase();
-  this.filteredRepositoriesList = repos.filter(repo => 
-    repo.repo_name.toLowerCase().includes(searchLower) ||
-    repo.repo_url.toLowerCase().includes(searchLower)
-  );
+  // ✅ Map repos and add isFavorite flag
+  this.filteredRepositoriesList = reposToFilter.map(repo => ({
+    ...repo,
+    isFavorite: this.favoriteRepoKeysSet.has(repo.repo_key) // ✅ Pre-compute here
+  }));
 }
 
-// ✅ ADD setter for repoSearchText
-private _repoSearchText: string = '';
 
-get repoSearchText(): string {
-  return this._repoSearchText;
-}
 
-set repoSearchText(value: string) {
-  this._repoSearchText = value;
-  this.updateFilteredRepositories(); // ✅ Auto-update
-}
 
-// ✅ UPDATE showRepositories method
-showRepositories(projectKey: string): void {
-  this.currentProject = this.allProjects.find(p => p.project_key === projectKey) || null;
-  if (!this.currentProject) return;
 
-  this.repoSearchText = ''; // This will trigger the setter
-  this.showAllProjectsView = false;
-  this.showAllReposView = true;
-  
-  this.updateFilteredRepositories(); // ✅ Update filtered list
+
+
+
+// ✅ ADD extended type for repositories with favorite flag
+interface RepositoryWithFavorite extends Repository {
+  isFavorite?: boolean;
 }
 
 
@@ -59,36 +44,72 @@ showRepositories(projectKey: string): void {
 
 
 
+// ✅ UPDATE property type
+filteredRepositoriesList: RepositoryWithFavorite[] = [];
 
-// ❌ REMOVE getter
-// get filteredBranches(): string[] {
-//   ...
-// }
 
-// ✅ ADD property
-filteredBranchesList: string[] = [];
 
-// ✅ ADD update method
-private updateFilteredBranches(): void {
-  if (!this.branchSearchText.trim()) {
-    this.filteredBranchesList = this.branches;
-    return;
+
+
+
+
+// ✅ Make sure updateFilteredRepositories is called after favorite changes
+toggleFavorite(repoKey: string, projectKey: string, event?: Event): void {
+  if (event) {
+    event.stopPropagation();
   }
-  
-  const searchLower = this.branchSearchText.toLowerCase();
-  this.filteredBranchesList = this.branches.filter(branch => 
-    branch.toLowerCase().includes(searchLower)
-  );
+
+  this.loadingRepos[repoKey] = true;
+
+  setTimeout(() => {
+    if (this.isFavorite(repoKey)) {
+      // Remove
+      if (this.favoriteRepositories[projectKey]) {
+        this.favoriteRepositories[projectKey] = this.favoriteRepositories[projectKey]
+          .filter(repo => repo.repo_key !== repoKey);
+        
+        if (this.favoriteRepositories[projectKey].length === 0) {
+          delete this.favoriteRepositories[projectKey];
+        }
+      }
+    } else {
+      // Add
+      const repo = this.repositoriesByProject[projectKey]?.find(r => r.repo_key === repoKey);
+      if (repo) {
+        if (!this.favoriteRepositories[projectKey]) {
+          this.favoriteRepositories[projectKey] = [];
+        }
+        this.favoriteRepositories[projectKey].push(repo);
+      }
+    }
+
+    this.loadingRepos[repoKey] = false;
+    
+    // ✅ Update all caches
+    this.updateAllCaches();
+    this.updateFilteredRepositories(); // ✅ Add this to refresh isFavorite flags
+  }, 1000);
 }
 
-// ✅ ADD setter for branchSearchText
-private _branchSearchText: string = '';
 
-get branchSearchText(): string {
-  return this._branchSearchText;
-}
 
-set branchSearchText(value: string) {
-  this._branchSearchText = value;
-  this.updateFilteredBranches(); // ✅ Auto-update
-}
+
+
+
+
+<!-- ❌ OLD - Method call on every change detection -->
+<button class="star-button" 
+        [class.favorited]="isFavorite(repo.repo_key)"
+        (click)="toggleFavorite(repo.repo_key, currentProject?.project_key || '', $event)">
+
+<!-- ✅ NEW - Direct property access -->
+<button class="star-button" 
+        [class.favorited]="repo.isFavorite"
+        (click)="toggleFavorite(repo.repo_key, currentProject?.project_key || '', $event)">
+    <svg viewBox="0 0 24 24" 
+         [attr.fill]="repo.isFavorite ? 'currentColor' : 'none'"
+         stroke="currentColor" 
+         stroke-width="2">
+        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+    </svg>
+</button>
