@@ -1,156 +1,191 @@
-interface FileInfo {
-  id: number;
-  name: string;
-  path: string;
-  size: string;
-  repository: string;
-  content: string;
-  type: string;
-  renderedContent?: SafeHtml;
-  currentLoadedLines?: number;
-  totalLines?: number;
-}
+import { Component, Input, OnInit, OnChanges, SimpleChanges } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import hljs from 'highlight.js';
+import { marked } from 'marked';
 
+@Component({
+  selector: 'app-file-content-renderer',
+  standalone: true,
+  imports: [CommonModule],
+  templateUrl: './file-content-renderer.component.html',
+  styleUrls: ['./file-content-renderer.component.css']
+})
+export class FileContentRendererComponent implements OnInit, OnChanges {
+  @Input() content: string = '';
+  @Input() fileType: string = 'plaintext';
+  @Input() fileName: string = '';
 
-
-
-
-private renderFileContent(file: FileInfo): void {
-  if (!file) return;
-
-  const fileType = file.type || 'plaintext';
-  const lines = file.content.split('\n');
+  private readonly LINES_PER_LOAD = 5000;
   
-  // Set total lines only once
-  if (!file.totalLines) {
-    file.totalLines = lines.length;
-  }
-  
-  // Initialize currentLoadedLines if not set
-  if (!file.currentLoadedLines) {
-    file.currentLoadedLines = Math.min(this.LINES_PER_LOAD, file.totalLines);
+  renderedContent: SafeHtml = '';
+  currentLoadedLines: number = 0;
+  totalLines: number = 0;
+  isLoading: boolean = false;
+
+  constructor(private sanitizer: DomSanitizer) {}
+
+  ngOnInit(): void {
+    this.initializeContent();
   }
 
-  // Get only the chunk to display
-  const contentToDisplay = lines.slice(0, file.currentLoadedLines).join('\n');
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['content'] || changes['fileType']) {
+      this.initializeContent();
+    }
+  }
 
-  let renderedContent: SafeHtml;
-  
-  if (fileType === 'markdown') {
-    this.showViewToggle = true;
-    if (this.currentView === 'preview') {
-      renderedContent = this.sanitizer.bypassSecurityTrustHtml(
+  private initializeContent(): void {
+    if (!this.content) return;
+
+    const lines = this.content.split('\n');
+    this.totalLines = lines.length;
+    this.currentLoadedLines = Math.min(this.LINES_PER_LOAD, this.totalLines);
+
+    this.renderContent(false);
+  }
+
+  private renderContent(append: boolean = false): void {
+    if (!this.content) return;
+
+    const lines = this.content.split('\n');
+
+    if (this.fileType === 'markdown') {
+      // Markdown - always full re-render with current loaded lines
+      const contentToDisplay = lines.slice(0, this.currentLoadedLines).join('\n');
+      this.renderedContent = this.sanitizer.bypassSecurityTrustHtml(
         this.renderMarkdownView(contentToDisplay)
       );
     } else {
-      renderedContent = this.sanitizer.bypassSecurityTrustHtml(
-        this.renderCodeView(contentToDisplay, 'markdown')
-      );
+      // Code view - append new lines only
+      if (append && this.currentLoadedLines) {
+        // Calculate which lines to append
+        const previousLines = this.currentLoadedLines - this.LINES_PER_LOAD;
+        const newLines = lines.slice(previousLines, this.currentLoadedLines).join('\n');
+        
+        // Render only new lines
+        const newRenderedContent = this.renderCodeView(
+          newLines, 
+          this.fileType, 
+          previousLines + 1
+        );
+        
+        // Append to existing content
+        const existingHtml = this.getHtmlString(this.renderedContent);
+        const updatedHtml = this.appendCodeContent(existingHtml, newRenderedContent);
+        this.renderedContent = this.sanitizer.bypassSecurityTrustHtml(updatedHtml);
+      } else {
+        // Initial render
+        const contentToDisplay = lines.slice(0, this.currentLoadedLines).join('\n');
+        this.renderedContent = this.sanitizer.bypassSecurityTrustHtml(
+          this.renderCodeView(contentToDisplay, this.fileType, 1)
+        );
+      }
     }
-  } else {
-    this.showViewToggle = false;
-    this.currentView = 'code';
-    renderedContent = this.sanitizer.bypassSecurityTrustHtml(
-      this.renderCodeView(contentToDisplay, fileType)
-    );
   }
 
-  file.renderedContent = renderedContent;
-}
-
-
-
-
-
-
-
-
-// Method to switch to File view
-selectFile(file: FileInfo): void {
-  this.selectedFile = file;
-  this.activeView = 'file';
-  
-  // Calculate total lines first time
-  if (!file.totalLines) {
-    file.totalLines = file.content.split('\n').length;
-  }
-  
-  // Start with first chunk
-  file.currentLoadedLines = Math.min(this.LINES_PER_LOAD, file.totalLines);
-  
-  this.renderFileContent(file);
-}
-
-
-
-
-
-
-
-
-
-
-// Load more lines (just re-render with more lines, no API call)
-loadMoreLines(): void {
-  if (!this.selectedFile || this.isLoading) return;
-  
-  this.isLoading = true;
-  
-  // Use setTimeout to avoid blocking UI thread
-  setTimeout(() => {
-    if (this.selectedFile && this.selectedFile.totalLines) {
-      // Load next chunk
+  loadMoreLines(): void {
+    if (this.isLoading || !this.hasMoreLines) return;
+    
+    this.isLoading = true;
+    
+    setTimeout(() => {
       const newLoadedLines = Math.min(
-        (this.selectedFile.currentLoadedLines || 0) + this.LINES_PER_LOAD,
-        this.selectedFile.totalLines
+        this.currentLoadedLines + this.LINES_PER_LOAD,
+        this.totalLines
       );
       
-      this.selectedFile.currentLoadedLines = newLoadedLines;
-      this.renderFileContent(this.selectedFile);
+      this.currentLoadedLines = newLoadedLines;
+      this.renderContent(true);
+      this.isLoading = false;
+    }, 50);
+  }
+
+  get hasMoreLines(): boolean {
+    return this.currentLoadedLines < this.totalLines;
+  }
+
+  getLinesInfo(): string {
+    return `Showing ${this.currentLoadedLines} of ${this.totalLines} lines`;
+  }
+
+  // Helper methods
+  private getHtmlString(safeHtml: SafeHtml | undefined): string {
+    if (!safeHtml) return '';
+    return (safeHtml as any).changingThisBreaksApplicationSecurity || '';
+  }
+
+  private appendCodeContent(existingHtml: string, newHtml: string): string {
+    if (!existingHtml) return newHtml;
+    
+    const parser = new DOMParser();
+    const newDoc = parser.parseFromString(newHtml, 'text/html');
+    const newLineNumbers = newDoc.querySelector('.line-numbers')?.innerHTML || '';
+    const newCodeLines = newDoc.querySelector('.code-lines')?.innerHTML || '';
+    
+    const existingDoc = parser.parseFromString(existingHtml, 'text/html');
+    const existingLineNumbersEl = existingDoc.querySelector('.line-numbers');
+    const existingCodeLinesEl = existingDoc.querySelector('.code-lines');
+    
+    if (existingLineNumbersEl && existingCodeLinesEl) {
+      existingLineNumbersEl.innerHTML += newLineNumbers;
+      existingCodeLinesEl.innerHTML += newCodeLines;
+      return existingDoc.body.innerHTML;
     }
-    this.isLoading = false;
-  }, 50); // Small delay to prevent UI freeze
-}
+    
+    return existingHtml;
+  }
 
+  private escapeHtml(text: string): string {
+    const map: { [key: string]: string } = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#039;'
+    };
+    return text.replace(/[&<>"']/g, (m) => map[m]);
+  }
 
+  private renderCodeView(content: string, language: string, startLine: number = 1): string {
+    const lines = content.split('\n');
+    
+    let highlightedLines: string[];
+    try {
+      if (language && language !== 'markdown' && hljs.getLanguage(language)) {
+        const highlighted = hljs.highlight(content, { language: language }).value;
+        highlightedLines = highlighted.split('\n');
+      } else {
+        highlightedLines = lines.map(line => this.escapeHtml(line));
+      }
+    } catch (e) {
+      highlightedLines = lines.map(line => this.escapeHtml(line));
+    }
 
+    const lineNumbers = highlightedLines
+      .map((_, i) => `<div class="line-number">${startLine + i}</div>`)
+      .join('');
 
+    const codeContent = highlightedLines
+      .map(line => `<div class="code-line">${line || '&nbsp;'}</div>`)
+      .join('');
 
+    return `
+      <div class="code-view">
+        <div class="line-numbers">${lineNumbers}</div>
+        <div class="code-lines">${codeContent}</div>
+      </div>
+    `;
+  }
 
-
-
-
-
-
-
-
-
-// Get lines info text
-getLinesInfo(): string {
-  if (!this.selectedFile || !this.selectedFile.totalLines) return '';
-  const loaded = this.selectedFile.currentLoadedLines || 0;
-  return `Showing ${loaded} of ${this.selectedFile.totalLines} lines`;
-}
-
-// Check if there are more lines to render
-get hasMoreLines(): boolean {
-  if (!this.selectedFile || !this.selectedFile.totalLines) return false;
-  const loaded = this.selectedFile.currentLoadedLines || 0;
-  return loaded < this.selectedFile.totalLines;
-}
-
-
-
-
-
-
-
-// File viewer methods
-changeView(view: string): void {
-  this.currentView = view;
-  if (this.selectedFile) {
-    // Re-render current loaded content in new view
-    this.renderFileContent(this.selectedFile);
+  private renderMarkdownView(content: string): string {
+    try {
+      const html = marked.parse(content) as string;
+      return `<div class="markdown-view">${html}</div>`;
+    } catch (e) {
+      console.error('Markdown parsing error:', e);
+      return `<div class="markdown-view"><p>Error rendering markdown</p></div>`;
+    }
   }
 }
 
@@ -163,3 +198,388 @@ changeView(view: string): void {
 
 
 
+
+
+
+
+
+
+<div class="file-content-renderer">
+  <div class="file-content-wrapper">
+    <div [innerHTML]="renderedContent"></div>
+    
+    <!-- Load More Section -->
+    <div class="load-more-section" *ngIf="hasMoreLines">
+      <div class="lines-info">{{ getLinesInfo() }}</div>
+      <button class="load-more-btn" (click)="loadMoreLines()" [disabled]="isLoading">
+        <svg *ngIf="!isLoading" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+        <svg *ngIf="isLoading" class="spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+        </svg>
+        <span>{{ isLoading ? 'Loading...' : 'Load More Lines' }}</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+.file-content-renderer {
+  width: 100%;
+}
+
+.file-content-wrapper {
+  background-color: var(--bitbucket-file-view-bg-content);
+  border: 1px solid var(--bitbucket-file-border-primary);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* Code view with line numbers */
+::ng-deep .code-view {
+  display: flex;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 20px;
+  background-color: var(--bitbucket-file-view-bg-content);
+}
+
+::ng-deep .line-numbers {
+  background-color: var(--bitbucket-file-view-bg-content);
+  color: var(--bitbucket-file-view-text-line-number);
+  padding: 12px 0;
+  text-align: right;
+  user-select: none;
+  min-width: 50px;
+  border-right: 1px solid var(--bitbucket-file-border-primary);
+  flex-shrink: 0;
+}
+
+::ng-deep .line-number {
+  padding: 0 12px;
+  height: 20px;
+  line-height: 20px;
+  display: block;
+}
+
+::ng-deep .line-number:hover {
+  color: var(--bitbucket-file-text-primary);
+  cursor: pointer;
+}
+
+::ng-deep .code-lines {
+  flex: 1;
+  padding: 12px 16px;
+  overflow-x: auto;
+  background-color: var(--bitbucket-file-view-bg-content);
+  color: var(--bitbucket-file-text-primary);
+}
+
+::ng-deep .code-line {
+  height: 20px;
+  line-height: 20px;
+  display: block;
+  white-space: pre;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+}
+
+/* Markdown view */
+::ng-deep .markdown-view {
+  padding: 24px 32px;
+  background-color: var(--bitbucket-file-view-bg-content);
+  color: var(--bitbucket-file-text-primary);
+  line-height: 1.6;
+}
+
+::ng-deep .markdown-view h1 {
+  font-size: 2em;
+  border-bottom: 1px solid var(--bitbucket-file-border-primary);
+  padding-bottom: 0.3em;
+  margin-bottom: 16px;
+  margin-top: 24px;
+  color: var(--bitbucket-file-text-primary);
+}
+
+::ng-deep .markdown-view h1:first-child {
+  margin-top: 0;
+}
+
+::ng-deep .markdown-view h2 {
+  font-size: 1.5em;
+  border-bottom: 1px solid var(--bitbucket-file-border-primary);
+  padding-bottom: 0.3em;
+  margin-bottom: 16px;
+  margin-top: 24px;
+  color: var(--bitbucket-file-text-primary);
+}
+
+::ng-deep .markdown-view h3 {
+  font-size: 1.25em;
+  margin-bottom: 16px;
+  margin-top: 24px;
+  color: var(--bitbucket-file-text-primary);
+}
+
+::ng-deep .markdown-view h4,
+::ng-deep .markdown-view h5,
+::ng-deep .markdown-view h6 {
+  margin-bottom: 16px;
+  margin-top: 24px;
+  color: var(--bitbucket-file-text-primary);
+}
+
+::ng-deep .markdown-view p {
+  margin-bottom: 16px;
+}
+
+::ng-deep .markdown-view a {
+  color: var(--bitbucket-file-view-link);
+  text-decoration: none;
+}
+
+::ng-deep .markdown-view a:hover {
+  text-decoration: underline;
+}
+
+::ng-deep .markdown-view ul,
+::ng-deep .markdown-view ol {
+  margin-bottom: 16px;
+  padding-left: 32px;
+}
+
+::ng-deep .markdown-view li {
+  margin-bottom: 4px;
+}
+
+::ng-deep .markdown-view code {
+  background-color: var(--bitbucket-file-view-bg-code-inline);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 85%;
+  color: var(--bitbucket-file-text-primary);
+}
+
+::ng-deep .markdown-view pre {
+  background-color: var(--bitbucket-file-view-bg-code-inline);
+  padding: 16px;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin-bottom: 16px;
+}
+
+::ng-deep .markdown-view pre code {
+  background-color: transparent;
+  padding: 0;
+}
+
+::ng-deep .markdown-view blockquote {
+  border-left: 4px solid var(--bitbucket-file-border-primary);
+  padding-left: 16px;
+  margin-bottom: 16px;
+  color: var(--bitbucket-file-view-blockquote);
+}
+
+::ng-deep .markdown-view table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-bottom: 16px;
+}
+
+::ng-deep .markdown-view table th,
+::ng-deep .markdown-view table td {
+  border: 1px solid var(--bitbucket-file-border-primary);
+  padding: 8px 13px;
+}
+
+::ng-deep .markdown-view table th {
+  background-color: var(--bitbucket-file-view-bg-code-inline);
+  font-weight: 600;
+}
+
+::ng-deep .markdown-view img {
+  max-width: 100%;
+  height: auto;
+  margin: 16px 0;
+}
+
+::ng-deep .markdown-view hr {
+  border: none;
+  border-top: 1px solid var(--bitbucket-file-border-primary);
+  margin: 24px 0;
+}
+
+/* Load More Section */
+.load-more-section {
+  padding: 24px;
+  background: var(--bitbucket-file-view-bg-content);
+  border-top: 1px solid var(--bitbucket-file-border-primary);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.lines-info {
+  font-size: 13px;
+  color: var(--bitbucket-file-text-tertiary);
+  font-weight: 500;
+}
+
+.load-more-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 24px;
+  background: var(--bitbucket-file-accent-blue);
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.load-more-btn:hover:not(:disabled) {
+  background: var(--bitbucket-file-accent-green);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.load-more-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.load-more-btn svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.load-more-btn .spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Code viewer scrollbar */
+::ng-deep .code-lines::-webkit-scrollbar {
+  height: 8px;
+}
+
+::ng-deep .code-lines::-webkit-scrollbar-track {
+  background: var(--bitbucket-file-view-bg-content);
+}
+
+::ng-deep .code-lines::-webkit-scrollbar-thumb {
+  background: var(--bitbucket-file-border-primary);
+  border-radius: 4px;
+}
+
+::ng-deep .code-lines::-webkit-scrollbar-thumb:hover {
+  background: var(--bitbucket-file-border-secondary);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+// Update imports
+import { FileContentRendererComponent } from './file-content-renderer/file-content-renderer.component';
+
+@Component({
+  selector: 'app-center-content',
+  standalone: true,
+  imports: [CommonModule, FileContentRendererComponent], // Add FileContentRendererComponent
+  templateUrl: './center-content.component.html',
+  styleUrls: ['./center-content.component.css']
+})
+export class CenterContentComponent implements OnInit {
+  // REMOVE these properties and methods:
+  // - renderFileContent()
+  // - renderCodeView()
+  // - renderMarkdownView()
+  // - loadMoreLines()
+  // - getLinesInfo()
+  // - hasMoreLines
+  // - getHtmlString()
+  // - appendCodeContent()
+  // - escapeHtml()
+  // - LINES_PER_LOAD
+  // - isLoading
+  // - currentView
+  // - showViewToggle
+  // - changeView()
+  
+  // Keep only file selection method simplified:
+  selectFile(file: FileInfo): void {
+    this.selectedFile = file;
+    this.activeView = 'file';
+  }
+}
+
+
+
+
+
+
+
+
+
+<!-- File Content with Child Component -->
+<div class="content-view" [class.active]="activeView === 'file' && selectedFile" *ngIf="selectedFile">
+  <app-file-content-renderer 
+    [content]="selectedFile.content"
+    [fileType]="selectedFile.type"
+    [fileName]="selectedFile.name">
+  </app-file-content-renderer>
+</div>
+
+
+
+
+
+
+
+
+
+/* REMOVE all file viewer related styles from parent:
+- .file-viewer-content
+- .file-content-wrapper
+- All ::ng-deep .code-view styles
+- All ::ng-deep .markdown-view styles
+- .load-more-section
+- .lines-info
+- .load-more-btn
+*/
