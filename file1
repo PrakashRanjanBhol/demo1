@@ -1,190 +1,13 @@
-// Add these new properties for caching
-private commentStateCache = new Map<string, {
-  state: CommentState;
-  displayText: string;
-  isEditing: boolean;
-  isProcessing: boolean;
-  isActionDisabled: boolean;
-  processingAction: 'accept' | 'reject' | 'save' | null;
-}>();
-
-private commentNavigationCache = new Map<string, {
-  isFirst: boolean;
-  isLast: boolean;
-}>();
-
-// Add this method to clear cache when needed
-private clearCommentCache(): void {
-  this.commentStateCache.clear();
-  this.commentNavigationCache.clear();
-}
-
-// Update renderDiff to clear cache
-private renderDiff(): void {
-  if (!this.selectedFile) return;
-
-  this.diffLines = this.generateUnifiedDiff(this.selectedFile);
-  this.stats = this.calculateStats(this.selectedFile);
-  this.clearCommentCache(); // Clear cache when diff changes
-  this.updateCommentNavigationCache(); // Rebuild navigation cache
-}
-
-// New method to get cached comment data
-getCommentData(comment: AIComment): any {
-  const commentId = this.getCommentId(comment);
-  
-  if (!this.commentStateCache.has(commentId)) {
-    const state = this.getCommentState(comment);
-    const processingAction = this.processingComments.get(commentId) || null;
-    
-    this.commentStateCache.set(commentId, {
-      state: state,
-      displayText: state.modifiedText || comment.comment_text,
-      isEditing: this.editingComments.has(commentId),
-      isProcessing: this.processingComments.has(commentId),
-      isActionDisabled: state.status === 'accepted' || state.status === 'rejected' || this.processingComments.has(commentId),
-      processingAction: processingAction
-    });
-  }
-  
-  return this.commentStateCache.get(commentId);
-}
-
-// Update navigation cache
-private updateCommentNavigationCache(): void {
-  this.commentNavigationCache.clear();
-  
-  // Wait for DOM to be ready
-  setTimeout(() => {
-    const commentElements = Array.from(document.querySelectorAll('.ai-comment'));
-    
-    commentElements.forEach((element, index) => {
-      const commentId = element.id;
-      this.commentNavigationCache.set(commentId, {
-        isFirst: index === 0,
-        isLast: index === commentElements.length - 1
-      });
-    });
-  }, 50);
-}
-
-// Update navigation methods
-getCommentNavigation(comment: AIComment): { isFirst: boolean; isLast: boolean } {
-  const commentId = this.getCommentId(comment);
-  return this.commentNavigationCache.get(commentId) || { isFirst: false, isLast: false };
-}
-
-// Update existing methods to invalidate cache
-
-acceptComment(comment: AIComment): void {
-  const commentData = this.getCommentData(comment);
-  if (!this.selectedFile || commentData.isActionDisabled) return;
-  
-  const commentId = this.getCommentId(comment);
-  this.processingComments.set(commentId, 'accept');
-  this.commentStateCache.delete(commentId); // Invalidate cache
-  
-  setTimeout(() => {
-    const state = this.getCommentState(comment);
-    const textToSave = state.modifiedText || comment.comment_text;
-    
-    this.saveCommentState(
-      this.selectedFile!.file_path,
-      comment.line,
-      comment.side,
-      'accepted',
-      textToSave
-    );
-    this.processingComments.delete(commentId);
-    this.commentStateCache.delete(commentId); // Invalidate cache again
-  }, 800);
-}
-
-rejectComment(comment: AIComment): void {
-  const commentData = this.getCommentData(comment);
-  if (!this.selectedFile || commentData.isActionDisabled) return;
-  
-  const commentId = this.getCommentId(comment);
-  this.processingComments.set(commentId, 'reject');
-  this.commentStateCache.delete(commentId); // Invalidate cache
-  
-  setTimeout(() => {
-    const state = this.getCommentState(comment);
-    const textToSave = state.modifiedText || comment.comment_text;
-    
-    this.saveCommentState(
-      this.selectedFile!.file_path,
-      comment.line,
-      comment.side,
-      'rejected',
-      textToSave
-    );
-    this.processingComments.delete(commentId);
-    this.commentStateCache.delete(commentId); // Invalidate cache again
-  }, 800);
-}
-
-modifyComment(comment: AIComment): void {
-  const commentData = this.getCommentData(comment);
-  if (commentData.isActionDisabled) return;
-  
-  const commentId = this.getCommentId(comment);
-  this.editingComments.set(commentId, commentData.displayText);
-  this.commentStateCache.delete(commentId); // Invalidate cache
-}
-
-saveComment(comment: AIComment): void {
-  if (!this.selectedFile) return;
-  
-  const commentId = this.getCommentId(comment);
-  this.processingComments.set(commentId, 'save');
-  this.commentStateCache.delete(commentId); // Invalidate cache
-  
-  setTimeout(() => {
-    const newText = this.getEditText(comment);
-    const state = this.getCommentState(comment);
-    this.saveCommentState(
-      this.selectedFile!.file_path,
-      comment.line,
-      comment.side,
-      state.status,
-      newText
-    );
-    this.editingComments.delete(commentId);
-    this.processingComments.delete(commentId);
-    this.commentStateCache.delete(commentId); // Invalidate cache again
-  }, 800);
-}
-
-cancelModify(comment: AIComment): void {
-  const commentId = this.getCommentId(comment);
-  this.editingComments.delete(commentId);
-  this.commentStateCache.delete(commentId); // Invalidate cache
-}
-
-setEditText(comment: AIComment, text: string): void {
-  const commentId = this.getCommentId(comment);
-  this.editingComments.set(commentId, text);
-  this.commentStateCache.delete(commentId); // Invalidate cache
-}
-
-// Update reset method
-resetComponentState(): void {
-  this.files = [];
-  this.selectedFile = null;
-  this.selectedFileIndex = -1;
-  this.diffLines = [];
-  this.stats = null;
-  
-  this.editingComments.clear();
-  this.commentStates.clear();
-  this.processingComments.clear();
-  
-  // Clear caches
-  this.clearCommentCache();
-  
-  this.currentView = 'unified';
-}
+<!-- Inline Comment Box -->
+<div 
+  *ngIf="line.comment"
+  class="ai-comment" 
+  [id]="getCommentId(line.comment)"
+  [ngClass]="{
+    'accepted': getCommentState(line.comment).status === 'accepted',
+    'rejected': getCommentState(line.comment).status === 'rejected',
+    'processing': isProcessing(line.comment)
+  }">
 
 
 
@@ -192,13 +15,7 @@ resetComponentState(): void {
 
 
 
-
-
-
-
-
-
-<!-- For Unified View and Side-by-Side View, replace the comment block with: -->
+<!-- Inline Comment Box -->
 <div 
   *ngIf="line.comment"
   class="ai-comment" 
