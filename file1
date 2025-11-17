@@ -1,27 +1,44 @@
-// ========================================
-// Helper Methods - Cache Updates
-// ========================================
-
-private updateAllCaches(): void {
-  this.updateFavoriteRepoKeysSet();  // ✅ FIRST: Update Set from data
-  this.updateHasFavoritesFlag();     // Then: Use Set if needed
-  this.updateFavoriteProjectsList(); // Then: Other updates
-}
-
-private updateFavoriteRepoKeysSet(): void {
-  this.favoriteRepoKeysSet.clear();
+// ✅ ADD method to mark which repos are favorited
+private markFavoritesInRepositories(): void {
+  // Get all favorite repo keys for quick lookup
+  const favoriteRepoKeys = new Set<string>();
   
   Object.values(this.favoriteRepositories).forEach(repos => {
-    repos.forEach(repo => {
-      this.favoriteRepoKeysSet.add(repo.repo_key);
-    });
+    repos.forEach(repo => favoriteRepoKeys.add(repo.repo_key));
   });
+  
+  // Mark favorites in all repository lists
+  Object.keys(this.repositoriesByProject).forEach(projectKey => {
+    this.repositoriesByProject[projectKey] = this.repositoriesByProject[projectKey].map(repo => ({
+      ...repo,
+      isFavorited: favoriteRepoKeys.has(repo.repo_key) // ✅ Add this property
+    }));
+  });
+  
+  // Also mark in filtered list
+  this.filteredRepositoriesList = this.filteredRepositoriesList.map(repo => ({
+    ...repo,
+    isFavorited: favoriteRepoKeys.has(repo.repo_key)
+  }));
 }
 
-// ========================================
-// Favorite Management
-// ========================================
 
+
+
+
+// ✅ UPDATE Repository interface
+interface Repository {
+  repo_key: string;
+  repo_name: string;
+  repo_url: string;
+  isFavorited?: boolean; // ✅ ADD this optional property
+}
+
+
+
+
+
+// ✅ UPDATE toggleFavorite method
 toggleFavorite(repoKey: string, projectKey: string, event?: Event): void {
   if (event) {
     event.stopPropagation();
@@ -30,8 +47,8 @@ toggleFavorite(repoKey: string, projectKey: string, event?: Event): void {
   this.loadingRepos[repoKey] = true;
 
   setTimeout(() => {
-    // Modify data
     if (this.isFavorite(repoKey)) {
+      // Remove from favorites
       if (this.favoriteRepositories[projectKey]) {
         this.favoriteRepositories[projectKey] = this.favoriteRepositories[projectKey]
           .filter(repo => repo.repo_key !== repoKey);
@@ -41,6 +58,7 @@ toggleFavorite(repoKey: string, projectKey: string, event?: Event): void {
         }
       }
     } else {
+      // Add to favorites
       const repo = this.repositoriesByProject[projectKey]?.find(r => r.repo_key === repoKey);
       if (repo) {
         if (!this.favoriteRepositories[projectKey]) {
@@ -52,9 +70,69 @@ toggleFavorite(repoKey: string, projectKey: string, event?: Event): void {
 
     this.loadingRepos[repoKey] = false;
     
-    // ✅ Update everything in correct order
-    this.updateAllCaches();              // Set + flags + lists
-    this.updateFilteredRepositories();   // Recompute isFavorite flags
-    this.updateCurrentFavoriteRepos();   // Update favorites view
+    // ✅ Update all caches including favorite markers
+    this.updateAllCaches();
+    this.markFavoritesInRepositories(); // ✅ ADD this
   }, 1000);
 }
+
+// ✅ UPDATE updateAllCaches to include marking
+private updateAllCaches(): void {
+  this.updateHasFavoritesFlag();
+  this.updateFavoriteProjectsList();
+  this.markFavoritesInRepositories(); // ✅ ADD this
+}
+
+// ✅ UPDATE ngOnInit
+ngOnInit(): void {
+  this.loadProjects();
+  this.loadFavoriteRepositories();
+  
+  // Initialize all cached lists
+  this.updateFilteredProjects();
+  this.updateFilteredRepositories();
+  this.updateFilteredBranches();
+  this.updateCurrentFolderItems();
+  this.updateAllCaches();
+  
+  this.markFavoritesInRepositories(); // ✅ ADD this
+}
+
+// ✅ UPDATE showRepositories
+showRepositories(projectKey: string): void {
+  this.currentProject = this.allProjects.find(p => p.project_key === projectKey) || null;
+  if (!this.currentProject) return;
+
+  this.repoSearchText = '';
+  this.showAllProjectsView = false;
+  this.showAllReposView = true;
+  
+  this.updateFilteredRepositories();
+  this.markFavoritesInRepositories(); // ✅ ADD this
+}
+
+
+
+
+
+
+// ✅ Keep this private method for internal checks
+private isFavorite(repoKey: string): boolean {
+  return Object.values(this.favoriteRepositories).some(repos => 
+    repos.some(repo => repo.repo_key === repoKey)
+  );
+}
+
+
+
+
+<!-- ❌ OLD - Method call -->
+<button class="star-button" 
+        [class.favorited]="isFavorite(repo.repo_key)"
+        (click)="toggleFavorite(repo.repo_key, currentProject?.project_key || '', $event)">
+
+<!-- ✅ NEW - Property access -->
+<button class="star-button" 
+        [class.favorited]="repo.isFavorited"
+        (click)="toggleFavorite(repo.repo_key, currentProject?.project_key || '', $event)">
+
