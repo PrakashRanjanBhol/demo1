@@ -1,131 +1,165 @@
-<!-- Inline Comment Box -->
-<div 
-  *ngIf="line.comment"
-  class="ai-comment" 
-  [id]="getCommentId(line.comment)"
-  [ngClass]="{
-    'accepted': getCommentState(line.comment).status === 'accepted',
-    'rejected': getCommentState(line.comment).status === 'rejected',
-    'processing': isProcessing(line.comment)
-  }">
+// ✅ ADD: Cache properties
+private _cachedRepositories: Repository[] = [];
+private _lastProjectKey: string = '';
+private _favoriteRepoKeys: Set<string> = new Set();
+private _projectRepoCounts: { [key: string]: number } = {};
 
 
 
 
-
-
-
-<!-- Inline Comment Box -->
-<div 
-  *ngIf="line.comment"
-  class="ai-comment" 
-  [id]="getCommentId(line.comment)"
-  [ngClass]="{
-    'accepted': getCommentData(line.comment).state.status === 'accepted',
-    'rejected': getCommentData(line.comment).state.status === 'rejected',
-    'processing': getCommentData(line.comment).isProcessing
-  }">
+// ✅ REPLACE getRepositoriesForProject() with this getter
+get currentRepositories(): Repository[] {
+  const projectKey = this.currentProject?.project_key || '';
   
-  <div class="comment-header">
-    <div>
-      <span class="comment-severity" [ngClass]="line.comment.severity">
-        {{ line.comment.severity }}
-      </span>
-      <span 
-        class="comment-status" 
-        *ngIf="getCommentData(line.comment).state.status !== 'pending'"
-        [ngClass]="getCommentData(line.comment).state.status">
-        {{ getCommentData(line.comment).state.status.toUpperCase() }}
-      </span>
-    </div>
-    <span class="comment-line-info">Line {{ line.comment.line }}</span>
-  </div>
+  if (this._lastProjectKey !== projectKey) {
+    this._lastProjectKey = projectKey;
+    this._cachedRepositories = this.repositoriesByProject[projectKey] || [];
+  }
+  
+  return this._cachedRepositories;
+}
 
-  <div class="comment-text-display" *ngIf="!getCommentData(line.comment).isEditing">
-    {{ getCommentData(line.comment).displayText }}
-  </div>
+// ✅ ADD: Displayed repos with search filter
+get displayedRepositories(): Repository[] {
+  if (!this.repoSearchText.trim()) {
+    return this.currentRepositories;
+  }
+  
+  const searchLower = this.repoSearchText.toLowerCase();
+  return this.currentRepositories.filter(repo => 
+    repo.repo_name.toLowerCase().includes(searchLower) ||
+    repo.repo_url.toLowerCase().includes(searchLower)
+  );
+}
 
-  <textarea 
-    class="comment-text-input" 
-    *ngIf="getCommentData(line.comment).isEditing"
-    [value]="getEditText(line.comment)"
-    (input)="setEditText(line.comment, $any($event.target).value)"
-    rows="4">
-  </textarea>
+// ✅ REPLACE isFavorite() with Set-based check
+isFavoriteRepo(repoKey: string): boolean {
+  return this._favoriteRepoKeys.has(repoKey);
+}
 
-  <div class="suggested-patch" *ngIf="line.comment.suggested_patch">
-    <div class="suggested-patch-label">💡 Suggested Fix:</div>
-    <pre>{{ line.comment.suggested_patch }}</pre>
-  </div>
+// ✅ REPLACE getProjectRepoCount() with cached version
+getRepoCount(projectKey: string): number {
+  return this._projectRepoCounts[projectKey] || 0;
+}
 
-  <div class="comment-actions">
-    <button 
-      class="comment-btn accept" 
-      *ngIf="!getCommentData(line.comment).isEditing && getCommentData(line.comment).state.status === 'pending'"
-      [disabled]="getCommentData(line.comment).isActionDisabled"
-      (click)="acceptComment(line.comment)">
-      <span *ngIf="getCommentData(line.comment).processingAction !== 'accept'">✓ Accept</span>
-      <span *ngIf="getCommentData(line.comment).processingAction === 'accept'" class="spinner-container">
-        <span class="spinner"></span>
-        <span>Accepting...</span>
-      </span>
-    </button>
-    <button 
-      class="comment-btn reject" 
-      *ngIf="!getCommentData(line.comment).isEditing && getCommentData(line.comment).state.status === 'pending'"
-      [disabled]="getCommentData(line.comment).isActionDisabled"
-      (click)="rejectComment(line.comment)">
-      <span *ngIf="getCommentData(line.comment).processingAction !== 'reject'">✗ Reject</span>
-      <span *ngIf="getCommentData(line.comment).processingAction === 'reject'" class="spinner-container">
-        <span class="spinner"></span>
-        <span>Rejecting...</span>
-      </span>
-    </button>
-    <button 
-      class="comment-btn modify" 
-      *ngIf="!getCommentData(line.comment).isEditing && getCommentData(line.comment).state.status === 'pending'"
-      [disabled]="getCommentData(line.comment).isActionDisabled"
-      (click)="modifyComment(line.comment)">
-      ✎ Modify
-    </button>
-    <button 
-      class="comment-btn save" 
-      *ngIf="getCommentData(line.comment).isEditing"
-      [disabled]="getCommentData(line.comment).isProcessing"
-      (click)="saveComment(line.comment)">
-      <span *ngIf="getCommentData(line.comment).processingAction !== 'save'">💾 Save</span>
-      <span *ngIf="getCommentData(line.comment).processingAction === 'save'" class="spinner-container">
-        <span class="spinner"></span>
-        <span>Saving...</span>
-      </span>
-    </button>
-    <button 
-      class="comment-btn cancel" 
-      *ngIf="getCommentData(line.comment).isEditing"
-      [disabled]="getCommentData(line.comment).isProcessing"
-      (click)="cancelModify(line.comment)">
-      Cancel
-    </button>
+
+
+
+
+
+
+
+
+
+
+
+// ✅ ADD: Build favorites cache
+private updateFavoriteKeysCache(): void {
+  this._favoriteRepoKeys = new Set(
+    this.favoriteRepositories.map(repo => repo.repo_key)
+  );
+}
+
+// ✅ ADD: Build repo counts cache
+private updateProjectRepoCountsCache(): void {
+  this._projectRepoCounts = {};
+  for (const projectKey in this.repositoriesByProject) {
+    this._projectRepoCounts[projectKey] = this.repositoriesByProject[projectKey].length;
+  }
+}
+
+
+
+
+
+
+
+
+
+
+ngOnInit(): void {
+  this.loadProjects();
+  this.loadFavorites();
+  
+  // ✅ ADD: Build caches on init
+  this.updateFavoriteKeysCache();
+  this.updateProjectRepoCountsCache();
+}
+
+
+
+
+
+
+
+
+
+
+toggleFavorite(repoKey: string, projectKey: string, event: Event): void {
+  event.stopPropagation();
+  this.loadingRepos[repoKey] = true;
+
+  setTimeout(() => {
+    const index = this.favoriteRepositories.findIndex(r => r.repo_key === repoKey);
     
-    <div class="comment-nav">
-      <button 
-        class="comment-btn nav prev-comment"
-        [disabled]="getCommentNavigation(line.comment).isFirst || getCommentData(line.comment).isProcessing"
-        (click)="goToPreviousComment(line.comment)"
-        title="Previous Comment">
-        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-          <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
-        </svg>
-      </button>
-      <button 
-        class="comment-btn nav next-comment"
-        [disabled]="getCommentNavigation(line.comment).isLast || getCommentData(line.comment).isProcessing"
-        (click)="goToNextComment(line.comment)"
-        title="Next Comment">
-        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-          <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
-        </svg>
-      </button>
-    </div>
-  </div>
-</div>
+    if (index > -1) {
+      this.favoriteRepositories.splice(index, 1);
+    } else {
+      const repos = this.repositoriesByProject[projectKey] || [];
+      const repo = repos.find(r => r.repo_key === repoKey);
+      if (repo) {
+        this.favoriteRepositories.push(repo);
+      }
+    }
+    
+    this.updateFavoriteKeysCache(); // ✅ ADD: Refresh cache
+    this.loadingRepos[repoKey] = false;
+  }, 500);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- ✅ CHANGE FROM: -->
+{{ getProjectRepoCount(project.project_key) }} repositories
+
+<!-- ✅ CHANGE TO: -->
+{{ getRepoCount(project.project_key) }} repositories
+
+
+
+
+
+
+
+<!-- ✅ CHANGE FROM: -->
+*ngFor="let repo of getRepositoriesForProject(currentProject?.project_key || '')"
+
+<!-- ✅ CHANGE TO: -->
+*ngFor="let repo of displayedRepositories; trackBy: trackByRepoKey"
+
+
+
+
+
+
+
+
+<!-- ✅ CHANGE FROM: -->
+[class.favorited]="isFavorite(repo.repo_key)"
+
+<!-- ✅ CHANGE TO: -->
+[class.favorited]="isFavoriteRepo(repo.repo_key)"
+
+
+
