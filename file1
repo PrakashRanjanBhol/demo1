@@ -1,24 +1,41 @@
-// ✅ Add this master update method
-private updateAllCachesAfterFavoriteChange(): void {
-  this.updateHasFavoritesFlag();
-  this.updateFavoriteProjectsList();
-  this.updateFavoriteRepoKeysSet();
-  this.updateFilteredRepositories();
-  this.updateCurrentFavoriteRepos();
-}
-
-// ✅ Update toggleFavorite to call it
-toggleFavorite(repoKey: string, projectKey: string, event?: Event): void {
-  if (event) {
-    event.stopPropagation();
-  }
-
-  this.loadingRepos[repoKey] = true;
-
-  setTimeout(() => {
-    // ... your toggle logic ...
+ private updateFilteredRepositories(): void {
+    if (!this.currentProject) {
+      this.filteredRepositoriesList = [];
+      return;
+    }
     
-    this.loadingRepos[repoKey] = false;
-    this.updateAllCachesAfterFavoriteChange(); // ✅ Add this
-  }, 1000);
-}
+    const repos = this.repositoriesByProject[this.currentProject.project_key] || [];
+    
+    let reposToFilter = repos;
+    
+    if (this.repoSearchText.trim()) {
+      const searchLower = this.repoSearchText.toLowerCase();
+      reposToFilter = repos.filter(repo => 
+        repo.repo_name.toLowerCase().includes(searchLower) ||
+        repo.repo_url.toLowerCase().includes(searchLower)
+      );
+    }
+    
+    // ✅ Add isFavorite flag to each repo
+    this.filteredRepositoriesList = reposToFilter.map(repo => ({
+      ...repo,
+      isFavorite: this.favoriteRepoKeysSet.has(repo.repo_key)
+    }));
+  }
+  
+  // Update current favorite repos list
+  private updateCurrentFavoriteRepos(): void {
+    if (!this.currentFavoriteProject?.project_key) {
+      this.currentFavoriteReposList = [];
+      return;
+    }
+    
+    const repos = this.favoriteRepositories[this.currentFavoriteProject.project_key] || [];
+    
+    // All repos in favorites view have isFavorite = true
+    this.currentFavoriteReposList = repos.map(repo => ({
+      ...repo,
+      isFavorite: true
+    }));
+  }
+  
