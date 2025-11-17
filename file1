@@ -1,113 +1,55 @@
-// Update the constant
-private readonly LINES_PER_LOAD = 1000; // Reduced from 5000 to 1000
-
-// Update loadMoreLines with requestAnimationFrame for better performance
-loadMoreLines(): void {
-  if (this.isLoading || !this.hasMoreLines) return;
-  
-  this.isLoading = true;
-  
-  // Use requestAnimationFrame for smoother UI updates
-  requestAnimationFrame(() => {
-    const newLoadedLines = Math.min(
-      this.currentLoadedLines + this.LINES_PER_LOAD,
-      this.totalLines
-    );
-    
-    this.currentLoadedLines = newLoadedLines;
-    this.renderContent(true);
-    
-    // Delay to let browser update UI
-    setTimeout(() => {
-      this.isLoading = false;
-    }, 100);
-  });
-}
-
-// Optimize renderCodeView to handle syntax highlighting in chunks
-private renderCodeView(content: string, language: string, startLine: number = 1): string {
-  const lines = content.split('\n');
-  
-  let highlightedLines: string[];
-  
-  // Skip syntax highlighting for very large chunks
-  const shouldHighlight = lines.length < 2000 && language && language !== 'markdown' && hljs.getLanguage(language);
-  
-  try {
-    if (shouldHighlight) {
-      const highlighted = hljs.highlight(content, { language: language }).value;
-      highlightedLines = highlighted.split('\n');
-    } else {
-      highlightedLines = lines.map(line => this.escapeHtml(line));
-    }
-  } catch (e) {
-    highlightedLines = lines.map(line => this.escapeHtml(line));
-  }
-
-  const lineNumbers = highlightedLines
-    .map((_, i) => `<div class="line-number">${startLine + i}</div>`)
-    .join('');
-
-  const codeContent = highlightedLines
-    .map(line => `<div class="code-line">${line || '&nbsp;'}</div>`)
-    .join('');
-
-  return `
-    <div class="code-view">
-      <div class="line-numbers">${lineNumbers}</div>
-      <div class="code-lines">${codeContent}</div>
-    </div>
-  `;
-}
-
-// Add virtual scrolling hint for very large files
-private initializeContent(): void {
-  if (!this.content) return;
-
-  const lines = this.content.split('\n');
-  this.totalLines = lines.length;
-  
-  // Reduce initial load for very large files
-  const initialLoad = this.totalLines > 50000 ? 500 : this.LINES_PER_LOAD;
-  this.currentLoadedLines = Math.min(initialLoad, this.totalLines);
-
-  this.renderContent(false);
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 <div class="file-content-renderer">
-  <div class="file-content-wrapper">
+  <!-- Large file - Show download only, no rendering -->
+  <div class="large-file-container" *ngIf="!canRenderFile">
+    <div class="large-file-card">
+      <svg class="file-icon-large" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+        <line x1="16" y1="13" x2="8" y2="13"/>
+        <line x1="16" y1="17" x2="8" y2="17"/>
+        <polyline points="10 9 9 9 8 9"/>
+      </svg>
+      
+      <div class="large-file-info">
+        <h3>File Too Large to Display</h3>
+        <p class="file-stats">
+          <strong>{{ fileName }}</strong>
+        </p>
+        <p class="file-stats">
+          {{ totalLines | number }} lines · Cannot be rendered in browser
+        </p>
+        <p class="file-description">
+          Files with more than {{ MAX_VIEWABLE_LINES | number }} lines cannot be displayed for performance reasons. 
+          Please download the file to view its contents.
+        </p>
+      </div>
+
+      <button class="download-btn-large" (click)="downloadFile()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        <span>Download File</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Normal file - Render content -->
+  <div class="file-content-wrapper" *ngIf="canRenderFile">
     <div [innerHTML]="renderedContent"></div>
     
-    <!-- Load More Section -->
-    <div class="load-more-section" *ngIf="hasMoreLines">
+    <!-- Info Section -->
+    <div class="file-info-section">
       <div class="lines-info">{{ getLinesInfo() }}</div>
-      <div class="load-more-actions">
-        <button class="load-more-btn" (click)="loadMoreLines()" [disabled]="isLoading">
-          <svg *ngIf="!isLoading" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="6 9 12 15 18 9"/>
-          </svg>
-          <svg *ngIf="isLoading" class="spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10"/>
-          </svg>
-          <span>{{ isLoading ? 'Loading...' : 'Load Next 1,000 Lines' }}</span>
-        </button>
-        <button class="load-all-btn" (click)="loadAllLines()" [disabled]="isLoading" *ngIf="totalLines - currentLoadedLines > 5000">
-          <span>⚠️ Load All Remaining ({{ totalLines - currentLoadedLines }} lines)</span>
-        </button>
-      </div>
+      <button class="download-btn" (click)="downloadFile()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        <span>Download File</span>
+      </button>
     </div>
   </div>
 </div>
@@ -123,55 +65,156 @@ private initializeContent(): void {
 
 
 
+import { Component, Input, OnInit, OnChanges, SimpleChanges } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import hljs from 'highlight.js';
+import { marked } from 'marked';
 
+@Component({
+  selector: 'app-file-content-renderer',
+  standalone: true,
+  imports: [CommonModule],
+  templateUrl: './file-content-renderer.component.html',
+  styleUrls: ['./file-content-renderer.component.css']
+})
+export class FileContentRendererComponent implements OnInit, OnChanges {
+  @Input() content: string = '';
+  @Input() fileType: string = 'plaintext';
+  @Input() fileName: string = '';
 
+  private readonly MAX_VIEWABLE_LINES = 5000;
+  
+  renderedContent: SafeHtml = '';
+  currentLoadedLines: number = 0;
+  totalLines: number = 0;
+  canRenderFile: boolean = true;
+  showDownloadPrompt: boolean = false;
 
+  constructor(private sanitizer: DomSanitizer) {}
 
-// Add this method for loading all remaining lines
-loadAllLines(): void {
-  if (this.isLoading || !this.hasMoreLines) return;
-  
-  const remaining = this.totalLines - this.currentLoadedLines;
-  const confirmed = confirm(
-    `This will load ${remaining} more lines and may freeze the browser temporarily. Continue?`
-  );
-  
-  if (!confirmed) return;
-  
-  this.isLoading = true;
-  
-  // Load in batches to prevent complete freeze
-  this.loadInBatches();
-}
+  ngOnInit(): void {
+    this.initializeContent();
+  }
 
-private loadInBatches(): void {
-  const batchSize = 2000;
-  
-  const loadNextBatch = () => {
-    if (this.currentLoadedLines >= this.totalLines) {
-      this.isLoading = false;
-      return;
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['content'] || changes['fileType']) {
+      this.initializeContent();
     }
+  }
+
+  private initializeContent(): void {
+    if (!this.content) return;
+
+    const lines = this.content.split('\n');
+    this.totalLines = lines.length;
     
-    const newLoadedLines = Math.min(
-      this.currentLoadedLines + batchSize,
-      this.totalLines
-    );
-    
-    this.currentLoadedLines = newLoadedLines;
-    this.renderContent(true);
-    
-    // Continue loading next batch
-    if (this.currentLoadedLines < this.totalLines) {
-      setTimeout(() => {
-        requestAnimationFrame(loadNextBatch);
-      }, 150); // Increased delay between batches
+    // Check if file exceeds max viewable lines
+    if (this.totalLines > this.MAX_VIEWABLE_LINES) {
+      this.canRenderFile = false;
+      this.showDownloadPrompt = true;
+      this.currentLoadedLines = 0;
+      this.renderedContent = ''; // Don't render anything
     } else {
-      this.isLoading = false;
+      this.canRenderFile = true;
+      this.showDownloadPrompt = false;
+      this.currentLoadedLines = this.totalLines;
+      this.renderContent();
     }
-  };
-  
-  requestAnimationFrame(loadNextBatch);
+  }
+
+  private renderContent(): void {
+    if (!this.content || !this.canRenderFile) return;
+
+    const lines = this.content.split('\n');
+    const contentToDisplay = lines.slice(0, this.currentLoadedLines).join('\n');
+
+    if (this.fileType === 'markdown') {
+      this.renderedContent = this.sanitizer.bypassSecurityTrustHtml(
+        this.renderMarkdownView(contentToDisplay)
+      );
+    } else {
+      this.renderedContent = this.sanitizer.bypassSecurityTrustHtml(
+        this.renderCodeView(contentToDisplay, this.fileType, 1)
+      );
+    }
+  }
+
+  downloadFile(): void {
+    const blob = new Blob([this.content], { type: 'text/plain;charset=utf-8' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = this.fileName || 'file.txt';
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  }
+
+  getLinesInfo(): string {
+    if (!this.canRenderFile) {
+      return `File too large: ${this.totalLines.toLocaleString()} lines`;
+    }
+    return `Total ${this.totalLines.toLocaleString()} lines`;
+  }
+
+  get MAX_VIEWABLE_LINES_GETTER(): number {
+    return this.MAX_VIEWABLE_LINES;
+  }
+
+  private escapeHtml(text: string): string {
+    const map: { [key: string]: string } = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#039;'
+    };
+    return text.replace(/[&<>"']/g, (m) => map[m]);
+  }
+
+  private renderCodeView(content: string, language: string, startLine: number = 1): string {
+    const lines = content.split('\n');
+    
+    let highlightedLines: string[];
+    try {
+      if (language && language !== 'markdown' && hljs.getLanguage(language)) {
+        const highlighted = hljs.highlight(content, { language: language }).value;
+        highlightedLines = highlighted.split('\n');
+      } else {
+        highlightedLines = lines.map(line => this.escapeHtml(line));
+      }
+    } catch (e) {
+      highlightedLines = lines.map(line => this.escapeHtml(line));
+    }
+
+    const lineNumbers = highlightedLines
+      .map((_, i) => `<div class="line-number">${startLine + i}</div>`)
+      .join('');
+
+    const codeContent = highlightedLines
+      .map(line => `<div class="code-line">${line || '&nbsp;'}</div>`)
+      .join('');
+
+    return `
+      <div class="code-view">
+        <div class="line-numbers">${lineNumbers}</div>
+        <div class="code-lines">${codeContent}</div>
+      </div>
+    `;
+  }
+
+  private renderMarkdownView(content: string): string {
+    try {
+      const html = marked.parse(content) as string;
+      return `<div class="markdown-view">${html}</div>`;
+    } catch (e) {
+      console.error('Markdown parsing error:', e);
+      return `<div class="markdown-view"><p>Error rendering markdown</p></div>`;
+    }
+  }
 }
 
 
@@ -189,22 +232,110 @@ private loadInBatches(): void {
 
 
 
+/* ADD these new styles for large file display */
 
+/* Large file container - centered card */
+.large-file-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  padding: 48px 24px;
+  background-color: var(--bitbucket-file-view-bg-content);
+  border: 1px solid var(--bitbucket-file-border-primary);
+  border-radius: 8px;
+}
 
-
-.load-more-actions {
+.large-file-card {
+  max-width: 500px;
+  text-align: center;
   display: flex;
   flex-direction: column;
-  gap: 8px;
   align-items: center;
-  width: 100%;
+  gap: 24px;
 }
 
-.load-more-btn {
+.file-icon-large {
+  width: 80px;
+  height: 80px;
+  color: var(--bitbucket-file-text-tertiary);
+  opacity: 0.6;
+}
+
+.large-file-info h3 {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--bitbucket-file-text-primary);
+  margin: 0 0 16px 0;
+}
+
+.file-stats {
+  font-size: 14px;
+  color: var(--bitbucket-file-text-secondary);
+  margin: 4px 0;
+}
+
+.file-stats strong {
+  color: var(--bitbucket-file-text-primary);
+  font-weight: 600;
+}
+
+.file-description {
+  font-size: 14px;
+  color: var(--bitbucket-file-text-tertiary);
+  line-height: 1.6;
+  margin: 12px 0 0 0;
+}
+
+.download-btn-large {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 32px;
+  background: var(--bitbucket-file-accent-blue);
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 600;
+  transition: all 0.2s;
+  margin-top: 8px;
+}
+
+.download-btn-large:hover {
+  background: var(--bitbucket-file-accent-green);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+}
+
+.download-btn-large svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* Update file info section */
+.file-info-section {
+  padding: 16px 24px;
+  background: var(--bitbucket-file-view-bg-content);
+  border-top: 1px solid var(--bitbucket-file-border-primary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.lines-info {
+  font-size: 13px;
+  color: var(--bitbucket-file-text-tertiary);
+  font-weight: 500;
+}
+
+.download-btn {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 24px;
+  padding: 8px 16px;
   background: var(--bitbucket-file-accent-blue);
   color: #ffffff;
   border: none;
@@ -215,81 +346,82 @@ private loadInBatches(): void {
   transition: all 0.2s;
 }
 
-.load-all-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 20px;
-  background: #f59e0b;
-  color: #ffffff;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  transition: all 0.2s;
+.download-btn:hover {
+  background: var(--bitbucket-file-accent-green);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
 }
 
-.load-all-btn:hover:not(:disabled) {
-  background: #d97706;
+.download-btn svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
 }
 
-.load-all-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// Add CSS class to disable animations during loading
-private renderContent(append: boolean = false): void {
-  if (!this.content) return;
-
-  const lines = this.content.split('\n');
-
-  if (this.fileType === 'markdown') {
-    const contentToDisplay = lines.slice(0, this.currentLoadedLines).join('\n');
-    this.renderedContent = this.sanitizer.bypassSecurityTrustHtml(
-      this.renderMarkdownView(contentToDisplay)
-    );
-  } else {
-    if (append && this.currentLoadedLines) {
-      const previousLines = this.currentLoadedLines - this.LINES_PER_LOAD;
-      const newLines = lines.slice(previousLines, this.currentLoadedLines).join('\n');
-      
-      const newRenderedContent = this.renderCodeView(
-        newLines, 
-        this.fileType, 
-        previousLines + 1
-      );
-      
-      const existingHtml = this.getHtmlString(this.renderedContent);
-      const updatedHtml = this.appendCodeContent(existingHtml, newRenderedContent);
-      this.renderedContent = this.sanitizer.bypassSecurityTrustHtml(updatedHtml);
-    } else {
-      const contentToDisplay = lines.slice(0, this.currentLoadedLines).join('\n');
-      this.renderedContent = this.sanitizer.bypassSecurityTrustHtml(
-        this.renderCodeView(contentToDisplay, this.fileType, 1)
-      );
-    }
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .large-file-container {
+    padding: 24px 16px;
+    min-height: 300px;
   }
   
-  // Force change detection
-  this.renderedContent = this.sanitizer.bypassSecurityTrustHtml(
-    this.getHtmlString(this.renderedContent)
-  );
+  .large-file-card {
+    max-width: 100%;
+  }
+  
+  .file-icon-large {
+    width: 60px;
+    height: 60px;
+  }
+  
+  .large-file-info h3 {
+    font-size: 20px;
+  }
+  
+  .download-btn-large {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .file-info-section {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .download-btn {
+    width: 100%;
+    justify-content: center;
+  }
 }
+
+/* Dark mode adjustments */
+[data-theme="dark"] .file-icon-large {
+  opacity: 0.4;
+}
+
+[data-theme="dark"] .download-btn-large:hover {
+  box-shadow: 0 6px 20px rgba(96, 165, 250, 0.4);
+}
+
+/* REMOVE these old styles if they exist:
+- .load-more-section
+- .load-more-btn
+- .load-all-btn
+- .load-more-actions
+- .large-file-warning
+- .warning-content
+- .warning-icon
+- .warning-text
+- .download-btn-warning
+*/
+
+
+
+
+
+
+
+
+
+
+
