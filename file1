@@ -1,47 +1,60 @@
-// Add these properties
-private readonly LINES_PER_LOAD = 5000;
-currentLoadedLines: number = 5000;
-totalLines: number = 0;
-hasMoreLines: boolean = false;
-isLoading: boolean = false;
+interface FileInfo {
+  id: number;
+  name: string;
+  path: string;
+  size: string;
+  repository: string;
+  content: string;
+  type: string;
+  renderedContent?: SafeHtml; // Add this
+  currentLoadedLines?: number; // Add this
+  totalLines?: number; // Add this
+}
 
 
 
 
 
+private renderFileContent(file: FileInfo): void {
+  if (!file) return;
 
-
-
-private renderFileContent(): void {
-  if (!this.selectedFile) return;
-
-  const fileType = this.selectedFile.type || 'plaintext';
-  const lines = this.selectedFile.content.split('\n');
-  this.totalLines = lines.length;
-  this.hasMoreLines = this.totalLines > this.currentLoadedLines;
+  const fileType = file.type || 'plaintext';
+  const lines = file.content.split('\n');
+  file.totalLines = lines.length;
+  
+  // Initialize currentLoadedLines if not set
+  if (!file.currentLoadedLines) {
+    file.currentLoadedLines = this.LINES_PER_LOAD;
+  }
 
   // Get the content to display (limited lines)
-  const contentToDisplay = lines.slice(0, this.currentLoadedLines).join('\n');
+  const contentToDisplay = lines.slice(0, file.currentLoadedLines).join('\n');
 
+  let renderedContent: SafeHtml;
+  
   if (fileType === 'markdown') {
     this.showViewToggle = true;
     if (this.currentView === 'preview') {
-      this.renderedContent = this.sanitizer.bypassSecurityTrustHtml(
+      renderedContent = this.sanitizer.bypassSecurityTrustHtml(
         this.renderMarkdownView(contentToDisplay)
       );
     } else {
-      this.renderedContent = this.sanitizer.bypassSecurityTrustHtml(
+      renderedContent = this.sanitizer.bypassSecurityTrustHtml(
         this.renderCodeView(contentToDisplay, 'markdown')
       );
     }
   } else {
     this.showViewToggle = false;
     this.currentView = 'code';
-    this.renderedContent = this.sanitizer.bypassSecurityTrustHtml(
+    renderedContent = this.sanitizer.bypassSecurityTrustHtml(
       this.renderCodeView(contentToDisplay, fileType)
     );
   }
+
+  // Update the file object with rendered content
+  file.renderedContent = renderedContent;
 }
+
 
 
 
@@ -52,11 +65,14 @@ private renderFileContent(): void {
 selectFile(file: FileInfo): void {
   this.selectedFile = file;
   this.activeView = 'file';
-  this.currentLoadedLines = this.LINES_PER_LOAD; // Reset to initial load
-  this.renderFileContent();
+  
+  // Reset or initialize loading state
+  if (!file.currentLoadedLines) {
+    file.currentLoadedLines = this.LINES_PER_LOAD;
+  }
+  
+  this.renderFileContent(file);
 }
-
-
 
 
 
@@ -70,17 +86,53 @@ loadMoreLines(): void {
   
   // Simulate async loading (remove setTimeout for real implementation)
   setTimeout(() => {
-    this.currentLoadedLines += this.LINES_PER_LOAD;
-    this.renderFileContent();
+    if (this.selectedFile) {
+      this.selectedFile.currentLoadedLines = 
+        (this.selectedFile.currentLoadedLines || this.LINES_PER_LOAD) + this.LINES_PER_LOAD;
+      this.renderFileContent(this.selectedFile);
+    }
     this.isLoading = false;
   }, 100);
 }
 
+
+
+
+
+
+
+
 // Get lines info text
 getLinesInfo(): string {
-  if (!this.selectedFile) return '';
-  return `Showing ${Math.min(this.currentLoadedLines, this.totalLines)} of ${this.totalLines} lines`;
+  if (!this.selectedFile || !this.selectedFile.totalLines) return '';
+  const loaded = Math.min(
+    this.selectedFile.currentLoadedLines || this.LINES_PER_LOAD, 
+    this.selectedFile.totalLines
+  );
+  return `Showing ${loaded} of ${this.selectedFile.totalLines} lines`;
 }
+
+// Check if there are more lines
+get hasMoreLines(): boolean {
+  if (!this.selectedFile || !this.selectedFile.totalLines) return false;
+  return this.selectedFile.totalLines > (this.selectedFile.currentLoadedLines || this.LINES_PER_LOAD);
+}
+
+
+
+
+
+
+
+
+// File viewer methods
+changeView(view: string): void {
+  this.currentView = view;
+  if (this.selectedFile) {
+    this.renderFileContent(this.selectedFile);
+  }
+}
+
 
 
 
@@ -94,7 +146,7 @@ getLinesInfo(): string {
 <!-- File Content with Code Viewer -->
 <div class="content-view file-viewer-content" [class.active]="activeView === 'file' && selectedFile" *ngIf="selectedFile">
   <div class="file-content-wrapper">
-    <div [innerHTML]="renderedContent"></div>
+    <div [innerHTML]="selectedFile.renderedContent"></div>
     
     <!-- Load More Section -->
     <div class="load-more-section" *ngIf="hasMoreLines">
@@ -118,79 +170,6 @@ getLinesInfo(): string {
 
 
 
-
-
-
-/* Load More Section */
-.load-more-section {
-  padding: 24px;
-  background: var(--bitbucket-file-view-bg-content);
-  border-top: 1px solid var(--bitbucket-file-border-primary);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-}
-
-.lines-info {
-  font-size: 13px;
-  color: var(--bitbucket-file-text-tertiary);
-  font-weight: 500;
-}
-
-.load-more-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 24px;
-  background: var(--bitbucket-file-accent-blue);
-  color: #ffffff;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-  transition: all 0.2s;
-}
-
-.load-more-btn:hover:not(:disabled) {
-  background: var(--bitbucket-file-accent-green);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
-}
-
-.load-more-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.load-more-btn svg {
-  width: 18px;
-  height: 18px;
-  flex-shrink: 0;
-}
-
-.load-more-btn .spinner {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-/* Dark mode adjustments */
-[data-theme="dark"] .load-more-section {
-  background: var(--bitbucket-file-view-bg-content);
-}
-
-[data-theme="dark"] .load-more-btn:hover:not(:disabled) {
-  box-shadow: 0 4px 12px rgba(96, 165, 250, 0.3);
-}
 
 
 
