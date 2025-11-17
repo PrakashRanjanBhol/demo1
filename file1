@@ -1,41 +1,60 @@
- private updateFilteredRepositories(): void {
-    if (!this.currentProject) {
-      this.filteredRepositoriesList = [];
-      return;
-    }
-    
-    const repos = this.repositoriesByProject[this.currentProject.project_key] || [];
-    
-    let reposToFilter = repos;
-    
-    if (this.repoSearchText.trim()) {
-      const searchLower = this.repoSearchText.toLowerCase();
-      reposToFilter = repos.filter(repo => 
-        repo.repo_name.toLowerCase().includes(searchLower) ||
-        repo.repo_url.toLowerCase().includes(searchLower)
-      );
-    }
-    
-    // ✅ Add isFavorite flag to each repo
-    this.filteredRepositoriesList = reposToFilter.map(repo => ({
-      ...repo,
-      isFavorite: this.favoriteRepoKeysSet.has(repo.repo_key)
-    }));
-  }
+// ========================================
+// Helper Methods - Cache Updates
+// ========================================
+
+private updateAllCaches(): void {
+  this.updateFavoriteRepoKeysSet();  // ✅ FIRST: Update Set from data
+  this.updateHasFavoritesFlag();     // Then: Use Set if needed
+  this.updateFavoriteProjectsList(); // Then: Other updates
+}
+
+private updateFavoriteRepoKeysSet(): void {
+  this.favoriteRepoKeysSet.clear();
   
-  // Update current favorite repos list
-  private updateCurrentFavoriteRepos(): void {
-    if (!this.currentFavoriteProject?.project_key) {
-      this.currentFavoriteReposList = [];
-      return;
-    }
-    
-    const repos = this.favoriteRepositories[this.currentFavoriteProject.project_key] || [];
-    
-    // All repos in favorites view have isFavorite = true
-    this.currentFavoriteReposList = repos.map(repo => ({
-      ...repo,
-      isFavorite: true
-    }));
+  Object.values(this.favoriteRepositories).forEach(repos => {
+    repos.forEach(repo => {
+      this.favoriteRepoKeysSet.add(repo.repo_key);
+    });
+  });
+}
+
+// ========================================
+// Favorite Management
+// ========================================
+
+toggleFavorite(repoKey: string, projectKey: string, event?: Event): void {
+  if (event) {
+    event.stopPropagation();
   }
-  
+
+  this.loadingRepos[repoKey] = true;
+
+  setTimeout(() => {
+    // Modify data
+    if (this.isFavorite(repoKey)) {
+      if (this.favoriteRepositories[projectKey]) {
+        this.favoriteRepositories[projectKey] = this.favoriteRepositories[projectKey]
+          .filter(repo => repo.repo_key !== repoKey);
+        
+        if (this.favoriteRepositories[projectKey].length === 0) {
+          delete this.favoriteRepositories[projectKey];
+        }
+      }
+    } else {
+      const repo = this.repositoriesByProject[projectKey]?.find(r => r.repo_key === repoKey);
+      if (repo) {
+        if (!this.favoriteRepositories[projectKey]) {
+          this.favoriteRepositories[projectKey] = [];
+        }
+        this.favoriteRepositories[projectKey].push(repo);
+      }
+    }
+
+    this.loadingRepos[repoKey] = false;
+    
+    // ✅ Update everything in correct order
+    this.updateAllCaches();              // Set + flags + lists
+    this.updateFilteredRepositories();   // Recompute isFavorite flags
+    this.updateCurrentFavoriteRepos();   // Update favorites view
+  }, 1000);
+}
