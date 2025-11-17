@@ -1,44 +1,82 @@
-// ✅ ADD method to mark which repos are favorited
-private markFavoritesInRepositories(): void {
-  // Get all favorite repo keys for quick lookup
-  const favoriteRepoKeys = new Set<string>();
-  
-  Object.values(this.favoriteRepositories).forEach(repos => {
-    repos.forEach(repo => favoriteRepoKeys.add(repo.repo_key));
-  });
-  
-  // Mark favorites in all repository lists
-  Object.keys(this.repositoriesByProject).forEach(projectKey => {
-    this.repositoriesByProject[projectKey] = this.repositoriesByProject[projectKey].map(repo => ({
-      ...repo,
-      isFavorited: favoriteRepoKeys.has(repo.repo_key) // ✅ Add this property
-    }));
-  });
-  
-  // Also mark in filtered list
-  this.filteredRepositoriesList = this.filteredRepositoriesList.map(repo => ({
-    ...repo,
-    isFavorited: favoriteRepoKeys.has(repo.repo_key)
-  }));
-}
-
-
-
-
-
 // ✅ UPDATE Repository interface
 interface Repository {
   repo_key: string;
   repo_name: string;
   repo_url: string;
-  isFavorited?: boolean; // ✅ ADD this optional property
+  isFavorited?: boolean; // ✅ Add this
 }
 
 
 
 
 
-// ✅ UPDATE toggleFavorite method
+
+
+// ✅ UPDATE updateFilteredRepositories method
+private updateFilteredRepositories(): void {
+  if (!this.currentProject) {
+    this.filteredRepositoriesList = [];
+    return;
+  }
+  
+  const repos = this.repositoriesByProject[this.currentProject.project_key] || [];
+  
+  // Filter by search text
+  let filtered: Repository[];
+  if (!this.repoSearchText.trim()) {
+    filtered = repos;
+  } else {
+    const searchLower = this.repoSearchText.toLowerCase();
+    filtered = repos.filter(repo => 
+      repo.repo_name.toLowerCase().includes(searchLower) ||
+      repo.repo_url.toLowerCase().includes(searchLower)
+    );
+  }
+  
+  // ✅ Mark which ones are favorited
+  this.filteredRepositoriesList = filtered.map(repo => ({
+    ...repo,
+    isFavorited: this.checkIsFavorite(repo.repo_key)
+  }));
+}
+
+// ✅ ADD helper method to check if favorited
+private checkIsFavorite(repoKey: string): boolean {
+  return Object.values(this.favoriteRepositories).some(repos => 
+    repos.some(repo => repo.repo_key === repoKey)
+  );
+}
+
+
+
+
+
+
+
+
+
+// ✅ UPDATE updateFilteredProjects if needed
+private updateFilteredProjects(): void {
+  if (!this.projectSearchText.trim()) {
+    this.filteredProjectsList = this.allProjects;
+    return;
+  }
+  
+  const searchLower = this.projectSearchText.toLowerCase();
+  this.filteredProjectsList = this.allProjects.filter(project => 
+    project.project_name.toLowerCase().includes(searchLower) ||
+    project.project_key.toLowerCase().includes(searchLower) ||
+    project.project_url.toLowerCase().includes(searchLower)
+  );
+}
+
+
+
+
+
+
+
+// ✅ UPDATE toggleFavorite - it already calls updateAllCaches
 toggleFavorite(repoKey: string, projectKey: string, event?: Event): void {
   if (event) {
     event.stopPropagation();
@@ -70,69 +108,17 @@ toggleFavorite(repoKey: string, projectKey: string, event?: Event): void {
 
     this.loadingRepos[repoKey] = false;
     
-    // ✅ Update all caches including favorite markers
+    // ✅ This will trigger updateFilteredRepositories which marks favorites
     this.updateAllCaches();
-    this.markFavoritesInRepositories(); // ✅ ADD this
   }, 1000);
 }
 
-// ✅ UPDATE updateAllCaches to include marking
+// ✅ Make sure updateAllCaches calls updateFilteredRepositories
 private updateAllCaches(): void {
   this.updateHasFavoritesFlag();
   this.updateFavoriteProjectsList();
-  this.markFavoritesInRepositories(); // ✅ ADD this
-}
-
-// ✅ UPDATE ngOnInit
-ngOnInit(): void {
-  this.loadProjects();
-  this.loadFavoriteRepositories();
-  
-  // Initialize all cached lists
-  this.updateFilteredProjects();
-  this.updateFilteredRepositories();
-  this.updateFilteredBranches();
-  this.updateCurrentFolderItems();
-  this.updateAllCaches();
-  
-  this.markFavoritesInRepositories(); // ✅ ADD this
-}
-
-// ✅ UPDATE showRepositories
-showRepositories(projectKey: string): void {
-  this.currentProject = this.allProjects.find(p => p.project_key === projectKey) || null;
-  if (!this.currentProject) return;
-
-  this.repoSearchText = '';
-  this.showAllProjectsView = false;
-  this.showAllReposView = true;
-  
-  this.updateFilteredRepositories();
-  this.markFavoritesInRepositories(); // ✅ ADD this
+  this.updateFilteredRepositories(); // ✅ This will mark isFavorited
 }
 
 
-
-
-
-
-// ✅ Keep this private method for internal checks
-private isFavorite(repoKey: string): boolean {
-  return Object.values(this.favoriteRepositories).some(repos => 
-    repos.some(repo => repo.repo_key === repoKey)
-  );
-}
-
-
-
-
-<!-- ❌ OLD - Method call -->
-<button class="star-button" 
-        [class.favorited]="isFavorite(repo.repo_key)"
-        (click)="toggleFavorite(repo.repo_key, currentProject?.project_key || '', $event)">
-
-<!-- ✅ NEW - Property access -->
-<button class="star-button" 
-        [class.favorited]="repo.isFavorited"
-        (click)="toggleFavorite(repo.repo_key, currentProject?.project_key || '', $event)">
 
