@@ -1,292 +1,58 @@
-<div class="file-content-renderer">
-  <!-- Large file - Show download only, no rendering -->
-  <div class="large-file-container" *ngIf="!canRenderFile">
-    <div class="large-file-card">
-      <svg class="file-icon-large" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-        <polyline points="14 2 14 8 20 8"/>
-        <line x1="16" y1="13" x2="8" y2="13"/>
-        <line x1="16" y1="17" x2="8" y2="17"/>
-        <polyline points="10 9 9 9 8 9"/>
-      </svg>
-      
-      <div class="large-file-info">
-        <h3>File Too Large to Display</h3>
-        <p class="file-stats">
-          <strong>{{ fileName }}</strong>
-        </p>
-        <p class="file-stats">
-          {{ totalLines | number }} lines · Cannot be rendered in browser
-        </p>
-        <p class="file-description">
-          Files with more than {{ MAX_VIEWABLE_LINES | number }} lines cannot be displayed for performance reasons. 
-          Please download the file to view its contents.
-        </p>
-      </div>
+/* Update CSS Variables at the top */
 
-      <button class="download-btn-large" (click)="downloadFile()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-          <polyline points="7 10 12 15 17 10"/>
-          <line x1="12" y1="15" x2="12" y2="3"/>
-        </svg>
-        <span>Download File</span>
-      </button>
-    </div>
-  </div>
-
-  <!-- Normal file - Render content -->
-  <div class="file-content-wrapper" *ngIf="canRenderFile">
-    <div [innerHTML]="renderedContent"></div>
-    
-    <!-- Info Section -->
-    <div class="file-info-section">
-      <div class="lines-info">{{ getLinesInfo() }}</div>
-      <button class="download-btn" (click)="downloadFile()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-          <polyline points="7 10 12 15 17 10"/>
-          <line x1="12" y1="15" x2="12" y2="3"/>
-        </svg>
-        <span>Download File</span>
-      </button>
-    </div>
-  </div>
-</div>
-
-
-
-
-
-
-
-
-
-
-
-
-import { Component, Input, OnInit, OnChanges, SimpleChanges } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
-import hljs from 'highlight.js';
-import { marked } from 'marked';
-
-@Component({
-  selector: 'app-file-content-renderer',
-  standalone: true,
-  imports: [CommonModule],
-  templateUrl: './file-content-renderer.component.html',
-  styleUrls: ['./file-content-renderer.component.css']
-})
-export class FileContentRendererComponent implements OnInit, OnChanges {
-  @Input() content: string = '';
-  @Input() fileType: string = 'plaintext';
-  @Input() fileName: string = '';
-
-  private readonly MAX_VIEWABLE_LINES = 5000;
+/* Light Mode Variables (Default) */
+:root {
+  /* Update these background variables */
+  --bitbucket-bg-primary: #FFF;
+  --bitbucket-bg-secondary: #f8f9fa;
+  --bitbucket-bg-tertiary: #ffffff;
+  --bitbucket-bg-quaternary: #f0f1f2;
+  --bitbucket-bg-hover: #f5f6f7;
   
-  renderedContent: SafeHtml = '';
-  currentLoadedLines: number = 0;
-  totalLines: number = 0;
-  canRenderFile: boolean = true;
-  showDownloadPrompt: boolean = false;
-
-  constructor(private sanitizer: DomSanitizer) {}
-
-  ngOnInit(): void {
-    this.initializeContent();
-  }
-
-  ngOnChanges(changes: SimpleChanges): void {
-    if (changes['content'] || changes['fileType']) {
-      this.initializeContent();
-    }
-  }
-
-  private initializeContent(): void {
-    if (!this.content) return;
-
-    const lines = this.content.split('\n');
-    this.totalLines = lines.length;
-    
-    // Check if file exceeds max viewable lines
-    if (this.totalLines > this.MAX_VIEWABLE_LINES) {
-      this.canRenderFile = false;
-      this.showDownloadPrompt = true;
-      this.currentLoadedLines = 0;
-      this.renderedContent = ''; // Don't render anything
-    } else {
-      this.canRenderFile = true;
-      this.showDownloadPrompt = false;
-      this.currentLoadedLines = this.totalLines;
-      this.renderContent();
-    }
-  }
-
-  private renderContent(): void {
-    if (!this.content || !this.canRenderFile) return;
-
-    const lines = this.content.split('\n');
-    const contentToDisplay = lines.slice(0, this.currentLoadedLines).join('\n');
-
-    if (this.fileType === 'markdown') {
-      this.renderedContent = this.sanitizer.bypassSecurityTrustHtml(
-        this.renderMarkdownView(contentToDisplay)
-      );
-    } else {
-      this.renderedContent = this.sanitizer.bypassSecurityTrustHtml(
-        this.renderCodeView(contentToDisplay, this.fileType, 1)
-      );
-    }
-  }
-
-  downloadFile(): void {
-    const blob = new Blob([this.content], { type: 'text/plain;charset=utf-8' });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = this.fileName || 'file.txt';
-    link.style.display = 'none';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    window.URL.revokeObjectURL(url);
-  }
-
-  getLinesInfo(): string {
-    if (!this.canRenderFile) {
-      return `File too large: ${this.totalLines.toLocaleString()} lines`;
-    }
-    return `Total ${this.totalLines.toLocaleString()} lines`;
-  }
-
-  get MAX_VIEWABLE_LINES_GETTER(): number {
-    return this.MAX_VIEWABLE_LINES;
-  }
-
-  private escapeHtml(text: string): string {
-    const map: { [key: string]: string } = {
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-      "'": '&#039;'
-    };
-    return text.replace(/[&<>"']/g, (m) => map[m]);
-  }
-
-  private renderCodeView(content: string, language: string, startLine: number = 1): string {
-    const lines = content.split('\n');
-    
-    let highlightedLines: string[];
-    try {
-      if (language && language !== 'markdown' && hljs.getLanguage(language)) {
-        const highlighted = hljs.highlight(content, { language: language }).value;
-        highlightedLines = highlighted.split('\n');
-      } else {
-        highlightedLines = lines.map(line => this.escapeHtml(line));
-      }
-    } catch (e) {
-      highlightedLines = lines.map(line => this.escapeHtml(line));
-    }
-
-    const lineNumbers = highlightedLines
-      .map((_, i) => `<div class="line-number">${startLine + i}</div>`)
-      .join('');
-
-    const codeContent = highlightedLines
-      .map(line => `<div class="code-line">${line || '&nbsp;'}</div>`)
-      .join('');
-
-    return `
-      <div class="code-view">
-        <div class="line-numbers">${lineNumbers}</div>
-        <div class="code-lines">${codeContent}</div>
-      </div>
-    `;
-  }
-
-  private renderMarkdownView(content: string): string {
-    try {
-      const html = marked.parse(content) as string;
-      return `<div class="markdown-view">${html}</div>`;
-    } catch (e) {
-      console.error('Markdown parsing error:', e);
-      return `<div class="markdown-view"><p>Error rendering markdown</p></div>`;
-    }
-  }
+  /* Keep other existing variables as is */
+  --bitbucket-file-view-bg-content: #ffffff;
+  --bitbucket-file-view-bg-code-inline: #f6f8fa;
+  --bitbucket-file-border-primary: #e5e7eb;
+  --bitbucket-file-border-secondary: #d1d5db;
+  --bitbucket-file-text-primary: #111827;
+  --bitbucket-file-text-secondary: #374151;
+  --bitbucket-file-text-tertiary: #6b7280;
+  --bitbucket-file-text-muted: #9ca3af;
+  --bitbucket-file-text-line-number: #57606a;
+  --bitbucket-file-view-link: #0969da;
+  --bitbucket-file-accent-blue: #3b82f6;
+  --bitbucket-file-accent-green: #16a34a;
+  /* ... keep all other existing variables ... */
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* ADD these new styles for large file display */
-
-/* Large file container - centered card */
-.large-file-container {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 400px;
-  padding: 48px 24px;
-  background-color: var(--bitbucket-file-view-bg-content);
-  border: 1px solid var(--bitbucket-file-border-primary);
-  border-radius: 8px;
+/* Dark Mode Variables */
+[data-theme="dark"] {
+  /* Update these background variables */
+  --bitbucket-bg-primary: #1a1a1a;
+  --bitbucket-bg-secondary: #111113;
+  --bitbucket-bg-tertiary: #1a1a1c;
+  --bitbucket-bg-quaternary: #0a0a0b;
+  --bitbucket-bg-hover: #1f1f21;
+  
+  /* Keep other existing variables as is */
+  --bitbucket-file-view-bg-content: #111113;
+  --bitbucket-file-view-bg-code-inline: #161b22;
+  --bitbucket-file-border-primary: #2a2a2e;
+  --bitbucket-file-border-secondary: #3a3a3e;
+  --bitbucket-file-text-primary: #e5e7eb;
+  --bitbucket-file-text-secondary: #d1d5db;
+  --bitbucket-file-text-tertiary: #9ca3af;
+  --bitbucket-file-text-muted: #6b7280;
+  --bitbucket-file-text-line-number: #6e7681;
+  --bitbucket-file-view-link: #58a6ff;
+  --bitbucket-file-accent-blue: #60a5fa;
+  --bitbucket-file-accent-green: #22c55e;
+  /* ... keep all other existing variables ... */
 }
 
-.large-file-card {
-  max-width: 500px;
-  text-align: center;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 24px;
-}
+/* Update button backgrounds to use new variables */
 
-.file-icon-large {
-  width: 80px;
-  height: 80px;
-  color: var(--bitbucket-file-text-tertiary);
-  opacity: 0.6;
-}
-
-.large-file-info h3 {
-  font-size: 24px;
-  font-weight: 700;
-  color: var(--bitbucket-file-text-primary);
-  margin: 0 0 16px 0;
-}
-
-.file-stats {
-  font-size: 14px;
-  color: var(--bitbucket-file-text-secondary);
-  margin: 4px 0;
-}
-
-.file-stats strong {
-  color: var(--bitbucket-file-text-primary);
-  font-weight: 600;
-}
-
-.file-description {
-  font-size: 14px;
-  color: var(--bitbucket-file-text-tertiary);
-  line-height: 1.6;
-  margin: 12px 0 0 0;
-}
-
+/* Download button large */
 .download-btn-large {
   display: inline-flex;
   align-items: center;
@@ -309,28 +75,7 @@ export class FileContentRendererComponent implements OnInit, OnChanges {
   box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
 }
 
-.download-btn-large svg {
-  width: 20px;
-  height: 20px;
-}
-
-/* Update file info section */
-.file-info-section {
-  padding: 16px 24px;
-  background: var(--bitbucket-file-view-bg-content);
-  border-top: 1px solid var(--bitbucket-file-border-primary);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.lines-info {
-  font-size: 13px;
-  color: var(--bitbucket-file-text-tertiary);
-  font-weight: 500;
-}
-
+/* Download button regular */
 .download-btn {
   display: inline-flex;
   align-items: center;
@@ -352,76 +97,98 @@ export class FileContentRendererComponent implements OnInit, OnChanges {
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
 }
 
-.download-btn svg {
-  width: 16px;
-  height: 16px;
+/* Update container backgrounds */
+.large-file-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  padding: 48px 24px;
+  background-color: var(--bitbucket-bg-secondary);
+  border: 1px solid var(--bitbucket-file-border-primary);
+  border-radius: 8px;
+}
+
+.file-content-wrapper {
+  background-color: var(--bitbucket-bg-tertiary);
+  border: 1px solid var(--bitbucket-file-border-primary);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.file-info-section {
+  padding: 16px 24px;
+  background: var(--bitbucket-bg-secondary);
+  border-top: 1px solid var(--bitbucket-file-border-primary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+/* Update code view backgrounds */
+::ng-deep .code-view {
+  display: flex;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 20px;
+  background-color: var(--bitbucket-bg-tertiary);
+}
+
+::ng-deep .line-numbers {
+  background-color: var(--bitbucket-bg-secondary);
+  color: var(--bitbucket-file-view-text-line-number);
+  padding: 12px 0;
+  text-align: right;
+  user-select: none;
+  min-width: 50px;
+  border-right: 1px solid var(--bitbucket-file-border-primary);
   flex-shrink: 0;
 }
 
-/* Responsive adjustments */
-@media (max-width: 768px) {
-  .large-file-container {
-    padding: 24px 16px;
-    min-height: 300px;
-  }
-  
-  .large-file-card {
-    max-width: 100%;
-  }
-  
-  .file-icon-large {
-    width: 60px;
-    height: 60px;
-  }
-  
-  .large-file-info h3 {
-    font-size: 20px;
-  }
-  
-  .download-btn-large {
-    width: 100%;
-    justify-content: center;
-  }
-  
-  .file-info-section {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  
-  .download-btn {
-    width: 100%;
-    justify-content: center;
-  }
+::ng-deep .code-lines {
+  flex: 1;
+  padding: 12px 16px;
+  overflow-x: auto;
+  background-color: var(--bitbucket-bg-tertiary);
+  color: var(--bitbucket-file-text-primary);
 }
 
-/* Dark mode adjustments */
-[data-theme="dark"] .file-icon-large {
-  opacity: 0.4;
+/* Update markdown view background */
+::ng-deep .markdown-view {
+  padding: 24px 32px;
+  background-color: var(--bitbucket-bg-tertiary);
+  color: var(--bitbucket-file-text-primary);
+  line-height: 1.6;
 }
 
+::ng-deep .markdown-view pre {
+  background-color: var(--bitbucket-bg-secondary);
+  padding: 16px;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin-bottom: 16px;
+}
+
+::ng-deep .markdown-view code {
+  background-color: var(--bitbucket-bg-secondary);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 85%;
+  color: var(--bitbucket-file-text-primary);
+}
+
+::ng-deep .markdown-view table th {
+  background-color: var(--bitbucket-bg-secondary);
+  font-weight: 600;
+}
+
+/* Dark mode specific button hover adjustments */
 [data-theme="dark"] .download-btn-large:hover {
-  box-shadow: 0 6px 20px rgba(96, 165, 250, 0.4);
+  box-shadow: 0 6px 20px rgba(96, 165, 250, 0.3);
 }
 
-/* REMOVE these old styles if they exist:
-- .load-more-section
-- .load-more-btn
-- .load-all-btn
-- .load-more-actions
-- .large-file-warning
-- .warning-content
-- .warning-icon
-- .warning-text
-- .download-btn-warning
-*/
-
-
-
-
-
-
-
-
-
-
-
+[data-theme="dark"] .download-btn:hover {
+  box-shadow: 0 4px 12px rgba(96, 165, 250, 0.3);
+}
