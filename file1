@@ -1,1027 +1,428 @@
-import { Component, OnInit } from '@angular/core';
+<!-- Updated Header Section - Replace the entire .header div -->
 
-// ========================================
-// Interfaces
-// ========================================
-
-interface Project {
-  project_key: string;
-  project_name: string;
-  project_url: string;
-}
-
-interface Repository {
-  repo_key: string;
-  repo_name: string;
-  repo_url: string;
-  isFavorited?: boolean;
-}
-
-interface FileSystemItem {
-  name: string;
-  type: 'file' | 'folder';
-  children?: FileSystemItem[];
-}
-
-interface FavoriteProjectSummary {
-  project_key: string;
-  project_name: string;
-  project_url: string;
-  repoCount: number;
-}
-
-// ========================================
-// Component
-// ========================================
-
-@Component({
-  selector: 'app-repository-sidebar',
-  templateUrl: './repository-sidebar.component.html',
-  styleUrls: ['./repository-sidebar.component.css']
-})
-export class RepositorySidebarComponent implements OnInit {
-  
-  // ========================================
-  // Properties - Tab Management
-  // ========================================
-  
-  activeTab: 'favorites' | 'all' = 'favorites';
-  
-  // ========================================
-  // Properties - Projects & Repositories
-  // ========================================
-  
-  allProjects: Project[] = [];
-  repositoriesByProject: { [key: string]: Repository[] } = {};
-  favoriteRepositories: { [key: string]: Repository[] } = {};
-  
-  currentProject: Project | null = null;
-  currentFavoriteProject: FavoriteProjectSummary | null = null;
-  
-  // ========================================
-  // Properties - View State
-  // ========================================
-  
-  showAllProjectsView: boolean = false;
-  showAllReposView: boolean = false;
-  showFavoritesProjectsView: boolean = true;
-  showFavoritesReposView: boolean = false;
-  showFavoritesBrowserView: boolean = false;
-  
-  // ========================================
-  // Properties - Loading States
-  // ========================================
-  
-  loadingRepos: { [key: string]: boolean } = {};
-  loadingFiles: boolean = false;
-  
-  // ========================================
-  // Properties - File Browser
-  // ========================================
-  
-  fileSystem: FileSystemItem[] = [];
-  currentPath: string[] = ['root'];
-  currentRepo: { id: string; name: string } | null = null;
-  branches: string[] = ['main', 'develop', 'feature/new-ui', 'hotfix/bug-123'];
-  selectedBranch: string = 'main';
-  branchSelectorVisible: boolean = false;
-  
-  // ========================================
-  // Properties - Optimized Cached Lists
-  // ========================================
-  
-  hasFavoritesFlag: boolean = false;
-  favoriteProjectsList: FavoriteProjectSummary[] = [];
-  currentFolderItemsList: { name: string; isFolder: boolean }[] = [];
-  filteredProjectsList: Project[] = [];
-  filteredRepositoriesList: Repository[] = [];
-  filteredBranchesList: string[] = [];
-  
-  // ========================================
-  // Properties - Search with Setters
-  // ========================================
-  
-  private _projectSearchText: string = '';
-  get projectSearchText(): string {
-    return this._projectSearchText;
-  }
-  set projectSearchText(value: string) {
-    this._projectSearchText = value;
-    this.updateFilteredProjects();
-  }
-  
-  private _repoSearchText: string = '';
-  get repoSearchText(): string {
-    return this._repoSearchText;
-  }
-  set repoSearchText(value: string) {
-    this._repoSearchText = value;
-    this.updateFilteredRepositories();
-  }
-  
-  private _branchSearchText: string = '';
-  get branchSearchText(): string {
-    return this._branchSearchText;
-  }
-  set branchSearchText(value: string) {
-    this._branchSearchText = value;
-    this.updateFilteredBranches();
-  }
-  
-  // ========================================
-  // Properties - Private Cache
-  // ========================================
-  
-  private favoriteRepoKeysCache: Set<string> = new Set();
-  
-  // ========================================
-  // Lifecycle
-  // ========================================
-  
-  ngOnInit(): void {
-    this.loadMockData();
-    this.updateAllCaches();
-  }
-  
-  // ========================================
-  // Mock Data Loading
-  // ========================================
-  
-  private loadMockData(): void {
-    // Mock projects
-    this.allProjects = [
-      { project_key: 'ECOM', project_name: 'E-Commerce Platform', project_url: 'https://bitbucket.org/company/ecommerce' },
-      { project_key: 'MOBILE', project_name: 'Mobile Banking App', project_url: 'https://bitbucket.org/company/mobile-banking' },
-      { project_key: 'ANALYTICS', project_name: 'Analytics Dashboard', project_url: 'https://bitbucket.org/company/analytics' },
-      { project_key: 'API', project_name: 'API Gateway', project_url: 'https://bitbucket.org/company/api-gateway' }
-    ];
-    
-    // Mock repositories
-    this.repositoriesByProject = {
-      'ECOM': [
-        { repo_key: 'ecom-frontend', repo_name: 'frontend-app', repo_url: 'https://bitbucket.org/company/ecommerce/frontend-app' },
-        { repo_key: 'ecom-backend', repo_name: 'backend-api', repo_url: 'https://bitbucket.org/company/ecommerce/backend-api' },
-        { repo_key: 'ecom-admin', repo_name: 'admin-panel', repo_url: 'https://bitbucket.org/company/ecommerce/admin-panel' }
-      ],
-      'MOBILE': [
-        { repo_key: 'mobile-ios', repo_name: 'ios-app', repo_url: 'https://bitbucket.org/company/mobile-banking/ios-app' },
-        { repo_key: 'mobile-android', repo_name: 'android-app', repo_url: 'https://bitbucket.org/company/mobile-banking/android-app' }
-      ],
-      'ANALYTICS': [
-        { repo_key: 'analytics-dashboard', repo_name: 'dashboard-ui', repo_url: 'https://bitbucket.org/company/analytics/dashboard-ui' },
-        { repo_key: 'analytics-etl', repo_name: 'etl-pipeline', repo_url: 'https://bitbucket.org/company/analytics/etl-pipeline' }
-      ],
-      'API': [
-        { repo_key: 'api-gateway', repo_name: 'gateway-service', repo_url: 'https://bitbucket.org/company/api-gateway/gateway-service' }
-      ]
-    };
-    
-    // Mock favorites
-    this.favoriteRepositories = {
-      'ECOM': [
-        { repo_key: 'ecom-frontend', repo_name: 'frontend-app', repo_url: 'https://bitbucket.org/company/ecommerce/frontend-app' }
-      ],
-      'MOBILE': [
-        { repo_key: 'mobile-ios', repo_name: 'ios-app', repo_url: 'https://bitbucket.org/company/mobile-banking/ios-app' }
-      ]
-    };
-    
-    // Mock file system
-    this.fileSystem = [
-      {
-        name: 'src',
-        type: 'folder',
-        children: [
-          {
-            name: 'components',
-            type: 'folder',
-            children: [
-              { name: 'Header.tsx', type: 'file' },
-              { name: 'Footer.tsx', type: 'file' },
-              { name: 'Sidebar.tsx', type: 'file' }
-            ]
-          },
-          {
-            name: 'utils',
-            type: 'folder',
-            children: [
-              { name: 'api.ts', type: 'file' },
-              { name: 'helpers.ts', type: 'file' }
-            ]
-          },
-          { name: 'App.tsx', type: 'file' },
-          { name: 'index.ts', type: 'file' }
-        ]
-      },
-      {
-        name: 'public',
-        type: 'folder',
-        children: [
-          { name: 'index.html', type: 'file' },
-          { name: 'favicon.ico', type: 'file' }
-        ]
-      },
-      { name: 'package.json', type: 'file' },
-      { name: 'README.md', type: 'file' },
-      { name: '.gitignore', type: 'file' }
-    ];
-  }
-  
-  // ========================================
-  // Tab Management
-  // ========================================
-  
-  switchTab(tab: 'favorites' | 'all'): void {
-    this.activeTab = tab;
-    
-    if (tab === 'favorites') {
-      this.showAllProjectsView = false;
-      this.showAllReposView = false;
-      this.showFavoritesProjectsView = true;
-      this.showFavoritesReposView = false;
-      this.showFavoritesBrowserView = false;
-    } else {
-      this.showAllProjectsView = true;
-      this.showAllReposView = false;
-      this.showFavoritesProjectsView = false;
-      this.showFavoritesReposView = false;
-      this.showFavoritesBrowserView = false;
-    }
-  }
-  
-  // ========================================
-  // All Repository Navigation
-  // ========================================
-  
-  showRepositories(projectKey: string): void {
-    this.currentProject = this.allProjects.find(p => p.project_key === projectKey) || null;
-    if (!this.currentProject) return;
-
-    this.repoSearchText = '';
-    this.showAllProjectsView = false;
-    this.showAllReposView = true;
-    
-    this.updateFilteredRepositories();
-  }
-  
-  backToProjects(): void {
-    this.showAllReposView = false;
-    this.showAllProjectsView = true;
-    this.currentProject = null;
-    this.repoSearchText = '';
-  }
-  
-  // ========================================
-  // Favorites Navigation
-  // ========================================
-  
-  showFavoriteRepositories(projectKey: string): void {
-    this.currentFavoriteProject = this.favoriteProjectsList.find(p => p.project_key === projectKey) || null;
-    
-    this.showFavoritesProjectsView = false;
-    this.showFavoritesReposView = true;
-  }
-  
-  backToFavoriteProjects(): void {
-    this.showFavoritesReposView = false;
-    this.showFavoritesProjectsView = true;
-    this.currentFavoriteProject = null;
-  }
-  
-  openRepositoryWithLoading(repoId: string, repoName: string): void {
-    this.loadingRepos[repoId] = true;
-    
-    setTimeout(() => {
-      this.openRepository(repoId, repoName);
-      this.loadingRepos[repoId] = false;
-    }, 1000);
-  }
-  
-  openRepository(repoId: string, repoName: string): void {
-    this.currentRepo = { id: repoId, name: repoName };
-    this.currentPath = ['root'];
-    this.fileSystem = this.getMockFileSystemData();
-    
-    this.showFavoritesReposView = false;
-    this.showFavoritesBrowserView = true;
-    this.loadingFiles = false;
-    
-    this.updateCurrentFolderItems();
-  }
-  
-  private getMockFileSystemData(): FileSystemItem[] {
-    return this.fileSystem;
-  }
-  
-  // ========================================
-  // Cache Update Methods
-  // ========================================
-  
-  private updateAllCaches(): void {
-    this.updateHasFavoritesFlag();
-    this.updateFavoriteProjectsList();
-    this.updateFavoriteRepoKeysCache();
-    this.updateFilteredProjects();
-    this.updateFilteredRepositories();
-    this.updateFilteredBranches();
-    this.updateCurrentFolderItems();
-  }
-  
-  private updateHasFavoritesFlag(): void {
-    this.hasFavoritesFlag = Object.keys(this.favoriteRepositories).some(key => 
-      this.favoriteRepositories[key] && this.favoriteRepositories[key].length > 0
-    );
-  }
-  
-  private updateFavoriteProjectsList(): void {
-    const projectKeys = Object.keys(this.favoriteRepositories);
-    
-    this.favoriteProjectsList = projectKeys
-      .filter(key => this.favoriteRepositories[key] && this.favoriteRepositories[key].length > 0)
-      .map(projectKey => {
-        const project = this.allProjects.find(p => p.project_key === projectKey);
-        return {
-          project_key: projectKey,
-          project_name: project?.project_name || projectKey,
-          project_url: project?.project_url || '',
-          repoCount: this.favoriteRepositories[projectKey].length
-        };
-      })
-      .sort((a, b) => a.project_name.localeCompare(b.project_name));
-  }
-  
-  private updateFavoriteRepoKeysCache(): void {
-    this.favoriteRepoKeysCache = new Set();
-    
-    Object.values(this.favoriteRepositories).forEach(repos => {
-      repos.forEach(repo => this.favoriteRepoKeysCache.add(repo.repo_key));
-    });
-  }
-  
-  private updateFilteredProjects(): void {
-    if (!this.projectSearchText.trim()) {
-      this.filteredProjectsList = this.allProjects;
-      return;
-    }
-    
-    const searchLower = this.projectSearchText.toLowerCase();
-    this.filteredProjectsList = this.allProjects.filter(project => 
-      project.project_name.toLowerCase().includes(searchLower) ||
-      project.project_key.toLowerCase().includes(searchLower) ||
-      project.project_url.toLowerCase().includes(searchLower)
-    );
-  }
-  
-  private updateFilteredRepositories(): void {
-    if (!this.currentProject) {
-      this.filteredRepositoriesList = [];
-      return;
-    }
-    
-    const repos = this.repositoriesByProject[this.currentProject.project_key] || [];
-    
-    let filtered: Repository[];
-    if (!this.repoSearchText.trim()) {
-      filtered = repos;
-    } else {
-      const searchLower = this.repoSearchText.toLowerCase();
-      filtered = repos.filter(repo => 
-        repo.repo_name.toLowerCase().includes(searchLower) ||
-        repo.repo_url.toLowerCase().includes(searchLower)
-      );
-    }
-    
-    // Mark favorites
-    this.filteredRepositoriesList = filtered.map(repo => ({
-      ...repo,
-      isFavorited: this.checkIsFavorite(repo.repo_key)
-    }));
-  }
-  
-  private updateFilteredBranches(): void {
-    if (!this.branchSearchText.trim()) {
-      this.filteredBranchesList = this.branches;
-      return;
-    }
-    
-    const searchLower = this.branchSearchText.toLowerCase();
-    this.filteredBranchesList = this.branches.filter(branch => 
-      branch.toLowerCase().includes(searchLower)
-    );
-  }
-  
-  private updateCurrentFolderItems(): void {
-    this.currentFolderItemsList = this.calculateFolderItems();
-  }
-  
-  private checkIsFavorite(repoKey: string): boolean {
-    return this.favoriteRepoKeysCache.has(repoKey);
-  }
-  
-  // ========================================
-  // Folder Navigation
-  // ========================================
-  
-  private calculateFolderItems(): { name: string; isFolder: boolean }[] {
-    let currentItems: FileSystemItem[] = this.fileSystem;
-    
-    for (let i = 1; i < this.currentPath.length; i++) {
-      const folderName = this.currentPath[i];
-      const folder = currentItems.find(item => item.name === folderName && item.type === 'folder');
-      
-      if (folder && folder.children) {
-        currentItems = folder.children;
-      } else {
-        return [];
-      }
-    }
-    
-    const items = currentItems.map(item => ({
-      name: item.name,
-      isFolder: item.type === 'folder'
-    }));
-    
-    // Sort: Folders first, then files
-    return items.sort((a, b) => {
-      if (a.isFolder && !b.isFolder) return -1;
-      if (!a.isFolder && b.isFolder) return 1;
-      
-      return a.name.localeCompare(b.name, undefined, {
-        numeric: true,
-        sensitivity: 'base'
-      });
-    });
-  }
-  
-  openFolder(folderName: string): void {
-    this.currentPath.push(folderName);
-    this.updateCurrentFolderItems();
-  }
-  
-  navigateToPath(index: number): void {
-    this.currentPath = this.currentPath.slice(0, index + 1);
-    this.updateCurrentFolderItems();
-  }
-  
-  // ========================================
-  // Branch Selector
-  // ========================================
-  
-  toggleBranchSelector(): void {
-    this.branchSelectorVisible = !this.branchSelectorVisible;
-    if (!this.branchSelectorVisible) {
-      this.branchSearchText = '';
-    }
-  }
-  
-  selectBranch(branch: string): void {
-    this.selectedBranch = branch;
-    this.branchSelectorVisible = false;
-    this.branchSearchText = '';
-  }
-  
-  // ========================================
-  // Favorite Management
-  // ========================================
-  
-  toggleFavorite(repoKey: string, projectKey: string, event?: Event): void {
-    if (event) {
-      event.stopPropagation();
-    }
-
-    this.loadingRepos[repoKey] = true;
-
-    setTimeout(() => {
-      if (this.isFavorite(repoKey)) {
-        // Remove
-        if (this.favoriteRepositories[projectKey]) {
-          this.favoriteRepositories[projectKey] = this.favoriteRepositories[projectKey]
-            .filter(repo => repo.repo_key !== repoKey);
-          
-          if (this.favoriteRepositories[projectKey].length === 0) {
-            delete this.favoriteRepositories[projectKey];
-          }
-        }
-      } else {
-        // Add
-        const repo = this.repositoriesByProject[projectKey]?.find(r => r.repo_key === repoKey);
-        if (repo) {
-          if (!this.favoriteRepositories[projectKey]) {
-            this.favoriteRepositories[projectKey] = [];
-          }
-          this.favoriteRepositories[projectKey].push(repo);
-        }
-      }
-
-      this.loadingRepos[repoKey] = false;
-      this.updateAllCaches();
-    }, 1000);
-  }
-  
-  private isFavorite(repoKey: string): boolean {
-    return Object.values(this.favoriteRepositories).some(repos => 
-      repos.some(repo => repo.repo_key === repoKey)
-    );
-  }
-  
-  // ========================================
-  // File Actions
-  // ========================================
-  
-  handleFileDoubleClick(fileName: string): void {
-    console.log('File double-clicked:', fileName);
-  }
-  
-  onFileRightClick(event: MouseEvent, fileName: string): void {
-    event.preventDefault();
-    console.log('File right-clicked:', fileName);
-  }
-  
-  // ========================================
-  // Helper Methods
-  // ========================================
-  
-  getProjectRepoCount(projectKey: string): number {
-    return this.repositoriesByProject[projectKey]?.length || 0;
-  }
-  
-  // ========================================
-  // TrackBy Functions
-  // ========================================
-  
-  trackByProjectKey(index: number, project: Project): string {
-    return project.project_key;
-  }
-  
-  trackByFavoriteProjectKey(index: number, project: FavoriteProjectSummary): string {
-    return project.project_key;
-  }
-  
-  trackByRepoKey(index: number, repo: Repository): string {
-    return repo.repo_key;
-  }
-  
-  trackByFileName(index: number, item: { name: string; isFolder: boolean }): string {
-    return item.name;
-  }
-  
-  trackByBranchName(index: number, branch: string): string {
-    return branch;
-  }
-  
-  trackByIndex(index: number): number {
-    return index;
-  }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<div class="sidebar-container">
-  
-  <!-- ========================================
-       Tab Navigation
-       ======================================== -->
-  
-  <div class="tabs">
-    <div class="tab" 
-         [class.active]="activeTab === 'favorites'"
-         [class.hidden]="!hasFavoritesFlag"
-         (click)="switchTab('favorites')">
-      Favorites
+<div class="header">
+  <!-- Repo Info Section -->
+  <div class="repo-info-section">
+    <div class="repo-name">
+      <svg class="repo-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>
+      </svg>
+      <span class="repo-name-text">{{ repoName }}</span>
     </div>
-    
-    <div class="tab" 
-         [class.active]="activeTab === 'all'"
-         (click)="switchTab('all')">
-      All Repository
+    <div class="date-period" *ngIf="appliedStartDate || appliedEndDate">
+      <svg class="period-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+      </svg>
+      <span class="period-text">
+        {{ formatDisplayDate(appliedStartDate) }} - {{ formatDisplayDate(appliedEndDate) }}
+      </span>
     </div>
   </div>
 
-  <!-- ========================================
-       FAVORITES TAB (First Tab)
-       ======================================== -->
-  
-  <div *ngIf="activeTab === 'favorites'">
-    
-    <!-- Favorites Projects View -->
-    <div id="favorites-projects-view" [class.hidden]="!showFavoritesProjectsView">
-      
-      <div class="project-card" 
-           *ngFor="let project of favoriteProjectsList; trackBy: trackByFavoriteProjectKey"
-           (click)="showFavoriteRepositories(project.project_key)">
-        <div class="project-name">{{ project.project_name }}</div>
-        <div class="project-info">{{ project.project_url }}</div>
-        <div class="repo-count">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-          </svg>
-          {{ project.repoCount }} favorite{{ project.repoCount !== 1 ? 's' : '' }}
-        </div>
-      </div>
+  <!-- Header Top with Title and Filter Toggle -->
+  <div class="header-top">
+    <h2>Pull Requests</h2>
+    <button class="filter-toggle-btn" (click)="toggleFilters()" [class.active]="showFilters">
+      <svg class="filter-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path>
+      </svg>
+      <span>{{ showFilters ? 'Hide' : 'Show' }} Filters</span>
+      <svg class="chevron-icon" [class.rotate]="showFilters" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+      </svg>
+    </button>
+  </div>
 
-      <!-- Empty State -->
-      <div class="empty-state" *ngIf="favoriteProjectsList.length === 0">
-        <svg class="empty-state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+  <!-- Filters Container -->
+  <div class="filters-container" [class.expanded]="showFilters">
+    <div class="filters-content">
+      <div class="search-box">
+        <svg class="search-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
         </svg>
-        <div class="empty-state-text">No favorite projects yet</div>
-        <div class="empty-state-hint">Star repositories to see them here</div>
+        <input 
+          type="text" 
+          class="search-input" 
+          placeholder="Search PRs..." 
+          [(ngModel)]="searchQuery"
+          (input)="handleSearch()">
       </div>
-    </div>
 
-    <!-- Favorites Repositories View -->
-    <div id="favorites-repos-view" [class.hidden]="!showFavoritesReposView">
-      
-      <!-- Header -->
-      <div class="view-header">
-        <button class="back-button" (click)="backToFavoriteProjects()">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M19 12H5M12 19l-7-7 7-7" />
+      <!-- Date Range Picker Section -->
+      <div class="date-range-section">
+        <label class="filter-label">
+          <svg class="label-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
           </svg>
-        </button>
-        <div class="view-title">{{ currentFavoriteProject?.project_name }}</div>
-      </div>
-
-      <!-- Repository Cards -->
-      <div id="favorites-repos-list">
-        <div class="repo-card" 
-             *ngFor="let repo of favoriteRepositories[currentFavoriteProject?.project_key || ''] || []; trackBy: trackByRepoKey"
-             (click)="openRepositoryWithLoading(repo.repo_key, repo.repo_name)">
-          
-          <div class="repo-header">
-            <div class="repo-info-section" (click)="$event.stopPropagation()">
-              <div class="repo-name">{{ repo.repo_name }}</div>
-              <div class="repo-description" [title]="repo.repo_url">
-                {{ repo.repo_url }}
-              </div>
-            </div>
-            
-            <button class="star-button favorited"
-                    (click)="toggleFavorite(repo.repo_key, currentFavoriteProject?.project_key || '', $event)">
-              <svg viewBox="0 0 24 24" 
-                   fill="currentColor" 
-                   stroke="currentColor" 
-                   stroke-width="2">
-                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
-              </svg>
-            </button>
+          Date Range
+        </label>
+        <div class="date-range-inputs">
+          <div class="date-input-wrapper">
+            <input 
+              type="date" 
+              class="date-input" 
+              [(ngModel)]="startDate"
+              [max]="endDate || undefined">
+          </div>
+          <span class="date-separator">to</span>
+          <div class="date-input-wrapper">
+            <input 
+              type="date" 
+              class="date-input" 
+              [(ngModel)]="endDate"
+              [min]="startDate || undefined">
           </div>
         </div>
-
-        <!-- Empty State -->
-        <div class="empty-state" 
-             *ngIf="!favoriteRepositories[currentFavoriteProject?.project_key || ''] || 
-                    favoriteRepositories[currentFavoriteProject?.project_key || ''].length === 0">
-          <svg class="empty-state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
-          </svg>
-          <div class="empty-state-text">No favorites in this project</div>
+        <div class="date-actions">
+          <button 
+            class="apply-dates-btn" 
+            [disabled]="!startDate && !endDate"
+            (click)="applyDateFilter()">
+            <svg class="apply-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+            </svg>
+            Apply
+          </button>
+          <button 
+            class="clear-dates-btn" 
+            *ngIf="startDate || endDate"
+            (click)="clearDateRange()">
+            <svg class="clear-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+            Clear
+          </button>
         </div>
       </div>
-    </div>
 
-    <!-- Favorites File Browser View -->
-    <div id="favorites-browser-view" [class.hidden]="!showFavoritesBrowserView">
-      
-      <!-- File Browser Header -->
-      <div class="file-browser-header">
-        <div class="repo-info">
-          <svg class="repo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-          </svg>
-          <span class="repo-name">{{ currentRepo?.name }}</span>
+      <div class="sort-controls">
+        <div class="sort-tabs">
+          <button 
+            class="sort-btn"
+            [class.active]="currentSort === 'status'"
+            (click)="sortPRs('status')">
+            <svg class="sort-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+            </svg>
+            <span>Status</span>
+          </button>
+          <button 
+            class="sort-btn"
+            [class.active]="currentSort === 'activity'"
+            (click)="sortPRs('activity')">
+            <svg class="sort-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"></path>
+            </svg>
+            <span>Activity</span>
+          </button>
         </div>
 
-        <!-- Breadcrumb -->
-        <div class="breadcrumb">
-          <ng-container *ngFor="let item of currentPath; let i = index; let isLast = last; trackBy: trackByIndex">
-            <span class="breadcrumb-item" 
-                  [class.active]="isLast"
-                  [class.clickable]="!isLast"
-                  (click)="!isLast && navigateToPath(i)">
-              {{ item }}
-            </span>
-            <svg class="breadcrumb-separator" 
-                 *ngIf="!isLast"
-                 width="12" 
-                 height="12" 
-                 viewBox="0 0 24 24" 
-                 fill="none" 
-                 stroke="currentColor" 
-                 stroke-width="2">
-              <polyline points="9 18 15 12 9 6"></polyline>
-            </svg>
+        <div class="order-controls">
+          <!-- Status Order Controls -->
+          <ng-container *ngIf="currentSort === 'status'">
+            <button 
+              class="order-btn"
+              [class.active]="currentOrder === 'open'"
+              (click)="setStatusOrder('open')">
+              <svg class="order-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6-2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+              </svg>
+              <span>Open</span>
+            </button>
+            <button 
+              class="order-btn"
+              [class.active]="currentOrder === 'merged'"
+              (click)="setStatusOrder('merged')">
+              <svg class="order-icon" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+              </svg>
+              <span>Merged</span>
+            </button>
           </ng-container>
-        </div>
-      </div>
 
-      <!-- Branch Selector -->
-      <div class="branch-selector-container">
-        <!-- Header -->
-        <div class="branch-selector-header" (click)="toggleBranchSelector()">
-          <div class="branch-info">
-            <svg class="branch-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="6" y1="3" x2="6" y2="15"></line>
-              <circle cx="18" cy="6" r="3"></circle>
-              <circle cx="6" cy="18" r="3"></circle>
-              <path d="M18 9a9 9 0 0 1-9 9"></path>
-            </svg>
-            <div class="branch-details">
-              <span class="branch-label">Branch</span>
-              <span class="branch-name">{{ selectedBranch }}</span>
-            </div>
-          </div>
-          <div class="header-actions">
-            <span class="branch-count" *ngIf="branches.length > 0">{{ branches.length }}</span>
-            <svg class="toggle-icon" 
-                 [class.rotated]="branchSelectorVisible"
-                 viewBox="0 0 24 24" 
-                 fill="none" 
-                 stroke="currentColor" 
-                 stroke-width="2">
-              <polyline points="6 9 12 15 18 9"></polyline>
-            </svg>
-          </div>
-        </div>
-        
-        <!-- Dropdown Content -->
-        <div class="branch-selector-content" [class.visible]="branchSelectorVisible">
-          <!-- Search -->
-          <div class="branch-search">
-            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="11" cy="11" r="8"></circle>
-              <path d="m21 21-4.35-4.35"></path>
-            </svg>
-            <input type="text" 
-                   class="branch-search-input" 
-                   placeholder="Search branches..."
-                   [(ngModel)]="branchSearchText"
-                   (click)="$event.stopPropagation()"
-                   #searchInput>
-            <button class="clear-search-btn" 
-                    *ngIf="branchSearchText"
-                    (click)="branchSearchText = ''; searchInput.focus(); $event.stopPropagation()">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="18" y1="6" x2="6" y2="18"></line>
-                <line x1="6" y1="6" x2="18" y2="18"></line>
+          <!-- Activity Order Controls -->
+          <ng-container *ngIf="currentSort === 'activity'">
+            <button 
+              class="order-btn"
+              [class.active]="activityOrder === 'asc'"
+              (click)="setActivityOrder('asc')">
+              <svg class="order-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h9m5-4v12m0 0l-4-4m4 4l4-4"></path>
               </svg>
+              <span>Low → High</span>
             </button>
-          </div>
-          
-          <!-- Branch List -->
-          <div class="branch-list">
-            <div class="branch-option" 
-                 *ngFor="let branch of filteredBranchesList; trackBy: trackByBranchName"
-                 [class.selected]="branch === selectedBranch"
-                 (click)="selectBranch(branch); $event.stopPropagation()">
-              <div class="branch-option-content">
-                <svg class="branch-option-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="6" y1="3" x2="6" y2="15"></line>
-                  <circle cx="18" cy="6" r="3"></circle>
-                  <circle cx="6" cy="18" r="3"></circle>
-                  <path d="M18 9a9 9 0 0 1-9 9"></path>
-                </svg>
-                <span class="branch-option-text">{{ branch }}</span>
-              </div>
-              <svg class="check-icon" 
-                   *ngIf="branch === selectedBranch"
-                   viewBox="0 0 24 24" 
-                   fill="none" 
-                   stroke="currentColor" 
-                   stroke-width="2">
-                <polyline points="20 6 9 17 4 12"></polyline>
+            <button 
+              class="order-btn"
+              [class.active]="activityOrder === 'desc'"
+              (click)="setActivityOrder('desc')">
+              <svg class="order-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"></path>
               </svg>
-            </div>
-            
-            <!-- No Results -->
-            <div class="no-results" *ngIf="filteredBranchesList.length === 0">
-              <svg class="no-results-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="11" cy="11" r="8"></circle>
-                <path d="m21 21-4.35-4.35"></path>
-              </svg>
-              <span class="no-results-text">No branches found</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Files List -->
-      <div id="favorites-files-list">
-        
-        <!-- Loading State -->
-        <div *ngIf="loadingFiles" class="loading-container">
-          <div class="spinner"></div>
-          <div class="loading-text">Loading files...</div>
-        </div>
-
-        <!-- Files Content -->
-        <div *ngIf="!loadingFiles">
-          
-          <!-- Empty State -->
-          <div class="empty-state" *ngIf="currentFolderItemsList.length === 0">
-            <svg class="empty-state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-            </svg>
-            <div class="empty-state-text">Empty folder</div>
-          </div>
-
-          <!-- File Items -->
-          <div class="file-item" 
-               *ngFor="let item of currentFolderItemsList; trackBy: trackByFileName"
-               [class.clickable]="item.isFolder"
-               (click)="item.isFolder && openFolder(item.name)"
-               (dblclick)="!item.isFolder && handleFileDoubleClick(item.name)"
-               (contextmenu)="!item.isFolder && onFileRightClick($event, item.name)">
-            
-            <!-- File/Folder Icon -->
-            <svg class="file-icon" 
-                 [class.folder-icon]="item.isFolder"
-                 [class.file-icon-default]="!item.isFolder"
-                 viewBox="0 0 24 24" 
-                 fill="none" 
-                 stroke="currentColor" 
-                 stroke-width="2">
-              <path *ngIf="item.isFolder" 
-                    d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-              <path *ngIf="!item.isFolder" 
-                    d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
-              <polyline *ngIf="!item.isFolder" points="13 2 13 9 20 9"></polyline>
-            </svg>
-            
-            <!-- File Name -->
-            <span class="file-name">{{ item.name }}</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ========================================
-       ALL REPOSITORY TAB (Second Tab)
-       ======================================== -->
-  
-  <div *ngIf="activeTab === 'all'">
-    
-    <!-- All Projects View -->
-    <div id="all-projects-view" [class.hidden]="!showAllProjectsView">
-      
-      <!-- Search Container -->
-      <div class="search-container">
-        <div class="search-box">
-          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="11" cy="11" r="8"></circle>
-            <path d="m21 21-4.35-4.35"></path>
-          </svg>
-          <input type="text" 
-                 class="search-input" 
-                 placeholder="Search projects..."
-                 [(ngModel)]="projectSearchText">
-          <button class="clear-search-btn" 
-                  *ngIf="projectSearchText"
-                  (click)="projectSearchText = ''">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </button>
-        </div>
-        <div class="search-results-count" *ngIf="projectSearchText">
-          {{ filteredProjectsList.length }} of {{ allProjects.length }} projects
-        </div>
-      </div>
-
-      <!-- Project Cards -->
-      <div class="project-card" 
-           *ngFor="let project of filteredProjectsList; trackBy: trackByProjectKey"
-           (click)="showRepositories(project.project_key)">
-        <div class="project-name">{{ project.project_name }}</div>
-        <div class="project-info">{{ project.project_url }}</div>
-        <div class="repo-count">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-          </svg>
-          {{ getProjectRepoCount(project.project_key) }} repositories
-        </div>
-      </div>
-
-      <!-- No Results -->
-      <div class="no-results" *ngIf="projectSearchText && filteredProjectsList.length === 0">
-        <svg class="no-results-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="11" cy="11" r="8"></circle>
-          <path d="m21 21-4.35-4.35"></path>
-        </svg>
-        <div class="no-results-text">No projects found</div>
-        <div class="no-results-hint">Try a different search term</div>
-      </div>
-    </div>
-
-    <!-- All Repositories View -->
-    <div id="all-repos-view" [class.hidden]="!showAllReposView">
-      
-      <!-- Header -->
-      <div class="view-header">
-        <button class="back-button" (click)="backToProjects()">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M19 12H5M12 19l-7-7 7-7" />
-          </svg>
-        </button>
-        <div class="view-title">{{ currentProject?.project_name }}</div>
-      </div>
-
-      <!-- Search Container -->
-      <div class="search-container">
-        <div class="search-box">
-          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="11" cy="11" r="8"></circle>
-            <path d="m21 21-4.35-4.35"></path>
-          </svg>
-          <input type="text" 
-                 class="search-input" 
-                 placeholder="Search repositories..."
-                 [(ngModel)]="repoSearchText">
-          <button class="clear-search-btn" 
-                  *ngIf="repoSearchText"
-                  (click)="repoSearchText = ''">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </button>
-        </div>
-        <div class="search-results-count" *ngIf="repoSearchText">
-          {{ filteredRepositoriesList.length }} of {{ getProjectRepoCount(currentProject?.project_key || '') }} repositories
-        </div>
-      </div>
-
-      <!-- Repository Cards -->
-      <div id="repos-list">
-        <div class="repo-card" 
-             *ngFor="let repo of filteredRepositoriesList; trackBy: trackByRepoKey"
-             [class.loading]="loadingRepos[repo.repo_key]">
-          
-          <div class="repo-header">
-            <div class="repo-info-section" (click)="$event.stopPropagation()">
-              <div class="repo-name">{{ repo.repo_name }}</div>
-              <div class="repo-description" [title]="repo.repo_url">
-                {{ repo.repo_url }}
-              </div>
-            </div>
-            
-            <button class="star-button" 
-                    [class.favorited]="repo.isFavorited"
-                    (click)="toggleFavorite(repo.repo_key, currentProject?.project_key || '', $event)">
-              <div class="spinner" *ngIf="loadingRepos[repo.repo_key]"></div>
-              <svg *ngIf="!loadingRepos[repo.repo_key]" 
-                   viewBox="0 0 24 24" 
-                   [attr.fill]="repo.isFavorited ? 'currentColor' : 'none'"
-                   stroke="currentColor" 
-                   stroke-width="2">
-                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
-              </svg>
+              <span>High → Low</span>
             </button>
-          </div>
-        </div>
-
-        <!-- No Results -->
-        <div class="no-results" *ngIf="repoSearchText && filteredRepositoriesList.length === 0">
-          <svg class="no-results-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="11" cy="11" r="8"></circle>
-            <path d="m21 21-4.35-4.35"></path>
-          </svg>
-          <div class="no-results-text">No repositories found</div>
-          <div class="no-results-hint">Try a different search term</div>
+          </ng-container>
         </div>
       </div>
     </div>
   </div>
 </div>
+
+
+
+
+
+
+
+
+
+/* Add these styles to your CSS file for the repo info section */
+
+.header {
+  margin-bottom: 20px;
+}
+
+/* Repo Info Section */
+.repo-info-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--bitbucket-prs-bg-tertiary);
+  border: 1px solid var(--bitbucket-prs-border-primary);
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.repo-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.repo-icon {
+  width: 18px;
+  height: 18px;
+  color: var(--bitbucket-prs-accent-primary);
+  flex-shrink: 0;
+}
+
+.repo-name-text {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--bitbucket-prs-text-primary);
+  line-height: 1.4;
+}
+
+.date-period {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--bitbucket-prs-bg-secondary);
+  border: 1px solid var(--bitbucket-prs-border-primary);
+  border-radius: 6px;
+  margin-top: 4px;
+}
+
+.period-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--bitbucket-prs-text-tertiary);
+  flex-shrink: 0;
+}
+
+.period-text {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--bitbucket-prs-text-tertiary);
+  font-family: monospace;
+  letter-spacing: 0.3px;
+}
+
+/* Header Top */
+.header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.header h2 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--bitbucket-prs-text-primary);
+  margin-bottom: 0;
+}
+
+.filter-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--bitbucket-prs-bg-tertiary);
+  border: 1px solid var(--bitbucket-prs-border-primary);
+  border-radius: 6px;
+  color: var(--bitbucket-prs-text-tertiary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  outline: none;
+}
+
+.filter-toggle-btn:hover {
+  background: var(--bitbucket-prs-bg-hover);
+  border-color: var(--bitbucket-prs-border-secondary);
+  color: var(--bitbucket-prs-text-secondary);
+}
+
+.filter-toggle-btn.active {
+  background: var(--bitbucket-prs-accent-gradient);
+  border-color: transparent;
+  color: #fff;
+}
+
+.filter-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.chevron-icon {
+  width: 14px;
+  height: 14px;
+  transition: transform 0.3s ease;
+}
+
+.chevron-icon.rotate {
+  transform: rotate(180deg);
+}
+
+/* Filters Container */
+.filters-container {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  opacity: 0;
+}
+
+.filters-container.expanded {
+  max-height: 500px;
+  opacity: 1;
+}
+
+.filters-content {
+  padding: 12px;
+  background: var(--bitbucket-prs-bg-tertiary);
+  border: 1px solid var(--bitbucket-prs-border-primary);
+  border-radius: 8px;
+  margin-bottom: 4px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 320px) {
+  .repo-name-text {
+    font-size: 13px;
+  }
+  
+  .period-text {
+    font-size: 10px;
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+// Add these properties and methods to your component class
+
+export class PrSidebarComponent implements OnInit {
+  // ... existing properties ...
+  
+  // Repository name
+  repoName: string = 'my-awesome-project'; // Set your repo name here
+  
+  // Date range properties
+  startDate: string = '';
+  endDate: string = '';
+  appliedStartDate: string = '';
+  appliedEndDate: string = '';
+
+  // ... existing methods ...
+
+  ngOnInit(): void {
+    // Set initial date range (3 months ago to today)
+    this.initializeDateRange();
+    this.updatePRList();
+  }
+
+  // Initialize date range with last 3 months
+  private initializeDateRange(): void {
+    const today = new Date();
+    const threeMonthsAgo = new Date();
+    threeMonthsAgo.setMonth(today.getMonth() - 3);
+
+    // Format dates to YYYY-MM-DD for HTML5 date input
+    this.endDate = this.formatDateToYYYYMMDD(today);
+    this.startDate = this.formatDateToYYYYMMDD(threeMonthsAgo);
+    
+    // Apply the initial date filter
+    this.appliedStartDate = this.startDate;
+    this.appliedEndDate = this.endDate;
+  }
+
+  // Format date to YYYY-MM-DD
+  private formatDateToYYYYMMDD(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  // Format date for display (DD-MM-YYYY)
+  formatDisplayDate(dateString: string): string {
+    if (!dateString) return '';
+    const [year, month, day] = dateString.split('-');
+    return `${day}-${month}-${year}`;
+  }
+
+  applyDateFilter(): void {
+    this.appliedStartDate = this.startDate;
+    this.appliedEndDate = this.endDate;
+    this.updatePRList();
+  }
+
+  clearDateRange(): void {
+    this.startDate = '';
+    this.endDate = '';
+    this.appliedStartDate = '';
+    this.appliedEndDate = '';
+    this.updatePRList();
+  }
+
+  // ... rest of the component ...
+}
+
+// Example: You can also dynamically set the repo name
+// If you're fetching repo name from an API or service:
+/*
+ngOnInit(): void {
+  this.repoName = this.getRepoNameFromRoute(); // or from a service
+  this.initializeDateRange();
+  this.updatePRList();
+}
+
+private getRepoNameFromRoute(): string {
+  // Example: Extract from route params
+  // return this.route.snapshot.params['repoName'];
+  return 'my-awesome-project';
+}
+*/
+
+
