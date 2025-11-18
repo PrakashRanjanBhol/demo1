@@ -1,1398 +1,532 @@
-/* CSS Variables */
-:host {
-    /* Light Mode (default) */
-    --bitbucket-pr-review-bg-primary: #ffffff;
-    --bitbucket-pr-review-bg-secondary: #f5f7fa;
-    --bitbucket-pr-review-bg-tertiary: #fafbfc;
-    --bitbucket-pr-review-bg-quaternary: #f3f4f6;
-    --bitbucket-pr-review-bg-hover: #f9fafb;
-    --bitbucket-pr-review-bg-active: #eff6ff;
+<div class="file-selector">
+  <div class="custom-dropdown" [class.open]="isDropdownOpen">
+    <div class="dropdown-selected" (click)="toggleDropdown()">
+      <div class="selected-content">
+        <span class="file-icon">📄</span>
+        <span class="file-name">
+          {{ selectedFile ? selectedFile.file_path : 'Select a file to view diff...' }}
+        </span>
+        <span class="comment-badge" *ngIf="selectedFile && selectedFile.ai_comments.length > 0">
+          {{ selectedFile.ai_comments.length }} 
+          <span class="badge-text">comment{{ selectedFile.ai_comments.length !== 1 ? 's' : '' }}</span>
+        </span>
+      </div>
+      <svg class="dropdown-arrow" [class.rotated]="isDropdownOpen" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/>
+      </svg>
+    </div>
+    
+    <div class="dropdown-options" *ngIf="isDropdownOpen">
+      <div class="dropdown-search">
+        <svg class="search-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+        </svg>
+        <input 
+          type="text" 
+          placeholder="Search files..." 
+          [(ngModel)]="fileSearchQuery"
+          (input)="filterFiles()"
+          (click)="$event.stopPropagation()">
+      </div>
+      
+      <div class="dropdown-list">
+        <div 
+          *ngFor="let file of filteredFiles; let i = index" 
+          class="dropdown-option"
+          [class.selected]="selectedFileIndex === getOriginalIndex(file)"
+          (click)="selectFile(file); closeDropdown()">
+          <div class="option-content">
+            <span class="file-icon">📄</span>
+            <span class="file-path">{{ file.file_path }}</span>
+          </div>
+          <div class="option-badges">
+            <span class="comment-badge" *ngIf="file.ai_comments.length > 0">
+              <svg class="badge-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
+              </svg>
+              {{ file.ai_comments.length }}
+            </span>
+            <span class="stats-badge">
+              <span class="added">+{{ getFileStats(file).added }}</span>
+              <span class="deleted">-{{ getFileStats(file).deleted }}</span>
+            </span>
+          </div>
+        </div>
+        
+        <div class="no-results" *ngIf="filteredFiles.length === 0">
+          <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+          </svg>
+          <p>No files found</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
-    --bitbucket-pr-review-text-primary: #111827;
-    --bitbucket-pr-review-text-secondary: #374151;
-    --bitbucket-pr-review-text-tertiary: #6b7280;
-    --bitbucket-pr-review-text-quaternary: #9ca3af;
-    --bitbucket-pr-review-text-code: #1f2937;
 
-    --bitbucket-pr-review-border-light: #f3f4f6;
-    --bitbucket-pr-review-border-medium: #e5e7eb;
-    --bitbucket-pr-review-border-dark: #d1d5db;
 
-    --bitbucket-pr-review-blue-primary: #3b82f6;
-    --bitbucket-pr-review-blue-secondary: #2563eb;
-    --bitbucket-pr-review-blue-tertiary: #1d4ed8;
-    --bitbucket-pr-review-blue-light: #dbeafe;
 
-    --bitbucket-pr-review-diff-added-bg: #ecfdf5;
-    --bitbucket-pr-review-diff-added-line: #d1fae5;
-    --bitbucket-pr-review-diff-added-text: #065f46;
-    --bitbucket-pr-review-diff-deleted-bg: #fef2f2;
-    --bitbucket-pr-review-diff-deleted-line: #fecaca;
-    --bitbucket-pr-review-diff-deleted-text: #991b1b;
 
-    --bitbucket-pr-review-comment-bg-start: #fffbeb;
-    --bitbucket-pr-review-comment-bg-end: #fef3c7;
-    --bitbucket-pr-review-comment-border: #fbbf24;
-    --bitbucket-pr-review-comment-border-left: #f59e0b;
-    --bitbucket-pr-review-comment-text: #1f2937;
-    --bitbucket-pr-review-comment-display-bg: rgba(255, 255, 255, 0.8);
-    --bitbucket-pr-review-comment-nav-bg: rgba(255, 255, 255, 0.5);
 
-    --bitbucket-pr-review-comment-accepted-bg-start: #f0fdf4;
-    --bitbucket-pr-review-comment-accepted-bg-end: #dcfce7;
-    --bitbucket-pr-review-comment-accepted-border: #10b981;
-    --bitbucket-pr-review-comment-accepted-border-left: #059669;
 
-    --bitbucket-pr-review-comment-rejected-bg-start: #fef2f2;
-    --bitbucket-pr-review-comment-rejected-bg-end: #fee2e2;
-    --bitbucket-pr-review-comment-rejected-border: #ef4444;
-    --bitbucket-pr-review-comment-rejected-border-left: #dc2626;
 
-    --bitbucket-pr-review-patch-bg-start: #f0f9ff;
-    --bitbucket-pr-review-patch-bg-end: #e0f2fe;
-    --bitbucket-pr-review-patch-border: #0284c7;
-    --bitbucket-pr-review-patch-border-left: #0369a1;
-    --bitbucket-pr-review-patch-text: #0c4a6e;
 
-    --bitbucket-pr-review-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05);
-    --bitbucket-pr-review-shadow-md: 0 10px 30px rgba(0, 0, 0, 0.08);
-    --bitbucket-pr-review-shadow-lg: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-    --bitbucket-pr-review-shadow-xl: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-    --bitbucket-pr-review-shadow-btn: 0 1px 2px rgba(0, 0, 0, 0.05);
-    --bitbucket-pr-review-shadow-btn-hover: 0 4px 6px rgba(0, 0, 0, 0.1);
-    --bitbucket-pr-review-shadow-focus: 0 0 0 3px rgba(59, 130, 246, 0.1);
-    --bitbucket-pr-review-shadow-inset: inset 0 2px 4px rgba(0, 0, 0, 0.05);
-}
 
-/* Dark Mode */
-:host.dark-mode {
-    --bitbucket-pr-review-bg-primary: #1a1a1b;
-    --bitbucket-pr-review-bg-secondary: #0a0a0b;
-    --bitbucket-pr-review-bg-tertiary: #2d2d2e;
-    --bitbucket-pr-review-bg-quaternary: #3a3a3b;
-    --bitbucket-pr-review-bg-hover: #252526;
-    --bitbucket-pr-review-bg-active: #1e3a5f;
 
-    --bitbucket-pr-review-text-primary: #e5e7eb;
-    --bitbucket-pr-review-text-secondary: #d1d5db;
-    --bitbucket-pr-review-text-tertiary: #9ca3af;
-    --bitbucket-pr-review-text-quaternary: #6b7280;
-    --bitbucket-pr-review-text-code: #e5e7eb;
 
-    --bitbucket-pr-review-border-light: #3a3a3b;
-    --bitbucket-pr-review-border-medium: #4b5563;
-    --bitbucket-pr-review-border-dark: #6b7280;
 
-    --bitbucket-pr-review-blue-primary: #60a5fa;
-    --bitbucket-pr-review-blue-secondary: #3b82f6;
-    --bitbucket-pr-review-blue-tertiary: #2563eb;
-    --bitbucket-pr-review-blue-light: #1e3a5f;
 
-    --bitbucket-pr-review-diff-added-bg: #064e3b;
-    --bitbucket-pr-review-diff-added-line: #065f46;
-    --bitbucket-pr-review-diff-added-text: #6ee7b7;
-    --bitbucket-pr-review-diff-deleted-bg: #7f1d1d;
-    --bitbucket-pr-review-diff-deleted-line: #991b1b;
-    --bitbucket-pr-review-diff-deleted-text: #fca5a5;
 
-    --bitbucket-pr-review-comment-bg-start: #422006;
-    --bitbucket-pr-review-comment-bg-end: #78350f;
-    --bitbucket-pr-review-comment-border: #92400e;
-    --bitbucket-pr-review-comment-border-left: #f59e0b;
-    --bitbucket-pr-review-comment-text: #fef3c7;
-    --bitbucket-pr-review-comment-display-bg: rgba(0, 0, 0, 0.3);
-    --bitbucket-pr-review-comment-nav-bg: rgba(0, 0, 0, 0.3);
 
-    --bitbucket-pr-review-comment-accepted-bg-start: #064e3b;
-    --bitbucket-pr-review-comment-accepted-bg-end: #065f46;
-    --bitbucket-pr-review-comment-accepted-border: #059669;
-    --bitbucket-pr-review-comment-accepted-border-left: #10b981;
 
-    --bitbucket-pr-review-comment-rejected-bg-start: #7f1d1d;
-    --bitbucket-pr-review-comment-rejected-bg-end: #991b1b;
-    --bitbucket-pr-review-comment-rejected-border: #dc2626;
-    --bitbucket-pr-review-comment-rejected-border-left: #ef4444;
 
-    --bitbucket-pr-review-patch-bg-start: #0c4a6e;
-    --bitbucket-pr-review-patch-bg-end: #075985;
-    --bitbucket-pr-review-patch-border: #0369a1;
-    --bitbucket-pr-review-patch-border-left: #0284c7;
-    --bitbucket-pr-review-patch-text: #bae6fd;
 
-    --bitbucket-pr-review-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
-    --bitbucket-pr-review-shadow-md: 0 10px 30px rgba(0, 0, 0, 0.5);
-    --bitbucket-pr-review-shadow-lg: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
-    --bitbucket-pr-review-shadow-xl: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.2);
-    --bitbucket-pr-review-shadow-btn: 0 1px 2px rgba(0, 0, 0, 0.3);
-    --bitbucket-pr-review-shadow-btn-hover: 0 4px 6px rgba(0, 0, 0, 0.4);
-    --bitbucket-pr-review-shadow-focus: 0 0 0 3px rgba(96, 165, 250, 0.2);
-    --bitbucket-pr-review-shadow-inset: inset 0 2px 4px rgba(0, 0, 0, 0.3);
-}
 
-* {
-    box-sizing: border-box;
-}
 
-:host {
-    display: block;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-    background-color: var(--bitbucket-pr-review-bg-secondary);
-    padding: 20px;
-    line-height: 1.5;
-    min-height: 100vh;
-}
 
-.container {
-    max-width: 1400px;
-    margin: 0 auto;
-    background-color: var(--bitbucket-pr-review-bg-primary);
-    border-radius: 12px;
-    box-shadow: var(--bitbucket-pr-review-shadow-sm), var(--bitbucket-pr-review-shadow-md);
-    overflow: hidden;
-    animation: slideIn 0.3s ease-out;
-}
 
-@keyframes slideIn {
-    from {
-        opacity: 0;
-        transform: translateY(10px);
+
+
+// Add these properties
+isDropdownOpen = false;
+fileSearchQuery = '';
+filteredFiles: DiffFile[] = [];
+
+// Update ngOnInit
+ngOnInit(): void {
+  this.loadMockData();
+  this.filteredFiles = [...this.files]; // Initialize filtered files
+  
+  // Load theme preference from localStorage
+  const savedTheme = localStorage.getItem('bitbucket-pr-review-theme');
+  this.isDarkMode = savedTheme === 'dark';
+  
+  // Configure highlight.js
+  hljs.configure({
+    ignoreUnescapedHTML: true,
+    languages: ['typescript', 'javascript', 'python', 'java', 'csharp', 'cpp', 'go', 'rust', 'ruby', 'php', 'swift', 'kotlin', 'scala']
+  });
+  
+  // Close dropdown when clicking outside
+  document.addEventListener('click', (event) => {
+    const target = event.target as HTMLElement;
+    if (!target.closest('.custom-dropdown')) {
+      this.closeDropdown();
     }
-    to {
-        opacity: 1;
-        transform: translateY(0);
+  });
+}
+
+// Add these new methods
+toggleDropdown(): void {
+  this.isDropdownOpen = !this.isDropdownOpen;
+  if (this.isDropdownOpen) {
+    this.fileSearchQuery = '';
+    this.filteredFiles = [...this.files];
+  }
+}
+
+closeDropdown(): void {
+  this.isDropdownOpen = false;
+}
+
+filterFiles(): void {
+  const query = this.fileSearchQuery.toLowerCase().trim();
+  if (!query) {
+    this.filteredFiles = [...this.files];
+  } else {
+    this.filteredFiles = this.files.filter(file => 
+      file.file_path.toLowerCase().includes(query)
+    );
+  }
+}
+
+selectFile(file: DiffFile): void {
+  const index = this.files.indexOf(file);
+  this.onFileSelect(index);
+}
+
+getOriginalIndex(file: DiffFile): number {
+  return this.files.indexOf(file);
+}
+
+getFileStats(file: DiffFile): { added: number; deleted: number } {
+  const oldText = file.old_lines.join('\n');
+  const newText = file.new_lines.join('\n');
+  const diff = Diff.diffLines(oldText, newText);
+
+  let added = 0;
+  let deleted = 0;
+
+  diff.forEach(part => {
+    const lines = part.value.split('\n');
+    if (lines[lines.length - 1] === '') {
+      lines.pop();
     }
+
+    if (part.added) {
+      added += lines.length;
+    } else if (part.removed) {
+      deleted += lines.length;
+    }
+  });
+
+  return { added, deleted };
 }
 
-.header {
-    background-color: var(--bitbucket-pr-review-bg-primary);
-    border-bottom: 1px solid var(--bitbucket-pr-review-border-medium);
-    padding: 20px 30px;
+// Update resetComponentState to include dropdown
+resetComponentState(): void {
+  this.files = [];
+  this.selectedFile = null;
+  this.selectedFileIndex = -1;
+  this.diffLines = [];
+  this.stats = null;
+  
+  this.editingComments.clear();
+  this.commentStates.clear();
+  this.processingComments.clear();
+  
+  this.clearCommentCache();
+  
+  this.currentView = 'unified';
+  this.isDropdownOpen = false;
+  this.fileSearchQuery = '';
+  this.filteredFiles = [];
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+.file-selector {
+  background-color: var(--bitbucket-pr-review-bg-tertiary);
+  border-bottom: 1px solid var(--bitbucket-pr-review-border-medium);
+  padding: 16px 30px;
+
+  select {
+    display: none; // Hide the old select
+  }
+}
+
+.custom-dropdown {
+  position: relative;
+  width: 100%;
+}
+
+.dropdown-selected {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background-color: var(--bitbucket-pr-review-bg-primary);
+  border: 2px solid var(--bitbucket-pr-review-border-dark);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    border-color: #3b82f6;
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.15);
+  }
+
+  .selected-content {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    gap: 20px;
-}
-
-.header-left {
-    display: flex;
-    align-items: center;
-    gap: 24px;
-    flex: 1;
-}
-
-.header-left h1 {
-    font-size: 20px;
-    font-weight: 700;
-    color: var(--bitbucket-pr-review-text-primary);
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin: 0;
-    white-space: nowrap;
-}
-
-.header-icon {
-    width: 24px;
-    height: 24px;
-    color: var(--bitbucket-pr-review-blue-primary);
-}
-
-.view-toggle {
-    display: flex;
-    gap: 4px;
-    background-color: var(--bitbucket-pr-review-bg-quaternary);
-    padding: 3px;
-    border-radius: 10px;
-    border: 1px solid var(--bitbucket-pr-review-border-medium);
-}
-
-.view-toggle-btn {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 16px;
-    background-color: transparent;
-    color: var(--bitbucket-pr-review-text-tertiary);
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 13px;
-    font-weight: 600;
-    transition: all 0.2s ease;
-}
-
-.view-toggle-btn svg {
-    width: 16px;
-    height: 16px;
-}
-
-.view-toggle-btn:hover {
-    background-color: var(--bitbucket-pr-review-border-medium);
-    color: var(--bitbucket-pr-review-text-secondary);
-}
-
-.view-toggle-btn.active {
-    background-color: var(--bitbucket-pr-review-bg-primary);
-    color: var(--bitbucket-pr-review-blue-primary);
-    box-shadow: var(--bitbucket-pr-review-shadow-sm);
-}
-
-.view-toggle-btn.active:hover {
-    color: var(--bitbucket-pr-review-blue-secondary);
-}
-
-.header-actions {
-    display: flex;
     gap: 12px;
-    align-items: center;
+    flex: 1;
+    min-width: 0;
+
+    .file-icon {
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+
+    .file-name {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--bitbucket-pr-review-text-secondary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex: 1;
+    }
+
+    .comment-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 10px;
+      background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+      color: white;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+      flex-shrink: 0;
+
+      .badge-text {
+        font-size: 11px;
+        font-weight: 500;
+      }
+    }
+  }
+
+  .dropdown-arrow {
+    width: 20px;
+    height: 20px;
+    fill: var(--bitbucket-pr-review-text-tertiary);
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+    margin-left: 8px;
+
+    &.rotated {
+      transform: rotate(180deg);
+    }
+  }
 }
 
-.action-btn {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 18px;
-    border: 1px solid var(--bitbucket-pr-review-border-medium);
-    border-radius: 8px;
-    background-color: var(--bitbucket-pr-review-bg-primary);
-    color: var(--bitbucket-pr-review-text-secondary);
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s ease;
+.custom-dropdown.open .dropdown-selected {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
-.action-btn svg {
-    width: 16px;
-    height: 16px;
+.dropdown-options {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  background-color: var(--bitbucket-pr-review-bg-primary);
+  border: 2px solid var(--bitbucket-pr-review-border-dark);
+  border-radius: 8px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  max-height: 400px;
+  display: flex;
+  flex-direction: column;
+  animation: dropdownSlide 0.2s ease-out;
 }
 
-.action-btn:hover {
-    background-color: var(--bitbucket-pr-review-bg-hover);
-    border-color: var(--bitbucket-pr-review-border-dark);
-    transform: translateY(-1px);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+@keyframes dropdownSlide {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.action-btn.primary {
-    background-color: var(--bitbucket-pr-review-blue-primary);
-    border-color: var(--bitbucket-pr-review-blue-primary);
-    color: white;
-}
+.dropdown-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--bitbucket-pr-review-border-medium);
+  background-color: var(--bitbucket-pr-review-bg-tertiary);
 
-.action-btn.primary:hover {
-    background-color: var(--bitbucket-pr-review-blue-secondary);
-    border-color: var(--bitbucket-pr-review-blue-secondary);
-}
-
-.action-btn.theme-toggle {
-    min-width: auto;
-    padding: 10px 14px;
-}
-
-.action-btn.theme-toggle .theme-icon {
-    font-size: 18px;
-}
-
-.file-selector-container {
-    background-color: var(--bitbucket-pr-review-bg-tertiary);
-    border-bottom: 1px solid var(--bitbucket-pr-review-border-medium);
-}
-
-.file-selector-header {
-    padding: 16px 30px 12px;
-}
-
-.search-wrapper {
-    position: relative;
-    display: flex;
-    align-items: center;
-}
-
-.search-wrapper .search-icon {
-    position: absolute;
-    left: 12px;
+  .search-icon {
     width: 18px;
     height: 18px;
-    color: var(--bitbucket-pr-review-text-quaternary);
-    pointer-events: none;
-}
+    fill: var(--bitbucket-pr-review-text-tertiary);
+    flex-shrink: 0;
+  }
 
-.file-search {
-    width: 100%;
-    padding: 10px 40px 10px 40px;
-    border: 2px solid var(--bitbucket-pr-review-border-medium);
-    border-radius: 8px;
-    font-size: 14px;
-    background-color: var(--bitbucket-pr-review-bg-primary);
-    color: var(--bitbucket-pr-review-text-primary);
-    transition: all 0.2s ease;
-}
-
-.file-search::placeholder {
-    color: var(--bitbucket-pr-review-text-quaternary);
-}
-
-.file-search:focus {
-    outline: none;
-    border-color: var(--bitbucket-pr-review-blue-primary);
-    box-shadow: var(--bitbucket-pr-review-shadow-focus);
-}
-
-.clear-search {
-    position: absolute;
-    right: 10px;
-    padding: 4px;
-    background: none;
+  input {
+    flex: 1;
     border: none;
-    cursor: pointer;
-    color: var(--bitbucket-pr-review-text-quaternary);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 4px;
-    transition: all 0.2s ease;
+    outline: none;
+    background: transparent;
+    color: var(--bitbucket-pr-review-text-primary);
+    font-size: 14px;
+    font-weight: 500;
+
+    &::placeholder {
+      color: var(--bitbucket-pr-review-text-tertiary);
+    }
+  }
 }
 
-.clear-search svg {
-    width: 16px;
-    height: 16px;
-}
+.dropdown-list {
+  overflow-y: auto;
+  max-height: 340px;
 
-.clear-search:hover {
-    background-color: var(--bitbucket-pr-review-bg-quaternary);
-    color: var(--bitbucket-pr-review-text-secondary);
-}
-
-.file-list {
-    max-height: 300px;
-    overflow-y: auto;
-    padding: 0 20px 16px;
-}
-
-.file-list::-webkit-scrollbar {
+  &::-webkit-scrollbar {
     width: 8px;
-}
+  }
 
-.file-list::-webkit-scrollbar-track {
-    background: var(--bitbucket-pr-review-bg-quaternary);
-    border-radius: 4px;
-}
+  &::-webkit-scrollbar-track {
+    background: var(--bitbucket-pr-review-bg-tertiary);
+  }
 
-.file-list::-webkit-scrollbar-thumb {
+  &::-webkit-scrollbar-thumb {
     background: var(--bitbucket-pr-review-border-dark);
     border-radius: 4px;
+
+    &:hover {
+      background: var(--bitbucket-pr-review-text-tertiary);
+    }
+  }
 }
 
-.file-list::-webkit-scrollbar-thumb:hover {
-    background: var(--bitbucket-pr-review-text-quaternary);
-}
+.dropdown-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border-bottom: 1px solid var(--bitbucket-pr-review-border-light);
 
-.file-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 12px 16px;
-    margin: 4px 0;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    background-color: var(--bitbucket-pr-review-bg-primary);
-    border: 2px solid transparent;
-}
-
-.file-item:hover {
-    background-color: var(--bitbucket-pr-review-bg-hover);
-    border-color: var(--bitbucket-pr-review-border-medium);
-    transform: translateX(2px);
-}
-
-.file-item.active {
-    background-color: var(--bitbucket-pr-review-bg-active);
-    border-color: var(--bitbucket-pr-review-blue-primary);
-    box-shadow: 0 2px 4px rgba(59, 130, 246, 0.1);
-}
-
-.file-item-icon {
-    flex-shrink: 0;
-    width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background-color: var(--bitbucket-pr-review-bg-quaternary);
-    border-radius: 6px;
-    color: var(--bitbucket-pr-review-text-tertiary);
-}
-
-.file-item-icon svg {
-    width: 18px;
-    height: 18px;
-}
-
-.file-item.active .file-item-icon {
-    background-color: var(--bitbucket-pr-review-blue-light);
-    color: var(--bitbucket-pr-review-blue-primary);
-}
-
-.file-item-content {
-    flex: 1;
-    min-width: 0;
-}
-
-.file-item-name {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--bitbucket-pr-review-text-primary);
-    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.file-item-meta {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-top: 4px;
-}
-
-.file-stats {
-    display: flex;
-    gap: 6px;
-}
-
-.stat-badge {
-    font-size: 11px;
-    font-weight: 700;
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-family: 'SF Mono', Monaco, monospace;
-}
-
-.stat-badge.added {
-    background-color: var(--bitbucket-pr-review-diff-added-line);
-    color: var(--bitbucket-pr-review-diff-added-text);
-}
-
-.stat-badge.deleted {
-    background-color: var(--bitbucket-pr-review-diff-deleted-line);
-    color: var(--bitbucket-pr-review-diff-deleted-text);
-}
-
-.comment-badge {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 11px;
-    font-weight: 600;
-    color: #f59e0b;
-    background-color: #fffbeb;
-    padding: 2px 8px;
-    border-radius: 4px;
-    border: 1px solid #fef3c7;
-}
-
-.comment-badge svg {
-    width: 14px;
-    height: 14px;
-}
-
-.no-files-found {
-    text-align: center;
-    padding: 40px 20px;
-    color: var(--bitbucket-pr-review-text-quaternary);
-}
-
-.no-files-found svg {
-    width: 48px;
-    height: 48px;
-    margin: 0 auto 12px;
-    opacity: 0.5;
-}
-
-.no-files-found p {
-    font-size: 14px;
-    margin: 0;
-}
-
-.diff-container {
-    padding: 30px;
-    background-color: var(--bitbucket-pr-review-bg-primary);
-}
-
-.file-header {
-    background-color: var(--bitbucket-pr-review-bg-tertiary);
-    border: 1px solid var(--bitbucket-pr-review-border-medium);
+  &:last-child {
     border-bottom: none;
-    color: var(--bitbucket-pr-review-text-secondary);
-    padding: 12px 16px;
-    border-radius: 6px 6px 0 0;
-    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
-    font-size: 13px;
-    font-weight: 600;
-}
+  }
 
-/* Unified View */
-.unified-view {
-    border: 1px solid var(--bitbucket-pr-review-border-medium);
-    border-top: none;
-    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
-    font-size: 13px;
-    border-radius: 0 0 6px 6px;
-    overflow: hidden;
-}
-
-.diff-line {
-    display: flex;
-    border-bottom: 1px solid var(--bitbucket-pr-review-border-light);
-    min-height: 24px;
-    transition: background-color 0.15s ease;
-}
-
-.diff-line:hover {
-    background-color: var(--bitbucket-pr-review-bg-tertiary) !important;
-}
-
-.diff-line.added {
-    background-color: var(--bitbucket-pr-review-diff-added-bg);
-}
-
-.diff-line.added .line-numbers {
-    background-color: var(--bitbucket-pr-review-diff-added-line);
-}
-
-.diff-line.deleted {
-    background-color: var(--bitbucket-pr-review-diff-deleted-bg);
-}
-
-.diff-line.deleted .line-numbers {
-    background-color: var(--bitbucket-pr-review-diff-deleted-line);
-}
-
-.diff-line.context {
-    background-color: var(--bitbucket-pr-review-bg-primary);
-}
-
-.line-numbers {
-    display: flex;
-    flex-shrink: 0;
+  &:hover {
     background-color: var(--bitbucket-pr-review-bg-hover);
-    border-right: 1px solid var(--bitbucket-pr-review-border-medium);
-}
+  }
 
-.line-number {
-    width: 50px;
-    padding: 4px 8px;
-    text-align: right;
-    color: var(--bitbucket-pr-review-text-quaternary);
-    font-size: 12px;
-    user-select: none;
-    border-right: 1px solid var(--bitbucket-pr-review-border-light);
-    font-weight: 500;
-}
+  &.selected {
+    background-color: rgba(59, 130, 246, 0.1);
+    border-left: 3px solid #3b82f6;
 
-.line-number:last-child {
-    border-right: none;
-}
+    .file-path {
+      color: #3b82f6;
+      font-weight: 600;
+    }
+  }
 
-.line-content {
-    flex: 1;
-    padding: 4px 12px;
-    white-space: pre-wrap;
-    word-wrap: break-word;
-    overflow-wrap: break-word;
-    line-height: 1.6;
-    min-width: 0;
-    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
-}
-
-.line-content .hljs {
-    background: transparent;
-    color: var(--bitbucket-pr-review-text-secondary);
-}
-
-.line-content .hljs-keyword,
-.line-content .hljs-selector-tag,
-.line-content .hljs-literal,
-.line-content .hljs-section,
-.line-content .hljs-link {
-    font-weight: 600;
-}
-
-.line-content .hljs-string,
-.line-content .hljs-title,
-.line-content .hljs-name,
-.line-content .hljs-type,
-.line-content .hljs-attribute,
-.line-content .hljs-symbol,
-.line-content .hljs-bullet,
-.line-content .hljs-addition,
-.line-content .hljs-variable,
-.line-content .hljs-template-tag,
-.line-content .hljs-template-variable {
-    font-weight: normal;
-}
-
-.line-content .hljs-comment,
-.line-content .hljs-quote,
-.line-content .hljs-deletion,
-.line-content .hljs-meta {
-    font-style: italic;
-}
-
-/* Side by Side View */
-.side-by-side-view {
-    display: table;
-    width: 100%;
-    border: 1px solid var(--bitbucket-pr-review-border-medium);
-    border-top: none;
-    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
-    font-size: 13px;
-    border-collapse: collapse;
-    table-layout: fixed;
-}
-
-.side-header-row {
-    display: table-row;
-}
-
-.side-header {
-    display: table-cell;
-    background-color: var(--bitbucket-pr-review-bg-tertiary);
-    padding: 8px 15px;
-    font-weight: 600;
-    border-bottom: 2px solid var(--bitbucket-pr-review-border-medium);
-    color: var(--bitbucket-pr-review-text-primary);
-    font-size: 12px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    width: 50%;
-}
-
-.side-row {
-    display: table-row;
-    border-bottom: 1px solid var(--bitbucket-pr-review-border-light);
-}
-
-.side-cell {
-    display: table-cell;
-    width: 50%;
-    border-bottom: 1px solid var(--bitbucket-pr-review-border-light);
-    vertical-align: top;
-    word-wrap: break-word;
-    overflow-wrap: break-word;
-}
-
-.side-cell.deleted .side-cell-inner {
-    background-color: var(--bitbucket-pr-review-diff-deleted-bg);
-}
-
-.side-cell.deleted .side-line-number {
-    background-color: var(--bitbucket-pr-review-diff-deleted-line);
-}
-
-.side-cell.added .side-cell-inner {
-    background-color: var(--bitbucket-pr-review-diff-added-bg);
-}
-
-.side-cell.added .side-line-number {
-    background-color: var(--bitbucket-pr-review-diff-added-line);
-}
-
-.side-cell.empty .side-cell-inner {
-    background-color: var(--bitbucket-pr-review-bg-tertiary);
-    opacity: 0.3;
-}
-
-.side-cell.empty .side-line-number {
-    background-color: var(--bitbucket-pr-review-bg-tertiary);
-}
-
-.side-cell-inner {
-    display: flex;
-    min-height: 24px;
-}
-
-.side-line-number {
-    width: 50px;
-    min-width: 50px;
-    padding: 4px 8px;
-    text-align: right;
-    color: var(--bitbucket-pr-review-text-quaternary);
-    font-size: 12px;
-    background-color: var(--bitbucket-pr-review-bg-tertiary);
-    border-right: 1px solid var(--bitbucket-pr-review-border-medium);
-    user-select: none;
-    flex-shrink: 0;
-}
-
-.side-line-content {
-    flex: 1;
-    padding: 4px 12px;
-    white-space: pre-wrap;
-    word-wrap: break-word;
-    overflow-wrap: break-word;
-    word-break: break-word;
-    line-height: 1.5;
-    min-width: 0;
-    overflow: hidden;
-    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
-}
-
-.side-line-content .hljs {
-    background: transparent;
-    color: var(--bitbucket-pr-review-text-primary);
-}
-
-.side-line-content .hljs-keyword,
-.side-line-content .hljs-selector-tag,
-.side-line-content .hljs-literal,
-.side-line-content .hljs-section,
-.side-line-content .hljs-link {
-    font-weight: 600;
-}
-
-.side-line-content .hljs-string,
-.side-line-content .hljs-title,
-.side-line-content .hljs-name,
-.side-line-content .hljs-type,
-.side-line-content .hljs-attribute,
-.side-line-content .hljs-symbol,
-.side-line-content .hljs-bullet,
-.side-line-content .hljs-addition,
-.side-line-content .hljs-variable,
-.side-line-content .hljs-template-tag,
-.side-line-content .hljs-template-variable {
-    font-weight: normal;
-}
-
-.side-line-content .hljs-comment,
-.side-line-content .hljs-quote,
-.side-line-content .hljs-deletion,
-.side-line-content .hljs-meta {
-    font-style: italic;
-}
-
-/* AI Comments */
-.ai-comment {
-    background: linear-gradient(to bottom, var(--bitbucket-pr-review-comment-bg-start) 0%, var(--bitbucket-pr-review-comment-bg-end) 100%);
-    border: 1px solid var(--bitbucket-pr-review-comment-border);
-    border-left: 5px solid var(--bitbucket-pr-review-comment-border-left);
-    border-radius: 12px;
-    padding: 20px;
-    margin: 16px 0;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-    font-size: 13px;
-    box-shadow: var(--bitbucket-pr-review-shadow-lg);
-    position: relative;
-    transition: all 0.3s ease;
-}
-
-.ai-comment:hover {
-    box-shadow: var(--bitbucket-pr-review-shadow-xl);
-    transform: translateY(-2px);
-}
-
-.ai-comment::before {
-    content: '💬 AI COMMENT';
-    position: absolute;
-    top: -12px;
-    left: 16px;
-    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-    color: white;
-    padding: 4px 12px;
-    border-radius: 6px;
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.5px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-}
-
-.ai-comment.accepted {
-    background: linear-gradient(to bottom, var(--bitbucket-pr-review-comment-accepted-bg-start) 0%, var(--bitbucket-pr-review-comment-accepted-bg-end) 100%);
-    border-color: var(--bitbucket-pr-review-comment-accepted-border);
-    border-left-color: var(--bitbucket-pr-review-comment-accepted-border-left);
-}
-
-.ai-comment.accepted::before {
-    content: '✓ ACCEPTED';
-    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-}
-
-.ai-comment.rejected {
-    background: linear-gradient(to bottom, var(--bitbucket-pr-review-comment-rejected-bg-start) 0%, var(--bitbucket-pr-review-comment-rejected-bg-end) 100%);
-    border-color: var(--bitbucket-pr-review-comment-rejected-border);
-    border-left-color: var(--bitbucket-pr-review-comment-rejected-border-left);
-    opacity: 0.9;
-}
-
-.ai-comment.rejected::before {
-    content: '✗ REJECTED';
-    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-}
-
-.comment-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 16px;
-    margin-top: 8px;
-}
-
-.comment-severity {
-    padding: 6px 14px;
-    border-radius: 6px;
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    box-shadow: var(--bitbucket-pr-review-shadow-sm);
-}
-
-.comment-severity.error {
-    background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
-    color: white;
-}
-
-.comment-severity.warning {
-    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-    color: white;
-}
-
-.comment-severity.suggestion {
-    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-    color: white;
-}
-
-.comment-line-info {
-    font-size: 11px;
-    color: var(--bitbucket-pr-review-text-tertiary);
-    font-weight: 600;
-    background-color: rgba(255, 255, 255, 0.7);
-    padding: 6px 12px;
-    border-radius: 6px;
-    border: 1px solid var(--bitbucket-pr-review-border-medium);
-}
-
-.comment-text-display {
-    margin: 12px 0;
-    line-height: 1.6;
-    color: var(--bitbucket-pr-review-comment-text);
-    padding: 14px;
-    background-color: var(--bitbucket-pr-review-comment-display-bg);
-    border-radius: 8px;
-    border-left: 4px solid var(--bitbucket-pr-review-comment-border-left);
-    box-shadow: var(--bitbucket-pr-review-shadow-inset);
-}
-
-.comment-text-input {
-    width: 100%;
-    padding: 12px;
-    border: 2px solid var(--bitbucket-pr-review-border-dark);
-    border-radius: 8px;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-    font-size: 13px;
-    line-height: 1.6;
-    resize: vertical;
-    min-height: 90px;
-    margin: 12px 0;
-    background-color: var(--bitbucket-pr-review-bg-primary);
-    color: var(--bitbucket-pr-review-text-primary);
-    transition: all 0.2s ease;
-}
-
-.comment-text-input:focus {
-    outline: none;
-    border-color: var(--bitbucket-pr-review-blue-primary);
-    box-shadow: var(--bitbucket-pr-review-shadow-focus), 0 1px 2px rgba(0, 0, 0, 0.05);
-}
-
-.suggested-patch {
-    background: linear-gradient(135deg, var(--bitbucket-pr-review-patch-bg-start) 0%, var(--bitbucket-pr-review-patch-bg-end) 100%);
-    border: 2px dashed var(--bitbucket-pr-review-patch-border);
-    border-left: 5px solid var(--bitbucket-pr-review-patch-border-left);
-    padding: 14px;
-    margin-top: 14px;
-    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
-    font-size: 12px;
-    white-space: pre-wrap;
-    border-radius: 8px;
-    position: relative;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-}
-
-.suggested-patch pre {
-    margin: 0;
-    white-space: pre-wrap;
-    color: var(--bitbucket-pr-review-patch-text);
-}
-
-.suggested-patch-label {
-    font-weight: 700;
-    margin-bottom: 10px;
-    color: var(--bitbucket-pr-review-patch-border-left);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-    font-size: 12px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+  .option-content {
     display: flex;
     align-items: center;
-    gap: 6px;
-}
-
-.suggested-patch-label::before {
-    content: '💡';
-    font-size: 14px;
-}
-
-.comment-actions {
-    display: flex;
     gap: 10px;
-    margin-top: 14px;
-    padding-top: 14px;
-    border-top: 2px solid rgba(0, 0, 0, 0.05);
-    flex-wrap: wrap;
-    align-items: center;
-}
+    flex: 1;
+    min-width: 0;
 
-.comment-nav {
-    display: flex;
-    gap: 4px;
-    margin-left: auto;
-    padding-left: 10px;
-    border-left: 2px solid rgba(0, 0, 0, 0.05);
-    background-color: var(--bitbucket-pr-review-comment-nav-bg);
-    padding: 4px;
-    border-radius: 8px;
-}
-
-.comment-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    padding: 8px 14px;
-    border: none;
-    border-radius: 6px;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    position: relative;
-    min-width: 90px;
-    box-shadow: var(--bitbucket-pr-review-shadow-btn);
-}
-
-.comment-btn svg {
-    width: 14px;
-    height: 14px;
-    flex-shrink: 0;
-}
-
-.comment-btn:hover:not(:disabled) {
-    transform: translateY(-2px);
-    box-shadow: var(--bitbucket-pr-review-shadow-btn-hover);
-}
-
-.comment-btn:active:not(:disabled) {
-    transform: translateY(0);
-}
-
-.comment-btn.accept {
-    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-    color: white;
-}
-
-.comment-btn.accept:hover:not(:disabled) {
-    background: linear-gradient(135deg, #059669 0%, #047857 100%);
-}
-
-.comment-btn.reject {
-    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-    color: white;
-}
-
-.comment-btn.reject:hover:not(:disabled) {
-    background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
-}
-
-.comment-btn.modify {
-    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-    color: white;
-}
-
-.comment-btn.modify:hover:not(:disabled) {
-    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-}
-
-.comment-btn.save {
-    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-    color: white;
-}
-
-.comment-btn.save:hover:not(:disabled) {
-    background: linear-gradient(135deg, #059669 0%, #047857 100%);
-}
-
-.comment-btn.cancel {
-    background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
-    color: white;
-}
-
-.comment-btn.cancel:hover:not(:disabled) {
-    background: linear-gradient(135deg, #4b5563 0%, #374151 100%);
-}
-
-.comment-btn.nav {
-    background: var(--bitbucket-pr-review-bg-primary);
-    border: 1px solid var(--bitbucket-pr-review-border-medium);
-    min-width: auto;
-    width: 28px;
-    height: 28px;
-    padding: 0;
-    border-radius: 6px;
-    position: relative;
-    box-shadow: none;
-}
-
-.comment-btn.nav svg {
-    width: 14px;
-    height: 14px;
-    fill: var(--bitbucket-pr-review-text-tertiary);
-    transition: all 0.15s ease;
-}
-
-.comment-btn.nav:hover:not(:disabled) {
-    background: var(--bitbucket-pr-review-blue-primary);
-    border-color: var(--bitbucket-pr-review-blue-primary);
-    transform: translateY(0) scale(1.05);
-    box-shadow: 0 2px 4px rgba(59, 130, 246, 0.25);
-}
-
-.comment-btn.nav:hover:not(:disabled) svg {
-    fill: white;
-}
-
-.comment-btn.nav:active:not(:disabled) {
-    transform: scale(0.95);
-}
-
-.comment-btn.nav.prev-comment:hover:not(:disabled) svg {
-    animation: slideLeft 0.3s ease;
-}
-
-.comment-btn.nav.next-comment:hover:not(:disabled) svg {
-    animation: slideRight 0.3s ease;
-}
-
-.comment-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-    transform: none;
-}
-
-.comment-btn:disabled:hover {
-    transform: none;
-    box-shadow: var(--bitbucket-pr-review-shadow-btn);
-}
-
-.comment-btn.nav:disabled {
-    background: var(--bitbucket-pr-review-bg-tertiary) !important;
-    border-color: var(--bitbucket-pr-review-border-light) !important;
-}
-
-.comment-btn.nav:disabled svg {
-    fill: var(--bitbucket-pr-review-border-dark) !important;
-}
-
-@keyframes slideLeft {
-    0%, 100% {
-        transform: translateX(0);
+    .file-icon {
+      font-size: 16px;
+      flex-shrink: 0;
     }
-    50% {
-        transform: translateX(-2px);
+
+    .file-path {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--bitbucket-pr-review-text-secondary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
     }
-}
+  }
 
-@keyframes slideRight {
-    0%, 100% {
-        transform: translateX(0);
-    }
-    50% {
-        transform: translateX(2px);
-    }
-}
-
-.spinner {
-    width: 14px;
-    height: 14px;
-    border: 2px solid rgba(255, 255, 255, 0.3);
-    border-top-color: white;
-    border-radius: 50%;
-    animation: spin 0.6s linear infinite;
-}
-
-@keyframes spin {
-    to {
-        transform: rotate(360deg);
-    }
-}
-
-.comment-status {
-    display: inline-block;
-    padding: 5px 10px;
-    border-radius: 6px;
-    font-size: 11px;
-    font-weight: 700;
-    margin-left: 8px;
-    box-shadow: var(--bitbucket-pr-review-shadow-sm);
-}
-
-.comment-status.accepted {
-    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-    color: white;
-}
-
-.comment-status.rejected {
-    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-    color: white;
-}
-
-.stats {
-    background-color: var(--bitbucket-pr-review-bg-tertiary);
-    padding: 16px 30px;
-    border-top: 1px solid var(--bitbucket-pr-review-border-medium);
-    font-size: 13px;
-    color: var(--bitbucket-pr-review-text-tertiary);
-    display: flex;
-    gap: 30px;
-    align-items: center;
-}
-
-.stat-item {
+  .option-badges {
     display: flex;
     align-items: center;
     gap: 8px;
-    font-weight: 500;
+    flex-shrink: 0;
+
+    .comment-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+      color: white;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+
+      .badge-icon {
+        width: 12px;
+        height: 12px;
+        fill: white;
+      }
+    }
+
+    .stats-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 8px;
+      background-color: var(--bitbucket-pr-review-bg-tertiary);
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+      font-family: 'SF Mono', Monaco, monospace;
+
+      .added {
+        color: #10b981;
+      }
+
+      .deleted {
+        color: #ef4444;
+      }
+    }
+  }
 }
 
-.stat-item.export-btn-container {
-    margin-left: auto;
-}
+.no-results {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  text-align: center;
 
-.stat-added {
-    color: #10b981;
-    font-weight: 700;
-}
-
-.stat-deleted {
-    color: #ef4444;
-    font-weight: 700;
-}
-
-.export-btn {
-    padding: 6px 12px;
-    font-size: 12px;
-}
-
-.empty-state {
-    color: var(--bitbucket-pr-review-text-tertiary);
-    text-align: center;
-    padding: 80px 40px;
-    font-size: 16px;
-    font-weight: 500;
-}
-
-.empty-state::before {
-    content: '📂';
-    display: block;
-    font-size: 64px;
-    margin-bottom: 20px;
+  svg {
+    width: 48px;
+    height: 48px;
+    fill: var(--bitbucket-pr-review-text-muted);
     opacity: 0.5;
+    margin-bottom: 12px;
+  }
+
+  p {
+    margin: 0;
+    font-size: 14px;
+    color: var(--bitbucket-pr-review-text-tertiary);
+    font-weight: 500;
+  }
 }
 
-/* Responsive adjustments */
-@media (max-width: 1024px) {
-    .side-by-side-view {
-        font-size: 12px;
-    }
-
-    .side-line-number {
-        width: 40px;
-        min-width: 40px;
-        padding: 4px 6px;
-        font-size: 11px;
-    }
-
-    .side-line-content {
-        padding: 4px 8px;
-        font-size: 12px;
-    }
-
-    .side-header {
-        font-size: 11px;
-        padding: 6px 10px;
-    }
-}
-
+// Responsive adjustments
 @media (max-width: 768px) {
-    :host {
-        padding: 10px;
+  .dropdown-selected .selected-content {
+    .file-name {
+      font-size: 13px;
     }
 
-    .container {
-        border-radius: 8px;
-    }
+    .comment-badge {
+      padding: 3px 8px;
+      font-size: 11px;
 
-    .header {
-        padding: 16px 20px;
-        flex-direction: column;
-        gap: 15px;
-        align-items: flex-start;
+      .badge-text {
+        display: none;
+      }
     }
+  }
 
-    .header h1 {
-        font-size: 20px;
-    }
+  .dropdown-option {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
 
-    .header-actions {
-        width: 100%;
-        flex-direction: column;
-        gap: 10px;
+    .option-badges {
+      width: 100%;
+      justify-content: flex-start;
     }
-
-    .view-toggle {
-        width: 100%;
-    }
-
-    .view-toggle .view-toggle-btn {
-        flex: 1;
-    }
-
-    .file-selector-header {
-        padding: 12px 20px;
-    }
-
-    .diff-container {
-        padding: 20px;
-    }
-
-    .stats {
-        padding: 12px 20px;
-        flex-direction: column;
-        gap: 15px;
-        align-items: flex-start;
-    }
-
-    .stats .stat-item.export-btn-container {
-        margin-left: 0;
-        width: 100%;
-    }
-
-    .stats .stat-item.export-btn-container .export-btn {
-        width: 100%;
-    }
-
-    .comment-actions {
-        flex-direction: column;
-        gap: 8px;
-    }
-
-    .comment-actions .comment-btn {
-        width: 100%;
-    }
-
-    .comment-actions .comment-nav {
-        width: 100%;
-        margin-left: 0;
-        padding-left: 0;
-        border-left: none;
-        border-top: 1px solid #dfe1e6;
-        padding-top: 8px;
-        display: flex;
-    }
-
-    .comment-actions .comment-nav .comment-btn {
-        flex: 1;
-    }
-
-    .side-by-side-view {
-        display: block;
-        width: 100%;
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
-    }
-
-    .side-header-row {
-        display: flex;
-        min-width: 800px;
-        position: sticky;
-        top: 0;
-        z-index: 10;
-    }
-
-    .side-header {
-        display: block;
-        flex: 1;
-        min-width: 400px;
-    }
-
-    .side-row {
-        display: flex;
-        min-width: 800px;
-        border-bottom: 2px solid #dfe1e6;
-    }
-
-    .side-cell {
-        display: block;
-        flex: 1;
-        min-width: 400px;
-        width: 50%;
-        border-right: 1px solid #dfe1e6;
-    }
-
-    .side-cell:last-child {
-        border-right: none;
-    }
-
-    .side-cell-inner {
-        display: flex;
-        width: 100%;
-    }
-
-    .side-line-content {
-        word-break: break-all;
-        overflow-wrap: anywhere;
-    }
-
-    .side-by-side-view::-webkit-scrollbar {
-        height: 8px;
-    }
-
-    .side-by-side-view::-webkit-scrollbar-track {
-        background: var(--bitbucket-pr-review-bg-quaternary);
-        border-radius: 4px;
-    }
-
-    .side-by-side-view::-webkit-scrollbar-thumb {
-        background: var(--bitbucket-pr-review-border-dark);
-        border-radius: 4px;
-    }
-
-    .side-by-side-view::-webkit-scrollbar-thumb:hover {
-        background: var(--bitbucket-pr-review-text-quaternary);
-    }
-}
-
-@media (max-width: 500px) {
-    .side-header-row,
-    .side-row {
-        min-width: 700px;
-    }
-
-    .side-header,
-    .side-cell {
-        min-width: 350px;
-    }
+  }
 }
