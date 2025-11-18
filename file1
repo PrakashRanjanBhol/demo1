@@ -1,1907 +1,6 @@
-<!-- diff-viewer.component.html -->
-<div class="container" [class.dark-mode]="isDarkMode">
-    <div class="header">
-        <div class="header-left">
-            <h1>
-                <svg class="header-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path
-                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                </svg>
-                Code Diff Viewer
-            </h1>
-            <div class="view-toggle">
-                <button class="view-toggle-btn" [class.active]="currentView === 'unified'"
-                    (click)="switchView('unified')">
-                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="2"
-                            stroke-linecap="round" />
-                    </svg>
-                    <span>Unified</span>
-                </button>
-                <button class="view-toggle-btn" [class.active]="currentView === 'side-by-side'"
-                    (click)="switchView('side-by-side')">
-                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M9 3v18M3 9h18M3 15h18" stroke="currentColor" stroke-width="2"
-                            stroke-linecap="round" />
-                    </svg>
-                    <span>Side by Side</span>
-                </button>
-            </div>
-        </div>
-        <div class="header-actions">
-            <button *ngIf="hasComments()" class="action-btn primary" (click)="goToFirstComment()">
-                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M12 19V5m0 0l-7 7m7-7l7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                        stroke-linejoin="round" />
-                </svg>
-                <span>First Comment</span>
-            </button>
-            <button class="action-btn theme-toggle" (click)="toggleTheme()"
-                [title]="isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'">
-                <span class="theme-icon">{{ isDarkMode ? '☀️' : '🌙' }}</span>
-            </button>
-        </div>
-    </div>
-
-    <div class="file-selector-container">
-        <div class="file-selector-header">
-            <div class="search-wrapper">
-                <svg class="search-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" stroke="currentColor" stroke-width="2"
-                        stroke-linecap="round" stroke-linejoin="round" />
-                </svg>
-                <input type="text" class="file-search" placeholder="Search files..." [(ngModel)]="searchQuery" />
-                <button *ngIf="searchQuery" class="clear-search" (click)="searchQuery = ''">
-                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M6 18L18 6M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-                    </svg>
-                </button>
-            </div>
-        </div>
-        <div class="file-list">
-            <div *ngFor="let file of filteredFiles; let i = index" class="file-item"
-                [class.active]="selectedFile === file" (click)="onFileSelect(file)">
-                <div class="file-item-icon">
-                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path
-                            d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"
-                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                    </svg>
-                </div>
-                <div class="file-item-content">
-                    <div class="file-item-name">{{ file.file_path }}</div>
-                    <div class="file-item-meta">
-                        <span class="file-stats">
-                            <span class="stat-badge added">+{{ calculateFileStats(file).addedLines }}</span>
-                            <span class="stat-badge deleted">-{{ calculateFileStats(file).deletedLines }}</span>
-                        </span>
-                        <span *ngIf="getFileCommentCount(file) > 0" class="comment-badge">
-                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path
-                                    d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
-                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                    stroke-linejoin="round" />
-                            </svg>
-                            {{ getFileCommentCount(file) }}
-                        </span>
-                    </div>
-                </div>
-            </div>
-            <div *ngIf="filteredFiles.length === 0" class="no-files-found">
-                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                </svg>
-                <p>No files found matching "{{ searchQuery }}"</p>
-            </div>
-        </div>
-    </div>
-
-    <div class="diff-container">
-        <ng-container *ngIf="!selectedFile">
-            <p class="empty-state">Please select a file to view the diff</p>
-        </ng-container>
-
-        <ng-container *ngIf="selectedFile">
-            <!-- Unified View -->
-            <div *ngIf="currentView === 'unified'">
-                <div class="file-header">📄 {{ selectedFile.file_path }}</div>
-                <div class="unified-view">
-                    <ng-container *ngFor="let line of diffLines">
-                        <div class="diff-line" [ngClass]="line.type">
-                            <div class="line-numbers">
-                                <div class="line-number">{{ line.oldLineNum || '' }}</div>
-                                <div class="line-number">{{ line.newLineNum || '' }}</div>
-                            </div>
-                            <div class="line-content" [innerHTML]="line.content"></div>
-                        </div>
-
-                        <!-- Inline Comment Box -->
-                        <div *ngIf="line.comment" class="ai-comment" [id]="getCommentId(line.comment)" [ngClass]="{
-                            'accepted': getCommentState(line.comment).status === 'accepted',
-                            'rejected': getCommentState(line.comment).status === 'rejected',
-                            'processing': isProcessing(line.comment)
-                          }">
-
-                            <div class="comment-header">
-                                <div>
-                                    <span class="comment-severity" [ngClass]="line.comment.severity">
-                                        {{ line.comment.severity }}
-                                    </span>
-                                    <span class="comment-status"
-                                        *ngIf="getCommentState(line.comment).status !== 'pending'"
-                                        [ngClass]="getCommentState(line.comment).status">
-                                        {{ getCommentState(line.comment).status.toUpperCase() }}
-                                    </span>
-                                </div>
-                                <span class="comment-line-info">Line {{ line.comment.line }}</span>
-                            </div>
-
-                            <div class="comment-text-display" *ngIf="!isEditing(line.comment)">
-                                {{ getDisplayText(line.comment) }}
-                            </div>
-
-                            <textarea class="comment-text-input" *ngIf="isEditing(line.comment)"
-                                [value]="getEditText(line.comment)"
-                                (input)="setEditText(line.comment, $any($event.target).value)" rows="4">
-                            </textarea>
-
-                            <div class="suggested-patch" *ngIf="line.comment.suggested_patch">
-                                <div class="suggested-patch-label">Suggested Fix:</div>
-                                <pre>{{ line.comment.suggested_patch }}</pre>
-                            </div>
-
-                            <div class="comment-actions">
-                                <button class="comment-btn accept" *ngIf="!isEditing(line.comment)"
-                                    [disabled]="isActionDisabled(line.comment)" (click)="acceptComment(line.comment)">
-                                    <ng-container *ngIf="!isProcessingAction(line.comment, 'accept')">
-                                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                            <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                                                stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                                stroke-linejoin="round" />
-                                        </svg>
-                                        <span>Accept</span>
-                                    </ng-container>
-                                    <ng-container *ngIf="isProcessingAction(line.comment, 'accept')">
-                                        <span class="spinner"></span>
-                                        <span>Accepting...</span>
-                                    </ng-container>
-                                </button>
-
-                                <button class="comment-btn reject" *ngIf="!isEditing(line.comment)"
-                                    [disabled]="isActionDisabled(line.comment)" (click)="rejectComment(line.comment)">
-                                    <ng-container *ngIf="!isProcessingAction(line.comment, 'reject')">
-                                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                            <path
-                                                d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
-                                                stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                                stroke-linejoin="round" />
-                                        </svg>
-                                        <span>Reject</span>
-                                    </ng-container>
-                                    <ng-container *ngIf="isProcessingAction(line.comment, 'reject')">
-                                        <span class="spinner"></span>
-                                        <span>Rejecting...</span>
-                                    </ng-container>
-                                </button>
-
-                                <button class="comment-btn modify" *ngIf="!isEditing(line.comment)"
-                                    [disabled]="isActionDisabled(line.comment)" (click)="modifyComment(line.comment)">
-                                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                        <path
-                                            d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                                            stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                            stroke-linejoin="round" />
-                                    </svg>
-                                    <span>Modify</span>
-                                </button>
-
-                                <button class="comment-btn save" *ngIf="isEditing(line.comment)"
-                                    [disabled]="isProcessing(line.comment)" (click)="saveComment(line.comment)">
-                                    <ng-container *ngIf="!isProcessingAction(line.comment, 'save')">
-                                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                            <path
-                                                d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"
-                                                stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                                stroke-linejoin="round" />
-                                        </svg>
-                                        <span>Save</span>
-                                    </ng-container>
-                                    <ng-container *ngIf="isProcessingAction(line.comment, 'save')">
-                                        <span class="spinner"></span>
-                                        <span>Saving...</span>
-                                    </ng-container>
-                                </button>
-
-                                <button class="comment-btn cancel" *ngIf="isEditing(line.comment)"
-                                    [disabled]="isProcessing(line.comment)" (click)="cancelModify(line.comment)">
-                                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                        <path d="M6 18L18 6M6 6l12 12" stroke="currentColor" stroke-width="2"
-                                            stroke-linecap="round" stroke-linejoin="round" />
-                                    </svg>
-                                    <span>Cancel</span>
-                                </button>
-
-                                <div class="comment-nav">
-                                    <button class="comment-btn nav prev-comment"
-                                        [disabled]="isFirstComment(line.comment) || isProcessing(line.comment)"
-                                        (click)="goToPreviousComment(line.comment)" title="Previous Comment">
-                                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                            <path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2"
-                                                stroke-linecap="round" stroke-linejoin="round" />
-                                        </svg>
-                                    </button>
-                                    <button class="comment-btn nav next-comment"
-                                        [disabled]="isLastComment(line.comment) || isProcessing(line.comment)"
-                                        (click)="goToNextComment(line.comment)" title="Next Comment">
-                                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                            <path d="M9 5l7 7-7 7" stroke="currentColor" stroke-width="2.5"
-                                                stroke-linecap="round" stroke-linejoin="round" />
-                                        </svg>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </ng-container>
-                </div>
-            </div>
-
-            <!-- Side by Side View -->
-            <div *ngIf="currentView === 'side-by-side'">
-                <div class="file-header">📄 {{ selectedFile.file_path }}</div>
-                <div class="side-by-side-view">
-                    <div class="side-header-row">
-                        <div class="side-header">Original</div>
-                        <div class="side-header">Modified</div>
-                    </div>
-
-                    <ng-container *ngFor="let line of diffLines">
-                        <div class="side-row">
-                            <!-- Left side (Original) -->
-                            <div class="side-cell" [ngClass]="{
-                                 'deleted': line.type === 'deleted',
-                                 'empty': line.type === 'added'
-                               }">
-                                <div class="side-cell-inner">
-                                    <div class="side-line-number">{{ line.oldLineNum || '' }}</div>
-                                    <div class="side-line-content"
-                                        [innerHTML]="line.type !== 'added' ? line.content : ''"></div>
-                                </div>
-
-                                <!-- Comment on left side (FROM) -->
-                                <!-- Comment on left side (FROM) -->
-                                <div *ngIf="line.oldComment" class="ai-comment" [id]="getCommentId(line.oldComment)"
-                                    [ngClass]="{
-        'accepted': getCommentState(line.oldComment).status === 'accepted',
-        'rejected': getCommentState(line.oldComment).status === 'rejected',
-        'processing': isProcessing(line.oldComment)
-      }">
-
-                                    <div class="comment-header">
-                                        <div>
-                                            <span class="comment-severity" [ngClass]="line.oldComment.severity">
-                                                {{ line.oldComment.severity }}
-                                            </span>
-                                            <span class="comment-status"
-                                                *ngIf="getCommentState(line.oldComment).status !== 'pending'"
-                                                [ngClass]="getCommentState(line.oldComment).status">
-                                                {{ getCommentState(line.oldComment).status.toUpperCase() }}
-                                            </span>
-                                        </div>
-                                        <span class="comment-line-info">Line {{ line.oldComment.line }}</span>
-                                    </div>
-
-                                    <div class="comment-text-display" *ngIf="!isEditing(line.oldComment)">
-                                        {{ getDisplayText(line.oldComment) }}
-                                    </div>
-
-                                    <textarea class="comment-text-input" *ngIf="isEditing(line.oldComment)"
-                                        [value]="getEditText(line.oldComment)"
-                                        (input)="setEditText(line.oldComment, $any($event.target).value)" rows="4">
-    </textarea>
-
-                                    <div class="suggested-patch" *ngIf="line.oldComment.suggested_patch">
-                                        <div class="suggested-patch-label">Suggested Fix:</div>
-                                        <pre>{{ line.oldComment.suggested_patch }}</pre>
-                                    </div>
-
-                                    <div class="comment-actions">
-                                        <button class="comment-btn accept" *ngIf="!isEditing(line.oldComment)"
-                                            [disabled]="isActionDisabled(line.oldComment)"
-                                            (click)="acceptComment(line.oldComment)">
-                                            <span *ngIf="!isProcessingAction(line.oldComment, 'accept')">
-                                                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                    <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                                                        stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                                        stroke-linejoin="round" />
-                                                </svg>
-                                                <span>Accept</span>
-                                            </span>
-                                            <span *ngIf="isProcessingAction(line.oldComment, 'accept')"
-                                                class="spinner-container">
-                                                <span class="spinner"></span>
-                                                <span>Accepting...</span>
-                                            </span>
-                                        </button>
-
-                                        <button class="comment-btn reject" *ngIf="!isEditing(line.oldComment)"
-                                            [disabled]="isActionDisabled(line.oldComment)"
-                                            (click)="rejectComment(line.oldComment)">
-                                            <span *ngIf="!isProcessingAction(line.oldComment, 'reject')">
-                                                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                    <path
-                                                        d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
-                                                        stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                                        stroke-linejoin="round" />
-                                                </svg>
-                                                <span>Reject</span>
-                                            </span>
-                                            <span *ngIf="isProcessingAction(line.oldComment, 'reject')"
-                                                class="spinner-container">
-                                                <span class="spinner"></span>
-                                                <span>Rejecting...</span>
-                                            </span>
-                                        </button>
-
-                                        <button class="comment-btn modify" *ngIf="!isEditing(line.oldComment)"
-                                            [disabled]="isActionDisabled(line.oldComment)"
-                                            (click)="modifyComment(line.oldComment)">
-                                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                <path
-                                                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                                    stroke-linejoin="round" />
-                                            </svg>
-                                            <span>Modify</span>
-                                        </button>
-
-                                        <button class="comment-btn save" *ngIf="isEditing(line.oldComment)"
-                                            [disabled]="isProcessing(line.oldComment)"
-                                            (click)="saveComment(line.oldComment)">
-                                            <span *ngIf="!isProcessingAction(line.oldComment, 'save')">
-                                                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                    <path
-                                                        d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"
-                                                        stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                                        stroke-linejoin="round" />
-                                                </svg>
-                                                <span>Save</span>
-                                            </span>
-                                            <span *ngIf="isProcessingAction(line.oldComment, 'save')"
-                                                class="spinner-container">
-                                                <span class="spinner"></span>
-                                                <span>Saving...</span>
-                                            </span>
-                                        </button>
-
-                                        <button class="comment-btn cancel" *ngIf="isEditing(line.oldComment)"
-                                            [disabled]="isProcessing(line.oldComment)"
-                                            (click)="cancelModify(line.oldComment)">
-                                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                <path d="M6 18L18 6M6 6l12 12" stroke="currentColor" stroke-width="2"
-                                                    stroke-linecap="round" stroke-linejoin="round" />
-                                            </svg>
-                                            <span>Cancel</span>
-                                        </button>
-
-                                        <div class="comment-nav">
-                                            <button class="comment-btn nav prev-comment"
-                                                [disabled]="isFirstComment(line.oldComment) || isProcessing(line.oldComment)"
-                                                (click)="goToPreviousComment(line.oldComment)" title="Previous Comment">
-                                                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                    <path d="M15 19l-7-7 7-7" stroke="currentColor" stroke-width="2.5"
-                                                        stroke-linecap="round" stroke-linejoin="round" />
-                                                </svg>
-                                            </button>
-                                            <button class="comment-btn nav next-comment"
-                                                [disabled]="isLastComment(line.oldComment) || isProcessing(line.oldComment)"
-                                                (click)="goToNextComment(line.oldComment)" title="Next Comment">
-                                                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                    <path d="M9 5l7 7-7 7" stroke="currentColor" stroke-width="2.5"
-                                                        stroke-linecap="round" stroke-linejoin="round" />
-                                                </svg>
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Right side (Modified) -->
-                            <div class="side-cell" [ngClass]="{
-                                 'added': line.type === 'added',
-                                 'empty': line.type === 'deleted'
-                               }">
-                                <div class="side-cell-inner">
-                                    <div class="side-line-number">{{ line.newLineNum || '' }}</div>
-                                    <div class="side-line-content"
-                                        [innerHTML]="line.type !== 'deleted' ? line.content : ''"></div>
-                                </div>
-
-                                <!-- Comment on right side (TO) -->
-                                <div *ngIf="line.newComment" class="ai-comment" [id]="getCommentId(line.newComment)"
-                                    [ngClass]="{
-                                        'accepted': getCommentState(line.newComment).status === 'accepted',
-                                        'rejected': getCommentState(line.newComment).status === 'rejected',
-                                        'processing': isProcessing(line.newComment)
-                                      }">
-
-                                    <div class="comment-header">
-                                        <div>
-                                            <span class="comment-severity" [ngClass]="line.newComment.severity">
-                                                {{ line.newComment.severity }}
-                                            </span>
-                                            <span class="comment-status"
-                                                *ngIf="getCommentState(line.newComment).status !== 'pending'"
-                                                [ngClass]="getCommentState(line.newComment).status">
-                                                {{ getCommentState(line.newComment).status.toUpperCase() }}
-                                            </span>
-                                        </div>
-                                        <span class="comment-line-info">Line {{ line.newComment.line }}</span>
-                                    </div>
-
-                                    <div class="comment-text-display" *ngIf="!isEditing(line.newComment)">
-                                        {{ getDisplayText(line.newComment) }}
-                                    </div>
-
-                                    <textarea class="comment-text-input" *ngIf="isEditing(line.newComment)"
-                                        [value]="getEditText(line.newComment)"
-                                        (input)="setEditText(line.newComment, $any($event.target).value)" rows="4">
-                                    </textarea>
-
-                                    <div class="suggested-patch" *ngIf="line.newComment.suggested_patch">
-                                        <div class="suggested-patch-label">Suggested Fix:</div>
-                                        <pre>{{ line.newComment.suggested_patch }}</pre>
-                                    </div>
-
-                                    <div class="comment-actions">
-                                        <button class="comment-btn accept" *ngIf="!isEditing(line.newComment)"
-                                            [disabled]="isActionDisabled(line.newComment)"
-                                            (click)="acceptComment(line.newComment)">
-                                            <span *ngIf="!isProcessingAction(line.newComment, 'accept')">
-                                                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                    <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                                                        stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                                        stroke-linejoin="round" />
-                                                </svg>
-                                                <span>Accept</span>
-                                            </span>
-                                            <span *ngIf="isProcessingAction(line.newComment, 'accept')"
-                                                class="spinner-container">
-                                                <span class="spinner"></span>
-                                                <span>Accepting...</span>
-                                            </span>
-                                        </button>
-                                        <button class="comment-btn reject" *ngIf="!isEditing(line.newComment)"
-                                            [disabled]="isActionDisabled(line.newComment)"
-                                            (click)="rejectComment(line.newComment)">
-                                            <span *ngIf="!isProcessingAction(line.newComment, 'reject')">
-                                                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                    <path
-                                                        d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
-                                                        stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                                        stroke-linejoin="round" />
-                                                </svg>
-                                                <span>Reject</span>
-                                            </span>
-                                            <span *ngIf="isProcessingAction(line.newComment, 'reject')"
-                                                class="spinner-container">
-                                                <span class="spinner"></span>
-                                                <span>Rejecting...</span>
-                                            </span>
-                                        </button>
-                                        <button class="comment-btn modify" *ngIf="!isEditing(line.newComment)"
-                                            [disabled]="isActionDisabled(line.newComment)"
-                                            (click)="modifyComment(line.newComment)">
-                                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                <path
-                                                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                                    stroke-linejoin="round" />
-                                            </svg>
-                                            <span>Modify</span>
-                                        </button>
-                                        <button class="comment-btn save" *ngIf="isEditing(line.newComment)"
-                                            [disabled]="isProcessing(line.newComment)"
-                                            (click)="saveComment(line.newComment)">
-                                            <span *ngIf="!isProcessingAction(line.newComment, 'save')">
-                                                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                    <path
-                                                        d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"
-                                                        stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                                        stroke-linejoin="round" />
-                                                </svg>
-                                                <span>Save</span>
-                                            </span>
-                                            <span *ngIf="isProcessingAction(line.newComment, 'save')"
-                                                class="spinner-container">
-                                                <span class="spinner"></span>
-                                                <span>Saving...</span>
-                                            </span>
-                                        </button>
-                                        <button class="comment-btn cancel" *ngIf="isEditing(line.newComment)"
-                                            [disabled]="isProcessing(line.newComment)"
-                                            (click)="cancelModify(line.newComment)">
-                                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                <path d="M6 18L18 6M6 6l12 12" stroke="currentColor" stroke-width="2"
-                                                    stroke-linecap="round" stroke-linejoin="round" />
-                                            </svg>
-                                            <span>Cancel</span>
-                                        </button>
-
-                                        <div class="comment-nav">
-                                            <button class="comment-btn nav prev-comment"
-                                                [disabled]="isFirstComment(line.newComment) || isProcessing(line.newComment)"
-                                                (click)="goToPreviousComment(line.newComment)" title="Previous Comment">
-                                                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                    <path d="M15 19l-7-7 7-7" stroke="currentColor" stroke-width="2.5"
-                                                        stroke-linecap="round" stroke-linejoin="round" />
-                                                </svg>
-                                            </button>
-                                            <button class="comment-btn nav next-comment"
-                                                [disabled]="isLastComment(line.newComment) || isProcessing(line.newComment)"
-                                                (click)="goToNextComment(line.newComment)" title="Next Comment">
-                                                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                    <path d="M9 5l7 7-7 7" stroke="currentColor" stroke-width="2.5"
-                                                        stroke-linecap="round" stroke-linejoin="round" />
-                                                </svg>
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </ng-container>
-                </div>
-            </div>
-        </ng-container>
-    </div>
-
-    <div class="stats" *ngIf="stats">
-        <div class="stat-item">
-            <span>Changes:</span>
-            <span class="stat-added">+{{ stats.addedLines }}</span>
-            <span class="stat-deleted">-{{ stats.deletedLines }}</span>
-        </div>
-        <div class="stat-item">
-            <span>{{ stats.commentsCount }} AI Comment{{ stats.commentsCount !== 1 ? 's' : '' }}</span>
-        </div>
-        <div class="stat-item export-btn-container">
-            <button class="action-btn export-btn" (click)="exportComments()">
-                Export Comment Decisions
-            </button>
-        </div>
-    </div>
-</div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// * {
-//     box-sizing: border-box;
-// }
-
-// :host {
-//     display: block;
-//     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-//     background-color: #f5f7fa;
-//     padding: 20px;
-//     line-height: 1.5;
-//     min-height: 100vh;
-// }
-
-// .container {
-//     max-width: 1400px;
-//     margin: 0 auto;
-//     background-color: #ffffff;
-//     border-radius: 12px;
-//     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 10px 30px rgba(0, 0, 0, 0.08);
-//     overflow: hidden;
-//     animation: slideIn 0.3s ease-out;
-
-//     &.dark-mode {
-//         background-color: #1f2937;
-//         color: #e5e7eb;
-//     }
-// }
-
-// @keyframes slideIn {
-//     from {
-//         opacity: 0;
-//         transform: translateY(10px);
-//     }
-
-//     to {
-//         opacity: 1;
-//         transform: translateY(0);
-//     }
-// }
-
-// .header {
-//     background-color: #ffffff;
-//     border-bottom: 1px solid #e5e7eb;
-//     padding: 20px 30px;
-//     display: flex;
-//     justify-content: space-between;
-//     align-items: center;
-//     gap: 20px;
-// }
-
-// .header-left {
-//     display: flex;
-//     align-items: center;
-//     gap: 24px;
-//     flex: 1;
-
-//     h1 {
-//         font-size: 20px;
-//         font-weight: 700;
-//         color: #111827;
-//         display: flex;
-//         align-items: center;
-//         gap: 10px;
-//         margin: 0;
-//         white-space: nowrap;
-//     }
-// }
-
-// .header-icon {
-//     width: 24px;
-//     height: 24px;
-//     color: #3b82f6;
-// }
-
-// .view-toggle {
-//     display: flex;
-//     gap: 4px;
-//     background-color: #f3f4f6;
-//     padding: 3px;
-//     border-radius: 10px;
-//     border: 1px solid #e5e7eb;
-// }
-
-// .view-toggle-btn {
-//     display: flex;
-//     align-items: center;
-//     gap: 6px;
-//     padding: 8px 16px;
-//     background-color: transparent;
-//     color: #6b7280;
-//     border: none;
-//     border-radius: 8px;
-//     cursor: pointer;
-//     font-size: 13px;
-//     font-weight: 600;
-//     transition: all 0.2s ease;
-
-//     svg {
-//         width: 16px;
-//         height: 16px;
-//     }
-
-//     &:hover {
-//         background-color: #e5e7eb;
-//         color: #374151;
-//     }
-
-//     &.active {
-//         background-color: #ffffff;
-//         color: #3b82f6;
-//         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-
-//         &:hover {
-//             color: #2563eb;
-//         }
-//     }
-// }
-
-// .header-actions {
-//     display: flex;
-//     gap: 12px;
-//     align-items: center;
-// }
-
-// .action-btn {
-//     display: flex;
-//     align-items: center;
-//     gap: 8px;
-//     padding: 10px 18px;
-//     border: 1px solid #e5e7eb;
-//     border-radius: 8px;
-//     background-color: #ffffff;
-//     color: #374151;
-//     font-size: 13px;
-//     font-weight: 600;
-//     cursor: pointer;
-//     transition: all 0.2s ease;
-
-//     svg {
-//         width: 16px;
-//         height: 16px;
-//     }
-
-//     &:hover {
-//         background-color: #f9fafb;
-//         border-color: #d1d5db;
-//         transform: translateY(-1px);
-//         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-//     }
-
-//     &.primary {
-//         background-color: #3b82f6;
-//         border-color: #3b82f6;
-//         color: white;
-
-//         &:hover {
-//             background-color: #2563eb;
-//             border-color: #2563eb;
-//         }
-//     }
-
-//     &.theme-toggle {
-//         min-width: auto;
-//         padding: 10px 14px;
-
-//         .theme-icon {
-//             font-size: 18px;
-//         }
-//     }
-// }
-
-// .file-selector-container {
-//     background-color: #fafbfc;
-//     border-bottom: 1px solid #e5e7eb;
-// }
-
-// .file-selector-header {
-//     padding: 16px 30px 12px;
-// }
-
-// .search-wrapper {
-//     position: relative;
-//     display: flex;
-//     align-items: center;
-
-//     .search-icon {
-//         position: absolute;
-//         left: 12px;
-//         width: 18px;
-//         height: 18px;
-//         color: #9ca3af;
-//         pointer-events: none;
-//     }
-// }
-
-// .file-search {
-//     width: 100%;
-//     padding: 10px 40px 10px 40px;
-//     border: 2px solid #e5e7eb;
-//     border-radius: 8px;
-//     font-size: 14px;
-//     background-color: #ffffff;
-//     color: #111827;
-//     transition: all 0.2s ease;
-
-//     &::placeholder {
-//         color: #9ca3af;
-//     }
-
-//     &:focus {
-//         outline: none;
-//         border-color: #3b82f6;
-//         box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-//     }
-// }
-
-// .clear-search {
-//     position: absolute;
-//     right: 10px;
-//     padding: 4px;
-//     background: none;
-//     border: none;
-//     cursor: pointer;
-//     color: #9ca3af;
-//     display: flex;
-//     align-items: center;
-//     justify-content: center;
-//     border-radius: 4px;
-//     transition: all 0.2s ease;
-
-//     svg {
-//         width: 16px;
-//         height: 16px;
-//     }
-
-//     &:hover {
-//         background-color: #f3f4f6;
-//         color: #374151;
-//     }
-// }
-
-// .file-list {
-//     max-height: 300px;
-//     overflow-y: auto;
-//     padding: 0 20px 16px;
-
-//     &::-webkit-scrollbar {
-//         width: 8px;
-//     }
-
-//     &::-webkit-scrollbar-track {
-//         background: #f3f4f6;
-//         border-radius: 4px;
-//     }
-
-//     &::-webkit-scrollbar-thumb {
-//         background: #d1d5db;
-//         border-radius: 4px;
-
-//         &:hover {
-//             background: #9ca3af;
-//         }
-//     }
-// }
-
-// .file-item {
-//     display: flex;
-//     align-items: center;
-//     gap: 12px;
-//     padding: 12px 16px;
-//     margin: 4px 0;
-//     border-radius: 8px;
-//     cursor: pointer;
-//     transition: all 0.2s ease;
-//     background-color: #ffffff;
-//     border: 2px solid transparent;
-
-//     &:hover {
-//         background-color: #f9fafb;
-//         border-color: #e5e7eb;
-//         transform: translateX(2px);
-//     }
-
-//     &.active {
-//         background-color: #eff6ff;
-//         border-color: #3b82f6;
-//         box-shadow: 0 2px 4px rgba(59, 130, 246, 0.1);
-//     }
-// }
-
-// .file-item-icon {
-//     flex-shrink: 0;
-//     width: 32px;
-//     height: 32px;
-//     display: flex;
-//     align-items: center;
-//     justify-content: center;
-//     background-color: #f3f4f6;
-//     border-radius: 6px;
-//     color: #6b7280;
-
-//     svg {
-//         width: 18px;
-//         height: 18px;
-//     }
-
-//     .file-item.active & {
-//         background-color: #dbeafe;
-//         color: #3b82f6;
-//     }
-// }
-
-// .file-item-content {
-//     flex: 1;
-//     min-width: 0;
-// }
-
-// .file-item-name {
-//     font-size: 13px;
-//     font-weight: 600;
-//     color: #111827;
-//     font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
-//     white-space: nowrap;
-//     overflow: hidden;
-//     text-overflow: ellipsis;
-// }
-
-// .file-item-meta {
-//     display: flex;
-//     align-items: center;
-//     gap: 12px;
-//     margin-top: 4px;
-// }
-
-// .file-stats {
-//     display: flex;
-//     gap: 6px;
-// }
-
-// .stat-badge {
-//     font-size: 11px;
-//     font-weight: 700;
-//     padding: 2px 6px;
-//     border-radius: 4px;
-//     font-family: 'SF Mono', Monaco, monospace;
-
-//     &.added {
-//         background-color: #d1fae5;
-//         color: #065f46;
-//     }
-
-//     &.deleted {
-//         background-color: #fecaca;
-//         color: #991b1b;
-//     }
-// }
-
-// .comment-badge {
-//     display: flex;
-//     align-items: center;
-//     gap: 4px;
-//     font-size: 11px;
-//     font-weight: 600;
-//     color: #f59e0b;
-//     background-color: #fffbeb;
-//     padding: 2px 8px;
-//     border-radius: 4px;
-//     border: 1px solid #fef3c7;
-
-//     svg {
-//         width: 14px;
-//         height: 14px;
-//     }
-// }
-
-// .no-files-found {
-//     text-align: center;
-//     padding: 40px 20px;
-//     color: #9ca3af;
-
-//     svg {
-//         width: 48px;
-//         height: 48px;
-//         margin: 0 auto 12px;
-//         opacity: 0.5;
-//     }
-
-//     p {
-//         font-size: 14px;
-//         margin: 0;
-//     }
-// }
-
-// .diff-container {
-//     padding: 30px;
-//     background-color: #ffffff;
-// }
-
-// .file-header {
-//     background-color: #fafbfc;
-//     border: 1px solid #e5e7eb;
-//     border-bottom: none;
-//     color: #374151;
-//     padding: 12px 16px;
-//     border-radius: 6px 6px 0 0;
-//     font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
-//     font-size: 13px;
-//     font-weight: 600;
-// }
-
-// // Unified View
-// .unified-view {
-//     border: 1px solid #e5e7eb;
-//     border-top: none;
-//     font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
-//     font-size: 13px;
-//     border-radius: 0 0 6px 6px;
-//     overflow: hidden;
-// }
-
-// .diff-line {
-//     display: flex;
-//     border-bottom: 1px solid #f3f4f6;
-//     min-height: 24px;
-//     transition: background-color 0.15s ease;
-
-//     &:hover {
-//         background-color: #fafbfc !important;
-//     }
-
-//     &.added {
-//         background-color: #ecfdf5;
-
-//         .line-numbers {
-//             background-color: #d1fae5;
-//         }
-//     }
-
-//     &.deleted {
-//         background-color: #fef2f2;
-
-//         .line-numbers {
-//             background-color: #fecaca;
-//         }
-//     }
-
-//     &.context {
-//         background-color: #ffffff;
-//     }
-// }
-
-// .line-numbers {
-//     display: flex;
-//     flex-shrink: 0;
-//     background-color: #f9fafb;
-//     border-right: 1px solid #e5e7eb;
-// }
-
-// .line-number {
-//     width: 50px;
-//     padding: 4px 8px;
-//     text-align: right;
-//     color: #9ca3af;
-//     font-size: 12px;
-//     user-select: none;
-//     border-right: 1px solid #f3f4f6;
-//     font-weight: 500;
-
-//     &:last-child {
-//         border-right: none;
-//     }
-// }
-
-// .line-content {
-//     flex: 1;
-//     padding: 4px 12px;
-//     white-space: pre-wrap;
-//     word-wrap: break-word;
-//     overflow-wrap: break-word;
-//     line-height: 1.6;
-//     min-width: 0;
-//     font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
-
-//     .hljs {
-//         background: transparent;
-//         color: #374151;
-//     }
-
-//     .hljs-keyword,
-//     .hljs-selector-tag,
-//     .hljs-literal,
-//     .hljs-section,
-//     .hljs-link {
-//         font-weight: 600;
-//     }
-
-//     .hljs-string,
-//     .hljs-title,
-//     .hljs-name,
-//     .hljs-type,
-//     .hljs-attribute,
-//     .hljs-symbol,
-//     .hljs-bullet,
-//     .hljs-addition,
-//     .hljs-variable,
-//     .hljs-template-tag,
-//     .hljs-template-variable {
-//         font-weight: normal;
-//     }
-
-//     .hljs-comment,
-//     .hljs-quote,
-//     .hljs-deletion,
-//     .hljs-meta {
-//         font-style: italic;
-//     }
-// }
-
-// // Side by Side View
-// .side-by-side-view {
-//     display: table;
-//     width: 100%;
-//     border: 1px solid #e5e7eb;
-//     border-top: none;
-//     font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
-//     font-size: 13px;
-//     border-collapse: collapse;
-//     table-layout: fixed;
-// }
-
-// .side-header-row {
-//     display: table-row;
-// }
-
-// .side-header {
-//     display: table-cell;
-//     background-color: #f4f5f7;
-//     padding: 8px 15px;
-//     font-weight: 600;
-//     border-bottom: 2px solid #e5e7eb;
-//     color: #111827;
-//     font-size: 12px;
-//     text-transform: uppercase;
-//     letter-spacing: 0.5px;
-//     width: 50%;
-// }
-
-// .side-row {
-//     display: table-row;
-//     border-bottom: 1px solid #f3f4f6;
-// }
-
-// .side-cell {
-//     display: table-cell;
-//     width: 50%;
-//     border-bottom: 1px solid #f3f4f6;
-//     vertical-align: top;
-//     word-wrap: break-word;
-//     overflow-wrap: break-word;
-
-//     &.deleted .side-cell-inner {
-//         background-color: #fef2f2;
-//     }
-
-//     &.deleted .side-line-number {
-//         background-color: #fecaca;
-//     }
-
-//     &.added .side-cell-inner {
-//         background-color: #ecfdf5;
-//     }
-
-//     &.added .side-line-number {
-//         background-color: #d1fae5;
-//     }
-
-//     &.empty .side-cell-inner {
-//         background-color: #fafbfc;
-//         opacity: 0.3;
-//     }
-
-//     &.empty .side-line-number {
-//         background-color: #f4f5f7;
-//     }
-// }
-
-// .side-cell-inner {
-//     display: flex;
-//     min-height: 24px;
-// }
-
-// .side-line-number {
-//     width: 50px;
-//     min-width: 50px;
-//     padding: 4px 8px;
-//     text-align: right;
-//     color: #9ca3af;
-//     font-size: 12px;
-//     background-color: #fafbfc;
-//     border-right: 1px solid #e5e7eb;
-//     user-select: none;
-//     flex-shrink: 0;
-// }
-
-// .side-line-content {
-//     flex: 1;
-//     padding: 4px 12px;
-//     white-space: pre-wrap;
-//     word-wrap: break-word;
-//     overflow-wrap: break-word;
-//     word-break: break-word;
-//     line-height: 1.5;
-//     min-width: 0;
-//     overflow: hidden;
-//     font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
-
-//     .hljs {
-//         background: transparent;
-//         color: #111827;
-//     }
-
-//     .hljs-keyword,
-//     .hljs-selector-tag,
-//     .hljs-literal,
-//     .hljs-section,
-//     .hljs-link {
-//         font-weight: 600;
-//     }
-
-//     .hljs-string,
-//     .hljs-title,
-//     .hljs-name,
-//     .hljs-type,
-//     .hljs-attribute,
-//     .hljs-symbol,
-//     .hljs-bullet,
-//     .hljs-addition,
-//     .hljs-variable,
-//     .hljs-template-tag,
-//     .hljs-template-variable {
-//         font-weight: normal;
-//     }
-
-//     .hljs-comment,
-//     .hljs-quote,
-//     .hljs-deletion,
-//     .hljs-meta {
-//         font-style: italic;
-//     }
-// }
-
-// // AI Comments - Improved Design
-// .ai-comment {
-//     background: linear-gradient(to bottom, #fffbeb 0%, #fef3c7 100%);
-//     border: 1px solid #fbbf24;
-//     border-left: 5px solid #f59e0b;
-//     border-radius: 12px;
-//     padding: 20px;
-//     margin: 16px 0;
-//     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-//     font-size: 13px;
-//     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-//     position: relative;
-//     transition: all 0.3s ease;
-
-//     &:hover {
-//         box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-//         transform: translateY(-2px);
-//     }
-
-//     &::before {
-//         content: '💬 AI COMMENT';
-//         position: absolute;
-//         top: -12px;
-//         left: 16px;
-//         background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-//         color: white;
-//         padding: 4px 12px;
-//         border-radius: 6px;
-//         font-size: 10px;
-//         font-weight: 700;
-//         letter-spacing: 0.5px;
-//         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-//     }
-
-//     &.accepted {
-//         background: linear-gradient(to bottom, #f0fdf4 0%, #dcfce7 100%);
-//         border-color: #10b981;
-//         border-left-color: #059669;
-
-//         &::before {
-//             content: '✓ ACCEPTED';
-//             background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-//         }
-//     }
-
-//     &.rejected {
-//         background: linear-gradient(to bottom, #fef2f2 0%, #fee2e2 100%);
-//         border-color: #ef4444;
-//         border-left-color: #dc2626;
-//         opacity: 0.9;
-
-//         &::before {
-//             content: '✗ REJECTED';
-//             background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-//         }
-//     }
-
-//     // Remove the processing overlay - we'll handle it per button instead
-//     &.processing {
-//         // No overlay needed anymore
-//     }
-// }
-
-// // Remove the dark mode processing overlay
-// .dark-mode .ai-comment.processing::after {
-//     display: none;
-// }
-
-// .dark-mode .ai-comment.processing::after {
-//     background-color: rgba(0, 0, 0, 0.4);
-// }
-
-// .comment-header {
-//     display: flex;
-//     justify-content: space-between;
-//     align-items: center;
-//     margin-bottom: 16px;
-//     margin-top: 8px;
-// }
-
-// .comment-severity {
-//     padding: 6px 14px;
-//     border-radius: 6px;
-//     font-size: 11px;
-//     font-weight: 700;
-//     text-transform: uppercase;
-//     letter-spacing: 0.5px;
-//     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-
-//     &.error {
-//         background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
-//         color: white;
-//     }
-
-//     &.warning {
-//         background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-//         color: white;
-//     }
-
-//     &.suggestion {
-//         background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-//         color: white;
-//     }
-// }
-
-// .comment-line-info {
-//     font-size: 11px;
-//     color: #6b7280;
-//     font-weight: 600;
-//     background-color: rgba(255, 255, 255, 0.7);
-//     padding: 6px 12px;
-//     border-radius: 6px;
-//     border: 1px solid #e5e7eb;
-// }
-
-// .comment-text-display {
-//     margin: 12px 0;
-//     line-height: 1.6;
-//     color: #1f2937;
-//     padding: 14px;
-//     background-color: rgba(255, 255, 255, 0.8);
-//     border-radius: 8px;
-//     border-left: 4px solid #f59e0b;
-//     box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
-// }
-
-// .comment-text-input {
-//     width: 100%;
-//     padding: 12px;
-//     border: 2px solid #d1d5db;
-//     border-radius: 8px;
-//     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-//     font-size: 13px;
-//     line-height: 1.6;
-//     resize: vertical;
-//     min-height: 90px;
-//     margin: 12px 0;
-//     background-color: #ffffff;
-//     color: #111827;
-//     transition: all 0.2s ease;
-
-//     &:focus {
-//         outline: none;
-//         border-color: #3b82f6;
-//         box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1), 0 1px 2px rgba(0, 0, 0, 0.05);
-//     }
-// }
-
-// .suggested-patch {
-//     background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
-//     border: 2px dashed #0284c7;
-//     border-left: 5px solid #0369a1;
-//     padding: 14px;
-//     margin-top: 14px;
-//     font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
-//     font-size: 12px;
-//     white-space: pre-wrap;
-//     border-radius: 8px;
-//     position: relative;
-//     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-
-//     pre {
-//         margin: 0;
-//         white-space: pre-wrap;
-//         color: #0c4a6e;
-//     }
-// }
-
-// .suggested-patch-label {
-//     font-weight: 700;
-//     margin-bottom: 10px;
-//     color: #0369a1;
-//     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-//     font-size: 12px;
-//     text-transform: uppercase;
-//     letter-spacing: 0.5px;
-//     display: flex;
-//     align-items: center;
-//     gap: 6px;
-
-//     &::before {
-//         content: '💡';
-//         font-size: 14px;
-//     }
-// }
-
-// .comment-actions {
-//     display: flex;
-//     gap: 10px;
-//     margin-top: 14px;
-//     padding-top: 14px;
-//     border-top: 2px solid rgba(0, 0, 0, 0.05);
-//     flex-wrap: wrap;
-//     align-items: center;
-// }
-
-// .comment-nav {
-//     display: flex;
-//     gap: 4px;
-//     margin-left: auto;
-//     padding-left: 10px;
-//     border-left: 2px solid rgba(0, 0, 0, 0.05);
-//     background-color: rgba(255, 255, 255, 0.5);
-//     padding: 4px;
-//     border-radius: 8px;
-// }
-
-// .comment-btn {
-//     display: inline-flex;
-//     align-items: center;
-//     justify-content: center;
-//     gap: 6px;
-//     padding: 8px 14px;
-//     border: none;
-//     border-radius: 6px;
-//     font-size: 12px;
-//     font-weight: 600;
-//     cursor: pointer;
-//     transition: all 0.2s ease;
-//     position: relative;
-//     min-width: 90px;
-//     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-
-//     svg {
-//         width: 14px;
-//         height: 14px;
-//         flex-shrink: 0;
-//     }
-
-//     &:hover:not(:disabled) {
-//         transform: translateY(-2px);
-//         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-//     }
-
-//     &:active:not(:disabled) {
-//         transform: translateY(0);
-//     }
-
-//     &.accept {
-//         background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-//         color: white;
-
-//         &:hover:not(:disabled) {
-//             background: linear-gradient(135deg, #059669 0%, #047857 100%);
-//         }
-//     }
-
-//     &.reject {
-//         background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-//         color: white;
-
-//         &:hover:not(:disabled) {
-//             background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
-//         }
-//     }
-
-//     &.modify {
-//         background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-//         color: white;
-
-//         &:hover:not(:disabled) {
-//             background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-//         }
-//     }
-
-//     &.save {
-//         background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-//         color: white;
-
-//         &:hover:not(:disabled) {
-//             background: linear-gradient(135deg, #059669 0%, #047857 100%);
-//         }
-//     }
-
-//     &.cancel {
-//         background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
-//         color: white;
-
-//         &:hover:not(:disabled) {
-//             background: linear-gradient(135deg, #4b5563 0%, #374151 100%);
-//         }
-//     }
-
-//     &.nav {
-//         background: #ffffff;
-//         border: 1px solid #e5e7eb;
-//         min-width: auto;
-//         width: 28px;
-//         height: 28px;
-//         padding: 0;
-//         border-radius: 6px;
-//         position: relative;
-//         box-shadow: none;
-
-//         svg {
-//             width: 14px;
-//             height: 14px;
-//             fill: #6b7280;
-//             transition: all 0.15s ease;
-//         }
-
-//         &:hover:not(:disabled) {
-//             background: #3b82f6;
-//             border-color: #3b82f6;
-//             transform: translateY(0) scale(1.05);
-//             box-shadow: 0 2px 4px rgba(59, 130, 246, 0.25);
-
-//             svg {
-//                 fill: white;
-//             }
-//         }
-
-//         &:active:not(:disabled) {
-//             transform: scale(0.95);
-//         }
-
-//         &.prev-comment {
-//             &:hover:not(:disabled) svg {
-//                 animation: slideLeft 0.3s ease;
-//             }
-//         }
-
-//         &.next-comment {
-//             &:hover:not(:disabled) svg {
-//                 animation: slideRight 0.3s ease;
-//             }
-//         }
-//     }
-
-//     &:disabled {
-//         opacity: 0.4;
-//         cursor: not-allowed;
-//         transform: none;
-
-//         &:hover {
-//             transform: none;
-//             box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-//         }
-//     }
-
-//     &.nav:disabled {
-//         background: #fafbfc !important;
-//         border-color: #f3f4f6 !important;
-
-//         svg {
-//             fill: #d1d5db !important;
-//         }
-//     }
-// }
-
-// // Animations for navigation buttons
-// @keyframes slideLeft {
-
-//     0%,
-//     100% {
-//         transform: translateX(0);
-//     }
-
-//     50% {
-//         transform: translateX(-2px);
-//     }
-// }
-
-// @keyframes slideRight {
-
-//     0%,
-//     100% {
-//         transform: translateX(0);
-//     }
-
-//     50% {
-//         transform: translateX(2px);
-//     }
-// }
-
-// .spinner-container {
-//     display: inline-flex;
-//     align-items: center;
-//     gap: 8px;
-// }
-
-// .spinner {
-//     width: 14px;
-//     height: 14px;
-//     border: 2px solid rgba(255, 255, 255, 0.3);
-//     border-top-color: white;
-//     border-radius: 50%;
-//     animation: spin 0.6s linear infinite;
-// }
-
-// @keyframes spin {
-//     to {
-//         transform: rotate(360deg);
-//     }
-// }
-
-// .comment-status {
-//     display: inline-block;
-//     padding: 5px 10px;
-//     border-radius: 6px;
-//     font-size: 11px;
-//     font-weight: 700;
-//     margin-left: 8px;
-//     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-
-//     &.accepted {
-//         background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-//         color: white;
-//     }
-
-//     &.rejected {
-//         background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-//         color: white;
-//     }
-// }
-
-// .stats {
-//     background-color: #fafbfc;
-//     padding: 16px 30px;
-//     border-top: 1px solid #e5e7eb;
-//     font-size: 13px;
-//     color: #6b7280;
-//     display: flex;
-//     gap: 30px;
-//     align-items: center;
-// }
-
-// .stat-item {
-//     display: flex;
-//     align-items: center;
-//     gap: 8px;
-//     font-weight: 500;
-
-//     &.export-btn-container {
-//         margin-left: auto;
-//     }
-// }
-
-// .stat-added {
-//     color: #10b981;
-//     font-weight: 700;
-// }
-
-// .stat-deleted {
-//     color: #ef4444;
-//     font-weight: 700;
-// }
-
-// .export-btn {
-//     padding: 6px 12px;
-//     font-size: 12px;
-// }
-
-// .empty-state {
-//     color: #6b7280;
-//     text-align: center;
-//     padding: 80px 40px;
-//     font-size: 16px;
-//     font-weight: 500;
-
-//     &::before {
-//         content: '📂';
-//         display: block;
-//         font-size: 64px;
-//         margin-bottom: 20px;
-//         opacity: 0.5;
-//     }
-// }
-
-// // Responsive adjustments
-// @media (max-width: 1024px) {
-//     .side-by-side-view {
-//         font-size: 12px;
-//     }
-
-//     .side-line-number {
-//         width: 40px;
-//         min-width: 40px;
-//         padding: 4px 6px;
-//         font-size: 11px;
-//     }
-
-//     .side-line-content {
-//         padding: 4px 8px;
-//         font-size: 12px;
-//     }
-
-//     .side-header {
-//         font-size: 11px;
-//         padding: 6px 10px;
-//     }
-// }
-
-// @media (max-width: 768px) {
-//     :host {
-//         padding: 10px;
-//     }
-
-//     .container {
-//         border-radius: 8px;
-//     }
-
-//     .header {
-//         padding: 16px 20px;
-//         flex-direction: column;
-//         gap: 15px;
-//         align-items: flex-start;
-
-//         h1 {
-//             font-size: 20px;
-//         }
-//     }
-
-//     .header-actions {
-//         width: 100%;
-//         flex-direction: column;
-//         gap: 10px;
-//     }
-
-//     .view-toggle {
-//         width: 100%;
-
-//         .view-toggle-btn {
-//             flex: 1;
-//         }
-//     }
-
-//     .file-selector-header {
-//         padding: 12px 20px;
-//     }
-
-//     .diff-container {
-//         padding: 20px;
-//     }
-
-//     .stats {
-//         padding: 12px 20px;
-//         flex-direction: column;
-//         gap: 15px;
-//         align-items: flex-start;
-
-//         .stat-item.export-btn-container {
-//             margin-left: 0;
-//             width: 100%;
-
-//             .export-btn {
-//                 width: 100%;
-//             }
-//         }
-//     }
-
-//     .comment-actions {
-//         flex-direction: column;
-//         gap: 8px;
-
-//         .comment-btn {
-//             width: 100%;
-//         }
-
-//         .comment-nav {
-//             width: 100%;
-//             margin-left: 0;
-//             padding-left: 0;
-//             border-left: none;
-//             border-top: 1px solid #dfe1e6;
-//             padding-top: 8px;
-//             display: flex;
-
-//             .comment-btn {
-//                 flex: 1;
-//             }
-//         }
-//     }
-
-//     .side-by-side-view {
-//         display: block;
-//         width: 100%;
-//         overflow-x: auto;
-//         -webkit-overflow-scrolling: touch;
-//     }
-
-//     .side-header-row {
-//         display: flex;
-//         min-width: 800px;
-//         position: sticky;
-//         top: 0;
-//         z-index: 10;
-//         background-color: #f4f5f7;
-//     }
-
-//     .side-header {
-//         display: block;
-//         flex: 1;
-//         min-width: 400px;
-//     }
-
-//     .side-row {
-//         display: flex;
-//         min-width: 800px;
-//         border-bottom: 2px solid #dfe1e6;
-//     }
-
-//     .side-cell {
-//         display: block;
-//         flex: 1;
-//         min-width: 400px;
-//         width: 50%;
-//         border-right: 1px solid #dfe1e6;
-
-//         &:last-child {
-//             border-right: none;
-//         }
-//     }
-
-//     .side-cell-inner {
-//         display: flex;
-//         width: 100%;
-//     }
-
-//     .side-line-content {
-//         word-break: break-all;
-//         overflow-wrap: anywhere;
-//     }
-
-//     .side-by-side-view::-webkit-scrollbar {
-//         height: 8px;
-//     }
-
-//     .side-by-side-view::-webkit-scrollbar-track {
-//         background: #f3f4f6;
-//         border-radius: 4px;
-//     }
-
-//     .side-by-side-view::-webkit-scrollbar-thumb {
-//         background: #d1d5db;
-//         border-radius: 4px;
-
-//         &:hover {
-//             background: #9ca3af;
-//         }
-//     }
-// }
-
-// @media (max-width: 500px) {
-
-//     .side-header-row,
-//     .side-row {
-//         min-width: 700px;
-//     }
-
-//     .side-header,
-//     .side-cell {
-//         min-width: 350px;
-//     }
-// }
-
-
-
-// CSS Variables
+/* CSS Variables */
 :host {
-    // Light Mode (default)
+    /* Light Mode (default) */
     --bitbucket-pr-review-bg-primary: #ffffff;
     --bitbucket-pr-review-bg-secondary: #f5f7fa;
     --bitbucket-pr-review-bg-tertiary: #fafbfc;
@@ -1963,71 +62,71 @@
     --bitbucket-pr-review-shadow-btn-hover: 0 4px 6px rgba(0, 0, 0, 0.1);
     --bitbucket-pr-review-shadow-focus: 0 0 0 3px rgba(59, 130, 246, 0.1);
     --bitbucket-pr-review-shadow-inset: inset 0 2px 4px rgba(0, 0, 0, 0.05);
+}
 
-    // Dark Mode
-    &.dark-mode {
-        --bitbucket-pr-review-bg-primary: #1a1a1b;
-        --bitbucket-pr-review-bg-secondary: #0a0a0b;
-        --bitbucket-pr-review-bg-tertiary: #2d2d2e;
-        --bitbucket-pr-review-bg-quaternary: #3a3a3b;
-        --bitbucket-pr-review-bg-hover: #252526;
-        --bitbucket-pr-review-bg-active: #1e3a5f;
+/* Dark Mode */
+:host.dark-mode {
+    --bitbucket-pr-review-bg-primary: #1a1a1b;
+    --bitbucket-pr-review-bg-secondary: #0a0a0b;
+    --bitbucket-pr-review-bg-tertiary: #2d2d2e;
+    --bitbucket-pr-review-bg-quaternary: #3a3a3b;
+    --bitbucket-pr-review-bg-hover: #252526;
+    --bitbucket-pr-review-bg-active: #1e3a5f;
 
-        --bitbucket-pr-review-text-primary: #e5e7eb;
-        --bitbucket-pr-review-text-secondary: #d1d5db;
-        --bitbucket-pr-review-text-tertiary: #9ca3af;
-        --bitbucket-pr-review-text-quaternary: #6b7280;
-        --bitbucket-pr-review-text-code: #e5e7eb;
+    --bitbucket-pr-review-text-primary: #e5e7eb;
+    --bitbucket-pr-review-text-secondary: #d1d5db;
+    --bitbucket-pr-review-text-tertiary: #9ca3af;
+    --bitbucket-pr-review-text-quaternary: #6b7280;
+    --bitbucket-pr-review-text-code: #e5e7eb;
 
-        --bitbucket-pr-review-border-light: #3a3a3b;
-        --bitbucket-pr-review-border-medium: #4b5563;
-        --bitbucket-pr-review-border-dark: #6b7280;
+    --bitbucket-pr-review-border-light: #3a3a3b;
+    --bitbucket-pr-review-border-medium: #4b5563;
+    --bitbucket-pr-review-border-dark: #6b7280;
 
-        --bitbucket-pr-review-blue-primary: #60a5fa;
-        --bitbucket-pr-review-blue-secondary: #3b82f6;
-        --bitbucket-pr-review-blue-tertiary: #2563eb;
-        --bitbucket-pr-review-blue-light: #1e3a5f;
+    --bitbucket-pr-review-blue-primary: #60a5fa;
+    --bitbucket-pr-review-blue-secondary: #3b82f6;
+    --bitbucket-pr-review-blue-tertiary: #2563eb;
+    --bitbucket-pr-review-blue-light: #1e3a5f;
 
-        --bitbucket-pr-review-diff-added-bg: #064e3b;
-        --bitbucket-pr-review-diff-added-line: #065f46;
-        --bitbucket-pr-review-diff-added-text: #6ee7b7;
-        --bitbucket-pr-review-diff-deleted-bg: #7f1d1d;
-        --bitbucket-pr-review-diff-deleted-line: #991b1b;
-        --bitbucket-pr-review-diff-deleted-text: #fca5a5;
+    --bitbucket-pr-review-diff-added-bg: #064e3b;
+    --bitbucket-pr-review-diff-added-line: #065f46;
+    --bitbucket-pr-review-diff-added-text: #6ee7b7;
+    --bitbucket-pr-review-diff-deleted-bg: #7f1d1d;
+    --bitbucket-pr-review-diff-deleted-line: #991b1b;
+    --bitbucket-pr-review-diff-deleted-text: #fca5a5;
 
-        --bitbucket-pr-review-comment-bg-start: #422006;
-        --bitbucket-pr-review-comment-bg-end: #78350f;
-        --bitbucket-pr-review-comment-border: #92400e;
-        --bitbucket-pr-review-comment-border-left: #f59e0b;
-        --bitbucket-pr-review-comment-text: #fef3c7;
-        --bitbucket-pr-review-comment-display-bg: rgba(0, 0, 0, 0.3);
-        --bitbucket-pr-review-comment-nav-bg: rgba(0, 0, 0, 0.3);
+    --bitbucket-pr-review-comment-bg-start: #422006;
+    --bitbucket-pr-review-comment-bg-end: #78350f;
+    --bitbucket-pr-review-comment-border: #92400e;
+    --bitbucket-pr-review-comment-border-left: #f59e0b;
+    --bitbucket-pr-review-comment-text: #fef3c7;
+    --bitbucket-pr-review-comment-display-bg: rgba(0, 0, 0, 0.3);
+    --bitbucket-pr-review-comment-nav-bg: rgba(0, 0, 0, 0.3);
 
-        --bitbucket-pr-review-comment-accepted-bg-start: #064e3b;
-        --bitbucket-pr-review-comment-accepted-bg-end: #065f46;
-        --bitbucket-pr-review-comment-accepted-border: #059669;
-        --bitbucket-pr-review-comment-accepted-border-left: #10b981;
+    --bitbucket-pr-review-comment-accepted-bg-start: #064e3b;
+    --bitbucket-pr-review-comment-accepted-bg-end: #065f46;
+    --bitbucket-pr-review-comment-accepted-border: #059669;
+    --bitbucket-pr-review-comment-accepted-border-left: #10b981;
 
-        --bitbucket-pr-review-comment-rejected-bg-start: #7f1d1d;
-        --bitbucket-pr-review-comment-rejected-bg-end: #991b1b;
-        --bitbucket-pr-review-comment-rejected-border: #dc2626;
-        --bitbucket-pr-review-comment-rejected-border-left: #ef4444;
+    --bitbucket-pr-review-comment-rejected-bg-start: #7f1d1d;
+    --bitbucket-pr-review-comment-rejected-bg-end: #991b1b;
+    --bitbucket-pr-review-comment-rejected-border: #dc2626;
+    --bitbucket-pr-review-comment-rejected-border-left: #ef4444;
 
-        --bitbucket-pr-review-patch-bg-start: #0c4a6e;
-        --bitbucket-pr-review-patch-bg-end: #075985;
-        --bitbucket-pr-review-patch-border: #0369a1;
-        --bitbucket-pr-review-patch-border-left: #0284c7;
-        --bitbucket-pr-review-patch-text: #bae6fd;
+    --bitbucket-pr-review-patch-bg-start: #0c4a6e;
+    --bitbucket-pr-review-patch-bg-end: #075985;
+    --bitbucket-pr-review-patch-border: #0369a1;
+    --bitbucket-pr-review-patch-border-left: #0284c7;
+    --bitbucket-pr-review-patch-text: #bae6fd;
 
-        --bitbucket-pr-review-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
-        --bitbucket-pr-review-shadow-md: 0 10px 30px rgba(0, 0, 0, 0.5);
-        --bitbucket-pr-review-shadow-lg: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
-        --bitbucket-pr-review-shadow-xl: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.2);
-        --bitbucket-pr-review-shadow-btn: 0 1px 2px rgba(0, 0, 0, 0.3);
-        --bitbucket-pr-review-shadow-btn-hover: 0 4px 6px rgba(0, 0, 0, 0.4);
-        --bitbucket-pr-review-shadow-focus: 0 0 0 3px rgba(96, 165, 250, 0.2);
-        --bitbucket-pr-review-shadow-inset: inset 0 2px 4px rgba(0, 0, 0, 0.3);
-    }
+    --bitbucket-pr-review-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+    --bitbucket-pr-review-shadow-md: 0 10px 30px rgba(0, 0, 0, 0.5);
+    --bitbucket-pr-review-shadow-lg: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
+    --bitbucket-pr-review-shadow-xl: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.2);
+    --bitbucket-pr-review-shadow-btn: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --bitbucket-pr-review-shadow-btn-hover: 0 4px 6px rgba(0, 0, 0, 0.4);
+    --bitbucket-pr-review-shadow-focus: 0 0 0 3px rgba(96, 165, 250, 0.2);
+    --bitbucket-pr-review-shadow-inset: inset 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 * {
@@ -2058,7 +157,6 @@
         opacity: 0;
         transform: translateY(10px);
     }
-
     to {
         opacity: 1;
         transform: translateY(0);
@@ -2080,17 +178,17 @@
     align-items: center;
     gap: 24px;
     flex: 1;
+}
 
-    h1 {
-        font-size: 20px;
-        font-weight: 700;
-        color: var(--bitbucket-pr-review-text-primary);
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        margin: 0;
-        white-space: nowrap;
-    }
+.header-left h1 {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--bitbucket-pr-review-text-primary);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0;
+    white-space: nowrap;
 }
 
 .header-icon {
@@ -2121,26 +219,26 @@
     font-size: 13px;
     font-weight: 600;
     transition: all 0.2s ease;
+}
 
-    svg {
-        width: 16px;
-        height: 16px;
-    }
+.view-toggle-btn svg {
+    width: 16px;
+    height: 16px;
+}
 
-    &:hover {
-        background-color: var(--bitbucket-pr-review-border-medium);
-        color: var(--bitbucket-pr-review-text-secondary);
-    }
+.view-toggle-btn:hover {
+    background-color: var(--bitbucket-pr-review-border-medium);
+    color: var(--bitbucket-pr-review-text-secondary);
+}
 
-    &.active {
-        background-color: var(--bitbucket-pr-review-bg-primary);
-        color: var(--bitbucket-pr-review-blue-primary);
-        box-shadow: var(--bitbucket-pr-review-shadow-sm);
+.view-toggle-btn.active {
+    background-color: var(--bitbucket-pr-review-bg-primary);
+    color: var(--bitbucket-pr-review-blue-primary);
+    box-shadow: var(--bitbucket-pr-review-shadow-sm);
+}
 
-        &:hover {
-            color: var(--bitbucket-pr-review-blue-secondary);
-        }
-    }
+.view-toggle-btn.active:hover {
+    color: var(--bitbucket-pr-review-blue-secondary);
 }
 
 .header-actions {
@@ -2162,38 +260,38 @@
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s ease;
+}
 
-    svg {
-        width: 16px;
-        height: 16px;
-    }
+.action-btn svg {
+    width: 16px;
+    height: 16px;
+}
 
-    &:hover {
-        background-color: var(--bitbucket-pr-review-bg-hover);
-        border-color: var(--bitbucket-pr-review-border-dark);
-        transform: translateY(-1px);
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-    }
+.action-btn:hover {
+    background-color: var(--bitbucket-pr-review-bg-hover);
+    border-color: var(--bitbucket-pr-review-border-dark);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
 
-    &.primary {
-        background-color: var(--bitbucket-pr-review-blue-primary);
-        border-color: var(--bitbucket-pr-review-blue-primary);
-        color: white;
+.action-btn.primary {
+    background-color: var(--bitbucket-pr-review-blue-primary);
+    border-color: var(--bitbucket-pr-review-blue-primary);
+    color: white;
+}
 
-        &:hover {
-            background-color: var(--bitbucket-pr-review-blue-secondary);
-            border-color: var(--bitbucket-pr-review-blue-secondary);
-        }
-    }
+.action-btn.primary:hover {
+    background-color: var(--bitbucket-pr-review-blue-secondary);
+    border-color: var(--bitbucket-pr-review-blue-secondary);
+}
 
-    &.theme-toggle {
-        min-width: auto;
-        padding: 10px 14px;
+.action-btn.theme-toggle {
+    min-width: auto;
+    padding: 10px 14px;
+}
 
-        .theme-icon {
-            font-size: 18px;
-        }
-    }
+.action-btn.theme-toggle .theme-icon {
+    font-size: 18px;
 }
 
 .file-selector-container {
@@ -2209,15 +307,15 @@
     position: relative;
     display: flex;
     align-items: center;
+}
 
-    .search-icon {
-        position: absolute;
-        left: 12px;
-        width: 18px;
-        height: 18px;
-        color: var(--bitbucket-pr-review-text-quaternary);
-        pointer-events: none;
-    }
+.search-wrapper .search-icon {
+    position: absolute;
+    left: 12px;
+    width: 18px;
+    height: 18px;
+    color: var(--bitbucket-pr-review-text-quaternary);
+    pointer-events: none;
 }
 
 .file-search {
@@ -2229,16 +327,16 @@
     background-color: var(--bitbucket-pr-review-bg-primary);
     color: var(--bitbucket-pr-review-text-primary);
     transition: all 0.2s ease;
+}
 
-    &::placeholder {
-        color: var(--bitbucket-pr-review-text-quaternary);
-    }
+.file-search::placeholder {
+    color: var(--bitbucket-pr-review-text-quaternary);
+}
 
-    &:focus {
-        outline: none;
-        border-color: var(--bitbucket-pr-review-blue-primary);
-        box-shadow: var(--bitbucket-pr-review-shadow-focus);
-    }
+.file-search:focus {
+    outline: none;
+    border-color: var(--bitbucket-pr-review-blue-primary);
+    box-shadow: var(--bitbucket-pr-review-shadow-focus);
 }
 
 .clear-search {
@@ -2254,40 +352,40 @@
     justify-content: center;
     border-radius: 4px;
     transition: all 0.2s ease;
+}
 
-    svg {
-        width: 16px;
-        height: 16px;
-    }
+.clear-search svg {
+    width: 16px;
+    height: 16px;
+}
 
-    &:hover {
-        background-color: var(--bitbucket-pr-review-bg-quaternary);
-        color: var(--bitbucket-pr-review-text-secondary);
-    }
+.clear-search:hover {
+    background-color: var(--bitbucket-pr-review-bg-quaternary);
+    color: var(--bitbucket-pr-review-text-secondary);
 }
 
 .file-list {
     max-height: 300px;
     overflow-y: auto;
     padding: 0 20px 16px;
+}
 
-    &::-webkit-scrollbar {
-        width: 8px;
-    }
+.file-list::-webkit-scrollbar {
+    width: 8px;
+}
 
-    &::-webkit-scrollbar-track {
-        background: var(--bitbucket-pr-review-bg-quaternary);
-        border-radius: 4px;
-    }
+.file-list::-webkit-scrollbar-track {
+    background: var(--bitbucket-pr-review-bg-quaternary);
+    border-radius: 4px;
+}
 
-    &::-webkit-scrollbar-thumb {
-        background: var(--bitbucket-pr-review-border-dark);
-        border-radius: 4px;
+.file-list::-webkit-scrollbar-thumb {
+    background: var(--bitbucket-pr-review-border-dark);
+    border-radius: 4px;
+}
 
-        &:hover {
-            background: var(--bitbucket-pr-review-text-quaternary);
-        }
-    }
+.file-list::-webkit-scrollbar-thumb:hover {
+    background: var(--bitbucket-pr-review-text-quaternary);
 }
 
 .file-item {
@@ -2301,18 +399,18 @@
     transition: all 0.2s ease;
     background-color: var(--bitbucket-pr-review-bg-primary);
     border: 2px solid transparent;
+}
 
-    &:hover {
-        background-color: var(--bitbucket-pr-review-bg-hover);
-        border-color: var(--bitbucket-pr-review-border-medium);
-        transform: translateX(2px);
-    }
+.file-item:hover {
+    background-color: var(--bitbucket-pr-review-bg-hover);
+    border-color: var(--bitbucket-pr-review-border-medium);
+    transform: translateX(2px);
+}
 
-    &.active {
-        background-color: var(--bitbucket-pr-review-bg-active);
-        border-color: var(--bitbucket-pr-review-blue-primary);
-        box-shadow: 0 2px 4px rgba(59, 130, 246, 0.1);
-    }
+.file-item.active {
+    background-color: var(--bitbucket-pr-review-bg-active);
+    border-color: var(--bitbucket-pr-review-blue-primary);
+    box-shadow: 0 2px 4px rgba(59, 130, 246, 0.1);
 }
 
 .file-item-icon {
@@ -2325,16 +423,16 @@
     background-color: var(--bitbucket-pr-review-bg-quaternary);
     border-radius: 6px;
     color: var(--bitbucket-pr-review-text-tertiary);
+}
 
-    svg {
-        width: 18px;
-        height: 18px;
-    }
+.file-item-icon svg {
+    width: 18px;
+    height: 18px;
+}
 
-    .file-item.active & {
-        background-color: var(--bitbucket-pr-review-blue-light);
-        color: var(--bitbucket-pr-review-blue-primary);
-    }
+.file-item.active .file-item-icon {
+    background-color: var(--bitbucket-pr-review-blue-light);
+    color: var(--bitbucket-pr-review-blue-primary);
 }
 
 .file-item-content {
@@ -2370,16 +468,16 @@
     padding: 2px 6px;
     border-radius: 4px;
     font-family: 'SF Mono', Monaco, monospace;
+}
 
-    &.added {
-        background-color: var(--bitbucket-pr-review-diff-added-line);
-        color: var(--bitbucket-pr-review-diff-added-text);
-    }
+.stat-badge.added {
+    background-color: var(--bitbucket-pr-review-diff-added-line);
+    color: var(--bitbucket-pr-review-diff-added-text);
+}
 
-    &.deleted {
-        background-color: var(--bitbucket-pr-review-diff-deleted-line);
-        color: var(--bitbucket-pr-review-diff-deleted-text);
-    }
+.stat-badge.deleted {
+    background-color: var(--bitbucket-pr-review-diff-deleted-line);
+    color: var(--bitbucket-pr-review-diff-deleted-text);
 }
 
 .comment-badge {
@@ -2393,29 +491,29 @@
     padding: 2px 8px;
     border-radius: 4px;
     border: 1px solid #fef3c7;
+}
 
-    svg {
-        width: 14px;
-        height: 14px;
-    }
+.comment-badge svg {
+    width: 14px;
+    height: 14px;
 }
 
 .no-files-found {
     text-align: center;
     padding: 40px 20px;
     color: var(--bitbucket-pr-review-text-quaternary);
+}
 
-    svg {
-        width: 48px;
-        height: 48px;
-        margin: 0 auto 12px;
-        opacity: 0.5;
-    }
+.no-files-found svg {
+    width: 48px;
+    height: 48px;
+    margin: 0 auto 12px;
+    opacity: 0.5;
+}
 
-    p {
-        font-size: 14px;
-        margin: 0;
-    }
+.no-files-found p {
+    font-size: 14px;
+    margin: 0;
 }
 
 .diff-container {
@@ -2435,7 +533,7 @@
     font-weight: 600;
 }
 
-// Unified View
+/* Unified View */
 .unified-view {
     border: 1px solid var(--bitbucket-pr-review-border-medium);
     border-top: none;
@@ -2450,30 +548,30 @@
     border-bottom: 1px solid var(--bitbucket-pr-review-border-light);
     min-height: 24px;
     transition: background-color 0.15s ease;
+}
 
-    &:hover {
-        background-color: var(--bitbucket-pr-review-bg-tertiary) !important;
-    }
+.diff-line:hover {
+    background-color: var(--bitbucket-pr-review-bg-tertiary) !important;
+}
 
-    &.added {
-        background-color: var(--bitbucket-pr-review-diff-added-bg);
+.diff-line.added {
+    background-color: var(--bitbucket-pr-review-diff-added-bg);
+}
 
-        .line-numbers {
-            background-color: var(--bitbucket-pr-review-diff-added-line);
-        }
-    }
+.diff-line.added .line-numbers {
+    background-color: var(--bitbucket-pr-review-diff-added-line);
+}
 
-    &.deleted {
-        background-color: var(--bitbucket-pr-review-diff-deleted-bg);
+.diff-line.deleted {
+    background-color: var(--bitbucket-pr-review-diff-deleted-bg);
+}
 
-        .line-numbers {
-            background-color: var(--bitbucket-pr-review-diff-deleted-line);
-        }
-    }
+.diff-line.deleted .line-numbers {
+    background-color: var(--bitbucket-pr-review-diff-deleted-line);
+}
 
-    &.context {
-        background-color: var(--bitbucket-pr-review-bg-primary);
-    }
+.diff-line.context {
+    background-color: var(--bitbucket-pr-review-bg-primary);
 }
 
 .line-numbers {
@@ -2492,10 +590,10 @@
     user-select: none;
     border-right: 1px solid var(--bitbucket-pr-review-border-light);
     font-weight: 500;
+}
 
-    &:last-child {
-        border-right: none;
-    }
+.line-number:last-child {
+    border-right: none;
 }
 
 .line-content {
@@ -2507,43 +605,43 @@
     line-height: 1.6;
     min-width: 0;
     font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
-
-    .hljs {
-        background: transparent;
-        color: var(--bitbucket-pr-review-text-secondary);
-    }
-
-    .hljs-keyword,
-    .hljs-selector-tag,
-    .hljs-literal,
-    .hljs-section,
-    .hljs-link {
-        font-weight: 600;
-    }
-
-    .hljs-string,
-    .hljs-title,
-    .hljs-name,
-    .hljs-type,
-    .hljs-attribute,
-    .hljs-symbol,
-    .hljs-bullet,
-    .hljs-addition,
-    .hljs-variable,
-    .hljs-template-tag,
-    .hljs-template-variable {
-        font-weight: normal;
-    }
-
-    .hljs-comment,
-    .hljs-quote,
-    .hljs-deletion,
-    .hljs-meta {
-        font-style: italic;
-    }
 }
 
-// Side by Side View
+.line-content .hljs {
+    background: transparent;
+    color: var(--bitbucket-pr-review-text-secondary);
+}
+
+.line-content .hljs-keyword,
+.line-content .hljs-selector-tag,
+.line-content .hljs-literal,
+.line-content .hljs-section,
+.line-content .hljs-link {
+    font-weight: 600;
+}
+
+.line-content .hljs-string,
+.line-content .hljs-title,
+.line-content .hljs-name,
+.line-content .hljs-type,
+.line-content .hljs-attribute,
+.line-content .hljs-symbol,
+.line-content .hljs-bullet,
+.line-content .hljs-addition,
+.line-content .hljs-variable,
+.line-content .hljs-template-tag,
+.line-content .hljs-template-variable {
+    font-weight: normal;
+}
+
+.line-content .hljs-comment,
+.line-content .hljs-quote,
+.line-content .hljs-deletion,
+.line-content .hljs-meta {
+    font-style: italic;
+}
+
+/* Side by Side View */
 .side-by-side-view {
     display: table;
     width: 100%;
@@ -2584,31 +682,31 @@
     vertical-align: top;
     word-wrap: break-word;
     overflow-wrap: break-word;
+}
 
-    &.deleted .side-cell-inner {
-        background-color: var(--bitbucket-pr-review-diff-deleted-bg);
-    }
+.side-cell.deleted .side-cell-inner {
+    background-color: var(--bitbucket-pr-review-diff-deleted-bg);
+}
 
-    &.deleted .side-line-number {
-        background-color: var(--bitbucket-pr-review-diff-deleted-line);
-    }
+.side-cell.deleted .side-line-number {
+    background-color: var(--bitbucket-pr-review-diff-deleted-line);
+}
 
-    &.added .side-cell-inner {
-        background-color: var(--bitbucket-pr-review-diff-added-bg);
-    }
+.side-cell.added .side-cell-inner {
+    background-color: var(--bitbucket-pr-review-diff-added-bg);
+}
 
-    &.added .side-line-number {
-        background-color: var(--bitbucket-pr-review-diff-added-line);
-    }
+.side-cell.added .side-line-number {
+    background-color: var(--bitbucket-pr-review-diff-added-line);
+}
 
-    &.empty .side-cell-inner {
-        background-color: var(--bitbucket-pr-review-bg-tertiary);
-        opacity: 0.3;
-    }
+.side-cell.empty .side-cell-inner {
+    background-color: var(--bitbucket-pr-review-bg-tertiary);
+    opacity: 0.3;
+}
 
-    &.empty .side-line-number {
-        background-color: var(--bitbucket-pr-review-bg-tertiary);
-    }
+.side-cell.empty .side-line-number {
+    background-color: var(--bitbucket-pr-review-bg-tertiary);
 }
 
 .side-cell-inner {
@@ -2640,43 +738,43 @@
     min-width: 0;
     overflow: hidden;
     font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
-
-    .hljs {
-        background: transparent;
-        color: var(--bitbucket-pr-review-text-primary);
-    }
-
-    .hljs-keyword,
-    .hljs-selector-tag,
-    .hljs-literal,
-    .hljs-section,
-    .hljs-link {
-        font-weight: 600;
-    }
-
-    .hljs-string,
-    .hljs-title,
-    .hljs-name,
-    .hljs-type,
-    .hljs-attribute,
-    .hljs-symbol,
-    .hljs-bullet,
-    .hljs-addition,
-    .hljs-variable,
-    .hljs-template-tag,
-    .hljs-template-variable {
-        font-weight: normal;
-    }
-
-    .hljs-comment,
-    .hljs-quote,
-    .hljs-deletion,
-    .hljs-meta {
-        font-style: italic;
-    }
 }
 
-// AI Comments
+.side-line-content .hljs {
+    background: transparent;
+    color: var(--bitbucket-pr-review-text-primary);
+}
+
+.side-line-content .hljs-keyword,
+.side-line-content .hljs-selector-tag,
+.side-line-content .hljs-literal,
+.side-line-content .hljs-section,
+.side-line-content .hljs-link {
+    font-weight: 600;
+}
+
+.side-line-content .hljs-string,
+.side-line-content .hljs-title,
+.side-line-content .hljs-name,
+.side-line-content .hljs-type,
+.side-line-content .hljs-attribute,
+.side-line-content .hljs-symbol,
+.side-line-content .hljs-bullet,
+.side-line-content .hljs-addition,
+.side-line-content .hljs-variable,
+.side-line-content .hljs-template-tag,
+.side-line-content .hljs-template-variable {
+    font-weight: normal;
+}
+
+.side-line-content .hljs-comment,
+.side-line-content .hljs-quote,
+.side-line-content .hljs-deletion,
+.side-line-content .hljs-meta {
+    font-style: italic;
+}
+
+/* AI Comments */
 .ai-comment {
     background: linear-gradient(to bottom, var(--bitbucket-pr-review-comment-bg-start) 0%, var(--bitbucket-pr-review-comment-bg-end) 100%);
     border: 1px solid var(--bitbucket-pr-review-comment-border);
@@ -2689,49 +787,49 @@
     box-shadow: var(--bitbucket-pr-review-shadow-lg);
     position: relative;
     transition: all 0.3s ease;
+}
 
-    &:hover {
-        box-shadow: var(--bitbucket-pr-review-shadow-xl);
-        transform: translateY(-2px);
-    }
+.ai-comment:hover {
+    box-shadow: var(--bitbucket-pr-review-shadow-xl);
+    transform: translateY(-2px);
+}
 
-    &::before {
-        content: '💬 AI COMMENT';
-        position: absolute;
-        top: -12px;
-        left: 16px;
-        background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-        color: white;
-        padding: 4px 12px;
-        border-radius: 6px;
-        font-size: 10px;
-        font-weight: 700;
-        letter-spacing: 0.5px;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-    }
+.ai-comment::before {
+    content: '💬 AI COMMENT';
+    position: absolute;
+    top: -12px;
+    left: 16px;
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    color: white;
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
 
-    &.accepted {
-        background: linear-gradient(to bottom, var(--bitbucket-pr-review-comment-accepted-bg-start) 0%, var(--bitbucket-pr-review-comment-accepted-bg-end) 100%);
-        border-color: var(--bitbucket-pr-review-comment-accepted-border);
-        border-left-color: var(--bitbucket-pr-review-comment-accepted-border-left);
+.ai-comment.accepted {
+    background: linear-gradient(to bottom, var(--bitbucket-pr-review-comment-accepted-bg-start) 0%, var(--bitbucket-pr-review-comment-accepted-bg-end) 100%);
+    border-color: var(--bitbucket-pr-review-comment-accepted-border);
+    border-left-color: var(--bitbucket-pr-review-comment-accepted-border-left);
+}
 
-        &::before {
-            content: '✓ ACCEPTED';
-            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-        }
-    }
+.ai-comment.accepted::before {
+    content: '✓ ACCEPTED';
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+}
 
-    &.rejected {
-        background: linear-gradient(to bottom, var(--bitbucket-pr-review-comment-rejected-bg-start) 0%, var(--bitbucket-pr-review-comment-rejected-bg-end) 100%);
-        border-color: var(--bitbucket-pr-review-comment-rejected-border);
-        border-left-color: var(--bitbucket-pr-review-comment-rejected-border-left);
-        opacity: 0.9;
+.ai-comment.rejected {
+    background: linear-gradient(to bottom, var(--bitbucket-pr-review-comment-rejected-bg-start) 0%, var(--bitbucket-pr-review-comment-rejected-bg-end) 100%);
+    border-color: var(--bitbucket-pr-review-comment-rejected-border);
+    border-left-color: var(--bitbucket-pr-review-comment-rejected-border-left);
+    opacity: 0.9;
+}
 
-        &::before {
-            content: '✗ REJECTED';
-            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-        }
-    }
+.ai-comment.rejected::before {
+    content: '✗ REJECTED';
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
 }
 
 .comment-header {
@@ -2750,21 +848,21 @@
     text-transform: uppercase;
     letter-spacing: 0.5px;
     box-shadow: var(--bitbucket-pr-review-shadow-sm);
+}
 
-    &.error {
-        background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
-        color: white;
-    }
+.comment-severity.error {
+    background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+    color: white;
+}
 
-    &.warning {
-        background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-        color: white;
-    }
+.comment-severity.warning {
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    color: white;
+}
 
-    &.suggestion {
-        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-        color: white;
-    }
+.comment-severity.suggestion {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
 }
 
 .comment-line-info {
@@ -2802,12 +900,12 @@
     background-color: var(--bitbucket-pr-review-bg-primary);
     color: var(--bitbucket-pr-review-text-primary);
     transition: all 0.2s ease;
+}
 
-    &:focus {
-        outline: none;
-        border-color: var(--bitbucket-pr-review-blue-primary);
-        box-shadow: var(--bitbucket-pr-review-shadow-focus), 0 1px 2px rgba(0, 0, 0, 0.05);
-    }
+.comment-text-input:focus {
+    outline: none;
+    border-color: var(--bitbucket-pr-review-blue-primary);
+    box-shadow: var(--bitbucket-pr-review-shadow-focus), 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .suggested-patch {
@@ -2822,12 +920,12 @@
     border-radius: 8px;
     position: relative;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
 
-    pre {
-        margin: 0;
-        white-space: pre-wrap;
-        color: var(--bitbucket-pr-review-patch-text);
-    }
+.suggested-patch pre {
+    margin: 0;
+    white-space: pre-wrap;
+    color: var(--bitbucket-pr-review-patch-text);
 }
 
 .suggested-patch-label {
@@ -2841,11 +939,11 @@
     display: flex;
     align-items: center;
     gap: 6px;
+}
 
-    &::before {
-        content: '💡';
-        font-size: 14px;
-    }
+.suggested-patch-label::before {
+    content: '💡';
+    font-size: 14px;
 }
 
 .comment-actions {
@@ -2884,153 +982,143 @@
     position: relative;
     min-width: 90px;
     box-shadow: var(--bitbucket-pr-review-shadow-btn);
+}
 
-    svg {
-        width: 14px;
-        height: 14px;
-        flex-shrink: 0;
-    }
+.comment-btn svg {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+}
 
-    &:hover:not(:disabled) {
-        transform: translateY(-2px);
-        box-shadow: var(--bitbucket-pr-review-shadow-btn-hover);
-    }
+.comment-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: var(--bitbucket-pr-review-shadow-btn-hover);
+}
 
-    &:active:not(:disabled) {
-        transform: translateY(0);
-    }
+.comment-btn:active:not(:disabled) {
+    transform: translateY(0);
+}
 
-    &.accept {
-        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-        color: white;
+.comment-btn.accept {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
+}
 
-        &:hover:not(:disabled) {
-            background: linear-gradient(135deg, #059669 0%, #047857 100%);
-        }
-    }
+.comment-btn.accept:hover:not(:disabled) {
+    background: linear-gradient(135deg, #059669 0%, #047857 100%);
+}
 
-    &.reject {
-        background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-        color: white;
+.comment-btn.reject {
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+    color: white;
+}
 
-        &:hover:not(:disabled) {
-            background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
-        }
-    }
+.comment-btn.reject:hover:not(:disabled) {
+    background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+}
 
-    &.modify {
-        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-        color: white;
+.comment-btn.modify {
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    color: white;
+}
 
-        &:hover:not(:disabled) {
-            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-        }
-    }
+.comment-btn.modify:hover:not(:disabled) {
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+}
 
-    &.save {
-        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-        color: white;
+.comment-btn.save {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
+}
 
-        &:hover:not(:disabled) {
-            background: linear-gradient(135deg, #059669 0%, #047857 100%);
-        }
-    }
+.comment-btn.save:hover:not(:disabled) {
+    background: linear-gradient(135deg, #059669 0%, #047857 100%);
+}
 
-    &.cancel {
-        background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
-        color: white;
+.comment-btn.cancel {
+    background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
+    color: white;
+}
 
-        &:hover:not(:disabled) {
-            background: linear-gradient(135deg, #4b5563 0%, #374151 100%);
-        }
-    }
+.comment-btn.cancel:hover:not(:disabled) {
+    background: linear-gradient(135deg, #4b5563 0%, #374151 100%);
+}
 
-    &.nav {
-        background: var(--bitbucket-pr-review-bg-primary);
-        border: 1px solid var(--bitbucket-pr-review-border-medium);
-        min-width: auto;
-        width: 28px;
-        height: 28px;
-        padding: 0;
-        border-radius: 6px;
-        position: relative;
-        box-shadow: none;
+.comment-btn.nav {
+    background: var(--bitbucket-pr-review-bg-primary);
+    border: 1px solid var(--bitbucket-pr-review-border-medium);
+    min-width: auto;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border-radius: 6px;
+    position: relative;
+    box-shadow: none;
+}
 
-        svg {
-            width: 14px;
-            height: 14px;
-            fill: var(--bitbucket-pr-review-text-tertiary);
-            transition: all 0.15s ease;
-        }
+.comment-btn.nav svg {
+    width: 14px;
+    height: 14px;
+    fill: var(--bitbucket-pr-review-text-tertiary);
+    transition: all 0.15s ease;
+}
 
-        &:hover:not(:disabled) {
-            background: var(--bitbucket-pr-review-blue-primary);
-            border-color: var(--bitbucket-pr-review-blue-primary);
-            transform: translateY(0) scale(1.05);
-            box-shadow: 0 2px 4px rgba(59, 130, 246, 0.25);
+.comment-btn.nav:hover:not(:disabled) {
+    background: var(--bitbucket-pr-review-blue-primary);
+    border-color: var(--bitbucket-pr-review-blue-primary);
+    transform: translateY(0) scale(1.05);
+    box-shadow: 0 2px 4px rgba(59, 130, 246, 0.25);
+}
 
-            svg {
-                fill: white;
-            }
-        }
+.comment-btn.nav:hover:not(:disabled) svg {
+    fill: white;
+}
 
-        &:active:not(:disabled) {
-            transform: scale(0.95);
-        }
+.comment-btn.nav:active:not(:disabled) {
+    transform: scale(0.95);
+}
 
-        &.prev-comment {
-            &:hover:not(:disabled) svg {
-                animation: slideLeft 0.3s ease;
-            }
-        }
+.comment-btn.nav.prev-comment:hover:not(:disabled) svg {
+    animation: slideLeft 0.3s ease;
+}
 
-        &.next-comment {
-            &:hover:not(:disabled) svg {
-                animation: slideRight 0.3s ease;
-            }
-        }
-    }
+.comment-btn.nav.next-comment:hover:not(:disabled) svg {
+    animation: slideRight 0.3s ease;
+}
 
-    &:disabled {
-        opacity: 0.4;
-        cursor: not-allowed;
-        transform: none;
+.comment-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
+}
 
-        &:hover {
-            transform: none;
-            box-shadow: var(--bitbucket-pr-review-shadow-btn);
-        }
-    }
+.comment-btn:disabled:hover {
+    transform: none;
+    box-shadow: var(--bitbucket-pr-review-shadow-btn);
+}
 
-    &.nav:disabled {
-        background: var(--bitbucket-pr-review-bg-tertiary) !important;
-        border-color: var(--bitbucket-pr-review-border-light) !important;
+.comment-btn.nav:disabled {
+    background: var(--bitbucket-pr-review-bg-tertiary) !important;
+    border-color: var(--bitbucket-pr-review-border-light) !important;
+}
 
-        svg {
-            fill: var(--bitbucket-pr-review-border-dark) !important;
-        }
-    }
+.comment-btn.nav:disabled svg {
+    fill: var(--bitbucket-pr-review-border-dark) !important;
 }
 
 @keyframes slideLeft {
-
-    0%,
-    100% {
+    0%, 100% {
         transform: translateX(0);
     }
-
     50% {
         transform: translateX(-2px);
     }
 }
 
 @keyframes slideRight {
-
-    0%,
-    100% {
+    0%, 100% {
         transform: translateX(0);
     }
-
     50% {
         transform: translateX(2px);
     }
@@ -3059,16 +1147,16 @@
     font-weight: 700;
     margin-left: 8px;
     box-shadow: var(--bitbucket-pr-review-shadow-sm);
+}
 
-    &.accepted {
-        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-        color: white;
-    }
+.comment-status.accepted {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
+}
 
-    &.rejected {
-        background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-        color: white;
-    }
+.comment-status.rejected {
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+    color: white;
 }
 
 .stats {
@@ -3087,10 +1175,10 @@
     align-items: center;
     gap: 8px;
     font-weight: 500;
+}
 
-    &.export-btn-container {
-        margin-left: auto;
-    }
+.stat-item.export-btn-container {
+    margin-left: auto;
 }
 
 .stat-added {
@@ -3114,17 +1202,17 @@
     padding: 80px 40px;
     font-size: 16px;
     font-weight: 500;
-
-    &::before {
-        content: '📂';
-        display: block;
-        font-size: 64px;
-        margin-bottom: 20px;
-        opacity: 0.5;
-    }
 }
 
-// Responsive adjustments
+.empty-state::before {
+    content: '📂';
+    display: block;
+    font-size: 64px;
+    margin-bottom: 20px;
+    opacity: 0.5;
+}
+
+/* Responsive adjustments */
 @media (max-width: 1024px) {
     .side-by-side-view {
         font-size: 12px;
@@ -3162,10 +1250,10 @@
         flex-direction: column;
         gap: 15px;
         align-items: flex-start;
+    }
 
-        h1 {
-            font-size: 20px;
-        }
+    .header h1 {
+        font-size: 20px;
     }
 
     .header-actions {
@@ -3176,10 +1264,10 @@
 
     .view-toggle {
         width: 100%;
+    }
 
-        .view-toggle-btn {
-            flex: 1;
-        }
+    .view-toggle .view-toggle-btn {
+        flex: 1;
     }
 
     .file-selector-header {
@@ -3195,38 +1283,38 @@
         flex-direction: column;
         gap: 15px;
         align-items: flex-start;
+    }
 
-        .stat-item.export-btn-container {
-            margin-left: 0;
-            width: 100%;
+    .stats .stat-item.export-btn-container {
+        margin-left: 0;
+        width: 100%;
+    }
 
-            .export-btn {
-                width: 100%;
-            }
-        }
+    .stats .stat-item.export-btn-container .export-btn {
+        width: 100%;
     }
 
     .comment-actions {
         flex-direction: column;
         gap: 8px;
+    }
 
-        .comment-btn {
-            width: 100%;
-        }
+    .comment-actions .comment-btn {
+        width: 100%;
+    }
 
-        .comment-nav {
-            width: 100%;
-            margin-left: 0;
-            padding-left: 0;
-            border-left: none;
-            border-top: 1px solid #dfe1e6;
-            padding-top: 8px;
-            display: flex;
+    .comment-actions .comment-nav {
+        width: 100%;
+        margin-left: 0;
+        padding-left: 0;
+        border-left: none;
+        border-top: 1px solid #dfe1e6;
+        padding-top: 8px;
+        display: flex;
+    }
 
-            .comment-btn {
-                flex: 1;
-            }
-        }
+    .comment-actions .comment-nav .comment-btn {
+        flex: 1;
     }
 
     .side-by-side-view {
@@ -3262,10 +1350,10 @@
         min-width: 400px;
         width: 50%;
         border-right: 1px solid #dfe1e6;
+    }
 
-        &:last-child {
-            border-right: none;
-        }
+    .side-cell:last-child {
+        border-right: none;
     }
 
     .side-cell-inner {
@@ -3290,15 +1378,14 @@
     .side-by-side-view::-webkit-scrollbar-thumb {
         background: var(--bitbucket-pr-review-border-dark);
         border-radius: 4px;
+    }
 
-        &:hover {
-            background: var(--bitbucket-pr-review-text-quaternary);
-        }
+    .side-by-side-view::-webkit-scrollbar-thumb:hover {
+        background: var(--bitbucket-pr-review-text-quaternary);
     }
 }
 
 @media (max-width: 500px) {
-
     .side-header-row,
     .side-row {
         min-width: 700px;
@@ -3309,956 +1396,3 @@
         min-width: 350px;
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// diff-viewer.component.ts
-import { Component, OnInit } from '@angular/core';
-import * as Diff from 'diff';
-import hljs from 'highlight.js';
-
-// Interfaces
-interface DiffFile {
-  file_path: string;
-  old_lines: string[];
-  new_lines: string[];
-  ai_comments: AIComment[];
-}
-
-interface AIComment {
-  file_path: string;
-  line: number;
-  side: 'TO' | 'FROM';
-  comment_text: string;
-  severity: 'error' | 'warning' | 'suggestion';
-  suggested_patch: string | null;
-}
-
-interface CommentState {
-  status: 'pending' | 'accepted' | 'rejected';
-  modifiedText: string | null;
-}
-
-interface DiffLine {
-  type: 'added' | 'deleted' | 'context';
-  oldLineNum?: number;
-  newLineNum?: number;
-  content: string;
-  comment?: AIComment;
-  oldComment?: AIComment; // For FROM side comments on context lines
-  newComment?: AIComment; // For TO side comments on context lines
-}
-
-interface DiffStats {
-  addedLines: number;
-  deletedLines: number;
-  commentsCount: number;
-}
-
-@Component({
-  selector: 'app-diff-viewer',
-  templateUrl: './diff-viewer.component.html',
-  styleUrls: ['./diff-viewer.component.scss']
-})
-export class DiffViewerComponent implements OnInit {
-  files: DiffFile[] = [];
-  selectedFile: DiffFile | null = null;
-  selectedFileIndex: number = -1;
-  currentView: 'unified' | 'side-by-side' = 'unified';
-  diffLines: DiffLine[] = [];
-  stats: DiffStats | null = null;
-
-  // Track editing state and comment states
-  editingComments = new Map<string, string>(); // commentId -> editText
-  commentStates = new Map<string, CommentState>();
-  processingComments = new Map<string, 'accept' | 'reject' | 'save'>(); // Track which comments are being processed
-  isDarkMode = false; // Track theme mode
-  searchQuery: string = ''; // For file search
-
-  ngOnInit(): void {
-    this.loadMockData();
-    // Load theme preference from localStorage
-    const savedTheme = localStorage.getItem('bitbucket-pr-review-theme');
-    this.isDarkMode = savedTheme === 'dark';
-
-    // Configure highlight.js
-    hljs.configure({
-      ignoreUnescapedHTML: true,
-      languages: ['typescript', 'javascript', 'python', 'java', 'csharp', 'cpp', 'go', 'rust', 'ruby', 'php', 'swift', 'kotlin', 'scala']
-    });
-  }
-
-  toggleTheme(): void {
-    this.isDarkMode = !this.isDarkMode;
-    localStorage.setItem('bitbucket-pr-review-theme', this.isDarkMode ? 'dark' : 'light');
-  }
-
-  // Get filtered files based on search query
-  get filteredFiles(): DiffFile[] {
-    if (!this.searchQuery.trim()) {
-      return this.files;
-    }
-    const query = this.searchQuery.toLowerCase();
-    return this.files.filter(file =>
-      file.file_path.toLowerCase().includes(query)
-    );
-  }
-
-  // Get comment count for a file
-  getFileCommentCount(file: DiffFile): number {
-    return file.ai_comments.length;
-  }
-
-  // Calculate file stats
-  calculateFileStats(file: DiffFile): { addedLines: number, deletedLines: number } {
-    const oldText = file.old_lines.join('\n');
-    const newText = file.new_lines.join('\n');
-    const diff = Diff.diffLines(oldText, newText);
-
-    let addedLines = 0;
-    let deletedLines = 0;
-
-    diff.forEach(part => {
-      const lines = part.value.split('\n');
-      if (lines[lines.length - 1] === '') {
-        lines.pop();
-      }
-
-      if (part.added) {
-        addedLines += lines.length;
-      } else if (part.removed) {
-        deletedLines += lines.length;
-      }
-    });
-
-    return { addedLines, deletedLines };
-  }
-
-  private loadMockData(): void {
-    this.files = [
-      {
-        file_path: "src/app/services/auth.service.ts",
-        old_lines: [
-          "import { Injectable } from '@angular/core';",
-          "import { HttpClient } from '@angular/common/http';",
-          "import { Observable } from 'rxjs';",
-          "",
-          "@Injectable({",
-          "  providedIn: 'root'",
-          "})",
-          "export class AuthService {",
-          "  private apiUrl = 'http://localhost:3000/api';",
-          "",
-          "  constructor(private http: HttpClient) { }",
-          "",
-          "  login(username: string, password: string): Observable<any> {",
-          "    return this.http.post(`${this.apiUrl}/login`, { username, password });",
-          "  }",
-          "}"
-        ],
-        new_lines: [
-          "import { Injectable } from '@angular/core';",
-          "import { HttpClient, HttpHeaders } from '@angular/common/http';",
-          "import { Observable, throwError } from 'rxjs';",
-          "import { catchError, tap } from 'rxjs/operators';",
-          "import { environment } from '../../environments/environment';",
-          "",
-          "@Injectable({",
-          "  providedIn: 'root'",
-          "})",
-          "export class AuthService {",
-          "  private apiUrl = environment.apiUrl;",
-          "  private tokenKey = 'auth_token';",
-          "",
-          "  constructor(private http: HttpClient) { }",
-          "",
-          "  login(username: string, password: string): Observable<any> {",
-          "    if (!username || !password) {",
-          "      return throwError('Username and password are required');",
-          "    }",
-          "",
-          "    const headers = new HttpHeaders({ 'Content-Type': 'application/json' });",
-          "    ",
-          "    return this.http.post(`${this.apiUrl}/auth/login`, ",
-          "      { username, password },",
-          "      { headers }",
-          "    ).pipe(",
-          "      tap((response: any) => {",
-          "        if (response.token) {",
-          "          localStorage.setItem(this.tokenKey, response.token);",
-          "        }",
-          "      }),",
-          "      catchError(error => {",
-          "        console.error('Login error:', error);",
-          "        return throwError(error);",
-          "      })",
-          "    );",
-          "  }",
-          "",
-          "  logout(): void {",
-          "    localStorage.removeItem(this.tokenKey);",
-          "  }",
-          "",
-          "  getToken(): string | null {",
-          "    return localStorage.getItem(this.tokenKey);",
-          "  }",
-          "",
-          "  isAuthenticated(): boolean {",
-          "    return !!this.getToken();",
-          "  }",
-          "}"
-        ],
-        ai_comments: [
-          {
-            file_path: "src/app/services/auth.service.ts",
-            line: 11,
-            side: "TO",
-            comment_text: "Good practice using environment variables instead of hardcoded URLs. This makes the application more flexible across different environments.",
-            severity: "suggestion",
-            suggested_patch: null
-          },
-          {
-            file_path: "src/app/services/auth.service.ts",
-            line: 17,
-            side: "TO",
-            comment_text: "Input validation is good, but consider using a more descriptive error object instead of a plain string for better error handling.",
-            severity: "warning",
-            suggested_patch: "      return throwError(() => new Error('Username and password are required'));"
-          },
-          {
-            file_path: "src/app/services/auth.service.ts",
-            line: 28,
-            side: "TO",
-            comment_text: "Security concern: Storing tokens in localStorage is vulnerable to XSS attacks. Consider using httpOnly cookies or sessionStorage with additional security measures.",
-            severity: "error",
-            suggested_patch: null
-          },
-          {
-            file_path: "src/app/services/auth.service.ts",
-            line: 32,
-            side: "TO",
-            comment_text: "Console.error in production code can expose sensitive information. Use a proper logging service with environment-based log levels.",
-            severity: "warning",
-            suggested_patch: "        // Use logging service instead of console.error"
-          }
-        ]
-      },
-      {
-        file_path: "src/app/components/login/login.component.ts",
-        old_lines: [
-          "import { Component } from '@angular/core';",
-          "import { AuthService } from '../../services/auth.service';",
-          "",
-          "@Component({",
-          "  selector: 'app-login',",
-          "  templateUrl: './login.component.html',",
-          "  styleUrls: ['./login.component.scss']",
-          "})",
-          "export class LoginComponent {",
-          "  username = '';",
-          "  password = '';",
-          "",
-          "  constructor(private authService: AuthService) { }",
-          "",
-          "  onSubmit() {",
-          "    this.authService.login(this.username, this.password).subscribe(",
-          "      response => {",
-          "        console.log('Login successful');",
-          "      }",
-          "    );",
-          "  }",
-          "}"
-        ],
-        new_lines: [
-          "import { Component, OnDestroy } from '@angular/core';",
-          "import { Router } from '@angular/router';",
-          "import { AuthService } from '../../services/auth.service';",
-          "import { Subject } from 'rxjs';",
-          "import { takeUntil } from 'rxjs/operators';",
-          "",
-          "@Component({",
-          "  selector: 'app-login',",
-          "  templateUrl: './login.component.html',",
-          "  styleUrls: ['./login.component.scss']",
-          "})",
-          "export class LoginComponent implements OnDestroy {",
-          "  username = '';",
-          "  password = '';",
-          "  isLoading = false;",
-          "  errorMessage = '';",
-          "  private destroy$ = new Subject<void>();",
-          "",
-          "  constructor(",
-          "    private authService: AuthService,",
-          "    private router: Router",
-          "  ) { }",
-          "",
-          "  ngOnDestroy(): void {",
-          "    this.destroy$.next();",
-          "    this.destroy$.complete();",
-          "  }",
-          "",
-          "  onSubmit(): void {",
-          "    if (!this.username.trim() || !this.password.trim()) {",
-          "      this.errorMessage = 'Please enter both username and password';",
-          "      return;",
-          "    }",
-          "",
-          "    this.isLoading = true;",
-          "    this.errorMessage = '';",
-          "",
-          "    this.authService.login(this.username, this.password)",
-          "      .pipe(takeUntil(this.destroy$))",
-          "      .subscribe({",
-          "        next: (response) => {",
-          "          this.isLoading = false;",
-          "          this.router.navigate(['/dashboard']);",
-          "        },",
-          "        error: (error) => {",
-          "          this.isLoading = false;",
-          "          this.errorMessage = error.message || 'Login failed. Please try again.';",
-          "        }",
-          "      });",
-          "  }",
-          "",
-          "  clearError(): void {",
-          "    this.errorMessage = '';",
-          "  }",
-          "}"
-        ],
-        ai_comments: [
-          {
-            file_path: "src/app/components/login/login.component.ts",
-            line: 17,
-            side: "TO",
-            comment_text: "Excellent addition of the destroy$ subject for proper subscription cleanup. This prevents memory leaks.",
-            severity: "suggestion",
-            suggested_patch: null
-          },
-          {
-            file_path: "src/app/components/login/login.component.ts",
-            line: 29,
-            side: "TO",
-            comment_text: "Good client-side validation, but remember this should also be validated on the server side for security.",
-            severity: "suggestion",
-            suggested_patch: null
-          },
-          {
-            file_path: "src/app/components/login/login.component.ts",
-            line: 34,
-            side: "TO",
-            comment_text: "Consider disabling the submit button while isLoading is true to prevent multiple submissions.",
-            severity: "suggestion",
-            suggested_patch: null
-          },
-          {
-            file_path: "src/app/components/login/login.component.ts",
-            line: 45,
-            side: "TO",
-            comment_text: "Generic error messages are good for security, but consider logging detailed errors for debugging purposes.",
-            severity: "suggestion",
-            suggested_patch: "          this.errorMessage = 'Login failed. Please try again.';\n          console.debug('Login error details:', error);"
-          }
-        ]
-      },
-      {
-        file_path: "src/app/guards/auth.guard.ts",
-        old_lines: [],
-        new_lines: [
-          "import { Injectable } from '@angular/core';",
-          "import { CanActivate, ActivatedRouteSnapshot, RouterStateSnapshot, Router } from '@angular/router';",
-          "import { AuthService } from '../services/auth.service';",
-          "",
-          "@Injectable({",
-          "  providedIn: 'root'",
-          "})",
-          "export class AuthGuard implements CanActivate {",
-          "",
-          "  constructor(",
-          "    private authService: AuthService,",
-          "    private router: Router",
-          "  ) { }",
-          "",
-          "  canActivate(",
-          "    route: ActivatedRouteSnapshot,",
-          "    state: RouterStateSnapshot",
-          "  ): boolean {",
-          "    if (this.authService.isAuthenticated()) {",
-          "      return true;",
-          "    }",
-          "",
-          "    this.router.navigate(['/login'], {",
-          "      queryParams: { returnUrl: state.url }",
-          "    });",
-          "    return false;",
-          "  }",
-          "}"
-        ],
-        ai_comments: [
-          {
-            file_path: "src/app/guards/auth.guard.ts",
-            line: 19,
-            side: "TO",
-            comment_text: "The authentication check looks good. However, consider also validating the token's expiration and integrity, not just its presence.",
-            severity: "warning",
-            suggested_patch: null
-          },
-          {
-            file_path: "src/app/guards/auth.guard.ts",
-            line: 24,
-            side: "TO",
-            comment_text: "Great addition of returnUrl query parameter! This provides better user experience by redirecting users back to their intended destination after login.",
-            severity: "suggestion",
-            suggested_patch: null
-          },
-          {
-            file_path: "src/app/guards/auth.guard.ts",
-            line: 15,
-            side: "TO",
-            comment_text: "Consider making canActivate return Observable<boolean> instead of just boolean to support async token validation.",
-            severity: "suggestion",
-            suggested_patch: "  canActivate(\n    route: ActivatedRouteSnapshot,\n    state: RouterStateSnapshot\n  ): Observable<boolean> | boolean {"
-          }
-        ]
-      }
-    ];
-  }
-
-  onFileSelect(file: DiffFile): void {
-    const index = this.files.indexOf(file);
-    if (index >= 0) {
-      this.selectedFileIndex = index;
-      this.selectedFile = file;
-      this.renderDiff();
-    }
-  }
-
-  switchView(view: 'unified' | 'side-by-side'): void {
-    this.currentView = view;
-    if (this.selectedFile) {
-      this.renderDiff();
-    }
-  }
-
-  private renderDiff(): void {
-    if (!this.selectedFile) return;
-
-    this.diffLines = this.generateUnifiedDiff(this.selectedFile);
-    this.stats = this.calculateStats(this.selectedFile);
-  }
-
-  private generateUnifiedDiff(file: DiffFile): DiffLine[] {
-    const oldText = file.old_lines.join('\n');
-    const newText = file.new_lines.join('\n');
-    const diff = Diff.diffLines(oldText, newText);
-
-    const lines: DiffLine[] = [];
-    let oldLineNum = 1;
-    let newLineNum = 1;
-
-    diff.forEach(part => {
-      const lineTexts = part.value.split('\n');
-      if (lineTexts[lineTexts.length - 1] === '') {
-        lineTexts.pop();
-      }
-
-      lineTexts.forEach(lineText => {
-        if (part.added) {
-          const comment = this.findCommentForLine(file, newLineNum, 'TO');
-          lines.push({
-            type: 'added',
-            newLineNum,
-            content: this.highlightSyntax(lineText, file.file_path),
-            comment,
-            newComment: comment  // For side-by-side view
-          });
-          newLineNum++;
-        } else if (part.removed) {
-          const comment = this.findCommentForLine(file, oldLineNum, 'FROM');
-          lines.push({
-            type: 'deleted',
-            oldLineNum,
-            content: this.highlightSyntax(lineText, file.file_path),
-            comment,
-            oldComment: comment  // For side-by-side view
-          });
-          oldLineNum++;
-        } else {
-          // Context lines - check for comments on both sides
-          const commentFrom = this.findCommentForLine(file, oldLineNum, 'FROM');
-          const commentTo = this.findCommentForLine(file, newLineNum, 'TO');
-          const comment = commentTo || commentFrom; // Prioritize TO comments
-
-          lines.push({
-            type: 'context',
-            oldLineNum,
-            newLineNum,
-            content: this.highlightSyntax(lineText, file.file_path),
-            comment,
-            oldComment: commentFrom, // For side-by-side view (left side)
-            newComment: commentTo    // For side-by-side view (right side)
-          });
-          oldLineNum++;
-          newLineNum++;
-        }
-      });
-    });
-
-    return lines;
-  }
-
-  private highlightSyntax(code: string, filePath: string): string {
-    try {
-      // Detect language from file extension
-      const language = this.detectLanguage(filePath);
-
-      // Use highlight.js for syntax highlighting
-      if (language) {
-        const result = hljs.highlight(code, { language, ignoreIllegals: true });
-        return result.value;
-      } else {
-        // Auto-detect if no specific language found
-        const result = hljs.highlightAuto(code);
-        return result.value;
-      }
-    } catch (error) {
-      // Fallback to plain text if highlighting fails
-      return this.escapeHtml(code);
-    }
-  }
-
-  private detectLanguage(filePath: string): string {
-    const extension = filePath.split('.').pop()?.toLowerCase() || '';
-
-    const languageMap: { [key: string]: string } = {
-      'ts': 'typescript',
-      'tsx': 'typescript',
-      'js': 'javascript',
-      'jsx': 'javascript',
-      'py': 'python',
-      'java': 'java',
-      'cs': 'csharp',
-      'cpp': 'cpp',
-      'cc': 'cpp',
-      'cxx': 'cpp',
-      'c': 'c',
-      'h': 'cpp',
-      'hpp': 'cpp',
-      'go': 'go',
-      'rs': 'rust',
-      'rb': 'ruby',
-      'php': 'php',
-      'swift': 'swift',
-      'kt': 'kotlin',
-      'kts': 'kotlin',
-      'scala': 'scala',
-      'sc': 'scala',
-      'html': 'html',
-      'xml': 'xml',
-      'css': 'css',
-      'scss': 'scss',
-      'sass': 'sass',
-      'less': 'less',
-      'json': 'json',
-      'yaml': 'yaml',
-      'yml': 'yaml',
-      'md': 'markdown',
-      'sql': 'sql',
-      'sh': 'bash',
-      'bash': 'bash',
-      'ps1': 'powershell',
-      'r': 'r',
-      'dart': 'dart',
-      'vue': 'vue',
-      'lua': 'lua',
-      'perl': 'perl',
-      'pl': 'perl'
-    };
-
-    return languageMap[extension] || '';
-  }
-
-  private escapeHtml(text: string): string {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-  }
-
-  private calculateStats(file: DiffFile): DiffStats {
-    const oldText = file.old_lines.join('\n');
-    const newText = file.new_lines.join('\n');
-    const diff = Diff.diffLines(oldText, newText);
-
-    let addedLines = 0;
-    let deletedLines = 0;
-
-    diff.forEach(part => {
-      const lines = part.value.split('\n');
-      if (lines[lines.length - 1] === '') {
-        lines.pop();
-      }
-
-      if (part.added) {
-        addedLines += lines.length;
-      } else if (part.removed) {
-        deletedLines += lines.length;
-      }
-    });
-
-    return {
-      addedLines,
-      deletedLines,
-      commentsCount: file.ai_comments.length
-    };
-  }
-
-  private findCommentForLine(file: DiffFile, lineNum: number, side: 'TO' | 'FROM'): AIComment | undefined {
-    return file.ai_comments.find(comment =>
-      comment.line === lineNum && comment.side === side
-    );
-  }
-
-  // Comment State Management
-  private getCommentKey(filePath: string, line: number, side: string): string {
-    return `${filePath}-${line}-${side}`;
-  }
-
-  getCommentState(comment: AIComment): CommentState {
-    if (!this.selectedFile) return { status: 'pending', modifiedText: null };
-    const key = this.getCommentKey(this.selectedFile.file_path, comment.line, comment.side);
-    return this.commentStates.get(key) || { status: 'pending', modifiedText: null };
-  }
-
-  private saveCommentState(filePath: string, line: number, side: string, status: 'pending' | 'accepted' | 'rejected', modifiedText: string | null): void {
-    const key = this.getCommentKey(filePath, line, side);
-    this.commentStates.set(key, { status, modifiedText });
-  }
-
-  getCommentId(comment: AIComment): string {
-    return `comment-${comment.line}-${comment.side}`;
-  }
-
-  getDisplayText(comment: AIComment): string {
-    const state = this.getCommentState(comment);
-    return state.modifiedText || comment.comment_text;
-  }
-
-  isEditing(comment: AIComment): boolean {
-    return this.editingComments.has(this.getCommentId(comment));
-  }
-
-  getEditText(comment: AIComment): string {
-    return this.editingComments.get(this.getCommentId(comment)) || '';
-  }
-
-  setEditText(comment: AIComment, text: string): void {
-    this.editingComments.set(this.getCommentId(comment), text);
-  }
-
-  isActionDisabled(comment: AIComment): boolean {
-    const state = this.getCommentState(comment);
-    return state.status === 'accepted' || state.status === 'rejected' || this.isProcessing(comment);
-  }
-
-  // Update isProcessing method
-  isProcessing(comment: AIComment): boolean {
-    return this.processingComments.has(this.getCommentId(comment));
-  }
-
-  // Add new method to check specific action
-
-  // Add this new method (place it after isProcessing):
-  isProcessingAction(comment: AIComment, action: 'accept' | 'reject' | 'save'): boolean {
-    const commentId = this.getCommentId(comment);
-    return this.processingComments.get(commentId) === action;
-  }
-
-  // Update acceptComment:
-  acceptComment(comment: AIComment): void {
-    if (!this.selectedFile || this.isActionDisabled(comment)) return;
-
-    const commentId = this.getCommentId(comment);
-    this.processingComments.set(commentId, 'accept');
-
-    setTimeout(() => {
-      const displayText = this.getDisplayText(comment);
-      this.saveCommentState(
-        this.selectedFile!.file_path,
-        comment.line,
-        comment.side,
-        'accepted',
-        displayText
-      );
-      this.processingComments.delete(commentId);
-    }, 800);
-  }
-
-  // Update rejectComment:
-  rejectComment(comment: AIComment): void {
-    if (!this.selectedFile || this.isActionDisabled(comment)) return;
-
-    const commentId = this.getCommentId(comment);
-    this.processingComments.set(commentId, 'reject');
-
-    setTimeout(() => {
-      const displayText = this.getDisplayText(comment);
-      this.saveCommentState(
-        this.selectedFile!.file_path,
-        comment.line,
-        comment.side,
-        'rejected',
-        displayText
-      );
-      this.processingComments.delete(commentId);
-    }, 800);
-  }
-
-  // Update saveComment:
-  saveComment(comment: AIComment): void {
-    if (!this.selectedFile) return;
-
-    const commentId = this.getCommentId(comment);
-    this.processingComments.set(commentId, 'save');
-
-    setTimeout(() => {
-      const newText = this.getEditText(comment);
-      const state = this.getCommentState(comment);
-      this.saveCommentState(
-        this.selectedFile!.file_path,
-        comment.line,
-        comment.side,
-        state.status,
-        newText
-      );
-      this.editingComments.delete(commentId);
-      this.processingComments.delete(commentId);
-    }, 800);
-  }
-
-  modifyComment(comment: AIComment): void {
-    if (this.isActionDisabled(comment)) return;
-    const displayText = this.getDisplayText(comment);
-    this.editingComments.set(this.getCommentId(comment), displayText);
-  }
-
-  cancelModify(comment: AIComment): void {
-    this.editingComments.delete(this.getCommentId(comment));
-  }
-
-  scrollToComment(index: number): void {
-    setTimeout(() => {
-      const commentElements = document.querySelectorAll('.ai-comment');
-      if (commentElements[index]) {
-        commentElements[index].scrollIntoView({ behavior: 'smooth', block: 'center' });
-
-        const element = commentElements[index] as HTMLElement;
-        element.style.transition = 'box-shadow 0.3s';
-        element.style.boxShadow = '0 0 10px rgba(59, 130, 246, 0.5)';
-        setTimeout(() => {
-          element.style.boxShadow = '';
-        }, 1000);
-      }
-    }, 100);
-  }
-
-  goToFirstComment(): void {
-    this.scrollToComment(0);
-  }
-
-  goToNextComment(currentComment: AIComment): void {
-    if (!this.selectedFile) return;
-
-    // Get all comments that would be visible in the current view
-    const visibleComments = this.diffLines
-      .map(line => {
-        if (this.currentView === 'unified') {
-          return line.comment;
-        } else {
-          // For side-by-side, both oldComment and newComment can be visible
-          return [line.oldComment, line.newComment];
-        }
-      })
-      .flat()
-      .filter(c => c !== undefined) as AIComment[];
-
-    const currentId = this.getCommentId(currentComment);
-    const currentIndex = visibleComments.findIndex(c => this.getCommentId(c) === currentId);
-
-    if (currentIndex >= 0 && currentIndex < visibleComments.length - 1) {
-      // Scroll to the next comment
-      setTimeout(() => {
-        const nextCommentId = this.getCommentId(visibleComments[currentIndex + 1]);
-        const element = document.getElementById(nextCommentId);
-        if (element) {
-          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-
-          element.style.transition = 'box-shadow 0.3s';
-          element.style.boxShadow = '0 0 10px rgba(59, 130, 246, 0.5)';
-          setTimeout(() => {
-            element.style.boxShadow = '';
-          }, 1000);
-        }
-      }, 100);
-    }
-  }
-
-  goToPreviousComment(currentComment: AIComment): void {
-    if (!this.selectedFile) return;
-
-    // Get all comments that would be visible in the current view
-    const visibleComments = this.diffLines
-      .map(line => {
-        if (this.currentView === 'unified') {
-          return line.comment;
-        } else {
-          // For side-by-side, both oldComment and newComment can be visible
-          return [line.oldComment, line.newComment];
-        }
-      })
-      .flat()
-      .filter(c => c !== undefined) as AIComment[];
-
-    const currentId = this.getCommentId(currentComment);
-    const currentIndex = visibleComments.findIndex(c => this.getCommentId(c) === currentId);
-
-    if (currentIndex > 0) {
-      // Scroll to the previous comment
-      setTimeout(() => {
-        const prevCommentId = this.getCommentId(visibleComments[currentIndex - 1]);
-        const element = document.getElementById(prevCommentId);
-        if (element) {
-          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-
-          element.style.transition = 'box-shadow 0.3s';
-          element.style.boxShadow = '0 0 10px rgba(59, 130, 246, 0.5)';
-          setTimeout(() => {
-            element.style.boxShadow = '';
-          }, 1000);
-        }
-      }, 100);
-    }
-  }
-
-  isFirstComment(comment: AIComment): boolean {
-    if (!this.selectedFile) return true;
-
-    // Get all comments that would be visible in the current view
-    const visibleComments = this.diffLines
-      .map(line => {
-        if (this.currentView === 'unified') {
-          return line.comment;
-        } else {
-          // For side-by-side, both oldComment and newComment can be visible
-          return [line.oldComment, line.newComment];
-        }
-      })
-      .flat()
-      .filter(c => c !== undefined) as AIComment[];
-
-    if (visibleComments.length === 0) return true;
-
-    const currentId = this.getCommentId(comment);
-    const firstCommentId = this.getCommentId(visibleComments[0]);
-
-    return currentId === firstCommentId;
-  }
-
-  isLastComment(comment: AIComment): boolean {
-    if (!this.selectedFile) return true;
-
-    // Get all comments that would be visible in the current view
-    const visibleComments = this.diffLines
-      .map(line => {
-        if (this.currentView === 'unified') {
-          return line.comment;
-        } else {
-          // For side-by-side, both oldComment and newComment can be visible
-          return [line.oldComment, line.newComment];
-        }
-      })
-      .flat()
-      .filter(c => c !== undefined) as AIComment[];
-
-    if (visibleComments.length === 0) return true;
-
-    const currentId = this.getCommentId(comment);
-    const lastCommentId = this.getCommentId(visibleComments[visibleComments.length - 1]);
-
-    return currentId === lastCommentId;
-  }
-
-  exportComments(): void {
-    const data: any[] = [];
-
-    this.commentStates.forEach((state, key) => {
-      const [filePath, line, side] = key.split('-');
-      const file = this.files.find(f => f.file_path === filePath);
-
-      if (file) {
-        const comment = file.ai_comments.find(c =>
-          c.line === parseInt(line) && c.side === side
-        );
-
-        if (comment) {
-          data.push({
-            file: filePath,
-            line: parseInt(line),
-            side: side,
-            status: state.status,
-            originalText: comment.comment_text,
-            modifiedText: state.modifiedText,
-            severity: comment.severity,
-            suggestedPatch: comment.suggested_patch
-          });
-        }
-      }
-    });
-
-    const accepted = data.filter(d => d.status === 'accepted').length;
-    const rejected = data.filter(d => d.status === 'rejected').length;
-    const pending = data.filter(d => d.status === 'pending').length;
-
-    const jsonStr = JSON.stringify(data, null, 2);
-    const blob = new Blob([jsonStr], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'comment-review-results.json';
-    a.click();
-    URL.revokeObjectURL(url);
-
-    alert(
-      `Comment data exported!\n\n` +
-      `Total: ${data.length}\n` +
-      `Accepted: ${accepted}\n` +
-      `Rejected: ${rejected}\n` +
-      `Pending: ${pending}\n\n` +
-      `File downloaded: comment-review-results.json`
-    );
-  }
-
-  hasComments(): boolean {
-    return this.selectedFile ? this.selectedFile.ai_comments.length > 0 : false;
-  }
-}
-
-
-
