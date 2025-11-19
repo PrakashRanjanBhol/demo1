@@ -1,99 +1,103 @@
-// Compact diff for large files - shows only changes with context
-private generateCompactDiff(file: DiffFile): DiffLine[] {
-  const oldText = file.old_lines.join('\n');
-  const newText = file.new_lines.join('\n');
-  const diff = Diff.diffLines(oldText, newText);
+.view-toggle {
+  display: flex;
+  gap: 6px;
+  background-color: var(--bitbucket-pr-review-bg-tertiary);
+  padding: 3px;
+  border-radius: 6px;
+  border: 1px solid var(--bitbucket-pr-review-border-medium);
+}
 
-  const allLines: DiffLine[] = [];
-  let oldLineNum = 1;
-  let newLineNum = 1;
+.toggle-btn {
+  padding: 6px 12px;
+  background-color: transparent;
+  color: var(--bitbucket-pr-review-text-tertiary);
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  position: relative;
 
-  // First pass: generate all lines with their types
-  diff.forEach(part => {
-    const lineTexts = part.value.split('\n');
-    if (lineTexts[lineTexts.length - 1] === '') {
-      lineTexts.pop();
+  &:hover {
+    background-color: var(--bitbucket-pr-review-bg-hover);
+    color: var(--bitbucket-pr-review-text-secondary);
+  }
+
+  &.active {
+    background-color: #3b82f6;
+    color: white;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+
+    &:hover {
+      background-color: #2563eb;
     }
+  }
+}
 
-    lineTexts.forEach(lineText => {
-      if (part.added) {
-        const comment = this.findCommentForLine(file, newLineNum, 'TO');
-        allLines.push({
-          type: 'added',
-          newLineNum,
-          content: this.highlightSyntax(lineText, file.file_path),
-          comment
-        });
-        newLineNum++;
-      } else if (part.removed) {
-        const comment = this.findCommentForLine(file, oldLineNum, 'FROM');
-        allLines.push({
-          type: 'deleted',
-          oldLineNum,
-          content: this.highlightSyntax(lineText, file.file_path),
-          comment
-        });
-        oldLineNum++;
-      } else {
-        const commentFrom = this.findCommentForLine(file, oldLineNum, 'FROM');
-        const commentTo = this.findCommentForLine(file, newLineNum, 'TO');
-        const comment = commentTo || commentFrom;
-        
-        allLines.push({
-          type: 'context',
-          oldLineNum,
-          newLineNum,
-          content: this.highlightSyntax(lineText, file.file_path),
-          comment
-        });
-        oldLineNum++;
-        newLineNum++;
-      }
-    });
-  });
+.theme-toggle {
+  font-size: 16px;
+  padding: 6px 10px;
+  min-width: auto;
+}
 
-  // Second pass: identify ranges to show (changes + context + comments)
-  const linesToShow = new Set<number>();
-  
-  allLines.forEach((line, index) => {
-    // Include all changed lines
-    if (line.type === 'added' || line.type === 'deleted') {
-      linesToShow.add(index);
-      // Add context lines around changes
-      for (let i = Math.max(0, index - this.CONTEXT_LINES); i <= Math.min(allLines.length - 1, index + this.CONTEXT_LINES); i++) {
-        linesToShow.add(i);
-      }
+.first-comment-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+  border: none;
+  box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
+  font-size: 12px;
+
+  .btn-icon {
+    width: 14px;
+    height: 14px;
+    fill: white;
+  }
+
+  &:hover {
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+    box-shadow: 0 4px 8px rgba(59, 130, 246, 0.4);
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+}
+
+.reset-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background-color: var(--bitbucket-pr-review-bg-tertiary);
+  color: var(--bitbucket-pr-review-text-secondary);
+  border: 1.5px solid var(--bitbucket-pr-review-border-dark);
+  font-size: 12px;
+
+  .btn-icon {
+    width: 14px;
+    height: 14px;
+    fill: var(--bitbucket-pr-review-text-secondary);
+  }
+
+  &:hover {
+    background-color: #ef4444;
+    border-color: #ef4444;
+    color: white;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(239, 68, 68, 0.3);
+
+    .btn-icon {
+      fill: white;
     }
-    
-    // Include lines with comments and their context (EVEN IF NOT MODIFIED)
-    if (line.comment) {
-      linesToShow.add(index);
-      // Add context lines around comments
-      for (let i = Math.max(0, index - this.CONTEXT_LINES); i <= Math.min(allLines.length - 1, index + this.CONTEXT_LINES); i++) {
-        linesToShow.add(i);
-      }
-    }
-  });
+  }
 
-  // Third pass: build final output with separators
-  const compactLines: DiffLine[] = [];
-  const sortedIndices = Array.from(linesToShow).sort((a, b) => a - b);
-  
-  let lastIndex = -1;
-  sortedIndices.forEach(index => {
-    // Add separator if there's a gap (more than 1 line)
-    if (lastIndex !== -1 && index - lastIndex > 1) {
-      compactLines.push({
-        type: 'context',
-        content: this.createSeparatorContent(lastIndex, index, allLines),
-        oldLineNum: undefined,
-        newLineNum: undefined
-      });
-    }
-    
-    compactLines.push(allLines[index]);
-    lastIndex = index;
-  });
-
-  return compactLines;
+  &:active {
+    transform: translateY(0);
+  }
 }
