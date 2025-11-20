@@ -1,118 +1,191 @@
-<div class="view-toggle">
-  <button 
-    class="toggle-btn" 
-    [class.active]="currentView === 'unified'"
-    (click)="switchView('unified')">
-    Unified
-  </button>
-  <button 
-    class="toggle-btn" 
-    [class.active]="currentView === 'side-by-side'"
-    (click)="switchView('side-by-side')">
-    Side by Side
-  </button>
-</div>
+// Add this property
+private sortedFiles: DiffFile[] = [];
 
-<!-- Add this info icon -->
-<div class="info-tooltip-container">
-  <svg class="info-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
-  </svg>
-  <div class="info-tooltip">
-    AI Review is model dependent
-  </div>
-</div>
+// Update ngOnInit to sort files
+ngOnInit(): void {
+  this.loadMockData();
+  this.sortFilesByComments(); // Sort files after loading
+  
+  const savedTheme = localStorage.getItem('bitbucket-pr-review-theme');
+  this.isDarkMode = savedTheme === 'dark';
+  
+  hljs.configure({
+    ignoreUnescapedHTML: true,
+    languages: ['typescript', 'javascript', 'python', 'java', 'csharp', 'cpp', 'go', 'rust', 'ruby', 'php', 'swift', 'kotlin', 'scala']
+  });
+}
 
-
-
-
-
-
-
-
-
-.info-tooltip-container {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  margin-left: 8px;
-
-  .info-icon {
-    width: 18px;
-    height: 18px;
-    fill: var(--bitbucket-pr-review-text-tertiary);
-    cursor: help;
-    transition: all 0.2s ease;
+// Add this method to sort files
+private sortFilesByComments(): void {
+  this.sortedFiles = [...this.files].sort((a, b) => {
+    const aComments = a.ai_comments.length;
+    const bComments = b.ai_comments.length;
     
-    &:hover {
-      fill: #3b82f6;
-      transform: scale(1.1);
+    // Files with comments first
+    if (aComments > 0 && bComments === 0) return -1;
+    if (aComments === 0 && bComments > 0) return 1;
+    
+    // If both have comments, sort by comment count (descending)
+    if (aComments > 0 && bComments > 0) {
+      return bComments - aComments;
+    }
+    
+    // If neither has comments, maintain original order
+    return 0;
+  });
+}
+
+// Update selectFileByIndex to work with sorted files
+selectFileByIndex(index: number): void {
+  const file = this.sortedFiles[index];
+  const originalIndex = this.files.indexOf(file);
+  this.onFileSelect(originalIndex);
+  this.closeDropdown();
+}
+
+// Update getFileCommentsCount if needed (it's already fine)
+getFileCommentsCount(file: DiffFile): number {
+  return file.ai_comments.length;
+}
+
+// Update resetComponentState to clear sorted files
+resetComponentState(): void {
+  this.files = [];
+  this.sortedFiles = [];
+  this.selectedFile = null;
+  this.selectedFileIndex = -1;
+  this.diffLines = [];
+  this.stats = null;
+  
+  this.editingComments.clear();
+  this.commentStates.clear();
+  this.processingComments.clear();
+  
+  this.clearCommentCache();
+  
+  this.currentView = 'unified';
+  this.isDropdownOpen = false;
+}
+
+// Update loadMockData or any method that loads files
+private loadMockData(): void {
+  // ... your existing loadMockData code ...
+  // After setting this.files, call:
+  // this.sortFilesByComments(); (already called in ngOnInit)
+}
+
+
+
+
+
+
+
+
+
+
+<div class="file-selector">
+  <div class="custom-dropdown" [class.open]="isDropdownOpen">
+    <div class="dropdown-selected" (click)="toggleDropdown()">
+      <div class="selected-content">
+        <span class="file-icon">📄</span>
+        <span class="file-name">
+          {{ selectedFile ? selectedFile.file_path : 'Select a file to view diff...' }}
+        </span>
+        <span class="comment-badge" *ngIf="selectedFile && getFileCommentsCount(selectedFile) > 0">
+          {{ getFileCommentsCount(selectedFile) }}
+        </span>
+      </div>
+      <svg class="dropdown-arrow" [class.rotated]="isDropdownOpen" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/>
+      </svg>
+    </div>
+    
+    <div class="dropdown-options" *ngIf="isDropdownOpen" (click)="$event.stopPropagation()">
+      <div class="dropdown-list">
+        <!-- Use sortedFiles instead of files -->
+        <div 
+          *ngFor="let file of sortedFiles; let i = index" 
+          class="dropdown-option"
+          [class.selected]="selectedFile === file"
+          [class.has-comments]="getFileCommentsCount(file) > 0"
+          (click)="selectFileByIndex(i)">
+          <div class="option-content">
+            <span class="file-icon">📄</span>
+            <span class="file-path">{{ file.file_path }}</span>
+          </div>
+          <span class="comment-badge" *ngIf="getFileCommentsCount(file) > 0">
+            {{ getFileCommentsCount(file) }}
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Backdrop to close dropdown -->
+  <div class="dropdown-backdrop" *ngIf="isDropdownOpen" (click)="closeDropdown()"></div>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+.dropdown-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border-bottom: 1px solid var(--bitbucket-pr-review-border-light);
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  &:hover {
+    background-color: var(--bitbucket-pr-review-bg-hover);
+  }
+
+  &.selected {
+    background-color: rgba(59, 130, 246, 0.1);
+    border-left: 3px solid #3b82f6;
+
+    .file-path {
+      color: #3b82f6;
+      font-weight: 600;
     }
   }
 
-  .info-tooltip {
-    position: absolute;
-    bottom: calc(100% + 8px);
-    left: 50%;
-    transform: translateX(-50%);
-    background-color: var(--bitbucket-pr-review-text-primary);
-    color: var(--bitbucket-pr-review-bg-primary);
-    padding: 8px 12px;
-    border-radius: 6px;
-    font-size: 12px;
-    font-weight: 500;
-    white-space: nowrap;
-    pointer-events: none;
-    opacity: 0;
-    visibility: hidden;
-    transition: all 0.2s ease;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    z-index: 1000;
+  // Add visual distinction for files with comments
+  &.has-comments {
+    position: relative;
 
-    &::after {
+    &::before {
       content: '';
       position: absolute;
-      top: 100%;
-      left: 50%;
-      transform: translateX(-50%);
-      border: 6px solid transparent;
-      border-top-color: var(--bitbucket-pr-review-text-primary);
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 3px;
+      background: linear-gradient(180deg, rgba(59, 130, 246, 0.3) 0%, rgba(37, 99, 235, 0.1) 100%);
+    }
+
+    &:first-child {
+      border-top: 2px solid rgba(59, 130, 246, 0.2);
     }
   }
 
-  &:hover .info-tooltip {
-    opacity: 1;
-    visibility: visible;
-    bottom: calc(100% + 12px);
-  }
-}
-
-// Dark mode adjustments
-:host.dark-mode {
-  .info-tooltip-container .info-tooltip {
-    background-color: var(--bitbucket-pr-review-bg-primary);
-    color: var(--bitbucket-pr-review-text-primary);
-    border: 1px solid var(--bitbucket-pr-review-border-dark);
-
-    &::after {
-      border-top-color: var(--bitbucket-pr-review-border-dark);
-    }
-  }
-}
-
-// Responsive
-@media (max-width: 768px) {
-  .info-tooltip-container {
-    margin-left: 6px;
-
-    .info-icon {
-      width: 16px;
-      height: 16px;
-    }
-
-    .info-tooltip {
-      font-size: 11px;
-      padding: 6px 10px;
-    }
+  // Add separator after files with comments
+  &.has-comments:not(:has(+ .has-comments)) {
+    border-bottom: 2px solid rgba(59, 130, 246, 0.2);
+    margin-bottom: 4px;
   }
 }
