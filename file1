@@ -1,62 +1,262 @@
-// Add this method to remove duplicate comments
-private deduplicateComments(file: DiffFile): DiffFile {
-  const seenComments = new Map<string, AIComment>();
-  const uniqueComments: AIComment[] = [];
+// Update the threshold constants
+private readonly LARGE_FILE_THRESHOLD = 500;
+private readonly NEW_FILE_LARGE_THRESHOLD = 1000;
+private readonly CONTEXT_LINES = 3;
+private readonly NEW_FILE_DISPLAY_LINES = 50; // Show first 50 lines for new large files
 
-  file.ai_comments.forEach(comment => {
-    // Create a unique key based on line number and side
-    const key = `${comment.line}-${comment.side}`;
+// Add method to detect if file is new
+private isNewFile(file: DiffFile): boolean {
+  return file.old_lines.length === 0 || 
+         (file.old_lines.length === 1 && file.old_lines[0].trim() === '');
+}
+
+// Add method to detect if file is deleted
+private isDeletedFile(file: DiffFile): boolean {
+  return file.new_lines.length === 0 || 
+         (file.new_lines.length === 1 && file.new_lines[0].trim() === '');
+}
+
+// Update generateUnifiedDiff to handle new/deleted files
+private generateUnifiedDiff(file: DiffFile): DiffLine[] {
+  const isNew = this.isNewFile(file);
+  const isDeleted = this.isDeletedFile(file);
+  const isLargeFile = Math.max(file.old_lines.length, file.new_lines.length) > this.LARGE_FILE_THRESHOLD;
+  
+  // Handle new large files specially
+  if (isNew && file.new_lines.length > this.NEW_FILE_LARGE_THRESHOLD) {
+    return this.generateNewFileSummaryDiff(file);
+  }
+  
+  // Handle deleted large files specially
+  if (isDeleted && file.old_lines.length > this.NEW_FILE_LARGE_THRESHOLD) {
+    return this.generateDeletedFileSummaryDiff(file);
+  }
+  
+  // Handle modified large files
+  if (isLargeFile && !isNew && !isDeleted) {
+    return this.generateCompactDiff(file);
+  }
+  
+  // Show full diff for small files
+  return this.generateFullDiff(file);
+}
+
+// New method for handling new large files
+private generateNewFileSummaryDiff(file: DiffFile): DiffLine[] {
+  const lines: DiffLine[] = [];
+  const totalLines = file.new_lines.length;
+  
+  // Check if there are comments
+  const hasComments = file.ai_comments.length > 0;
+  
+  if (hasComments) {
+    // Show sections with comments + context
+    return this.generateNewFileWithCommentsDiff(file);
+  } else {
+    // Show only first N lines and last few lines
+    const linesToShow = this.NEW_FILE_DISPLAY_LINES;
     
-    // Only keep the first comment for each line-side combination
-    if (!seenComments.has(key)) {
-      seenComments.set(key, comment);
-      uniqueComments.push(comment);
+    // Show first N lines
+    for (let i = 0; i < Math.min(linesToShow, totalLines); i++) {
+      const lineText = file.new_lines[i];
+      lines.push({
+        type: 'added',
+        newLineNum: i + 1,
+        content: this.highlightSyntax(lineText, file.file_path)
+      });
+    }
+    
+    // Add separator if there are more lines
+    if (totalLines > linesToShow) {
+      lines.push({
+        type: 'context',
+        content: this.createNewFileSeparatorContent(linesToShow, totalLines),
+        oldLineNum: undefined,
+        newLineNum: undefined
+      });
+      
+      // Show last 10 lines
+      const lastLinesToShow = 10;
+      for (let i = Math.max(linesToShow, totalLines - lastLinesToShow); i < totalLines; i++) {
+        const lineText = file.new_lines[i];
+        lines.push({
+          type: 'added',
+          newLineNum: i + 1,
+          content: this.highlightSyntax(lineText, file.file_path)
+        });
+      }
+    }
+  }
+  
+  return lines;
+}
+
+// Method to handle new files with comments
+private generateNewFileWithCommentsDiff(file: DiffFile): DiffLine[] {
+  const lines: DiffLine[] = [];
+  const totalLines = file.new_lines.length;
+  const linesToShow = new Set<number>();
+  
+  // Add lines with comments and their context
+  file.ai_comments.forEach(comment => {
+    if (comment.side === 'TO') {
+      const lineIndex = comment.line - 1;
+      
+      // Add the comment line and context
+      for (let i = Math.max(0, lineIndex - this.CONTEXT_LINES); 
+           i <= Math.min(totalLines - 1, lineIndex + this.CONTEXT_LINES); 
+           i++) {
+        linesToShow.add(i);
+      }
     }
   });
-
-  return {
-    ...file,
-    ai_comments: uniqueComments
-  };
-}
-
-// Update loadMockData to deduplicate comments
-private loadMockData(): void {
-  this.files = [
-    {
-      file_path: "src/app/services/auth.service.ts",
-      old_lines: [
-        // ... your existing old_lines
-      ],
-      new_lines: [
-        // ... your existing new_lines
-      ],
-      ai_comments: [
-        // ... your existing ai_comments
-      ]
-    },
-    // ... other files
-  ];
-
-  // Deduplicate comments for all files
-  this.files = this.files.map(file => this.deduplicateComments(file));
-}
-
-// Alternative: If you're loading files from an API, deduplicate there
-loadFilesFromAPI(files: DiffFile[]): void {
-  this.files = files.map(file => this.deduplicateComments(file));
-  this.sortFilesByComments();
-  if (this.files.length > 0) {
-    this.onFileSelect(0);
+  
+  // Always show first few lines of new files
+  const initialLinesToShow = 20;
+  for (let i = 0; i < Math.min(initialLinesToShow, totalLines); i++) {
+    linesToShow.add(i);
   }
+  
+  // Build the diff with separators
+  const sortedIndices = Array.from(linesToShow).sort((a, b) => a - b);
+  let lastIndex = -1;
+  
+  sortedIndices.forEach(index => {
+    // Add separator if there's a gap
+    if (lastIndex !== -1 && index - lastIndex > 1) {
+      lines.push({
+        type: 'context',
+        content: this.createNewFileSeparatorContent(lastIndex + 1, index, totalLines),
+        oldLineNum: undefined,
+        newLineNum: undefined
+      });
+    }
+    
+    const lineText = file.new_lines[index];
+    const comment = this.findCommentForLine(file, index + 1, 'TO');
+    
+    lines.push({
+      type: 'added',
+      newLineNum: index + 1,
+      content: this.highlightSyntax(lineText, file.file_path),
+      comment
+    });
+    
+    lastIndex = index;
+  });
+  
+  return lines;
 }
 
-// Update onFileSelect to ensure deduplication when selecting
-onFileSelect(index: number): void {
-  if (index >= 0 && index < this.files.length) {
-    this.selectedFileIndex = index;
-    // Deduplicate before setting selected file
-    this.selectedFile = this.deduplicateComments(this.files[index]);
-    this.renderDiff();
+// Method to handle deleted large files
+private generateDeletedFileSummaryDiff(file: DiffFile): DiffLine[] {
+  const lines: DiffLine[] = [];
+  const totalLines = file.old_lines.length;
+  const linesToShow = this.NEW_FILE_DISPLAY_LINES;
+  
+  // Show first N lines
+  for (let i = 0; i < Math.min(linesToShow, totalLines); i++) {
+    const lineText = file.old_lines[i];
+    lines.push({
+      type: 'deleted',
+      oldLineNum: i + 1,
+      content: this.highlightSyntax(lineText, file.file_path)
+    });
   }
+  
+  // Add separator if there are more lines
+  if (totalLines > linesToShow) {
+    lines.push({
+      type: 'context',
+      content: this.createNewFileSeparatorContent(linesToShow, totalLines),
+      oldLineNum: undefined,
+      newLineNum: undefined
+    });
+    
+    // Show last 10 lines
+    const lastLinesToShow = 10;
+    for (let i = Math.max(linesToShow, totalLines - lastLinesToShow); i < totalLines; i++) {
+      const lineText = file.old_lines[i];
+      lines.push({
+        type: 'deleted',
+        oldLineNum: i + 1,
+        content: this.highlightSyntax(lineText, file.file_path)
+      });
+    }
+  }
+  
+  return lines;
 }
+
+// Create separator for new files
+private createNewFileSeparatorContent(startLine: number, endLine: number, totalLines?: number): string {
+  const skippedCount = endLine - startLine;
+  const percentage = totalLines ? Math.round((skippedCount / totalLines) * 100) : 0;
+  
+  return `<span style="color: #6b7280; font-style: italic;">⋯ ${skippedCount} lines hidden (Lines ${startLine + 1}-${endLine})${totalLines ? ` - ${percentage}% of file` : ''} ⋯</span>`;
+}
+
+// Update isCompactView to handle new files
+isCompactView(): boolean {
+  if (!this.selectedFile) return false;
+  
+  const isNew = this.isNewFile(this.selectedFile);
+  const isDeleted = this.isDeletedFile(this.selectedFile);
+  
+  // New or deleted large files
+  if (isNew && this.selectedFile.new_lines.length > this.NEW_FILE_LARGE_THRESHOLD) {
+    return true;
+  }
+  
+  if (isDeleted && this.selectedFile.old_lines.length > this.NEW_FILE_LARGE_THRESHOLD) {
+    return true;
+  }
+  
+  // Regular modified files
+  return Math.max(this.selectedFile.old_lines.length, this.selectedFile.new_lines.length) > this.LARGE_FILE_THRESHOLD;
+}
+
+// Get file type for display
+getFileDisplayType(): string {
+  if (!this.selectedFile) return '';
+  
+  const isNew = this.isNewFile(this.selectedFile);
+  const isDeleted = this.isDeletedFile(this.selectedFile);
+  
+  if (isNew) return 'new file';
+  if (isDeleted) return 'deleted file';
+  return 'modified file';
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- Compact View Info Banner -->
+<div class="info-banner compact-mode" *ngIf="isCompactView()">
+  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" class="info-icon">
+    <path d="M11 17h2v-6h-2v6zm1-15C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zM11 9h2V7h-2v2z"/>
+  </svg>
+  <div class="info-content">
+    <strong>Compact View Active</strong>
+    <span *ngIf="getFileDisplayType() === 'new file'">
+      This is a large new file ({{ selectedFile?.new_lines.length }} lines). Showing first 50 lines, sections with comments, and last 10 lines.
+    </span>
+    <span *ngIf="getFileDisplayType() === 'deleted file'">
+      This is a large deleted file ({{ selectedFile?.old_lines.length }} lines). Showing first 50 lines and last 10 lines.
+    </span>
+    <span *ngIf="getFileDisplayType() === 'modified file'">
+      This file has over 500 lines. Showing only modified sections with 3 lines of context.
+    </span>
+  </div>
+</div>
