@@ -1,188 +1,62 @@
-<!-- Add this info icon -->
-<div class="info-tooltip-container">
-  <svg class="info-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
-  </svg>
-  <div class="info-tooltip">
-    <div class="tooltip-title">AI Review Notes</div>
-    <ul class="tooltip-list">
-      <li>Model dependent results</li>
-      <li>Review suggestions carefully</li>
-      <li>Comments may vary by context</li>
-    </ul>
-  </div>
-</div>
+// Add this method to remove duplicate comments
+private deduplicateComments(file: DiffFile): DiffFile {
+  const seenComments = new Map<string, AIComment>();
+  const uniqueComments: AIComment[] = [];
 
-
-
-
-
-
-
-
-
-
-.header-actions {
-  display: flex;
-  gap: 15px;
-  align-items: center;
-  flex-wrap: wrap;
-  position: relative; // Ensure proper stacking context
-  z-index: 1; // Base z-index for header actions
-}
-
-.info-tooltip-container {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  margin-left: 8px;
-
-  .info-icon {
-    width: 18px;
-    height: 18px;
-    fill: var(--bitbucket-pr-review-text-tertiary);
-    cursor: help;
-    transition: all 0.2s ease;
+  file.ai_comments.forEach(comment => {
+    // Create a unique key based on line number and side
+    const key = `${comment.line}-${comment.side}`;
     
-    &:hover {
-      fill: #3b82f6;
-      transform: scale(1.1);
+    // Only keep the first comment for each line-side combination
+    if (!seenComments.has(key)) {
+      seenComments.set(key, comment);
+      uniqueComments.push(comment);
     }
-  }
+  });
 
-  .info-tooltip {
-    position: absolute;
-    bottom: calc(100% + 10px);
-    left: 50%;
-    transform: translateX(-50%);
-    background-color: var(--bitbucket-pr-review-text-primary);
-    color: var(--bitbucket-pr-review-bg-primary);
-    padding: 12px 14px;
-    border-radius: 8px;
-    font-size: 12px;
-    font-weight: 500;
-    white-space: nowrap;
-    pointer-events: none;
-    opacity: 0;
-    visibility: hidden;
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-    z-index: 9999; // Very high z-index to appear above everything
-    min-width: 220px;
+  return {
+    ...file,
+    ai_comments: uniqueComments
+  };
+}
 
-    .tooltip-title {
-      font-weight: 700;
-      font-size: 13px;
-      margin-bottom: 8px;
-      padding-bottom: 6px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-    }
+// Update loadMockData to deduplicate comments
+private loadMockData(): void {
+  this.files = [
+    {
+      file_path: "src/app/services/auth.service.ts",
+      old_lines: [
+        // ... your existing old_lines
+      ],
+      new_lines: [
+        // ... your existing new_lines
+      ],
+      ai_comments: [
+        // ... your existing ai_comments
+      ]
+    },
+    // ... other files
+  ];
 
-    .tooltip-list {
-      list-style: none;
-      padding: 0;
-      margin: 0;
+  // Deduplicate comments for all files
+  this.files = this.files.map(file => this.deduplicateComments(file));
+}
 
-      li {
-        position: relative;
-        padding-left: 16px;
-        line-height: 1.6;
-        margin-bottom: 4px;
-
-        &:last-child {
-          margin-bottom: 0;
-        }
-
-        &::before {
-          content: '•';
-          position: absolute;
-          left: 4px;
-          color: #3b82f6;
-          font-weight: bold;
-          font-size: 14px;
-        }
-      }
-    }
-
-    &::after {
-      content: '';
-      position: absolute;
-      top: 100%;
-      left: 50%;
-      transform: translateX(-50%);
-      border: 7px solid transparent;
-      border-top-color: var(--bitbucket-pr-review-text-primary);
-    }
-  }
-
-  &:hover .info-tooltip {
-    opacity: 1;
-    visibility: visible;
-    bottom: calc(100% + 14px);
+// Alternative: If you're loading files from an API, deduplicate there
+loadFilesFromAPI(files: DiffFile[]): void {
+  this.files = files.map(file => this.deduplicateComments(file));
+  this.sortFilesByComments();
+  if (this.files.length > 0) {
+    this.onFileSelect(0);
   }
 }
 
-// Dark mode adjustments
-:host.dark-mode {
-  .info-tooltip-container .info-tooltip {
-    background-color: #1e293b;
-    color: var(--bitbucket-pr-review-text-primary);
-    border: 1px solid var(--bitbucket-pr-review-border-dark);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
-
-    .tooltip-title {
-      border-bottom-color: rgba(255, 255, 255, 0.1);
-    }
-
-    &::after {
-      border-top-color: #1e293b;
-      filter: drop-shadow(0 1px 0 var(--bitbucket-pr-review-border-dark));
-    }
-  }
-}
-
-// Ensure container and header don't clip the tooltip
-.container {
-  overflow: visible; // Change from hidden if set
-}
-
-.header {
-  overflow: visible; // Ensure tooltip isn't clipped
-  position: relative;
-  z-index: 10;
-}
-
-// Responsive
-@media (max-width: 768px) {
-  .info-tooltip-container {
-    margin-left: 6px;
-
-    .info-icon {
-      width: 16px;
-      height: 16px;
-    }
-
-    .info-tooltip {
-      font-size: 11px;
-      padding: 10px 12px;
-      min-width: 200px;
-
-      .tooltip-title {
-        font-size: 12px;
-        margin-bottom: 6px;
-        padding-bottom: 4px;
-      }
-
-      .tooltip-list li {
-        font-size: 11px;
-        line-height: 1.5;
-        padding-left: 14px;
-
-        &::before {
-          font-size: 12px;
-          left: 3px;
-        }
-      }
-    }
+// Update onFileSelect to ensure deduplication when selecting
+onFileSelect(index: number): void {
+  if (index >= 0 && index < this.files.length) {
+    this.selectedFileIndex = index;
+    // Deduplicate before setting selected file
+    this.selectedFile = this.deduplicateComments(this.files[index]);
+    this.renderDiff();
   }
 }
