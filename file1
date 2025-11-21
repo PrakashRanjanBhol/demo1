@@ -1,262 +1,128 @@
-// Update the threshold constants
-private readonly LARGE_FILE_THRESHOLD = 500;
-private readonly NEW_FILE_LARGE_THRESHOLD = 1000;
-private readonly CONTEXT_LINES = 3;
-private readonly NEW_FILE_DISPLAY_LINES = 50; // Show first 50 lines for new large files
+<div (keydown)="onKeyDown($event)" tabindex="0">
+  <!-- Launcher Icon Button -->
+  <button 
+    class="launcher-icon-btn" 
+    (click)="openModal()" 
+    title="Get App Launcher"
+    aria-label="Get App Launcher">
+    <div class="launcher-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+        <line x1="8" y1="21" x2="16" y2="21"></line>
+        <line x1="12" y1="17" x2="12" y2="21"></line>
+        <path d="M18 7l3-3m0 0v3m0-3h-3"></path>
+      </svg>
+    </div>
+  </button>
 
-// Add method to detect if file is new
-private isNewFile(file: DiffFile): boolean {
-  return file.old_lines.length === 0 || 
-         (file.old_lines.length === 1 && file.old_lines[0].trim() === '');
-}
+  <!-- Modal Popup -->
+  <div 
+    class="modal-overlay" 
+    [class.active]="isModalOpen" 
+    (click)="onOverlayClick($event)">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title">
+          <div class="success-icon">
+            <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+              <line x1="8" y1="21" x2="16" y2="21"></line>
+              <line x1="12" y1="17" x2="12" y2="21"></line>
+              <path d="M18 7l3-3m0 0v3m0-3h-3"></path>
+            </svg>
+          </div>
+          <span>Get App Launcher</span>
+        </div>
+        <button 
+          class="close-btn" 
+          (click)="closeModal()"
+          aria-label="Close">
+          &times;
+        </button>
+      </div>
 
-// Add method to detect if file is deleted
-private isDeletedFile(file: DiffFile): boolean {
-  return file.new_lines.length === 0 || 
-         (file.new_lines.length === 1 && file.new_lines[0].trim() === '');
-}
+      <div class="modal-content">
+        <!-- App Launcher Preview -->
+        <div class="launcher-preview">
+          <div class="launcher-app-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+              <line x1="8" y1="21" x2="16" y2="21"></line>
+              <line x1="12" y1="17" x2="12" y2="21"></line>
+              <path d="M18 7l3-3m0 0v3m0-3h-3"></path>
+            </svg>
+          </div>
+          <h3 class="launcher-name">MyApp Launcher</h3>
+          <p class="launcher-description">Quick access launcher for instant application startup</p>
+          <button 
+            class="download-launcher-btn" 
+            (click)="downloadLauncher()"
+            [class.downloaded]="isDownloaded">
+            <svg *ngIf="!isDownloaded" width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+            </svg>
+            <svg *ngIf="isDownloaded" width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+            </svg>
+            {{ isDownloaded ? 'Downloaded!' : 'Download Launcher' }}
+          </button>
+        </div>
 
-// Update generateUnifiedDiff to handle new/deleted files
-private generateUnifiedDiff(file: DiffFile): DiffLine[] {
-  const isNew = this.isNewFile(file);
-  const isDeleted = this.isDeletedFile(file);
-  const isLargeFile = Math.max(file.old_lines.length, file.new_lines.length) > this.LARGE_FILE_THRESHOLD;
-  
-  // Handle new large files specially
-  if (isNew && file.new_lines.length > this.NEW_FILE_LARGE_THRESHOLD) {
-    return this.generateNewFileSummaryDiff(file);
-  }
-  
-  // Handle deleted large files specially
-  if (isDeleted && file.old_lines.length > this.NEW_FILE_LARGE_THRESHOLD) {
-    return this.generateDeletedFileSummaryDiff(file);
-  }
-  
-  // Handle modified large files
-  if (isLargeFile && !isNew && !isDeleted) {
-    return this.generateCompactDiff(file);
-  }
-  
-  // Show full diff for small files
-  return this.generateFullDiff(file);
-}
+        <div class="divider"></div>
 
-// New method for handling new large files
-private generateNewFileSummaryDiff(file: DiffFile): DiffLine[] {
-  const lines: DiffLine[] = [];
-  const totalLines = file.new_lines.length;
-  
-  // Check if there are comments
-  const hasComments = file.ai_comments.length > 0;
-  
-  if (hasComments) {
-    // Show sections with comments + context
-    return this.generateNewFileWithCommentsDiff(file);
-  } else {
-    // Show only first N lines and last few lines
-    const linesToShow = this.NEW_FILE_DISPLAY_LINES;
-    
-    // Show first N lines
-    for (let i = 0; i < Math.min(linesToShow, totalLines); i++) {
-      const lineText = file.new_lines[i];
-      lines.push({
-        type: 'added',
-        newLineNum: i + 1,
-        content: this.highlightSyntax(lineText, file.file_path)
-      });
-    }
-    
-    // Add separator if there are more lines
-    if (totalLines > linesToShow) {
-      lines.push({
-        type: 'context',
-        content: this.createNewFileSeparatorContent(linesToShow, totalLines),
-        oldLineNum: undefined,
-        newLineNum: undefined
-      });
-      
-      // Show last 10 lines
-      const lastLinesToShow = 10;
-      for (let i = Math.max(linesToShow, totalLines - lastLinesToShow); i < totalLines; i++) {
-        const lineText = file.new_lines[i];
-        lines.push({
-          type: 'added',
-          newLineNum: i + 1,
-          content: this.highlightSyntax(lineText, file.file_path)
-        });
-      }
-    }
-  }
-  
-  return lines;
-}
+        <p class="section-title">How to Use:</p>
 
-// Method to handle new files with comments
-private generateNewFileWithCommentsDiff(file: DiffFile): DiffLine[] {
-  const lines: DiffLine[] = [];
-  const totalLines = file.new_lines.length;
-  const linesToShow = new Set<number>();
-  
-  // Add lines with comments and their context
-  file.ai_comments.forEach(comment => {
-    if (comment.side === 'TO') {
-      const lineIndex = comment.line - 1;
-      
-      // Add the comment line and context
-      for (let i = Math.max(0, lineIndex - this.CONTEXT_LINES); 
-           i <= Math.min(totalLines - 1, lineIndex + this.CONTEXT_LINES); 
-           i++) {
-        linesToShow.add(i);
-      }
-    }
-  });
-  
-  // Always show first few lines of new files
-  const initialLinesToShow = 20;
-  for (let i = 0; i < Math.min(initialLinesToShow, totalLines); i++) {
-    linesToShow.add(i);
-  }
-  
-  // Build the diff with separators
-  const sortedIndices = Array.from(linesToShow).sort((a, b) => a - b);
-  let lastIndex = -1;
-  
-  sortedIndices.forEach(index => {
-    // Add separator if there's a gap
-    if (lastIndex !== -1 && index - lastIndex > 1) {
-      lines.push({
-        type: 'context',
-        content: this.createNewFileSeparatorContent(lastIndex + 1, index, totalLines),
-        oldLineNum: undefined,
-        newLineNum: undefined
-      });
-    }
-    
-    const lineText = file.new_lines[index];
-    const comment = this.findCommentForLine(file, index + 1, 'TO');
-    
-    lines.push({
-      type: 'added',
-      newLineNum: index + 1,
-      content: this.highlightSyntax(lineText, file.file_path),
-      comment
-    });
-    
-    lastIndex = index;
-  });
-  
-  return lines;
-}
+        <div class="steps-list">
+          <div class="step-item">
+            <div class="step-number">1</div>
+            <div class="step-text">
+              <div class="step-title">Download & Locate</div>
+              <div class="step-description">Click the download button above. The launcher will be saved to your Downloads folder.</div>
+            </div>
+          </div>
 
-// Method to handle deleted large files
-private generateDeletedFileSummaryDiff(file: DiffFile): DiffLine[] {
-  const lines: DiffLine[] = [];
-  const totalLines = file.old_lines.length;
-  const linesToShow = this.NEW_FILE_DISPLAY_LINES;
-  
-  // Show first N lines
-  for (let i = 0; i < Math.min(linesToShow, totalLines); i++) {
-    const lineText = file.old_lines[i];
-    lines.push({
-      type: 'deleted',
-      oldLineNum: i + 1,
-      content: this.highlightSyntax(lineText, file.file_path)
-    });
-  }
-  
-  // Add separator if there are more lines
-  if (totalLines > linesToShow) {
-    lines.push({
-      type: 'context',
-      content: this.createNewFileSeparatorContent(linesToShow, totalLines),
-      oldLineNum: undefined,
-      newLineNum: undefined
-    });
-    
-    // Show last 10 lines
-    const lastLinesToShow = 10;
-    for (let i = Math.max(linesToShow, totalLines - lastLinesToShow); i < totalLines; i++) {
-      const lineText = file.old_lines[i];
-      lines.push({
-        type: 'deleted',
-        oldLineNum: i + 1,
-        content: this.highlightSyntax(lineText, file.file_path)
-      });
-    }
-  }
-  
-  return lines;
-}
+          <div class="step-item">
+            <div class="step-number">2</div>
+            <div class="step-text">
+              <div class="step-title">Place Anywhere You Like</div>
+              <div class="step-description">Move the launcher to any convenient location - <span class="highlight">desktop, taskbar, dock, or custom folder</span>. It's completely flexible!</div>
+            </div>
+          </div>
 
-// Create separator for new files
-private createNewFileSeparatorContent(startLine: number, endLine: number, totalLines?: number): string {
-  const skippedCount = endLine - startLine;
-  const percentage = totalLines ? Math.round((skippedCount / totalLines) * 100) : 0;
-  
-  return `<span style="color: #6b7280; font-style: italic;">⋯ ${skippedCount} lines hidden (Lines ${startLine + 1}-${endLine})${totalLines ? ` - ${percentage}% of file` : ''} ⋯</span>`;
-}
+          <div class="step-item">
+            <div class="step-number">3</div>
+            <div class="step-text">
+              <div class="step-title">Launch with One Click</div>
+              <div class="step-description">Simply <span class="highlight">click the launcher icon</span> anytime to instantly open MyApp without navigating through menus or bookmarks.</div>
+            </div>
+          </div>
+        </div>
 
-// Update isCompactView to handle new files
-isCompactView(): boolean {
-  if (!this.selectedFile) return false;
-  
-  const isNew = this.isNewFile(this.selectedFile);
-  const isDeleted = this.isDeletedFile(this.selectedFile);
-  
-  // New or deleted large files
-  if (isNew && this.selectedFile.new_lines.length > this.NEW_FILE_LARGE_THRESHOLD) {
-    return true;
-  }
-  
-  if (isDeleted && this.selectedFile.old_lines.length > this.NEW_FILE_LARGE_THRESHOLD) {
-    return true;
-  }
-  
-  // Regular modified files
-  return Math.max(this.selectedFile.old_lines.length, this.selectedFile.new_lines.length) > this.LARGE_FILE_THRESHOLD;
-}
+        <div class="benefits-box">
+          <div class="benefit-item">
+            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+            </svg>
+            <span>Lightning fast access</span>
+          </div>
+          <div class="benefit-item">
+            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <span>No browser needed</span>
+          </div>
+          <div class="benefit-item">
+            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/>
+            </svg>
+            <span>Always up to date</span>
+          </div>
+        </div>
+      </div>
 
-// Get file type for display
-getFileDisplayType(): string {
-  if (!this.selectedFile) return '';
-  
-  const isNew = this.isNewFile(this.selectedFile);
-  const isDeleted = this.isDeletedFile(this.selectedFile);
-  
-  if (isNew) return 'new file';
-  if (isDeleted) return 'deleted file';
-  return 'modified file';
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<!-- Compact View Info Banner -->
-<div class="info-banner compact-mode" *ngIf="isCompactView()">
-  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" class="info-icon">
-    <path d="M11 17h2v-6h-2v6zm1-15C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zM11 9h2V7h-2v2z"/>
-  </svg>
-  <div class="info-content">
-    <strong>Compact View Active</strong>
-    <span *ngIf="getFileDisplayType() === 'new file'">
-      This is a large new file ({{ selectedFile?.new_lines.length }} lines). Showing first 50 lines, sections with comments, and last 10 lines.
-    </span>
-    <span *ngIf="getFileDisplayType() === 'deleted file'">
-      This is a large deleted file ({{ selectedFile?.old_lines.length }} lines). Showing first 50 lines and last 10 lines.
-    </span>
-    <span *ngIf="getFileDisplayType() === 'modified file'">
-      This file has over 500 lines. Showing only modified sections with 3 lines of context.
-    </span>
+      <div class="modal-footer">
+        <button class="got-it-btn" (click)="closeModal()">Got It!</button>
+      </div>
+    </div>
   </div>
 </div>
