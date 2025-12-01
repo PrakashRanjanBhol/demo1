@@ -1,4 +1,258 @@
-import { Component, OnInit, Input } from '@angular/core';
+import { Component, Input, Output, EventEmitter, OnInit } from '@angular/core';
+
+interface FileConfig {
+  file_name: string;
+  original_code: string;
+  modified_code: string;
+}
+
+@Component({
+  selector: 'app-diff-viewer-modal',
+  templateUrl: './diff-viewer-modal.component.html',
+  styleUrls: ['./diff-viewer-modal.component.css']
+})
+export class DiffViewerModalComponent implements OnInit {
+  @Input() isOpen: boolean = false;
+  @Input() files: FileConfig[] = [];
+  @Output() close = new EventEmitter<void>();
+  @Output() onAcceptAll = new EventEmitter<FileConfig[]>();
+  @Output() onRejectAll = new EventEmitter<FileConfig[]>();
+  @Output() onFileAccepted = new EventEmitter<{ file: FileConfig, index: number }>();
+  @Output() onFileRejected = new EventEmitter<{ file: FileConfig, index: number }>();
+
+  ngOnInit(): void {
+    // Listen for escape key to close modal
+    document.addEventListener('keydown', this.handleEscapeKey.bind(this));
+  }
+
+  ngOnDestroy(): void {
+    document.removeEventListener('keydown', this.handleEscapeKey.bind(this));
+  }
+
+  handleEscapeKey(event: KeyboardEvent): void {
+    if (event.key === 'Escape' && this.isOpen) {
+      this.closeModal();
+    }
+  }
+
+  closeModal(): void {
+    this.close.emit();
+  }
+
+  handleBackdropClick(event: MouseEvent): void {
+    // Close modal when clicking on backdrop (not on modal content)
+    if ((event.target as HTMLElement).classList.contains('code-rag-modal-backdrop')) {
+      this.closeModal();
+    }
+  }
+
+  handleAcceptAll(): void {
+    this.onAcceptAll.emit(this.files);
+  }
+
+  handleRejectAll(): void {
+    this.onRejectAll.emit(this.files);
+  }
+
+  handleFileAccepted(data: { file: FileConfig, index: number }): void {
+    this.onFileAccepted.emit(data);
+  }
+
+  handleFileRejected(data: { file: FileConfig, index: number }): void {
+    this.onFileRejected.emit(data);
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="code-rag-modal-backdrop" *ngIf="isOpen" (click)="handleBackdropClick($event)">
+  <div class="code-rag-modal-container">
+    <!-- Modal Header -->
+    <div class="code-rag-modal-header">
+      <h2 class="code-rag-modal-title">Review Code Changes</h2>
+      <button class="code-rag-modal-close" (click)="closeModal()" aria-label="Close">
+        ×
+      </button>
+    </div>
+
+    <!-- Modal Body with Diff Viewer -->
+    <div class="code-rag-modal-body">
+      <app-diff-viewer 
+        [files]="files"
+        (onAcceptAll)="handleAcceptAll()"
+        (onRejectAll)="handleRejectAll()"
+        (onFileAccepted)="handleFileAccepted($event)"
+        (onFileRejected)="handleFileRejected($event)">
+      </app-diff-viewer>
+    </div>
+  </div>
+</div>
+
+
+
+
+
+
+
+
+.code-rag-modal-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    padding: 20px;
+    animation: fadeIn 0.3s ease;
+    overflow-y: auto;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+.code-rag-modal-container {
+    background: white;
+    border-radius: 12px;
+    width: 100%;
+    max-width: 1400px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+    animation: slideIn 0.3s ease;
+    margin: auto;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateY(-50px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.code-rag-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 30px;
+    border-bottom: 2px solid #d0d7de;
+    background: #f6f8fa;
+    border-radius: 12px 12px 0 0;
+}
+
+.code-rag-modal-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: #24292e;
+    margin: 0;
+}
+
+.code-rag-modal-close {
+    background: transparent;
+    border: none;
+    font-size: 32px;
+    line-height: 1;
+    color: #57606a;
+    cursor: pointer;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+}
+
+.code-rag-modal-close:hover {
+    background: #d0d7de;
+    color: #24292e;
+}
+
+.code-rag-modal-body {
+    overflow-y: auto;
+    flex: 1;
+    padding: 0;
+}
+
+/* Override wrapper styles for modal */
+.code-rag-modal-body ::ng-deep .code-rag-wrapper {
+    box-shadow: none;
+    border: none;
+    border-radius: 0;
+    max-width: 100%;
+}
+
+/* Adjust padding for modal context */
+.code-rag-modal-body ::ng-deep .code-rag-top-section {
+    margin: 20px 20px 15px 20px;
+}
+
+.code-rag-modal-body ::ng-deep .code-rag-files-container {
+    padding: 0 20px 20px 20px;
+}
+
+@media (max-width: 768px) {
+    .code-rag-modal-backdrop {
+        padding: 10px;
+    }
+
+    .code-rag-modal-container {
+        max-height: 95vh;
+    }
+
+    .code-rag-modal-header {
+        padding: 15px 20px;
+    }
+
+    .code-rag-modal-title {
+        font-size: 18px;
+    }
+
+    .code-rag-modal-close {
+        font-size: 28px;
+        width: 28px;
+        height: 28px;
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+import { Component, OnInit, Input, Output, EventEmitter } from '@angular/core';
 import * as Diff from 'diff';
 import * as hljs from 'highlight.js';
 
@@ -28,6 +282,12 @@ interface DiffLine {
 })
 export class DiffViewerComponent implements OnInit {
   @Input() files: FileConfig[] = [];
+  
+  // Output events for modal integration
+  @Output() onAcceptAll = new EventEmitter<void>();
+  @Output() onRejectAll = new EventEmitter<void>();
+  @Output() onFileAccepted = new EventEmitter<{ file: FileConfig, index: number }>();
+  @Output() onFileRejected = new EventEmitter<{ file: FileConfig, index: number }>();
 
   acceptedFiles: Set<number> = new Set();
   rejectedFiles: Set<number> = new Set();
@@ -172,12 +432,18 @@ export class DiffViewerComponent implements OnInit {
     console.log(`File ${index} accepted:`, this.files[index].file_name);
     console.log('Applied code:', this.files[index].modified_code);
     this.acceptedFiles.add(index);
+    
+    // Emit event for modal
+    this.onFileAccepted.emit({ file: this.files[index], index });
   }
 
   rejectFile(index: number): void {
     console.log(`File ${index} rejected:`, this.files[index].file_name);
     console.log('Keeping original code:', this.files[index].original_code);
     this.rejectedFiles.add(index);
+    
+    // Emit event for modal
+    this.onFileRejected.emit({ file: this.files[index], index });
   }
 
   acceptAll(): void {
@@ -186,6 +452,9 @@ export class DiffViewerComponent implements OnInit {
       console.log(`${file.file_name}: Applied code`, file.modified_code);
       this.acceptFile(index);
     });
+    
+    // Emit event for modal
+    this.onAcceptAll.emit();
   }
 
   rejectAll(): void {
@@ -194,6 +463,9 @@ export class DiffViewerComponent implements OnInit {
       console.log(`${file.file_name}: Keeping original code`, file.original_code);
       this.rejectFile(index);
     });
+    
+    // Emit event for modal
+    this.onRejectAll.emit();
   }
 
   isFileAccepted(index: number): boolean {
@@ -235,619 +507,61 @@ export class DiffViewerComponent implements OnInit {
 
 
 
-
-
-
-
-
-
-
-
-<div class="code-rag-wrapper">
-  <!-- Top Section: Draft Header and Action Buttons -->
-  <div class="code-rag-top-section" *ngIf="!allFilesProcessed()">
-    <!-- Draft Header -->
-    <div class="code-rag-draft-header">
-      <div class="code-rag-draft-icon">⚠️</div>
-      <div class="code-rag-draft-text">
-        <div class="code-rag-draft-title">Confirmation Required</div>
-        <div class="code-rag-draft-subtitle">
-          Review and approve changes for {{ files.length }} file{{ files.length > 1 ? 's' : '' }}
-        </div>
-      </div>
-    </div>
-
-    <!-- Action Buttons -->
-    <div class="code-rag-top-actions">
-      <button 
-        class="code-rag-btn-small code-rag-btn-accept" 
-        (click)="acceptAll()">
-        Accept All
-      </button>
-      <button 
-        class="code-rag-btn-small code-rag-btn-reject" 
-        (click)="rejectAll()">
-        Reject All
-      </button>
-    </div>
-  </div>
-
-  <!-- Files Container -->
-  <div class="code-rag-files-container">
-    <ng-container *ngFor="let file of files; let i = index">
-      <!-- Accepted File Message -->
-      <div class="code-rag-file-accepted" *ngIf="isFileAccepted(i)">
-        <div class="code-rag-file-accepted-icon">✓</div>
-        <div class="code-rag-file-accepted-text">Changes Accepted</div>
-        <div class="code-rag-file-accepted-filename">{{ file.file_name }}</div>
-      </div>
-
-      <!-- Rejected File Message -->
-      <div class="code-rag-file-rejected" *ngIf="isFileRejected(i)">
-        <div class="code-rag-file-rejected-icon">✗</div>
-        <div class="code-rag-file-rejected-text">Changes Rejected</div>
-        <div class="code-rag-file-rejected-filename">{{ file.file_name }}</div>
-      </div>
-
-      <!-- File Block (not yet processed) -->
-      <div class="code-rag-file-block" *ngIf="!isFileProcessed(i)">
-        <!-- File Header -->
-        <div class="code-rag-header">
-          <div class="code-rag-file-info">
-            <span class="code-rag-file-icon">📄</span>
-            <span>{{ file.file_name }}</span>
-            <span class="code-rag-file-badge new" *ngIf="isNewFile(i)">New File</span>
-          </div>
-          <div class="code-rag-stats">
-            <div class="code-rag-stat-item code-rag-stat-added">
-              <span>++<span>{{ getFileState(i).addedCount }}</span></span>
-            </div>
-            <div class="code-rag-stat-item code-rag-stat-removed" *ngIf="!isNewFile(i)">
-              <span>--<span>{{ getFileState(i).removedCount }}</span></span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Diff Block -->
-        <div class="code-rag-diff-block">
-          <div class="code-rag-diff-header">
-            {{ isNewFile(i) ? 'New file with syntax highlighting' : 'Showing changes with syntax highlighting' }}
-          </div>
-
-          <!-- Diff Content for Regular Files -->
-          <div class="code-rag-diff-content" *ngIf="!isNewFile(i)">
-            <div 
-              *ngFor="let line of getDiffLines(i)" 
-              class="code-rag-diff-line code-rag-line-{{ line.type }}">
-              <div class="code-rag-line-numbers">
-                <div class="code-rag-line-number">{{ line.oldLineNum || '' }}</div>
-                <div class="code-rag-line-number">{{ line.newLineNum || '' }}</div>
-              </div>
-              <div class="code-rag-line-content">
-                <code [innerHTML]="line.highlightedContent"></code>
-              </div>
-            </div>
-          </div>
-
-          <!-- New File Content -->
-          <div class="code-rag-new-file-content" *ngIf="isNewFile(i)">
-            <div 
-              *ngFor="let line of getDiffLines(i)" 
-              class="code-rag-new-file-line">
-              <div class="code-rag-line-numbers">
-                <div class="code-rag-line-number"></div>
-                <div class="code-rag-line-number">{{ line.newLineNum }}</div>
-              </div>
-              <div class="code-rag-line-content">
-                <code [innerHTML]="line.highlightedContent"></code>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- File Actions -->
-        <div class="code-rag-file-actions">
-          <button 
-            class="code-rag-btn code-rag-btn-accept" 
-            (click)="acceptFile(i)">
-            <span>✓</span>
-            <span>Accept</span>
-          </button>
-          <button 
-            class="code-rag-btn code-rag-btn-reject" 
-            (click)="rejectFile(i)">
-            <span>✗</span>
-            <span>Reject</span>
-          </button>
-        </div>
-      </div>
-    </ng-container>
-  </div>
-</div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-.code-rag-wrapper {
-    max-width: 1400px;
-    margin: 0 auto;
-    border-radius: 12px;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-    border: 3px dotted #f59e0b;
-}
-
-.code-rag-top-section {
-    margin: 15px;
-}
-
-.code-rag-draft-header {
-    background: #fff8e6;
-    border-left: 4px solid #f59e0b;
-    padding: 15px 20px;
-    border-radius: 6px;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 10px;
-}
-
-.code-rag-draft-icon {
-    font-size: 24px;
-}
-
-.code-rag-draft-text {
-    flex: 1;
-}
-
-.code-rag-draft-title {
-    font-size: 16px;
-    font-weight: 600;
-    color: #92400e;
-    margin-bottom: 4px;
-}
-
-.code-rag-draft-subtitle {
-    font-size: 13px;
-    color: #b45309;
-}
-
-.code-rag-top-actions {
-    display: flex;
-    gap: 10px;
-    justify-content: flex-end;
-}
-
-.code-rag-btn-small {
-    padding: 8px 18px;
-    border: 2px solid;
-    border-radius: 6px;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    white-space: nowrap;
-    background: white;
-}
-
-.code-rag-btn-small.code-rag-btn-accept {
-    border-color: #2da44e;
-    color: #2da44e;
-    background: white;
-}
-
-.code-rag-btn-small.code-rag-btn-accept:hover {
-    background: #2da44e !important;
-    color: white !important;
-    transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(45, 164, 78, 0.3);
-}
-
-.code-rag-btn-small.code-rag-btn-reject {
-    border-color: #cf222e;
-    color: #cf222e;
-    background: white;
-}
-
-.code-rag-btn-small.code-rag-btn-reject:hover {
-    background: #cf222e !important;
-    color: white !important;
-    transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(207, 34, 46, 0.3);
-}
-
-.code-rag-files-container {
-    padding: 20px;
-    background: #f6f8fa;
-}
-
-.code-rag-file-block {
-    background: white;
-    border: 1px solid #d0d7de;
-    border-radius: 8px;
-    margin-bottom: 20px;
-    overflow: hidden;
-}
-
-.code-rag-file-block:last-child {
-    margin-bottom: 0;
-}
-
-.code-rag-header {
-    background: #24292e;
-    color: white;
-    padding: 12px 20px;
-    border-bottom: 2px solid #0366d6;
-    display: flex;
-    align-items: center;
-}
-
-.code-rag-file-info {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 14px;
-    color: #8b949e;
-}
-
-.code-rag-file-icon {
-    font-size: 18px;
-}
-
-.code-rag-file-badge {
-    display: inline-block;
-    padding: 2px 8px;
-    background: #0969da;
-    color: white;
-    border-radius: 3px;
-    font-size: 11px;
-    font-weight: 600;
-    margin-left: 8px;
-    text-transform: uppercase;
-}
-
-.code-rag-file-badge.new {
-    background: #1a7f37;
-}
-
-.code-rag-stats {
-    display: flex;
-    gap: 20px;
-    font-size: 13px;
-    margin-left: auto;
-}
-
-.code-rag-stat-item {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-}
-
-.code-rag-stat-added {
-    color: #2da44e;
-    font-weight: 600;
-}
-
-.code-rag-stat-removed {
-    color: #cf222e;
-    font-weight: 600;
-}
-
-.code-rag-diff-container {
-    background: #ffffff;
-    padding: 0;
-}
-
-.code-rag-diff-block {
-    background: white;
-}
-
-.code-rag-diff-header {
-    background: #f6f8fa;
-    padding: 10px 15px;
-    border-bottom: 1px solid #d0d7de;
-    border-top: 1px solid #d0d7de;
-    font-family: 'Courier New', monospace;
-    font-size: 12px;
-    color: #57606a;
-    font-weight: 600;
-}
-
-.code-rag-diff-content {
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-    font-size: 13px;
-    line-height: 1.6;
-    overflow-x: auto;
-    max-height: 400px;
-    overflow-y: auto;
-}
-
-.code-rag-diff-line {
-    display: flex;
-    min-height: 22px;
-    position: relative;
-}
-
-.code-rag-line-numbers {
-    display: flex;
-    background: #f6f8fa;
-    border-right: 1px solid #d0d7de;
-    flex-shrink: 0;
-    position: sticky;
-    left: 0;
-    z-index: 1;
-}
-
-.code-rag-line-number {
-    width: 45px;
-    padding: 0 8px;
-    text-align: right;
-    user-select: none;
-    color: #57606a;
-    font-size: 12px;
-}
-
-.code-rag-line-content {
-    padding: 0 10px;
-    flex: 1;
-    white-space: pre;
-    overflow-x: auto;
-}
-
-.code-rag-line-content code {
-    background: transparent !important;
-    padding: 0 !important;
-    font-family: inherit;
-}
-
-.code-rag-line-added {
-    background: #e6ffec;
-}
-
-.code-rag-line-added .code-rag-line-numbers {
-    background: #ccffd8;
-}
-
-.code-rag-line-added .code-rag-line-content::before {
-    content: '+';
-    color: #2da44e;
-    margin-right: 8px;
-    font-weight: bold;
-    display: inline-block;
-    width: 10px;
-}
-
-.code-rag-line-removed {
-    background: #ffebe9;
-}
-
-.code-rag-line-removed .code-rag-line-numbers {
-    background: #ffd7d5;
-}
-
-.code-rag-line-removed .code-rag-line-content::before {
-    content: '-';
-    color: #cf222e;
-    margin-right: 8px;
-    font-weight: bold;
-    display: inline-block;
-    width: 10px;
-}
-
-.code-rag-line-context {
-    background: white;
-}
-
-.code-rag-line-context .code-rag-line-content::before {
-    content: ' ';
-    margin-right: 8px;
-    display: inline-block;
-    width: 10px;
-}
-
-.code-rag-new-file-content {
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-    font-size: 13px;
-    line-height: 1.6;
-    overflow-x: auto;
-    max-height: 400px;
-    overflow-y: auto;
-    background: #f0f9ff;
-}
-
-.code-rag-new-file-line {
-    display: flex;
-    min-height: 22px;
-    background: #dbeafe;
-}
-
-.code-rag-new-file-line .code-rag-line-numbers {
-    background: #bfdbfe;
-}
-
-.code-rag-new-file-line .code-rag-line-content::before {
-    content: '+';
-    color: #0969da;
-    margin-right: 8px;
-    font-weight: bold;
-    display: inline-block;
-    width: 10px;
-}
-
-.code-rag-line-added .hljs-keyword,
-.code-rag-line-added .hljs-selector-tag,
-.code-rag-line-added .hljs-built_in {
-    color: #0a6e28;
-}
-
-.code-rag-line-removed .hljs-keyword,
-.code-rag-line-removed .hljs-selector-tag,
-.code-rag-line-removed .hljs-built_in {
-    color: #8b0000;
-}
-
-.code-rag-line-added .hljs-string {
-    color: #0a6e28;
-}
-
-.code-rag-line-removed .hljs-string {
-    color: #8b0000;
-}
-
-.code-rag-file-actions {
-    padding: 12px 20px;
-    background: #f6f8fa;
-    border-top: 1px solid #d0d7de;
-    display: flex;
-    gap: 10px;
-    justify-content: flex-end;
-}
-
-.code-rag-btn {
-    padding: 8px 20px;
-    border: none;
-    border-radius: 6px;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-
-.code-rag-btn-accept {
-    background: #2da44e;
-    color: white;
-}
-
-.code-rag-btn-accept:hover {
-    background: #2c974b;
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(45, 164, 78, 0.4);
-}
-
-.code-rag-btn-reject {
-    background: #cf222e;
-    color: white;
-}
-
-.code-rag-btn-reject:hover {
-    background: #a40e26;
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(207, 34, 46, 0.4);
-}
-
-.code-rag-btn:active {
-    transform: translateY(0);
-}
-
-.code-rag-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-    transform: none;
-}
-
-.code-rag-file-accepted {
-    padding: 30px 20px;
-    text-align: center;
-    background: #dafbe1;
-    border: 2px solid #2da44e;
-    border-radius: 6px;
-    margin: 15px;
-}
-
-.code-rag-file-accepted-icon {
-    font-size: 32px;
-    margin-bottom: 10px;
-}
-
-.code-rag-file-accepted-text {
-    font-size: 16px;
-    color: #1a7f37;
-    font-weight: 600;
-    margin-bottom: 5px;
-}
-
-.code-rag-file-accepted-filename {
-    font-size: 14px;
-    color: #24292e;
-    font-family: 'Courier New', monospace;
-}
-
-.code-rag-file-rejected {
-    padding: 30px 20px;
-    text-align: center;
-    background: #ffebe9;
-    border: 2px solid #cf222e;
-    border-radius: 6px;
-    margin: 15px;
-}
-
-.code-rag-file-rejected-icon {
-    font-size: 32px;
-    margin-bottom: 10px;
-}
-
-.code-rag-file-rejected-text {
-    font-size: 16px;
-    color: #a40e26;
-    font-weight: 600;
-    margin-bottom: 5px;
-}
-
-.code-rag-file-rejected-filename {
-    font-size: 14px;
-    color: #24292e;
-    font-family: 'Courier New', monospace;
-}
-
-@media (max-width: 768px) {
-    .code-rag-header {
-        padding: 10px 15px;
-    }
-
-    .code-rag-file-actions {
-        flex-direction: column;
-    }
-
-    .code-rag-btn {
-        width: 100%;
-        justify-content: center;
-    }
-
-    .code-rag-line-number {
-        width: 35px;
-        padding: 0 5px;
-    }
-}
-
-
-
-// example-usage.component.ts
+// example-modal-usage.component.ts
 import { Component } from '@angular/core';
 
+interface FileConfig {
+  file_name: string;
+  original_code: string;
+  modified_code: string;
+}
+
 @Component({
-  selector: 'app-example-usage',
+  selector: 'app-example-modal-usage',
   template: `
-    <div style="padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh;">
-      <app-diff-viewer [files]="fileChanges"></app-diff-viewer>
+    <div style="padding: 40px;">
+      <h1>Diff Viewer Modal Example</h1>
+      <p>Click the button below to open the diff viewer in a modal:</p>
+      
+      <button 
+        (click)="openModal()" 
+        style="padding: 12px 24px; background: #0366d6; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600;">
+        Open Diff Viewer Modal
+      </button>
+
+      <!-- Modal Component -->
+      <app-diff-viewer-modal
+        [isOpen]="isModalOpen"
+        [files]="fileChanges"
+        (close)="closeModal()"
+        (onAcceptAll)="handleAcceptAll()"
+        (onRejectAll)="handleRejectAll()"
+        (onFileAccepted)="handleFileAccepted($event)"
+        (onFileRejected)="handleFileRejected($event)">
+      </app-diff-viewer-modal>
+
+      <!-- Status Display -->
+      <div *ngIf="statusMessage" style="margin-top: 20px; padding: 15px; background: #f0f9ff; border-left: 4px solid #0366d6; border-radius: 4px;">
+        <strong>Status:</strong> {{ statusMessage }}
+      </div>
     </div>
-  `
+  `,
+  styles: [`
+    h1 {
+      color: #24292e;
+      margin-bottom: 10px;
+    }
+    p {
+      color: #57606a;
+      margin-bottom: 20px;
+    }
+  `]
 })
-export class ExampleUsageComponent {
-  fileChanges = [
+export class ExampleModalUsageComponent {
+  isModalOpen = false;
+  statusMessage = '';
+
+  fileChanges: FileConfig[] = [
     {
       file_name: 'example.js',
       original_code: `function calculateSum(a, b) {
@@ -906,10 +620,60 @@ def subtract(x, y):
 
 export class UserService {
     getUser(id: number): User {
-        // Implementation here
         return { id, name: 'John', email: 'john@example.com' };
     }
 }`
     }
   ];
+
+  openModal(): void {
+    this.isModalOpen = true;
+    this.statusMessage = '';
+  }
+
+  closeModal(): void {
+    this.isModalOpen = false;
+  }
+
+  handleAcceptAll(): void {
+    this.statusMessage = 'All files accepted!';
+    console.log('All files accepted');
+    
+    // You can add your logic here, e.g., send to API
+    // this.apiService.acceptAllChanges(this.fileChanges).subscribe(...);
+    
+    // Optionally close modal after a delay
+    setTimeout(() => {
+      this.closeModal();
+    }, 2000);
+  }
+
+  handleRejectAll(): void {
+    this.statusMessage = 'All files rejected!';
+    console.log('All files rejected');
+    
+    // You can add your logic here
+    // this.apiService.rejectAllChanges(this.fileChanges).subscribe(...);
+    
+    // Optionally close modal after a delay
+    setTimeout(() => {
+      this.closeModal();
+    }, 2000);
+  }
+
+  handleFileAccepted(event: { file: FileConfig, index: number }): void {
+    this.statusMessage = `File "${event.file.file_name}" accepted!`;
+    console.log('File accepted:', event.file.file_name);
+    
+    // You can add your logic here
+    // this.apiService.acceptFile(event.file).subscribe(...);
+  }
+
+  handleFileRejected(event: { file: FileConfig, index: number }): void {
+    this.statusMessage = `File "${event.file.file_name}" rejected!`;
+    console.log('File rejected:', event.file.file_name);
+    
+    // You can add your logic here
+    // this.apiService.rejectFile(event.file).subscribe(...);
+  }
 }
