@@ -1,8 +1,633 @@
+import { Component, OnInit, Input, Output, EventEmitter } from '@angular/core';
+import * as Diff from 'diff';
+import * as hljs from 'highlight.js';
+
+// Updated interfaces to match your structure
+interface FileItem {
+  file_path: string;
+  file_name: string;
+  original_code: string;
+  modified_code: string;
+}
+
+interface FileConfigContent {
+  reasoning: string;
+  files: FileItem[];
+}
+
+interface FileConfig {
+  tool: string;
+  content: FileConfigContent;
+}
+
+interface FileState {
+  addedCount: number;
+  removedCount: number;
+}
+
+interface DiffLine {
+  type: 'added' | 'removed' | 'context';
+  content: string;
+  oldLineNum: number | null;
+  newLineNum: number | null;
+  highlightedContent: string;
+}
+
+@Component({
+  selector: 'app-diff-viewer',
+  templateUrl: './diff-viewer.component.html',
+  styleUrls: ['./diff-viewer.component.css']
+})
+export class DiffViewerComponent implements OnInit {
+  @Input() config!: FileConfig; // Changed to accept full config object
+  
+  // Output events for modal integration
+  @Output() onAcceptAll = new EventEmitter<void>();
+  @Output() onRejectAll = new EventEmitter<void>();
+  @Output() onFileAccepted = new EventEmitter<{ file: FileItem, index: number }>();
+  @Output() onFileRejected = new EventEmitter<{ file: FileItem, index: number }>();
+
+  acceptedFiles: Set<number> = new Set();
+  rejectedFiles: Set<number> = new Set();
+  fileStates: FileState[] = [];
+  processedDiffs: Map<number, { lines: DiffLine[], isNewFile: boolean }> = new Map();
+
+  // Getter for files array
+  get files(): FileItem[] {
+    return this.config?.content?.files || [];
+  }
+
+  // Getter for tool type
+  get toolType(): string {
+    return this.config?.tool || '';
+  }
+
+  // Getter for reasoning
+  get reasoning(): string {
+    return this.config?.content?.reasoning || '';
+  }
+
+  ngOnInit(): void {
+    this.processAllFiles();
+  }
+
+  ngOnChanges(): void {
+    // Reset state when config changes
+    this.acceptedFiles.clear();
+    this.rejectedFiles.clear();
+    this.fileStates = [];
+    this.processedDiffs.clear();
+    this.processAllFiles();
+  }
+
+  processAllFiles(): void {
+    this.files.forEach((file, index) => {
+      const isNewFile = !file.original_code || file.original_code.trim() === '';
+      
+      if (isNewFile) {
+        const lines = this.processNewFile(file);
+        this.processedDiffs.set(index, { lines, isNewFile: true });
+        this.fileStates[index] = { addedCount: lines.length, removedCount: 0 };
+      } else {
+        const lines = this.processDiff(file);
+        const addedCount = lines.filter(l => l.type === 'added').length;
+        const removedCount = lines.filter(l => l.type === 'removed').length;
+        this.processedDiffs.set(index, { lines, isNewFile: false });
+        this.fileStates[index] = { addedCount, removedCount };
+      }
+    });
+  }
+
+  processNewFile(file: FileItem): DiffLine[] {
+    const lines = file.modified_code.split('\n');
+    const diffLines: DiffLine[] = [];
+    
+    lines.forEach((line, index) => {
+      diffLines.push({
+        type: 'added',
+        content: line,
+        oldLineNum: null,
+        newLineNum: index + 1,
+        highlightedContent: this.highlightCode(line, file.file_name)
+      });
+    });
+    
+    return diffLines;
+  }
+
+  processDiff(file: FileItem): DiffLine[] {
+    const diff = Diff.diffLines(file.original_code, file.modified_code);
+    const diffLines: DiffLine[] = [];
+    let oldLineNum = 1;
+    let newLineNum = 1;
+
+    diff.forEach(part => {
+      const lines = part.value.split('\n');
+      if (lines[lines.length - 1] === '') {
+        lines.pop();
+      }
+
+      lines.forEach(line => {
+        if (part.added) {
+          diffLines.push({
+            type: 'added',
+            content: line,
+            oldLineNum: null,
+            newLineNum: newLineNum++,
+            highlightedContent: this.highlightCode(line, file.file_name)
+          });
+        } else if (part.removed) {
+          diffLines.push({
+            type: 'removed',
+            content: line,
+            oldLineNum: oldLineNum++,
+            newLineNum: null,
+            highlightedContent: this.highlightCode(line, file.file_name)
+          });
+        } else {
+          diffLines.push({
+            type: 'context',
+            content: line,
+            oldLineNum: oldLineNum++,
+            newLineNum: newLineNum++,
+            highlightedContent: this.highlightCode(line, file.file_name)
+          });
+        }
+      });
+    });
+
+    return diffLines;
+  }
+
+  highlightCode(code: string, fileName: string): string {
+    try {
+      const lang = this.detectLanguage(fileName);
+      if (lang && hljs.getLanguage(lang)) {
+        return hljs.highlight(code, { language: lang }).value;
+      } else {
+        return hljs.highlightAuto(code).value;
+      }
+    } catch (e) {
+      console.error('Highlighting error:', e);
+      return this.escapeHtml(code);
+    }
+  }
+
+  detectLanguage(fileName: string): string {
+    const extension = fileName.split('.').pop()?.toLowerCase() || '';
+    const languageMap: { [key: string]: string } = {
+      'js': 'javascript',
+      'jsx': 'javascript',
+      'ts': 'typescript',
+      'tsx': 'typescript',
+      'py': 'python',
+      'java': 'java',
+      'cpp': 'cpp',
+      'c': 'cpp',
+      'h': 'cpp',
+      'hpp': 'cpp',
+      'css': 'css',
+      'html': 'html',
+      'php': 'php',
+      'rb': 'ruby',
+      'go': 'go',
+      'rs': 'rust',
+      'sh': 'bash',
+      'json': 'json',
+      'xml': 'xml',
+      'sql': 'sql'
+    };
+    return languageMap[extension] || 'plaintext';
+  }
+
+  escapeHtml(text: string): string {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  acceptFile(index: number): void {
+    console.log(`File ${index} accepted:`, this.files[index].file_name);
+    console.log('File path:', this.files[index].file_path);
+    console.log('Applied code:', this.files[index].modified_code);
+    this.acceptedFiles.add(index);
+    
+    // Emit event for modal
+    this.onFileAccepted.emit({ file: this.files[index], index });
+  }
+
+  rejectFile(index: number): void {
+    console.log(`File ${index} rejected:`, this.files[index].file_name);
+    console.log('File path:', this.files[index].file_path);
+    console.log('Keeping original code:', this.files[index].original_code);
+    this.rejectedFiles.add(index);
+    
+    // Emit event for modal
+    this.onFileRejected.emit({ file: this.files[index], index });
+  }
+
+  acceptAll(): void {
+    console.log('All files accepted');
+    console.log('Tool:', this.toolType);
+    console.log('Reasoning:', this.reasoning);
+    this.files.forEach((file, index) => {
+      console.log(`${file.file_name} (${file.file_path}): Applied code`, file.modified_code);
+      this.acceptFile(index);
+    });
+    
+    // Emit event for modal
+    this.onAcceptAll.emit();
+  }
+
+  rejectAll(): void {
+    console.log('All files rejected');
+    console.log('Tool:', this.toolType);
+    console.log('Reasoning:', this.reasoning);
+    this.files.forEach((file, index) => {
+      console.log(`${file.file_name} (${file.file_path}): Keeping original code`, file.original_code);
+      this.rejectFile(index);
+    });
+    
+    // Emit event for modal
+    this.onRejectAll.emit();
+  }
+
+  isFileAccepted(index: number): boolean {
+    return this.acceptedFiles.has(index);
+  }
+
+  isFileRejected(index: number): boolean {
+    return this.rejectedFiles.has(index);
+  }
+
+  isFileProcessed(index: number): boolean {
+    return this.isFileAccepted(index) || this.isFileRejected(index);
+  }
+
+  allFilesProcessed(): boolean {
+    return (this.acceptedFiles.size + this.rejectedFiles.size) === this.files.length;
+  }
+
+  getDiffLines(index: number): DiffLine[] {
+    return this.processedDiffs.get(index)?.lines || [];
+  }
+
+  isNewFile(index: number): boolean {
+    return this.processedDiffs.get(index)?.isNewFile || false;
+  }
+
+  getFileState(index: number): FileState {
+    return this.fileStates[index] || { addedCount: 0, removedCount: 0 };
+  }
+
+  getFilePath(index: number): string {
+    return this.files[index]?.file_path || '';
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="code-rag-wrapper">
+  <!-- Top Section: Draft Header and Action Buttons -->
+  <div class="code-rag-top-section" *ngIf="!allFilesProcessed()">
+    <!-- Draft Header -->
+    <div class="code-rag-draft-header">
+      <div class="code-rag-draft-icon">⚠️</div>
+      <div class="code-rag-draft-text">
+        <div class="code-rag-draft-title">Confirmation Required - {{ toolType }}</div>
+        <div class="code-rag-draft-subtitle" *ngIf="reasoning">
+          {{ reasoning }}
+        </div>
+        <div class="code-rag-draft-subtitle" *ngIf="!reasoning">
+          Review and approve changes for {{ files.length }} file{{ files.length > 1 ? 's' : '' }}
+        </div>
+      </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="code-rag-top-actions">
+      <button 
+        class="code-rag-btn-small code-rag-btn-accept" 
+        (click)="acceptAll()">
+        Accept All
+      </button>
+      <button 
+        class="code-rag-btn-small code-rag-btn-reject" 
+        (click)="rejectAll()">
+        Reject All
+      </button>
+    </div>
+  </div>
+
+  <!-- Files Container -->
+  <div class="code-rag-files-container">
+    <ng-container *ngFor="let file of files; let i = index">
+      <!-- Accepted File Message -->
+      <div class="code-rag-file-accepted" *ngIf="isFileAccepted(i)">
+        <div class="code-rag-file-accepted-icon">✓</div>
+        <div class="code-rag-file-accepted-text">Changes Accepted</div>
+        <div class="code-rag-file-accepted-filename">{{ file.file_name }}</div>
+        <div class="code-rag-file-path">{{ file.file_path }}</div>
+      </div>
+
+      <!-- Rejected File Message -->
+      <div class="code-rag-file-rejected" *ngIf="isFileRejected(i)">
+        <div class="code-rag-file-rejected-icon">✗</div>
+        <div class="code-rag-file-rejected-text">Changes Rejected</div>
+        <div class="code-rag-file-rejected-filename">{{ file.file_name }}</div>
+        <div class="code-rag-file-path">{{ file.file_path }}</div>
+      </div>
+
+      <!-- File Block (not yet processed) -->
+      <div class="code-rag-file-block" *ngIf="!isFileProcessed(i)">
+        <!-- File Header -->
+        <div class="code-rag-header">
+          <div class="code-rag-file-info">
+            <span class="code-rag-file-icon">📄</span>
+            <div class="code-rag-file-name-container">
+              <span class="code-rag-file-name">{{ file.file_name }}</span>
+              <span class="code-rag-file-badge new" *ngIf="isNewFile(i)">New File</span>
+              <div class="code-rag-file-path-header">{{ file.file_path }}</div>
+            </div>
+          </div>
+          <div class="code-rag-stats">
+            <div class="code-rag-stat-item code-rag-stat-added">
+              <span>++<span>{{ getFileState(i).addedCount }}</span></span>
+            </div>
+            <div class="code-rag-stat-item code-rag-stat-removed" *ngIf="!isNewFile(i)">
+              <span>--<span>{{ getFileState(i).removedCount }}</span></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Diff Block -->
+        <div class="code-rag-diff-block">
+          <div class="code-rag-diff-header">
+            {{ isNewFile(i) ? 'New file with syntax highlighting' : 'Showing changes with syntax highlighting' }}
+          </div>
+
+          <!-- Diff Content for Regular Files -->
+          <div class="code-rag-diff-content" *ngIf="!isNewFile(i)">
+            <div 
+              *ngFor="let line of getDiffLines(i)" 
+              class="code-rag-diff-line code-rag-line-{{ line.type }}">
+              <div class="code-rag-line-numbers">
+                <div class="code-rag-line-number">{{ line.oldLineNum || '' }}</div>
+                <div class="code-rag-line-number">{{ line.newLineNum || '' }}</div>
+              </div>
+              <div class="code-rag-line-content">
+                <code [innerHTML]="line.highlightedContent"></code>
+              </div>
+            </div>
+          </div>
+
+          <!-- New File Content -->
+          <div class="code-rag-new-file-content" *ngIf="isNewFile(i)">
+            <div 
+              *ngFor="let line of getDiffLines(i)" 
+              class="code-rag-new-file-line">
+              <div class="code-rag-line-numbers">
+                <div class="code-rag-line-number"></div>
+                <div class="code-rag-line-number">{{ line.newLineNum }}</div>
+              </div>
+              <div class="code-rag-line-content">
+                <code [innerHTML]="line.highlightedContent"></code>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- File Actions -->
+        <div class="code-rag-file-actions">
+          <button 
+            class="code-rag-btn code-rag-btn-accept" 
+            (click)="acceptFile(i)">
+            <span>✓</span>
+            <span>Accept</span>
+          </button>
+          <button 
+            class="code-rag-btn code-rag-btn-reject" 
+            (click)="rejectFile(i)">
+            <span>✗</span>
+            <span>Reject</span>
+          </button>
+        </div>
+      </div>
+    </ng-container>
+  </div>
+</div>
+
+
+
+
+
+
+
+
+
+
+/* Import theme variables */
+@import './vibe-coding-theme-variables.css';
+
+/* Add these additional styles to your existing diff-viewer.component.css */
+
+/* File name container to stack name and path */
+.code-rag-file-name-container {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.code-rag-file-name {
+    font-weight: 600;
+    color: var(--vibe-coding-header-text);
+}
+
+.code-rag-file-path-header {
+    font-size: 11px;
+    color: var(--vibe-coding-header-text-secondary);
+    font-family: 'Courier New', monospace;
+    opacity: 0.8;
+}
+
+/* File path in accepted/rejected messages */
+.code-rag-file-path {
+    font-size: 12px;
+    color: var(--vibe-coding-text-secondary);
+    font-family: 'Courier New', monospace;
+    margin-top: 5px;
+    opacity: 0.7;
+}
+
+/* Update file info to accommodate new structure */
+.code-rag-file-info {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-size: 14px;
+}
+
+.code-rag-file-icon {
+    font-size: 18px;
+    margin-top: 2px;
+}
+
+/* Adjust draft title for tool type */
+.code-rag-draft-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--vibe-coding-warning-text-primary);
+    margin-bottom: 4px;
+}
+
+.code-rag-draft-subtitle {
+    font-size: 13px;
+    color: var(--vibe-coding-warning-text-secondary);
+    line-height: 1.4;
+}
+
+/* Mobile responsive adjustments */
+@media (max-width: 768px) {
+    .code-rag-file-path-header {
+        font-size: 10px;
+    }
+
+    .code-rag-file-path {
+        font-size: 11px;
+    }
+
+    .code-rag-file-name-container {
+        gap: 2px;
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import { Component, Input, Output, EventEmitter, OnInit } from '@angular/core';
+
+interface FileItem {
+  file_path: string;
+  file_name: string;
+  original_code: string;
+  modified_code: string;
+}
+
+interface FileConfigContent {
+  reasoning: string;
+  files: FileItem[];
+}
+
+interface FileConfig {
+  tool: string;
+  content: FileConfigContent;
+}
+
+@Component({
+  selector: 'app-diff-viewer-modal',
+  templateUrl: './diff-viewer-modal.component.html',
+  styleUrls: ['./diff-viewer-modal.component.css']
+})
+export class DiffViewerModalComponent implements OnInit {
+  @Input() isOpen: boolean = false;
+  @Input() config!: FileConfig; // Changed to accept full config object
+  @Output() close = new EventEmitter<void>();
+  @Output() onAcceptAll = new EventEmitter<FileConfig>();
+  @Output() onRejectAll = new EventEmitter<FileConfig>();
+  @Output() onFileAccepted = new EventEmitter<{ file: FileItem, index: number, config: FileConfig }>();
+  @Output() onFileRejected = new EventEmitter<{ file: FileItem, index: number, config: FileConfig }>();
+
+  ngOnInit(): void {
+    // Listen for escape key to close modal
+    document.addEventListener('keydown', this.handleEscapeKey.bind(this));
+  }
+
+  ngOnDestroy(): void {
+    document.removeEventListener('keydown', this.handleEscapeKey.bind(this));
+  }
+
+  handleEscapeKey(event: KeyboardEvent): void {
+    if (event.key === 'Escape' && this.isOpen) {
+      this.closeModal();
+    }
+  }
+
+  closeModal(): void {
+    this.close.emit();
+  }
+
+  handleBackdropClick(event: MouseEvent): void {
+    // Close modal when clicking on backdrop (not on modal content)
+    if ((event.target as HTMLElement).classList.contains('code-rag-modal-backdrop')) {
+      this.closeModal();
+    }
+  }
+
+  handleAcceptAll(): void {
+    this.onAcceptAll.emit(this.config);
+  }
+
+  handleRejectAll(): void {
+    this.onRejectAll.emit(this.config);
+  }
+
+  handleFileAccepted(data: { file: FileItem, index: number }): void {
+    this.onFileAccepted.emit({ ...data, config: this.config });
+  }
+
+  handleFileRejected(data: { file: FileItem, index: number }): void {
+    this.onFileRejected.emit({ ...data, config: this.config });
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 <div class="code-rag-modal-backdrop" *ngIf="isOpen" (click)="handleBackdropClick($event)">
   <div class="code-rag-modal-container">
     <!-- Modal Header -->
     <div class="code-rag-modal-header">
-      <h2 class="code-rag-modal-title">Review Code Changes</h2>
+      <h2 class="code-rag-modal-title">Review Code Changes - {{ config?.tool || 'MODIFY' }}</h2>
       <button class="code-rag-modal-close" (click)="closeModal()" aria-label="Close">
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -14,7 +639,7 @@
     <!-- Modal Body with Diff Viewer -->
     <div class="code-rag-modal-body">
       <app-diff-viewer 
-        [files]="files"
+        [config]="config"
         (onAcceptAll)="handleAcceptAll()"
         (onRejectAll)="handleRejectAll()"
         (onFileAccepted)="handleFileAccepted($event)"
@@ -37,160 +662,259 @@
 
 
 
-/* Import theme variables */
-@import './vibe-coding-theme-variables.css';
 
-.code-rag-modal-backdrop {
-    position: fixed;
-    top: 60px;
-    left: 320px;
-    right: 320px;
-    bottom: 34px;
-    background: var(--vibe-coding-modal-backdrop);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 1000;
-    padding: 0;
-    animation: fadeIn 0.3s ease;
-    overflow-y: auto;
+
+
+// example-usage-nested.component.ts
+import { Component } from '@angular/core';
+
+interface FileItem {
+  file_path: string;
+  file_name: string;
+  original_code: string;
+  modified_code: string;
 }
 
-@keyframes fadeIn {
-    from {
-        opacity: 0;
+interface FileConfigContent {
+  reasoning: string;
+  files: FileItem[];
+}
+
+interface FileConfig {
+  tool: string;
+  content: FileConfigContent;
+}
+
+@Component({
+  selector: 'app-example-usage-nested',
+  template: `
+    <div style="padding: 40px;">
+      <h1>Diff Viewer with Nested Config</h1>
+      <p>Click the button to open the diff viewer modal:</p>
+      
+      <button 
+        (click)="openModal()" 
+        style="padding: 12px 24px; background: #0366d6; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600;">
+        Open Diff Viewer Modal
+      </button>
+
+      <!-- Modal Component -->
+      <app-diff-viewer-modal
+        [isOpen]="isModalOpen"
+        [config]="fileConfig"
+        (close)="closeModal()"
+        (onAcceptAll)="handleAcceptAll($event)"
+        (onRejectAll)="handleRejectAll($event)"
+        (onFileAccepted)="handleFileAccepted($event)"
+        (onFileRejected)="handleFileRejected($event)">
+      </app-diff-viewer-modal>
+
+      <!-- Status Display -->
+      <div *ngIf="statusMessage" style="margin-top: 20px; padding: 15px; background: #f0f9ff; border-left: 4px solid #0366d6; border-radius: 4px;">
+        <strong>Status:</strong> {{ statusMessage }}
+      </div>
+
+      <!-- Debug Info -->
+      <div style="margin-top: 20px; padding: 15px; background: #f6f8fa; border-radius: 6px;">
+        <h3>Config Structure:</h3>
+        <pre>{{ fileConfig | json }}</pre>
+      </div>
+    </div>
+  `,
+  styles: [`
+    h1 {
+      color: #24292e;
+      margin-bottom: 10px;
     }
-    to {
-        opacity: 1;
+    p {
+      color: #57606a;
+      margin-bottom: 20px;
     }
-}
-
-.code-rag-modal-container {
-    background: var(--vibe-coding-modal-bg);
-    border-radius: 12px;
-    width: 100%;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    box-shadow: var(--vibe-coding-shadow-xl);
-    animation: slideIn 0.3s ease;
-}
-
-@keyframes slideIn {
-    from {
-        transform: translateY(-50px);
-        opacity: 0;
+    pre {
+      background: #fff;
+      padding: 10px;
+      border-radius: 4px;
+      overflow-x: auto;
+      font-size: 12px;
     }
-    to {
-        transform: translateY(0);
-        opacity: 1;
+  `]
+})
+export class ExampleUsageNestedComponent {
+  isModalOpen = false;
+  statusMessage = '';
+
+  fileConfig: FileConfig = {
+    tool: 'MODIFY',
+    content: {
+      reasoning: 'Write a Java code implementation for the user authentication service',
+      files: [
+        {
+          file_path: '/src/main/java/com/example/AuthService.java',
+          file_name: 'AuthService.java',
+          original_code: `package com.example;
+
+public class AuthService {
+    public boolean login(String username, String password) {
+        return true;
     }
-}
+}`,
+          modified_code: `package com.example;
 
-.code-rag-modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 20px 30px;
-    border-bottom: 2px solid var(--vibe-coding-border-primary);
-    background: var(--vibe-coding-modal-header-bg);
-    border-radius: 12px 12px 0 0;
-}
+import java.security.MessageDigest;
 
-.code-rag-modal-title {
-    font-size: 20px;
-    font-weight: 600;
-    color: var(--vibe-coding-text-primary);
-    margin: 0;
-}
-
-.code-rag-modal-close {
-    background: transparent;
-    border: none;
-    font-size: 32px;
-    line-height: 1;
-    color: var(--vibe-coding-text-secondary);
-    cursor: pointer;
-    padding: 6px;
-    width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 6px;
-    transition: all 0.2s ease;
-}
-
-.code-rag-modal-close svg {
-    width: 20px;
-    height: 20px;
-    stroke: currentColor;
-}
-
-.code-rag-modal-close:hover {
-    background: var(--vibe-coding-modal-close-hover);
-    color: var(--vibe-coding-text-primary);
-}
-
-.code-rag-modal-body {
-    overflow-y: auto;
-    flex: 1;
-    padding: 0;
-}
-
-/* Override wrapper styles for modal */
-.code-rag-modal-body ::ng-deep .code-rag-wrapper {
-    box-shadow: none;
-    border: none;
-    border-radius: 0;
-    max-width: 100%;
-}
-
-/* Adjust padding for modal context */
-.code-rag-modal-body ::ng-deep .code-rag-top-section {
-    margin: 20px 20px 15px 20px;
-}
-
-.code-rag-modal-body ::ng-deep .code-rag-files-container {
-    padding: 0 20px 20px 20px;
-}
-
-@media (max-width: 768px) {
-    .code-rag-modal-backdrop {
-        top: 10px;
-        left: 10px;
-        right: 10px;
-        bottom: 10px;
+public class AuthService {
+    private static final int MAX_LOGIN_ATTEMPTS = 3;
+    
+    public boolean login(String username, String password) {
+        // Added password validation
+        if (username == null || password == null) {
+            throw new IllegalArgumentException("Username and password cannot be null");
+        }
+        
+        // Hash the password
+        String hashedPassword = hashPassword(password);
+        
+        // Validate credentials
+        return validateCredentials(username, hashedPassword);
     }
-
-    .code-rag-modal-container {
-        border-radius: 8px;
+    
+    private String hashPassword(String password) {
+        // Implementation here
+        return password;
     }
-
-    .code-rag-modal-header {
-        padding: 15px 20px;
+    
+    private boolean validateCredentials(String username, String hashedPassword) {
+        // Implementation here
+        return true;
     }
+}`
+        },
+        {
+          file_path: '/src/main/java/com/example/UserService.java',
+          file_name: 'UserService.java',
+          original_code: `package com.example;
 
-    .code-rag-modal-title {
-        font-size: 18px;
+public class UserService {
+    public User getUser(int id) {
+        return new User(id, "John");
     }
+}`,
+          modified_code: `package com.example;
 
-    .code-rag-modal-close {
-        width: 28px;
-        height: 28px;
-        padding: 4px;
-    }
+import java.util.Optional;
 
-    .code-rag-modal-close svg {
-        width: 18px;
-        height: 18px;
+public class UserService {
+    private final UserRepository repository;
+    
+    public UserService(UserRepository repository) {
+        this.repository = repository;
     }
+    
+    public Optional<User> getUser(int id) {
+        if (id <= 0) {
+            throw new IllegalArgumentException("User ID must be positive");
+        }
+        return repository.findById(id);
+    }
+    
+    public User createUser(String name, String email) {
+        // Validation logic
+        if (name == null || name.trim().isEmpty()) {
+            throw new IllegalArgumentException("Name cannot be empty");
+        }
+        
+        User user = new User(name, email);
+        return repository.save(user);
+    }
+}`
+        },
+        {
+          file_path: '/src/test/java/com/example/AuthServiceTest.java',
+          file_name: 'AuthServiceTest.java',
+          original_code: '',  // New file
+          modified_code: `package com.example;
+
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
+
+public class AuthServiceTest {
+    
+    @Test
+    public void testLoginWithValidCredentials() {
+        AuthService service = new AuthService();
+        assertTrue(service.login("user", "password"));
+    }
+    
+    @Test
+    public void testLoginWithNullUsername() {
+        AuthService service = new AuthService();
+        assertThrows(IllegalArgumentException.class, 
+            () -> service.login(null, "password"));
+    }
+    
+    @Test
+    public void testLoginWithNullPassword() {
+        AuthService service = new AuthService();
+        assertThrows(IllegalArgumentException.class, 
+            () -> service.login("user", null));
+    }
+}`
+        }
+      ]
+    }
+  };
+
+  openModal(): void {
+    this.isModalOpen = true;
+    this.statusMessage = '';
+  }
+
+  closeModal(): void {
+    this.isModalOpen = false;
+  }
+
+  handleAcceptAll(config: FileConfig): void {
+    this.statusMessage = `All files accepted for tool: ${config.tool}`;
+    console.log('All files accepted:', config);
+    console.log('Reasoning:', config.content.reasoning);
+    
+    config.content.files.forEach((file, index) => {
+      console.log(`File ${index + 1}: ${file.file_path}`);
+      console.log('Applied code:', file.modified_code);
+    });
+    
+    // Optionally close modal after a delay
+    setTimeout(() => {
+      this.closeModal();
+    }, 2000);
+  }
+
+  handleRejectAll(config: FileConfig): void {
+    this.statusMessage = `All files rejected for tool: ${config.tool}`;
+    console.log('All files rejected:', config);
+    
+    config.content.files.forEach((file, index) => {
+      console.log(`File ${index + 1}: ${file.file_path}`);
+      console.log('Keeping original code:', file.original_code);
+    });
+    
+    // Optionally close modal after a delay
+    setTimeout(() => {
+      this.closeModal();
+    }, 2000);
+  }
+
+  handleFileAccepted(event: { file: FileItem, index: number, config: FileConfig }): void {
+    this.statusMessage = `File "${event.file.file_name}" accepted at ${event.file.file_path}`;
+    console.log('File accepted:', event.file);
+    console.log('Config tool:', event.config.tool);
+    console.log('Applied code:', event.file.modified_code);
+  }
+
+  handleFileRejected(event: { file: FileItem, index: number, config: FileConfig }): void {
+    this.statusMessage = `File "${event.file.file_name}" rejected at ${event.file.file_path}`;
+    console.log('File rejected:', event.file);
+    console.log('Config tool:', event.config.tool);
+    console.log('Keeping original code:', event.file.original_code);
+  }
 }
-
-
-
-
-
-
-
-
