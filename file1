@@ -182,15 +182,81 @@ export class DiffViewerComponent implements OnInit {
     return diffLines;
   }
 
-  // Get split view data (separate old and new code)
-  getSplitViewData(index: number): { oldLines: string[], newLines: string[] } {
+  // Get split view data with diff information and alignment
+  getSplitViewData(index: number): { 
+    oldLines: Array<{lineNum: number | null, content: string, highlighted: string, type: 'added' | 'removed' | 'context' | 'empty'}>,
+    newLines: Array<{lineNum: number | null, content: string, highlighted: string, type: 'added' | 'removed' | 'context' | 'empty'}>
+  } {
     const file = this.files[index];
     if (!file) {
       return { oldLines: [], newLines: [] };
     }
 
-    const oldLines = file.original_code.split('\n');
-    const newLines = file.modified_code.split('\n');
+    const diff = Diff.diffLines(file.original_code, file.modified_code);
+    const oldLines: Array<{lineNum: number | null, content: string, highlighted: string, type: 'added' | 'removed' | 'context' | 'empty'}> = [];
+    const newLines: Array<{lineNum: number | null, content: string, highlighted: string, type: 'added' | 'removed' | 'context' | 'empty'}> = [];
+    
+    let oldLineNum = 1;
+    let newLineNum = 1;
+
+    diff.forEach(part => {
+      const lines = part.value.split('\n');
+      if (lines[lines.length - 1] === '') {
+        lines.pop();
+      }
+
+      if (part.added) {
+        // Added lines only appear in new/modified code
+        // Add empty placeholders in old code for alignment
+        lines.forEach(line => {
+          oldLines.push({
+            lineNum: null,
+            content: '',
+            highlighted: '',
+            type: 'empty'
+          });
+          newLines.push({
+            lineNum: newLineNum++,
+            content: line,
+            highlighted: this.highlightCode(line, file.file_name),
+            type: 'added'
+          });
+        });
+      } else if (part.removed) {
+        // Removed lines only appear in old/original code
+        // Add empty placeholders in new code for alignment
+        lines.forEach(line => {
+          oldLines.push({
+            lineNum: oldLineNum++,
+            content: line,
+            highlighted: this.highlightCode(line, file.file_name),
+            type: 'removed'
+          });
+          newLines.push({
+            lineNum: null,
+            content: '',
+            highlighted: '',
+            type: 'empty'
+          });
+        });
+      } else {
+        // Context lines appear in both
+        lines.forEach(line => {
+          oldLines.push({
+            lineNum: oldLineNum++,
+            content: line,
+            highlighted: this.highlightCode(line, file.file_name),
+            type: 'context'
+          });
+          newLines.push({
+            lineNum: newLineNum++,
+            content: line,
+            highlighted: this.highlightCode(line, file.file_name),
+            type: 'context'
+          });
+        });
+      }
+    });
 
     return { oldLines, newLines };
   }
@@ -333,6 +399,14 @@ export class DiffViewerComponent implements OnInit {
 
 
 
+
+
+
+
+
+
+
+
 <div class="code-rag-wrapper">
   <!-- Top Section: Draft Header and Action Buttons -->
   <div class="code-rag-top-section" *ngIf="!allFilesProcessed()">
@@ -462,11 +536,14 @@ export class DiffViewerComponent implements OnInit {
               <div class="code-rag-split-header">Original</div>
               <div class="code-rag-split-content">
                 <div 
-                  *ngFor="let line of file.original_code.split('\n'); let lineIndex = index" 
-                  class="code-rag-split-line">
-                  <div class="code-rag-split-line-number">{{ lineIndex + 1 }}</div>
+                  *ngFor="let line of getSplitViewData(i).oldLines" 
+                  class="code-rag-split-line"
+                  [class.code-rag-split-line-removed]="line.type === 'removed'"
+                  [class.code-rag-split-line-context]="line.type === 'context'"
+                  [class.code-rag-split-line-empty]="line.type === 'empty'">
+                  <div class="code-rag-split-line-number">{{ line.lineNum || '' }}</div>
                   <div class="code-rag-split-line-content">
-                    <code [innerHTML]="highlightCode(line, file.file_name)"></code>
+                    <code [innerHTML]="line.highlighted || '&nbsp;'"></code>
                   </div>
                 </div>
               </div>
@@ -477,11 +554,14 @@ export class DiffViewerComponent implements OnInit {
               <div class="code-rag-split-header">Modified</div>
               <div class="code-rag-split-content">
                 <div 
-                  *ngFor="let line of file.modified_code.split('\n'); let lineIndex = index" 
-                  class="code-rag-split-line">
-                  <div class="code-rag-split-line-number">{{ lineIndex + 1 }}</div>
+                  *ngFor="let line of getSplitViewData(i).newLines" 
+                  class="code-rag-split-line"
+                  [class.code-rag-split-line-added]="line.type === 'added'"
+                  [class.code-rag-split-line-context]="line.type === 'context'"
+                  [class.code-rag-split-line-empty]="line.type === 'empty'">
+                  <div class="code-rag-split-line-number">{{ line.lineNum || '' }}</div>
                   <div class="code-rag-split-line-content">
-                    <code [innerHTML]="highlightCode(line, file.file_name)"></code>
+                    <code [innerHTML]="line.highlighted || '&nbsp;'"></code>
                   </div>
                 </div>
               </div>
@@ -523,6 +603,16 @@ export class DiffViewerComponent implements OnInit {
     </ng-container>
   </div>
 </div>
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -648,6 +738,23 @@ export class DiffViewerComponent implements OnInit {
     min-height: 22px;
 }
 
+.code-rag-split-line-added {
+    background: var(--vibe-coding-diff-added-bg);
+}
+
+.code-rag-split-line-removed {
+    background: var(--vibe-coding-diff-removed-bg);
+}
+
+.code-rag-split-line-context {
+    background: var(--vibe-coding-primary-bg);
+}
+
+.code-rag-split-line-empty {
+    background: var(--vibe-coding-secondary-bg);
+    opacity: 0.5;
+}
+
 .code-rag-split-line-number {
     width: 50px;
     padding: 0 10px;
@@ -752,277 +859,4 @@ export class DiffViewerComponent implements OnInit {
     .code-rag-split-pane {
         height: 250px;
     }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// example-with-view-toggle.component.ts
-import { Component } from '@angular/core';
-
-@Component({
-  selector: 'app-example-view-toggle',
-  template: `
-    <div style="padding: 40px;">
-      <h1>Diff Viewer with View Mode Toggle</h1>
-      <p>Switch between unified and split view modes:</p>
-      
-      <button 
-        (click)="openModal()" 
-        style="padding: 12px 24px; background: #0366d6; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; margin-bottom: 20px;">
-        Open Diff Viewer Modal
-      </button>
-
-      <!-- Standalone Component Example -->
-      <div style="margin-top: 20px;">
-        <h3>Standalone Component</h3>
-        <app-diff-viewer 
-          [config]="fileConfig"
-          [defaultViewMode]="'unified'">
-        </app-diff-viewer>
-      </div>
-
-      <!-- Modal Component -->
-      <app-diff-viewer-modal
-        [isOpen]="isModalOpen"
-        [config]="fileConfig"
-        (close)="closeModal()"
-        (onAcceptAll)="handleAcceptAll($event)"
-        (onRejectAll)="handleRejectAll($event)"
-        (onFileAccepted)="handleFileAccepted($event)"
-        (onFileRejected)="handleFileRejected($event)">
-      </app-diff-viewer-modal>
-
-      <!-- Status Display -->
-      <div *ngIf="statusMessage" style="margin-top: 20px; padding: 15px; background: #f0f9ff; border-left: 4px solid #0366d6; border-radius: 4px;">
-        <strong>Status:</strong> {{ statusMessage }}
-      </div>
-    </div>
-  `,
-  styles: [`
-    h1 {
-      color: #24292e;
-      margin-bottom: 10px;
-    }
-    h3 {
-      color: #24292e;
-      margin-bottom: 15px;
-    }
-    p {
-      color: #57606a;
-      margin-bottom: 20px;
-    }
-  `]
-})
-export class ExampleViewToggleComponent {
-  isModalOpen = false;
-  statusMessage = '';
-
-  fileConfig = {
-    tool: 'MODIFY',
-    content: {
-      reasoning: 'Refactor authentication service to improve security and add validation',
-      files: [
-        {
-          file_path: '/src/services/auth.service.ts',
-          file_name: 'auth.service.ts',
-          original_code: `import { Injectable } from '@angular/core';
-
-@Injectable({
-  providedIn: 'root'
-})
-export class AuthService {
-  private apiUrl = 'https://api.example.com';
-
-  login(username: string, password: string) {
-    return fetch(\`\${this.apiUrl}/login\`, {
-      method: 'POST',
-      body: JSON.stringify({ username, password })
-    });
-  }
-
-  logout() {
-    localStorage.removeItem('token');
-  }
-}`,
-          modified_code: `import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { Observable } from 'rxjs';
-
-interface LoginResponse {
-  token: string;
-  user: {
-    id: number;
-    username: string;
-  };
-}
-
-@Injectable({
-  providedIn: 'root'
-})
-export class AuthService {
-  private apiUrl = 'https://api.example.com';
-
-  constructor(private http: HttpClient) {}
-
-  login(username: string, password: string): Observable<LoginResponse> {
-    // Added input validation
-    if (!username || !password) {
-      throw new Error('Username and password are required');
-    }
-
-    if (password.length < 8) {
-      throw new Error('Password must be at least 8 characters');
-    }
-
-    return this.http.post<LoginResponse>(\`\${this.apiUrl}/login\`, {
-      username,
-      password
-    });
-  }
-
-  logout(): void {
-    // Improved logout with token clearing
-    localStorage.removeItem('token');
-    sessionStorage.clear();
-  }
-
-  isAuthenticated(): boolean {
-    return !!localStorage.getItem('token');
-  }
-}`
-        },
-        {
-          file_path: '/src/services/user.service.ts',
-          file_name: 'user.service.ts',
-          original_code: `import { Injectable } from '@angular/core';
-
-@Injectable({
-  providedIn: 'root'
-})
-export class UserService {
-  getUser(id: number) {
-    return fetch(\`/api/users/\${id}\`);
-  }
-
-  updateUser(id: number, data: any) {
-    return fetch(\`/api/users/\${id}\`, {
-      method: 'PUT',
-      body: JSON.stringify(data)
-    });
-  }
-}`,
-          modified_code: `import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { Observable } from 'rxjs';
-import { map, catchError } from 'rxjs/operators';
-
-interface User {
-  id: number;
-  username: string;
-  email: string;
-  createdAt: Date;
-}
-
-@Injectable({
-  providedIn: 'root'
-})
-export class UserService {
-  private apiUrl = '/api/users';
-
-  constructor(private http: HttpClient) {}
-
-  getUser(id: number): Observable<User> {
-    if (id <= 0) {
-      throw new Error('Invalid user ID');
-    }
-
-    return this.http.get<User>(\`\${this.apiUrl}/\${id}\`).pipe(
-      map(user => ({
-        ...user,
-        createdAt: new Date(user.createdAt)
-      })),
-      catchError(error => {
-        console.error('Error fetching user:', error);
-        throw error;
-      })
-    );
-  }
-
-  updateUser(id: number, data: Partial<User>): Observable<User> {
-    if (id <= 0) {
-      throw new Error('Invalid user ID');
-    }
-
-    if (!data || Object.keys(data).length === 0) {
-      throw new Error('Update data cannot be empty');
-    }
-
-    return this.http.put<User>(\`\${this.apiUrl}/\${id}\`, data).pipe(
-      catchError(error => {
-        console.error('Error updating user:', error);
-        throw error;
-      })
-    );
-  }
-
-  deleteUser(id: number): Observable<void> {
-    if (id <= 0) {
-      throw new Error('Invalid user ID');
-    }
-
-    return this.http.delete<void>(\`\${this.apiUrl}/\${id}\`);
-  }
-}`
-        }
-      ]
-    }
-  };
-
-  openModal(): void {
-    this.isModalOpen = true;
-    this.statusMessage = '';
-  }
-
-  closeModal(): void {
-    this.isModalOpen = false;
-  }
-
-  handleAcceptAll(config: any): void {
-    this.statusMessage = `All files accepted for tool: ${config.tool}`;
-    console.log('All files accepted:', config);
-    
-    setTimeout(() => {
-      this.closeModal();
-    }, 2000);
-  }
-
-  handleRejectAll(config: any): void {
-    this.statusMessage = `All files rejected for tool: ${config.tool}`;
-    console.log('All files rejected:', config);
-    
-    setTimeout(() => {
-      this.closeModal();
-    }, 2000);
-  }
-
-  handleFileAccepted(event: any): void {
-    this.statusMessage = `File "${event.file.file_name}" accepted`;
-    console.log('File accepted:', event);
-  }
-
-  handleFileRejected(event: any): void {
-    this.statusMessage = `File "${event.file.file_name}" rejected`;
-    console.log('File rejected:', event);
-  }
 }
