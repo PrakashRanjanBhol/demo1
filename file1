@@ -37,63 +37,41 @@ export class ToolParserService {
   // Callback for UI updates
   private onUpdateCallback?: () => void;
 
-  /**
-   * Set callback for UI updates
-   */
   setUpdateCallback(callback: () => void): void {
     this.onUpdateCallback = callback;
   }
 
-  /**
-   * Trigger UI update
-   */
   private triggerUpdate(): void {
     if (this.onUpdateCallback) {
       this.onUpdateCallback();
     }
   }
 
-  /**
-   * Add new tool commands from streaming API
-   */
   addToolFromStream(input: string): void {
     const tools = this.parseToolString(input);
     
     if (tools.length === 0) return;
 
-    // Add new tools to the queue
     this.processingQueue.push(...tools);
     
-    // Start processing if not already processing and not waiting
     if (!this.isProcessing && !this.waitingForApproval) {
       this.processQueue();
     }
   }
 
-  /**
-   * User clicked OK button - continue processing
-   */
   approveAndContinue(): void {
     if (!this.waitingForApproval) return;
 
-    // Execute the current batch (WRITE/MODIFY actions)
     this.executeBatch(this.currentBatch);
-
-    // Clear current batch
     this.currentBatch = [];
     this.waitingForApproval = false;
     this.isWaitingForUserApproval = false;
     this.pendingBatch = [];
 
     this.triggerUpdate();
-
-    // Continue processing remaining queue
     this.processQueue();
   }
 
-  /**
-   * Process queue until we hit WRITE/MODIFY
-   */
   private processQueue(): void {
     if (this.waitingForApproval) return;
 
@@ -110,9 +88,6 @@ export class ToolParserService {
     this.isProcessing = false;
   }
 
-  /**
-   * Process a single tool command
-   */
   private processSingleTool(tool: ToolCommand): void {
     try {
       if (!tool.tool) {
@@ -122,7 +97,6 @@ export class ToolParserService {
 
       switch (tool.tool) {
         case 'READ':
-          // Execute READ immediately
           this.handleRead(tool.content);
           this.addToProcessedTools(tool, 'completed');
           this.triggerUpdate();
@@ -130,14 +104,10 @@ export class ToolParserService {
 
         case 'WRITE':
         case 'MODIFY':
-          // Add to current batch
           this.currentBatch.push(tool);
           this.addToProcessedTools(tool, 'waiting_approval');
-          
-          // Collect all consecutive WRITE/MODIFY commands
           this.collectBatch();
           
-          // Stop processing and wait for approval
           this.waitingForApproval = true;
           this.isWaitingForUserApproval = true;
           this.pendingBatch = [...this.currentBatch];
@@ -153,9 +123,6 @@ export class ToolParserService {
     }
   }
 
-  /**
-   * Collect all consecutive WRITE/MODIFY commands into current batch
-   */
   private collectBatch(): void {
     while (this.processingQueue.length > 0) {
       const nextTool = this.processingQueue[0];
@@ -165,15 +132,11 @@ export class ToolParserService {
         this.currentBatch.push(tool);
         this.addToProcessedTools(tool, 'waiting_approval');
       } else {
-        // Stop when we hit a READ or unknown command
         break;
       }
     }
   }
 
-  /**
-   * Execute the approved batch
-   */
   private executeBatch(batch: ToolCommand[]): void {
     batch.forEach(tool => {
       if (tool.tool === 'WRITE') {
@@ -182,16 +145,12 @@ export class ToolParserService {
         this.handleModify(tool.content);
       }
       
-      // Update status to completed
       this.updateToolStatus(tool, 'completed');
     });
     
     this.triggerUpdate();
   }
 
-  /**
-   * Add tool to processed tools list
-   */
   private addToProcessedTools(tool: ToolCommand, status: 'processing' | 'waiting_approval' | 'completed'): void {
     this.allProcessedTools.push({
       tool,
@@ -200,9 +159,6 @@ export class ToolParserService {
     });
   }
 
-  /**
-   * Update tool status
-   */
   private updateToolStatus(tool: ToolCommand, status: 'processing' | 'waiting_approval' | 'completed'): void {
     const item = this.allProcessedTools.find(pt => pt.tool === tool);
     if (item) {
@@ -210,17 +166,11 @@ export class ToolParserService {
     }
   }
 
-  /**
-   * Handle READ tool - execute immediately
-   */
   private handleRead(content: string): void {
     console.log('READ (executing immediately):', content);
-    // Your read logic here - this executes immediately
+    // Your read logic here
   }
 
-  /**
-   * Handle WRITE tool - only executed after approval
-   */
   private handleWrite(content: WriteModifyContent): void {
     console.log('WRITE (executing after approval):', content.reasoning);
     if (content.files) {
@@ -231,9 +181,6 @@ export class ToolParserService {
     }
   }
 
-  /**
-   * Handle MODIFY tool - only executed after approval
-   */
   private handleModify(content: WriteModifyContent): void {
     console.log('MODIFY (executing after approval):', content.reasoning);
     if (content.files) {
@@ -244,16 +191,10 @@ export class ToolParserService {
     }
   }
 
-  /**
-   * Get current queue length
-   */
   getQueueLength(): number {
     return this.processingQueue.length;
   }
 
-  /**
-   * Reset everything
-   */
   reset(): void {
     this.processingQueue = [];
     this.currentBatch = [];
@@ -264,8 +205,6 @@ export class ToolParserService {
     this.pendingBatch = [];
     this.triggerUpdate();
   }
-
-  // ====== PARSING METHODS ======
 
   parseToolString(input: string): ToolCommand[] {
     const results: ToolCommand[] = [];
@@ -428,61 +367,151 @@ export class ToolParserService {
 
 
 
-
-
-
-
-import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
-import { ToolParserService, ProcessedTool, ToolCommand } from './services/tool-parser.service';
-import { HttpClient } from '@angular/common/http';
+import { Component, ChangeDetectorRef } from '@angular/core';
+import { ToolParserService } from './services/tool-parser.service';
 
 @Component({
   selector: 'app-tool-processor',
   templateUrl: './tool-processor.component.html',
   styleUrls: ['./tool-processor.component.css']
 })
-export class ToolProcessorComponent implements OnInit {
+export class ToolProcessorComponent {
 
   constructor(
     public toolParser: ToolParserService,
-    private cdr: ChangeDetectorRef,
-    private http: HttpClient
+    private cdr: ChangeDetectorRef
   ) {}
 
-  ngOnInit(): void {
-    // Set callback for UI updates
-    this.toolParser.setUpdateCallback(() => {
-      this.cdr.detectChanges();
-    });
-  }
-
-  // Call this when user clicks OK button
   onApprove(): void {
     this.toolParser.approveAndContinue();
   }
 
-  // Reset everything
   onReset(): void {
     this.toolParser.reset();
   }
 
-  // Example: Call your streaming API
-  callStreamingAPI(): void {
+  // Main streaming handler - everything happens here
+  handleStreamingResponse(): void {
+    // Setup the update callback for UI refresh
+    this.toolParser.setUpdateCallback(() => {
+      this.cdr.detectChanges();
+    });
+
     // Replace with your actual API endpoint
-    this.http.get('your-api-endpoint', { responseType: 'text' })
-      .subscribe({
-        next: (response) => {
-          // Process the streaming response
-          this.toolParser.addToolFromStream(response);
-        },
-        error: (error) => {
-          console.error('API Error:', error);
+    const apiUrl = 'your-streaming-api-endpoint';
+
+    fetch(apiUrl)
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
         }
+
+        const reader = response.body?.getReader();
+        if (!reader) {
+          throw new Error('No reader available');
+        }
+
+        const decoder = new TextDecoder();
+        let buffer = ''; // Buffer to handle partial JSON objects
+
+        const processStream = ({ done, value }: ReadableStreamReadResult<Uint8Array>): Promise<any> => {
+          if (done) {
+            console.log('Stream complete');
+            // Process any remaining buffer
+            if (buffer.trim()) {
+              this.toolParser.addToolFromStream(buffer);
+            }
+            return Promise.resolve();
+          }
+
+          // Decode the chunk
+          const chunk = decoder.decode(value, { stream: true });
+          console.log('Received chunk:', chunk);
+          
+          // Add to buffer
+          buffer += chunk;
+
+          // Try to extract complete JSON objects from buffer
+          const processedBuffer = this.processBuffer(buffer);
+          buffer = processedBuffer.remaining;
+
+          // Process each complete object found
+          processedBuffer.completeObjects.forEach(obj => {
+            this.toolParser.addToolFromStream(obj);
+          });
+
+          // Read next chunk
+          return reader.read().then(processStream);
+        };
+
+        return reader.read().then(processStream);
+      })
+      .catch(error => {
+        console.error('Streaming error:', error);
+        alert('Error in streaming: ' + error.message);
       });
   }
 
-  // Example: Simulate streaming with setTimeout
+  // Helper to process buffer and extract complete JSON objects
+  private processBuffer(buffer: string): { completeObjects: string[], remaining: string } {
+    const completeObjects: string[] = [];
+    let remaining = buffer;
+    let depth = 0;
+    let start = 0;
+    let inString = false;
+    let stringDelimiter = '';
+    let escaped = false;
+
+    for (let i = 0; i < buffer.length; i++) {
+      const char = buffer[i];
+
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+
+      if (char === '\\') {
+        escaped = true;
+        continue;
+      }
+
+      if (!inString && (char === '"' || char === "'")) {
+        inString = true;
+        stringDelimiter = char;
+      } else if (inString && char === stringDelimiter) {
+        inString = false;
+        stringDelimiter = '';
+      }
+
+      if (!inString) {
+        if (char === '{') {
+          if (depth === 0) {
+            start = i;
+          }
+          depth++;
+        } else if (char === '}') {
+          depth--;
+          if (depth === 0) {
+            // Found a complete object
+            completeObjects.push(buffer.substring(start, i + 1));
+            start = i + 1;
+          }
+        }
+      }
+    }
+
+    // Remaining buffer is everything after the last complete object
+    remaining = buffer.substring(start).trim();
+
+    return { completeObjects, remaining };
+  }
+
+  // For testing with simulated streaming
   simulateStreaming(): void {
+    this.toolParser.setUpdateCallback(() => {
+      this.cdr.detectChanges();
+    });
+
     const data = [
       '{tool: "READ", content: "First read - showing immediately"}',
       '{tool: "READ", content: "Second read - showing immediately"}',
@@ -506,34 +535,17 @@ export class ToolProcessorComponent implements OnInit {
     }, 1000);
   }
 
-  // Example: Handle actual streaming API with chunks
-  handleStreamingResponse(): void {
-    // Example with fetch API for streaming
-    fetch('your-streaming-api-endpoint')
-      .then(response => {
-        const reader = response.body?.getReader();
-        const decoder = new TextDecoder();
+  // Alternative: Using HttpClient with streaming (if you prefer Angular's HttpClient)
+  handleStreamingWithHttpClient(): void {
+    // Note: This requires proper backend configuration for streaming
+    // and might need additional setup
+    
+    this.toolParser.setUpdateCallback(() => {
+      this.cdr.detectChanges();
+    });
 
-        const processStream = ({ done, value }: any): any => {
-          if (done) {
-            console.log('Stream complete');
-            return;
-          }
-
-          const chunk = decoder.decode(value, { stream: true });
-          console.log('Received chunk:', chunk);
-          
-          // Process the chunk
-          this.toolParser.addToolFromStream(chunk);
-
-          // Read next chunk
-          return reader?.read().then(processStream);
-        };
-
-        return reader?.read().then(processStream);
-      })
-      .catch(error => {
-        console.error('Streaming error:', error);
-      });
+    // Example implementation would depend on your backend
+    // This is a placeholder
+    console.log('Use handleStreamingResponse() for native fetch streaming');
   }
 }
