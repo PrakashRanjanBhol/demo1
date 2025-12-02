@@ -47,6 +47,115 @@ export class ToolParserService {
     }
   }
 
+  /**
+   * Main method to handle streaming API call
+   */
+  async startStreaming(apiUrl: string, options?: RequestInit): Promise<void> {
+    try {
+      const response = await fetch(apiUrl, options);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('No reader available');
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = ''; // Buffer to handle partial JSON objects
+
+      while (true) {
+        const { done, value } = await reader.read();
+
+        if (done) {
+          console.log('Stream complete');
+          // Process any remaining buffer
+          if (buffer.trim()) {
+            this.addToolFromStream(buffer);
+          }
+          break;
+        }
+
+        // Decode the chunk
+        const chunk = decoder.decode(value, { stream: true });
+        console.log('Received chunk:', chunk);
+
+        // Add to buffer
+        buffer += chunk;
+
+        // Try to extract complete JSON objects from buffer
+        const processedBuffer = this.processBuffer(buffer);
+        buffer = processedBuffer.remaining;
+
+        // Process each complete object found
+        processedBuffer.completeObjects.forEach(obj => {
+          this.addToolFromStream(obj);
+        });
+      }
+    } catch (error) {
+      console.error('Streaming error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Helper to process buffer and extract complete JSON objects
+   */
+  private processBuffer(buffer: string): { completeObjects: string[], remaining: string } {
+    const completeObjects: string[] = [];
+    let remaining = buffer;
+    let depth = 0;
+    let start = 0;
+    let inString = false;
+    let stringDelimiter = '';
+    let escaped = false;
+
+    for (let i = 0; i < buffer.length; i++) {
+      const char = buffer[i];
+
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+
+      if (char === '\\') {
+        escaped = true;
+        continue;
+      }
+
+      if (!inString && (char === '"' || char === "'")) {
+        inString = true;
+        stringDelimiter = char;
+      } else if (inString && char === stringDelimiter) {
+        inString = false;
+        stringDelimiter = '';
+      }
+
+      if (!inString) {
+        if (char === '{') {
+          if (depth === 0) {
+            start = i;
+          }
+          depth++;
+        } else if (char === '}') {
+          depth--;
+          if (depth === 0) {
+            // Found a complete object
+            completeObjects.push(buffer.substring(start, i + 1));
+            start = i + 1;
+          }
+        }
+      }
+    }
+
+    // Remaining buffer is everything after the last complete object
+    remaining = buffer.substring(start).trim();
+
+    return { completeObjects, remaining };
+  }
+
   addToolFromStream(input: string): void {
     const tools = this.parseToolString(input);
     
@@ -366,7 +475,6 @@ export class ToolParserService {
 
 
 
-
 import { Component, ChangeDetectorRef } from '@angular/core';
 import { ToolParserService } from './services/tool-parser.service';
 
@@ -376,6 +484,8 @@ import { ToolParserService } from './services/tool-parser.service';
   styleUrls: ['./tool-processor.component.css']
 })
 export class ToolProcessorComponent {
+  isLoading = false;
+  errorMessage = '';
 
   constructor(
     public toolParser: ToolParserService,
@@ -388,122 +498,47 @@ export class ToolProcessorComponent {
 
   onReset(): void {
     this.toolParser.reset();
+    this.errorMessage = '';
   }
 
-  // Main streaming handler - everything happens here
-  handleStreamingResponse(): void {
+  // Main method to call streaming API
+  async handleStreamingResponse(): Promise<void> {
     // Setup the update callback for UI refresh
     this.toolParser.setUpdateCallback(() => {
       this.cdr.detectChanges();
     });
 
-    // Replace with your actual API endpoint
-    const apiUrl = 'your-streaming-api-endpoint';
+    this.isLoading = true;
+    this.errorMessage = '';
 
-    fetch(apiUrl)
-      .then(response => {
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
+    try {
+      // Replace with your actual API endpoint
+      const apiUrl = 'https://your-api.com/stream';
+      
+      // Optional: Configure request options
+      const options: RequestInit = {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer your-token-here' // if needed
+        },
+        body: JSON.stringify({
+          // Your request payload
+          query: 'your query here'
+        })
+      };
 
-        const reader = response.body?.getReader();
-        if (!reader) {
-          throw new Error('No reader available');
-        }
-
-        const decoder = new TextDecoder();
-        let buffer = ''; // Buffer to handle partial JSON objects
-
-        const processStream = ({ done, value }: ReadableStreamReadResult<Uint8Array>): Promise<any> => {
-          if (done) {
-            console.log('Stream complete');
-            // Process any remaining buffer
-            if (buffer.trim()) {
-              this.toolParser.addToolFromStream(buffer);
-            }
-            return Promise.resolve();
-          }
-
-          // Decode the chunk
-          const chunk = decoder.decode(value, { stream: true });
-          console.log('Received chunk:', chunk);
-          
-          // Add to buffer
-          buffer += chunk;
-
-          // Try to extract complete JSON objects from buffer
-          const processedBuffer = this.processBuffer(buffer);
-          buffer = processedBuffer.remaining;
-
-          // Process each complete object found
-          processedBuffer.completeObjects.forEach(obj => {
-            this.toolParser.addToolFromStream(obj);
-          });
-
-          // Read next chunk
-          return reader.read().then(processStream);
-        };
-
-        return reader.read().then(processStream);
-      })
-      .catch(error => {
-        console.error('Streaming error:', error);
-        alert('Error in streaming: ' + error.message);
-      });
-  }
-
-  // Helper to process buffer and extract complete JSON objects
-  private processBuffer(buffer: string): { completeObjects: string[], remaining: string } {
-    const completeObjects: string[] = [];
-    let remaining = buffer;
-    let depth = 0;
-    let start = 0;
-    let inString = false;
-    let stringDelimiter = '';
-    let escaped = false;
-
-    for (let i = 0; i < buffer.length; i++) {
-      const char = buffer[i];
-
-      if (escaped) {
-        escaped = false;
-        continue;
-      }
-
-      if (char === '\\') {
-        escaped = true;
-        continue;
-      }
-
-      if (!inString && (char === '"' || char === "'")) {
-        inString = true;
-        stringDelimiter = char;
-      } else if (inString && char === stringDelimiter) {
-        inString = false;
-        stringDelimiter = '';
-      }
-
-      if (!inString) {
-        if (char === '{') {
-          if (depth === 0) {
-            start = i;
-          }
-          depth++;
-        } else if (char === '}') {
-          depth--;
-          if (depth === 0) {
-            // Found a complete object
-            completeObjects.push(buffer.substring(start, i + 1));
-            start = i + 1;
-          }
-        }
-      }
+      // Call the service method
+      await this.toolParser.startStreaming(apiUrl, options);
+      
+      console.log('Streaming completed successfully');
+    } catch (error: any) {
+      console.error('Error in streaming:', error);
+      this.errorMessage = error.message || 'An error occurred during streaming';
+    } finally {
+      this.isLoading = false;
+      this.cdr.detectChanges();
     }
-
-    // Remaining buffer is everything after the last complete object
-    remaining = buffer.substring(start).trim();
-
-    return { completeObjects, remaining };
   }
 
   // For testing with simulated streaming
@@ -535,17 +570,23 @@ export class ToolProcessorComponent {
     }, 1000);
   }
 
-  // Alternative: Using HttpClient with streaming (if you prefer Angular's HttpClient)
-  handleStreamingWithHttpClient(): void {
-    // Note: This requires proper backend configuration for streaming
-    // and might need additional setup
-    
+  // Example: Different API configurations
+  async callDifferentEndpoint(): Promise<void> {
     this.toolParser.setUpdateCallback(() => {
       this.cdr.detectChanges();
     });
 
-    // Example implementation would depend on your backend
-    // This is a placeholder
-    console.log('Use handleStreamingResponse() for native fetch streaming');
+    try {
+      // Example with GET request
+      await this.toolParser.startStreaming('https://api.example.com/stream-data', {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json'
+        }
+      });
+    } catch (error: any) {
+      console.error('Error:', error);
+      this.errorMessage = error.message;
+    }
   }
 }
