@@ -37,8 +37,22 @@ export class ToolParserService {
   // Callback for UI updates
   private onUpdateCallback?: () => void;
 
+  // Callback for READ operations with DOM updates
+  private onReadCallback?: (content: string) => void;
+
+  // Callback for WRITE/MODIFY operations
+  private onWriteModifyCallback?: (tools: ToolCommand[]) => void;
+
   setUpdateCallback(callback: () => void): void {
     this.onUpdateCallback = callback;
+  }
+
+  setReadCallback(callback: (content: string) => void): void {
+    this.onReadCallback = callback;
+  }
+
+  setWriteModifyCallback(callback: (tools: ToolCommand[]) => void): void {
+    this.onWriteModifyCallback = callback;
   }
 
   private triggerUpdate(): void {
@@ -64,32 +78,27 @@ export class ToolParserService {
       }
 
       const decoder = new TextDecoder();
-      let buffer = ''; // Buffer to handle partial JSON objects
+      let buffer = '';
 
       while (true) {
         const { done, value } = await reader.read();
 
         if (done) {
           console.log('Stream complete');
-          // Process any remaining buffer
           if (buffer.trim()) {
             this.addToolFromStream(buffer);
           }
           break;
         }
 
-        // Decode the chunk
         const chunk = decoder.decode(value, { stream: true });
         console.log('Received chunk:', chunk);
 
-        // Add to buffer
         buffer += chunk;
 
-        // Try to extract complete JSON objects from buffer
         const processedBuffer = this.processBuffer(buffer);
         buffer = processedBuffer.remaining;
 
-        // Process each complete object found
         processedBuffer.completeObjects.forEach(obj => {
           this.addToolFromStream(obj);
         });
@@ -100,9 +109,6 @@ export class ToolParserService {
     }
   }
 
-  /**
-   * Helper to process buffer and extract complete JSON objects
-   */
   private processBuffer(buffer: string): { completeObjects: string[], remaining: string } {
     const completeObjects: string[] = [];
     let remaining = buffer;
@@ -142,7 +148,6 @@ export class ToolParserService {
         } else if (char === '}') {
           depth--;
           if (depth === 0) {
-            // Found a complete object
             completeObjects.push(buffer.substring(start, i + 1));
             start = i + 1;
           }
@@ -150,9 +155,7 @@ export class ToolParserService {
       }
     }
 
-    // Remaining buffer is everything after the last complete object
     remaining = buffer.substring(start).trim();
-
     return { completeObjects, remaining };
   }
 
@@ -208,6 +211,12 @@ export class ToolParserService {
         case 'READ':
           this.handleRead(tool.content);
           this.addToProcessedTools(tool, 'completed');
+          
+          // Trigger READ callback for DOM updates
+          if (this.onReadCallback) {
+            this.onReadCallback(tool.content);
+          }
+          
           this.triggerUpdate();
           break;
 
@@ -220,6 +229,11 @@ export class ToolParserService {
           this.waitingForApproval = true;
           this.isWaitingForUserApproval = true;
           this.pendingBatch = [...this.currentBatch];
+          
+          // Trigger WRITE/MODIFY callback for DOM updates
+          if (this.onWriteModifyCallback) {
+            this.onWriteModifyCallback(this.pendingBatch);
+          }
           
           this.triggerUpdate();
           break;
@@ -475,8 +489,16 @@ export class ToolParserService {
 
 
 
+
+
+
+
+
+
+
+
 import { Component, ChangeDetectorRef } from '@angular/core';
-import { ToolParserService } from './services/tool-parser.service';
+import { ToolParserService, ToolCommand } from './services/tool-parser.service';
 
 @Component({
   selector: 'app-tool-processor',
@@ -499,36 +521,52 @@ export class ToolProcessorComponent {
   onReset(): void {
     this.toolParser.reset();
     this.errorMessage = '';
+    
+    // Clear DOM elements
+    const readContainer = document.getElementById('read-content-container');
+    const writeContainer = document.getElementById('write-modify-container');
+    
+    if (readContainer) {
+      readContainer.innerHTML = '';
+    }
+    if (writeContainer) {
+      writeContainer.innerHTML = '';
+    }
   }
 
-  // Main method to call streaming API
   async handleStreamingResponse(): Promise<void> {
-    // Setup the update callback for UI refresh
+    // Setup callbacks
     this.toolParser.setUpdateCallback(() => {
       this.cdr.detectChanges();
+    });
+
+    // Setup READ callback for DOM updates
+    this.toolParser.setReadCallback((content: string) => {
+      this.updateReadDOM(content);
+    });
+
+    // Setup WRITE/MODIFY callback for DOM updates
+    this.toolParser.setWriteModifyCallback((tools: ToolCommand[]) => {
+      this.updateWriteModifyDOM(tools);
     });
 
     this.isLoading = true;
     this.errorMessage = '';
 
     try {
-      // Replace with your actual API endpoint
       const apiUrl = 'https://your-api.com/stream';
       
-      // Optional: Configure request options
       const options: RequestInit = {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer your-token-here' // if needed
+          'Authorization': 'Bearer your-token-here'
         },
         body: JSON.stringify({
-          // Your request payload
           query: 'your query here'
         })
       };
 
-      // Call the service method
       await this.toolParser.startStreaming(apiUrl, options);
       
       console.log('Streaming completed successfully');
@@ -541,10 +579,93 @@ export class ToolProcessorComponent {
     }
   }
 
-  // For testing with simulated streaming
+  // Update DOM for READ operations
+  private updateReadDOM(content: string): void {
+    const container = document.getElementById('read-content-container');
+    if (!container) return;
+
+    const readElement = document.createElement('div');
+    readElement.className = 'read-item';
+    readElement.innerHTML = `
+      <div class="read-header">
+        <span class="read-icon">📖</span>
+        <span class="read-time">${new Date().toLocaleTimeString()}</span>
+      </div>
+      <div class="read-content">${this.escapeHtml(content)}</div>
+    `;
+
+    container.appendChild(readElement);
+    
+    // Auto-scroll to bottom
+    container.scrollTop = container.scrollHeight;
+  }
+
+  // Update DOM for WRITE/MODIFY operations
+  private updateWriteModifyDOM(tools: ToolCommand[]): void {
+    const container = document.getElementById('write-modify-container');
+    if (!container) return;
+
+    // Clear previous content
+    container.innerHTML = '';
+
+    tools.forEach((tool, index) => {
+      const toolElement = document.createElement('div');
+      toolElement.className = 'write-modify-item';
+      
+      let filesHTML = '';
+      if (tool.content.files && Array.isArray(tool.content.files)) {
+        filesHTML = tool.content.files.map((file: any) => `
+          <div class="file-detail">
+            <p><strong>File:</strong> ${this.escapeHtml(file.file_name)}</p>
+            <p><strong>Path:</strong> ${this.escapeHtml(file.file_path)}</p>
+            ${tool.tool === 'MODIFY' ? `
+              <div class="code-block">
+                <strong>Original:</strong>
+                <pre>${this.escapeHtml(file.original_code)}</pre>
+              </div>
+            ` : ''}
+            <div class="code-block">
+              <strong>${tool.tool === 'WRITE' ? 'Content' : 'Modified'}:</strong>
+              <pre>${this.escapeHtml(file.modified_code)}</pre>
+            </div>
+          </div>
+        `).join('');
+      }
+
+      toolElement.innerHTML = `
+        <div class="tool-header">
+          <span class="tool-badge ${tool.tool.toLowerCase()}">${tool.tool}</span>
+          <span class="tool-number">#${index + 1}</span>
+        </div>
+        <div class="tool-reasoning">
+          <strong>Reasoning:</strong> ${this.escapeHtml(tool.content.reasoning)}
+        </div>
+        ${filesHTML}
+      `;
+
+      container.appendChild(toolElement);
+    });
+  }
+
+  // Escape HTML to prevent XSS
+  private escapeHtml(text: string): string {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  // Simulate streaming for testing
   simulateStreaming(): void {
     this.toolParser.setUpdateCallback(() => {
       this.cdr.detectChanges();
+    });
+
+    this.toolParser.setReadCallback((content: string) => {
+      this.updateReadDOM(content);
+    });
+
+    this.toolParser.setWriteModifyCallback((tools: ToolCommand[]) => {
+      this.updateWriteModifyDOM(tools);
     });
 
     const data = [
@@ -568,25 +689,5 @@ export class ToolProcessorComponent {
         console.log('Streaming complete');
       }
     }, 1000);
-  }
-
-  // Example: Different API configurations
-  async callDifferentEndpoint(): Promise<void> {
-    this.toolParser.setUpdateCallback(() => {
-      this.cdr.detectChanges();
-    });
-
-    try {
-      // Example with GET request
-      await this.toolParser.startStreaming('https://api.example.com/stream-data', {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json'
-        }
-      });
-    } catch (error: any) {
-      console.error('Error:', error);
-      this.errorMessage = error.message;
-    }
   }
 }
