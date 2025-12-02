@@ -1,31 +1,86 @@
-function parseToolString(input) {
-  // Convert JS object notation to valid JSON
-  let jsonString = input
-    .replace(/(\w+):/g, '"$1":')  // Quote keys
-    .replace(/'/g, '"');           // Replace single quotes with double
-  
-  // Wrap multiple objects in array
-  if (/}\s*{/.test(jsonString)) {
-    const objects = [];
-    let braceCount = 0;
-    let currentObj = '';
-    
-    for (let i = 0; i < jsonString.length; i++) {
-      const char = jsonString[i];
-      currentObj += char;
-      if (char === '{') braceCount++;
-      if (char === '}') {
-        braceCount--;
-        if (braceCount === 0) {
-          objects.push(currentObj.trim());
-          currentObj = '';
+parseToolString(input: string): ToolCommand[] {
+    try {
+      const str = input.trim();
+      const objects: string[] = [];
+      let depth = 0;
+      let start = 0;
+
+      // Extract individual JSON objects
+      for (let i = 0; i < str.length; i++) {
+        if (str[i] === '{') {
+          if (depth === 0) start = i;
+          depth++;
+        } else if (str[i] === '}') {
+          depth--;
+          if (depth === 0) {
+            objects.push(str.substring(start, i + 1));
+          }
         }
       }
+
+      // Parse each object
+      return objects.map(obj => {
+        // Convert JavaScript object notation to valid JSON
+        let jsonStr = obj
+          .replace(/(\w+):/g, '"$1":')           // Quote property names
+          .replace(/:\s*'([^']*)'/g, ':"$1"');   // Replace single quotes
+
+        return JSON.parse(jsonStr);
+      });
+
+    } catch (error) {
+      console.error('Parse error:', error);
+      console.error('Input was:', input);
+      return [];
     }
-    jsonString = '[' + objects.join(',') + ']';
-  } else {
-    jsonString = '[' + jsonString + ']';
   }
-  
-  return JSON.parse(jsonString);
-}
+
+  processTools(input: string): void {
+    const tools = this.parseToolString(input);
+
+    tools.forEach(tool => {
+      if (!tool.tool) {
+        console.warn('Invalid tool object:', tool);
+        return;
+      }
+
+      switch (tool.tool) {
+        case 'READ':
+          this.handleRead(tool.content);
+          break;
+        case 'WRITE':
+          this.handleWrite(tool.content);
+          break;
+        case 'MODIFY':
+          this.handleModify(tool.content);
+          break;
+        default:
+          console.warn('Unknown tool type:', tool.tool);
+      }
+    });
+  }
+
+  private handleRead(content: string): void {
+    console.log('READ:', content);
+    // Your read logic here
+  }
+
+  private handleWrite(content: WriteModifyContent): void {
+    console.log('WRITE - Reasoning:', content.reasoning);
+    if (content.files) {
+      content.files.forEach(file => {
+        console.log(`  File: ${file.file_name} at ${file.file_path}`);
+        // Your write logic here
+      });
+    }
+  }
+
+  private handleModify(content: WriteModifyContent): void {
+    console.log('MODIFY - Reasoning:', content.reasoning);
+    if (content.files) {
+      content.files.forEach(file => {
+        console.log(`  Modifying: ${file.file_name} at ${file.file_path}`);
+        // Your modify logic here
+      });
+    }
+  }
