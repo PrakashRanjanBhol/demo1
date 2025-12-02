@@ -15,12 +15,6 @@ export interface WriteModifyContent {
   }>;
 }
 
-export interface ProcessedTool {
-  tool: ToolCommand;
-  status: 'processing' | 'waiting_approval' | 'completed';
-  timestamp: Date;
-}
-
 @Injectable({
   providedIn: 'root'
 })
@@ -28,31 +22,31 @@ export class ToolParserService {
   private processingQueue: ToolCommand[] = [];
   private isProcessing = false;
   private waitingForApproval = false;
-  private currentBatch: ToolCommand[] = [];
+  private currentWriteModifyTool: ToolCommand | null = null;
 
-  public allProcessedTools: ProcessedTool[] = [];
   public isWaitingForUserApproval = false;
-  public pendingBatch: ToolCommand[] = [];
+  public currentPendingTool: ToolCommand | null = null;
 
-  // Callback for UI updates
+  // Callbacks
   private onUpdateCallback?: () => void;
-
-  // Callback for READ operations with DOM updates
-  private onReadCallback?: (content: string) => void;
-
-  // Callback for WRITE/MODIFY operations
-  private onWriteModifyCallback?: (tools: ToolCommand[]) => void;
+  private onReadCallback?: (tool: ToolCommand) => void;
+  private onWriteModifyCallback?: (tool: ToolCommand) => void;
+  private onExecuteCallback?: (tool: ToolCommand) => void;
 
   setUpdateCallback(callback: () => void): void {
     this.onUpdateCallback = callback;
   }
 
-  setReadCallback(callback: (content: string) => void): void {
+  setReadCallback(callback: (tool: ToolCommand) => void): void {
     this.onReadCallback = callback;
   }
 
-  setWriteModifyCallback(callback: (tools: ToolCommand[]) => void): void {
+  setWriteModifyCallback(callback: (tool: ToolCommand) => void): void {
     this.onWriteModifyCallback = callback;
+  }
+
+  setExecuteCallback(callback: (tool: ToolCommand) => void): void {
+    this.onExecuteCallback = callback;
   }
 
   private triggerUpdate(): void {
@@ -61,9 +55,6 @@ export class ToolParserService {
     }
   }
 
-  /**
-   * Main method to handle streaming API call
-   */
   async startStreaming(apiUrl: string, options?: RequestInit): Promise<void> {
     try {
       const response = await fetch(apiUrl, options);
@@ -84,7 +75,6 @@ export class ToolParserService {
         const { done, value } = await reader.read();
 
         if (done) {
-          console.log('Stream complete');
           if (buffer.trim()) {
             this.addToolFromStream(buffer);
           }
@@ -92,7 +82,6 @@ export class ToolParserService {
         }
 
         const chunk = decoder.decode(value, { stream: true });
-        console.log('Received chunk:', chunk);
 
         buffer += chunk;
 
@@ -172,13 +161,16 @@ export class ToolParserService {
   }
 
   approveAndContinue(): void {
-    if (!this.waitingForApproval) return;
+    if (!this.waitingForApproval || !this.currentWriteModifyTool) return;
 
-    this.executeBatch(this.currentBatch);
-    this.currentBatch = [];
+    if (this.onExecuteCallback) {
+      this.onExecuteCallback(this.currentWriteModifyTool);
+    }
+
+    this.currentWriteModifyTool = null;
     this.waitingForApproval = false;
     this.isWaitingForUserApproval = false;
-    this.pendingBatch = [];
+    this.currentPendingTool = null;
 
     this.triggerUpdate();
     this.processQueue();
@@ -209,31 +201,21 @@ export class ToolParserService {
 
       switch (tool.tool) {
         case 'READ':
-          this.handleRead(tool.content);
-          this.addToProcessedTools(tool, 'completed');
-          
-          // Trigger READ callback for DOM updates
           if (this.onReadCallback) {
-            this.onReadCallback(tool.content);
+            this.onReadCallback(tool);
           }
-          
-          this.triggerUpdate();
           break;
 
         case 'WRITE':
         case 'MODIFY':
-          this.currentBatch.push(tool);
-          this.addToProcessedTools(tool, 'waiting_approval');
-          this.collectBatch();
+          if (this.onWriteModifyCallback) {
+            this.onWriteModifyCallback(tool);
+          }
           
+          this.currentWriteModifyTool = tool;
           this.waitingForApproval = true;
           this.isWaitingForUserApproval = true;
-          this.pendingBatch = [...this.currentBatch];
-          
-          // Trigger WRITE/MODIFY callback for DOM updates
-          if (this.onWriteModifyCallback) {
-            this.onWriteModifyCallback(this.pendingBatch);
-          }
+          this.currentPendingTool = tool;
           
           this.triggerUpdate();
           break;
@@ -246,86 +228,17 @@ export class ToolParserService {
     }
   }
 
-  private collectBatch(): void {
-    while (this.processingQueue.length > 0) {
-      const nextTool = this.processingQueue[0];
-      
-      if (nextTool.tool === 'WRITE' || nextTool.tool === 'MODIFY') {
-        const tool = this.processingQueue.shift()!;
-        this.currentBatch.push(tool);
-        this.addToProcessedTools(tool, 'waiting_approval');
-      } else {
-        break;
-      }
-    }
-  }
-
-  private executeBatch(batch: ToolCommand[]): void {
-    batch.forEach(tool => {
-      if (tool.tool === 'WRITE') {
-        this.handleWrite(tool.content);
-      } else if (tool.tool === 'MODIFY') {
-        this.handleModify(tool.content);
-      }
-      
-      this.updateToolStatus(tool, 'completed');
-    });
-    
-    this.triggerUpdate();
-  }
-
-  private addToProcessedTools(tool: ToolCommand, status: 'processing' | 'waiting_approval' | 'completed'): void {
-    this.allProcessedTools.push({
-      tool,
-      status,
-      timestamp: new Date()
-    });
-  }
-
-  private updateToolStatus(tool: ToolCommand, status: 'processing' | 'waiting_approval' | 'completed'): void {
-    const item = this.allProcessedTools.find(pt => pt.tool === tool);
-    if (item) {
-      item.status = status;
-    }
-  }
-
-  private handleRead(content: string): void {
-    console.log('READ (executing immediately):', content);
-    // Your read logic here
-  }
-
-  private handleWrite(content: WriteModifyContent): void {
-    console.log('WRITE (executing after approval):', content.reasoning);
-    if (content.files) {
-      content.files.forEach(file => {
-        console.log(`  Writing file: ${file.file_name} at ${file.file_path}`);
-        // Your actual write logic here
-      });
-    }
-  }
-
-  private handleModify(content: WriteModifyContent): void {
-    console.log('MODIFY (executing after approval):', content.reasoning);
-    if (content.files) {
-      content.files.forEach(file => {
-        console.log(`  Modifying file: ${file.file_name} at ${file.file_path}`);
-        // Your actual modify logic here
-      });
-    }
-  }
-
   getQueueLength(): number {
     return this.processingQueue.length;
   }
 
   reset(): void {
     this.processingQueue = [];
-    this.currentBatch = [];
-    this.allProcessedTools = [];
+    this.currentWriteModifyTool = null;
     this.isProcessing = false;
     this.waitingForApproval = false;
     this.isWaitingForUserApproval = false;
-    this.pendingBatch = [];
+    this.currentPendingTool = null;
     this.triggerUpdate();
   }
 
@@ -486,17 +399,6 @@ export class ToolParserService {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
 import { Component, ChangeDetectorRef } from '@angular/core';
 import { ToolParserService, ToolCommand } from './services/tool-parser.service';
 
@@ -506,8 +408,6 @@ import { ToolParserService, ToolCommand } from './services/tool-parser.service';
   styleUrls: ['./tool-processor.component.css']
 })
 export class ToolProcessorComponent {
-  isLoading = false;
-  errorMessage = '';
 
   constructor(
     public toolParser: ToolParserService,
@@ -518,41 +418,25 @@ export class ToolProcessorComponent {
     this.toolParser.approveAndContinue();
   }
 
-  onReset(): void {
-    this.toolParser.reset();
-    this.errorMessage = '';
-    
-    // Clear DOM elements
-    const readContainer = document.getElementById('read-content-container');
-    const writeContainer = document.getElementById('write-modify-container');
-    
-    if (readContainer) {
-      readContainer.innerHTML = '';
-    }
-    if (writeContainer) {
-      writeContainer.innerHTML = '';
-    }
-  }
-
   async handleStreamingResponse(): Promise<void> {
-    // Setup callbacks
+    // Setup callbacks here
     this.toolParser.setUpdateCallback(() => {
-      this.cdr.detectChanges();
+      this.cdr.detectChanges(); // This updates the view when isWaitingForUserApproval changes
     });
 
-    // Setup READ callback for DOM updates
-    this.toolParser.setReadCallback((content: string) => {
-      this.updateReadDOM(content);
+    this.toolParser.setReadCallback((tool: ToolCommand) => {
+      console.log('READ:', tool.content);
     });
 
-    // Setup WRITE/MODIFY callback for DOM updates
-    this.toolParser.setWriteModifyCallback((tools: ToolCommand[]) => {
-      this.updateWriteModifyDOM(tools);
+    this.toolParser.setWriteModifyCallback((tool: ToolCommand) => {
+      console.log(`${tool.tool}:`, tool.content);
     });
 
-    this.isLoading = true;
-    this.errorMessage = '';
+    this.toolParser.setExecuteCallback((tool: ToolCommand) => {
+      console.log(`EXECUTING ${tool.tool}:`, tool.content);
+    });
 
+    // Call your API
     try {
       const apiUrl = 'https://your-api.com/stream';
       
@@ -568,126 +452,11 @@ export class ToolProcessorComponent {
       };
 
       await this.toolParser.startStreaming(apiUrl, options);
-      
-      console.log('Streaming completed successfully');
     } catch (error: any) {
-      console.error('Error in streaming:', error);
-      this.errorMessage = error.message || 'An error occurred during streaming';
-    } finally {
-      this.isLoading = false;
-      this.cdr.detectChanges();
+      console.error('Error:', error);
     }
   }
-
-  // Update DOM for READ operations
-  private updateReadDOM(content: string): void {
-    const container = document.getElementById('read-content-container');
-    if (!container) return;
-
-    const readElement = document.createElement('div');
-    readElement.className = 'read-item';
-    readElement.innerHTML = `
-      <div class="read-header">
-        <span class="read-icon">📖</span>
-        <span class="read-time">${new Date().toLocaleTimeString()}</span>
-      </div>
-      <div class="read-content">${this.escapeHtml(content)}</div>
-    `;
-
-    container.appendChild(readElement);
-    
-    // Auto-scroll to bottom
-    container.scrollTop = container.scrollHeight;
-  }
-
-  // Update DOM for WRITE/MODIFY operations
-  private updateWriteModifyDOM(tools: ToolCommand[]): void {
-    const container = document.getElementById('write-modify-container');
-    if (!container) return;
-
-    // Clear previous content
-    container.innerHTML = '';
-
-    tools.forEach((tool, index) => {
-      const toolElement = document.createElement('div');
-      toolElement.className = 'write-modify-item';
-      
-      let filesHTML = '';
-      if (tool.content.files && Array.isArray(tool.content.files)) {
-        filesHTML = tool.content.files.map((file: any) => `
-          <div class="file-detail">
-            <p><strong>File:</strong> ${this.escapeHtml(file.file_name)}</p>
-            <p><strong>Path:</strong> ${this.escapeHtml(file.file_path)}</p>
-            ${tool.tool === 'MODIFY' ? `
-              <div class="code-block">
-                <strong>Original:</strong>
-                <pre>${this.escapeHtml(file.original_code)}</pre>
-              </div>
-            ` : ''}
-            <div class="code-block">
-              <strong>${tool.tool === 'WRITE' ? 'Content' : 'Modified'}:</strong>
-              <pre>${this.escapeHtml(file.modified_code)}</pre>
-            </div>
-          </div>
-        `).join('');
-      }
-
-      toolElement.innerHTML = `
-        <div class="tool-header">
-          <span class="tool-badge ${tool.tool.toLowerCase()}">${tool.tool}</span>
-          <span class="tool-number">#${index + 1}</span>
-        </div>
-        <div class="tool-reasoning">
-          <strong>Reasoning:</strong> ${this.escapeHtml(tool.content.reasoning)}
-        </div>
-        ${filesHTML}
-      `;
-
-      container.appendChild(toolElement);
-    });
-  }
-
-  // Escape HTML to prevent XSS
-  private escapeHtml(text: string): string {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-  }
-
-  // Simulate streaming for testing
-  simulateStreaming(): void {
-    this.toolParser.setUpdateCallback(() => {
-      this.cdr.detectChanges();
-    });
-
-    this.toolParser.setReadCallback((content: string) => {
-      this.updateReadDOM(content);
-    });
-
-    this.toolParser.setWriteModifyCallback((tools: ToolCommand[]) => {
-      this.updateWriteModifyDOM(tools);
-    });
-
-    const data = [
-      '{tool: "READ", content: "First read - showing immediately"}',
-      '{tool: "READ", content: "Second read - showing immediately"}',
-      '{tool: "WRITE", content: {reasoning: "Writing new file", files: [{file_path: "/src", file_name:"app.js", original_code:"", modified_code:"console.log(\'hello\');"}]}}',
-      '{tool: "MODIFY", content: {reasoning: "Modifying existing file", files: [{file_path: "/src", file_name:"app.js", original_code:"old code", modified_code:"new code"}]}}',
-      '{tool: "READ", content: "Third read - will show after approval"}',
-      '{tool: "WRITE", content: {reasoning: "Another write operation", files: [{file_path: "/test", file_name:"test.js", original_code:"", modified_code:"test code"}]}}',
-      '{tool: "READ", content: "Final read - will show after second approval"}'
-    ];
-
-    let index = 0;
-    const interval = setInterval(() => {
-      if (index < data.length) {
-        console.log('Streaming chunk:', data[index]);
-        this.toolParser.addToolFromStream(data[index]);
-        index++;
-      } else {
-        clearInterval(interval);
-        console.log('Streaming complete');
-      }
-    }, 1000);
-  }
 }
+
+
+
