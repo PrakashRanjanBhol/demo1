@@ -1,603 +1,201 @@
-import { Component, OnInit, Input, Output, EventEmitter, OnChanges } from '@angular/core';
-import * as Diff from 'diff';
-import * as hljs from 'highlight.js';
-
-// Updated interfaces to match your structure
-interface FileItem {
-  file_path: string;
-  file_name: string;
-  original_code: string;
-  modified_code: string;
-}
-
-interface FileConfigContent {
-  reasoning: string;
-  files: FileItem[];
-}
-
-interface FileConfig {
-  tool: string;
-  content: FileConfigContent;
-}
-
-interface FileState {
-  addedCount: number;
-  removedCount: number;
-}
-
-interface DiffLine {
-  type: 'added' | 'removed' | 'context';
-  content: string;
-  oldLineNum: number | null;
-  newLineNum: number | null;
-  highlightedContent: string;
-}
-
-interface SplitLine {
-  lineNum: number | null;
-  content: string;
-  highlighted: string;
-  type: 'added' | 'removed' | 'context' | 'empty';
-}
-
-type ViewMode = 'unified' | 'split';
-
-@Component({
-  selector: 'app-diff-viewer',
-  templateUrl: './diff-viewer.component.html',
-  styleUrls: ['./diff-viewer.component.css']
-})
-export class DiffViewerComponent implements OnInit, OnChanges {
-  @Input() config!: FileConfig;
-  @Input() defaultViewMode: ViewMode = 'unified';
+// Loading states for individual files
+  loadingFiles: Set<number> = new Set();
   
-  @Output() onAcceptAll = new EventEmitter<void>();
-  @Output() onRejectAll = new EventEmitter<void>();
-  @Output() onFileAccepted = new EventEmitter<{ file: FileItem, index: number }>();
-  @Output() onFileRejected = new EventEmitter<{ file: FileItem, index: number }>();
+  // Loading state for batch operations
+  isApproveAllLoading: boolean = false;
+  isRejectAllLoading: boolean = false;
 
-  acceptedFiles: Set<number> = new Set();
-  rejectedFiles: Set<number> = new Set();
-  fileStates: FileState[] = [];
-  processedDiffs: Map<number, { lines: DiffLine[], isNewFile: boolean }> = new Map();
-  splitViewCache: Map<number, { oldLines: SplitLine[], newLines: SplitLine[] }> = new Map();
-  
-  viewMode: ViewMode = 'unified';
 
-  get files(): FileItem[] {
-    return this.config?.content?.files || [];
-  }
 
-  get toolType(): string {
-    return this.config?.tool || '';
-  }
 
-  get reasoning(): string {
-    return this.config?.content?.reasoning || '';
-  }
 
-  ngOnInit(): void {
-    this.viewMode = this.defaultViewMode;
-    this.processAllFiles();
-  }
 
-  ngOnChanges(): void {
-    this.acceptedFiles.clear();
-    this.rejectedFiles.clear();
-    this.fileStates = [];
-    this.processedDiffs.clear();
-    this.splitViewCache.clear();
-    this.processAllFiles();
-  }
 
-  toggleViewMode(): void {
-    this.viewMode = this.viewMode === 'unified' ? 'split' : 'unified';
-  }
-
-  setViewMode(mode: ViewMode): void {
-    this.viewMode = mode;
-  }
-
-  isUnifiedView(): boolean {
-    return this.viewMode === 'unified';
-  }
-
-  isSplitView(): boolean {
-    return this.viewMode === 'split';
-  }
-
-  processAllFiles(): void {
-    this.files.forEach((file, index) => {
-      const isNewFile = !file.original_code || file.original_code.trim() === '';
+acceptFile(index: number): void {
+    this.loadingFiles.add(index);
+    
+    // Simulate async operation (replace with your actual API call)
+    setTimeout(() => {
+      console.log(`File ${index} accepted:`, this.files[index].file_name);
+      console.log('File path:', this.files[index].file_path);
+      console.log('Applied code:', this.files[index].modified_code);
       
-      if (isNewFile) {
-        const lines = this.processNewFile(file);
-        this.processedDiffs.set(index, { lines, isNewFile: true });
-        this.fileStates[index] = { addedCount: lines.length, removedCount: 0 };
-      } else {
-        const lines = this.processDiff(file);
-        const addedCount = lines.filter(l => l.type === 'added').length;
-        const removedCount = lines.filter(l => l.type === 'removed').length;
-        this.processedDiffs.set(index, { lines, isNewFile: false });
-        this.fileStates[index] = { addedCount, removedCount };
-      }
-    });
+      this.acceptedFiles.add(index);
+      this.loadingFiles.delete(index);
+      this.onFileAccepted.emit({ file: this.files[index], index });
+    }, 1500); // Replace this timeout with your actual async operation
   }
 
-  processNewFile(file: FileItem): DiffLine[] {
-    const lines = file.modified_code.split('\n');
-    const diffLines: DiffLine[] = [];
+
+
+
+
+
+
+
+
+
+rejectFile(index: number): void {
+    this.loadingFiles.add(index);
     
-    lines.forEach((line, index) => {
-      diffLines.push({
-        type: 'added',
-        content: line,
-        oldLineNum: null,
-        newLineNum: index + 1,
-        highlightedContent: this.highlightCode(line, file.file_name)
-      });
-    });
+    // Simulate async operation (replace with your actual API call)
+    setTimeout(() => {
+      console.log(`File ${index} rejected:`, this.files[index].file_name);
+      console.log('File path:', this.files[index].file_path);
+      console.log('Keeping original code:', this.files[index].original_code);
+      
+      this.rejectedFiles.add(index);
+      this.loadingFiles.delete(index);
+      this.onFileRejected.emit({ file: this.files[index], index });
+    }, 1500); // Replace this timeout with your actual async operation
+  }
+
+
+
+
+
+
+
+
+
+
+acceptAll(): void {
+    this.isApproveAllLoading = true;
     
-    return diffLines;
-  }
-
-  processDiff(file: FileItem): DiffLine[] {
-    const diff = Diff.diffLines(file.original_code, file.modified_code);
-    const diffLines: DiffLine[] = [];
-    let oldLineNum = 1;
-    let newLineNum = 1;
-
-    diff.forEach(part => {
-      const lines = part.value.split('\n');
-      if (lines[lines.length - 1] === '') {
-        lines.pop();
-      }
-
-      lines.forEach(line => {
-        if (part.added) {
-          diffLines.push({
-            type: 'added',
-            content: line,
-            oldLineNum: null,
-            newLineNum: newLineNum++,
-            highlightedContent: this.highlightCode(line, file.file_name)
-          });
-        } else if (part.removed) {
-          diffLines.push({
-            type: 'removed',
-            content: line,
-            oldLineNum: oldLineNum++,
-            newLineNum: null,
-            highlightedContent: this.highlightCode(line, file.file_name)
-          });
-        } else {
-          diffLines.push({
-            type: 'context',
-            content: line,
-            oldLineNum: oldLineNum++,
-            newLineNum: newLineNum++,
-            highlightedContent: this.highlightCode(line, file.file_name)
-          });
-        }
-      });
-    });
-
-    return diffLines;
-  }
-
-  getSplitViewData(index: number): { oldLines: SplitLine[], newLines: SplitLine[] } {
-    // Check cache first
-    if (this.splitViewCache.has(index)) {
-      return this.splitViewCache.get(index)!;
-    }
-
-    const file = this.files[index];
-    if (!file) {
-      return { oldLines: [], newLines: [] };
-    }
-
-    const diff = Diff.diffLines(file.original_code, file.modified_code);
-    const oldLines: SplitLine[] = [];
-    const newLines: SplitLine[] = [];
-    
-    let oldLineNum = 1;
-    let newLineNum = 1;
-
-    diff.forEach(part => {
-      const lines = part.value.split('\n');
-      if (lines[lines.length - 1] === '') {
-        lines.pop();
-      }
-
-      if (part.added) {
-        lines.forEach(line => {
-          oldLines.push({
-            lineNum: null,
-            content: '',
-            highlighted: '',
-            type: 'empty'
-          });
-          newLines.push({
-            lineNum: newLineNum++,
-            content: line,
-            highlighted: this.highlightCode(line, file.file_name),
-            type: 'added'
-          });
-        });
-      } else if (part.removed) {
-        lines.forEach(line => {
-          oldLines.push({
-            lineNum: oldLineNum++,
-            content: line,
-            highlighted: this.highlightCode(line, file.file_name),
-            type: 'removed'
-          });
-          newLines.push({
-            lineNum: null,
-            content: '',
-            highlighted: '',
-            type: 'empty'
-          });
-        });
-      } else {
-        lines.forEach(line => {
-          oldLines.push({
-            lineNum: oldLineNum++,
-            content: line,
-            highlighted: this.highlightCode(line, file.file_name),
-            type: 'context'
-          });
-          newLines.push({
-            lineNum: newLineNum++,
-            content: line,
-            highlighted: this.highlightCode(line, file.file_name),
-            type: 'context'
-          });
-        });
-      }
-    });
-
-    const result = { oldLines, newLines };
-    this.splitViewCache.set(index, result);
-    return result;
-  }
-
-  highlightCode(code: string, fileName: string): string {
-    try {
-      const lang = this.detectLanguage(fileName);
-      if (lang && hljs.getLanguage(lang)) {
-        return hljs.highlight(code, { language: lang }).value;
-      } else {
-        return hljs.highlightAuto(code).value;
-      }
-    } catch (e) {
-      console.error('Highlighting error:', e);
-      return this.escapeHtml(code);
-    }
-  }
-
-  detectLanguage(fileName: string): string {
-    const extension = fileName.split('.').pop()?.toLowerCase() || '';
-    const languageMap: { [key: string]: string } = {
-      'js': 'javascript',
-      'jsx': 'javascript',
-      'ts': 'typescript',
-      'tsx': 'typescript',
-      'py': 'python',
-      'java': 'java',
-      'cpp': 'cpp',
-      'c': 'cpp',
-      'h': 'cpp',
-      'hpp': 'cpp',
-      'css': 'css',
-      'html': 'html',
-      'php': 'php',
-      'rb': 'ruby',
-      'go': 'go',
-      'rs': 'rust',
-      'sh': 'bash',
-      'json': 'json',
-      'xml': 'xml',
-      'sql': 'sql'
-    };
-    return languageMap[extension] || 'plaintext';
-  }
-
-  escapeHtml(text: string): string {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-  }
-
-  acceptFile(index: number): void {
-    console.log(`File ${index} accepted:`, this.files[index].file_name);
-    console.log('File path:', this.files[index].file_path);
-    console.log('Applied code:', this.files[index].modified_code);
-    this.acceptedFiles.add(index);
-    this.onFileAccepted.emit({ file: this.files[index], index });
-  }
-
-  rejectFile(index: number): void {
-    console.log(`File ${index} rejected:`, this.files[index].file_name);
-    console.log('File path:', this.files[index].file_path);
-    console.log('Keeping original code:', this.files[index].original_code);
-    this.rejectedFiles.add(index);
-    this.onFileRejected.emit({ file: this.files[index], index });
-  }
-
-  acceptAll(): void {
     console.log('All files accepted');
     console.log('Tool:', this.toolType);
     console.log('Reasoning:', this.reasoning);
-    this.files.forEach((file, index) => {
-      console.log(`${file.file_name} (${file.file_path}): Applied code`, file.modified_code);
-      this.acceptFile(index);
+    
+    // Process all files sequentially or in parallel
+    const acceptPromises = this.files.map((file, index) => {
+      return new Promise<void>((resolve) => {
+        this.loadingFiles.add(index);
+        
+        // Simulate async operation (replace with your actual API call)
+        setTimeout(() => {
+          console.log(`${file.file_name} (${file.file_path}): Applied code`, file.modified_code);
+          this.acceptedFiles.add(index);
+          this.loadingFiles.delete(index);
+          resolve();
+        }, 1500); // Replace with actual async operation
+      });
     });
-    this.onAcceptAll.emit();
+    
+    Promise.all(acceptPromises).then(() => {
+      this.isApproveAllLoading = false;
+      this.onAcceptAll.emit();
+    });
   }
 
-  rejectAll(): void {
+
+
+
+
+
+
+
+
+
+
+rejectAll(): void {
+    this.isRejectAllLoading = true;
+    
     console.log('All files rejected');
     console.log('Tool:', this.toolType);
     console.log('Reasoning:', this.reasoning);
-    this.files.forEach((file, index) => {
-      console.log(`${file.file_name} (${file.file_path}): Keeping original code`, file.original_code);
-      this.rejectFile(index);
+    
+    // Process all files sequentially or in parallel
+    const rejectPromises = this.files.map((file, index) => {
+      return new Promise<void>((resolve) => {
+        this.loadingFiles.add(index);
+        
+        // Simulate async operation (replace with your actual API call)
+        setTimeout(() => {
+          console.log(`${file.file_name} (${file.file_path}): Keeping original code`, file.original_code);
+          this.rejectedFiles.add(index);
+          this.loadingFiles.delete(index);
+          resolve();
+        }, 1500); // Replace with actual async operation
+      });
     });
-    this.onRejectAll.emit();
+    
+    Promise.all(rejectPromises).then(() => {
+      this.isRejectAllLoading = false;
+      this.onRejectAll.emit();
+    });
   }
 
-  isFileAccepted(index: number): boolean {
-    return this.acceptedFiles.has(index);
+
+
+
+
+
+
+
+
+isFileLoading(index: number): boolean {
+    return this.loadingFiles.has(index);
   }
 
-  isFileRejected(index: number): boolean {
-    return this.rejectedFiles.has(index);
+  isAnyBatchOperationLoading(): boolean {
+    return this.isApproveAllLoading || this.isRejectAllLoading;
   }
 
-  isFileProcessed(index: number): boolean {
-    return this.isFileAccepted(index) || this.isFileRejected(index);
-  }
-
-  allFilesProcessed(): boolean {
-    return (this.acceptedFiles.size + this.rejectedFiles.size) === this.files.length;
-  }
-
-  getDiffLines(index: number): DiffLine[] {
-    return this.processedDiffs.get(index)?.lines || [];
-  }
-
-  isNewFile(index: number): boolean {
-    return this.processedDiffs.get(index)?.isNewFile || false;
-  }
-
-  getFileState(index: number): FileState {
-    return this.fileStates[index] || { addedCount: 0, removedCount: 0 };
-  }
-
-  getFilePath(index: number): string {
-    return this.files[index]?.file_path || '';
-  }
-}
 
 
 
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<div class="code-rag-wrapper">
-  <!-- Top Section: Draft Header and Action Buttons -->
-  <div class="code-rag-top-section" *ngIf="!allFilesProcessed()">
-    <!-- Draft Header -->
-    <div class="code-rag-draft-header">
-      <div class="code-rag-draft-icon">⚠️</div>
-      <div class="code-rag-draft-text">
-        <div class="code-rag-draft-title">Confirmation Required - {{ toolType }}</div>
-        <div class="code-rag-draft-subtitle" *ngIf="reasoning">
-          {{ reasoning }}
-        </div>
-        <div class="code-rag-draft-subtitle" *ngIf="!reasoning">
-          Review and approve changes for {{ files.length }} file{{ files.length > 1 ? 's' : '' }}
-        </div>
-      </div>
-    </div>
-
-    <!-- Action Buttons -->
+<!-- Action Buttons -->
     <div class="code-rag-top-actions">
       <button 
         class="code-rag-btn-small code-rag-btn-accept" 
-        (click)="acceptAll()">
-        Accept All
+        (click)="acceptAll()"
+        [disabled]="isAnyBatchOperationLoading()">
+        <span class="code-rag-spinner" *ngIf="isApproveAllLoading"></span>
+        <span>{{ isApproveAllLoading ? 'Approving All...' : 'Accept All' }}</span>
       </button>
       <button 
         class="code-rag-btn-small code-rag-btn-reject" 
-        (click)="rejectAll()">
-        Reject All
+        (click)="rejectAll()"
+        [disabled]="isAnyBatchOperationLoading()">
+        <span class="code-rag-spinner" *ngIf="isRejectAllLoading"></span>
+        <span>{{ isRejectAllLoading ? 'Rejecting All...' : 'Reject All' }}</span>
       </button>
     </div>
-  </div>
 
-  <!-- Files Container -->
-  <div class="code-rag-files-container">
-    <ng-container *ngFor="let file of files; let i = index">
-      <!-- Accepted File Message -->
-      <div class="code-rag-file-accepted" *ngIf="isFileAccepted(i)">
-        <div class="code-rag-file-accepted-icon">✓</div>
-        <div class="code-rag-file-accepted-text">Changes Accepted</div>
-        <div class="code-rag-file-accepted-filename">{{ file.file_name }}</div>
-        <div class="code-rag-file-path">{{ file.file_path }}</div>
-      </div>
 
-      <!-- Rejected File Message -->
-      <div class="code-rag-file-rejected" *ngIf="isFileRejected(i)">
-        <div class="code-rag-file-rejected-icon">✗</div>
-        <div class="code-rag-file-rejected-text">Changes Rejected</div>
-        <div class="code-rag-file-rejected-filename">{{ file.file_name }}</div>
-        <div class="code-rag-file-path">{{ file.file_path }}</div>
-      </div>
 
-      <!-- File Block (not yet processed) -->
-      <div class="code-rag-file-block" *ngIf="!isFileProcessed(i)">
-        <!-- File Header -->
-        <div class="code-rag-header">
-          <div class="code-rag-file-info">
-            <span class="code-rag-file-icon">📄</span>
-            <div class="code-rag-file-name-container">
-              <span class="code-rag-file-name">{{ file.file_name }}</span>
-              <span class="code-rag-file-badge new" *ngIf="isNewFile(i)">New File</span>
-              <div class="code-rag-file-path-header">{{ file.file_path }}</div>
-            </div>
-          </div>
-          <div class="code-rag-stats">
-            <div class="code-rag-stat-item code-rag-stat-added">
-              <span>++<span>{{ getFileState(i).addedCount }}</span></span>
-            </div>
-            <div class="code-rag-stat-item code-rag-stat-removed" *ngIf="!isNewFile(i)">
-              <span>--<span>{{ getFileState(i).removedCount }}</span></span>
-            </div>
-          </div>
-        </div>
 
-        <!-- Diff Block -->
-        <div class="code-rag-diff-block">
-          <!-- Diff Header with View Toggle -->
-          <div class="code-rag-diff-header">
-            <span>
-              {{ isNewFile(i) ? 'New file with syntax highlighting' : 'Showing changes with syntax highlighting' }}
-            </span>
-            <div class="code-rag-view-toggle" *ngIf="!isNewFile(i)">
-              <button 
-                class="code-rag-view-btn" 
-                [class.active]="isUnifiedView()"
-                (click)="setViewMode('unified')"
-                title="Unified view">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="3" y1="12" x2="21" y2="12"></line>
-                  <line x1="3" y1="6" x2="21" y2="6"></line>
-                  <line x1="3" y1="18" x2="21" y2="18"></line>
-                </svg>
-                Unified
-              </button>
-              <button 
-                class="code-rag-view-btn" 
-                [class.active]="isSplitView()"
-                (click)="setViewMode('split')"
-                title="Split view">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <rect x="3" y="3" width="7" height="18"></rect>
-                  <rect x="14" y="3" width="7" height="18"></rect>
-                </svg>
-                Split
-              </button>
-            </div>
-          </div>
 
-          <!-- Unified View -->
-          <div class="code-rag-diff-content" *ngIf="isUnifiedView() && !isNewFile(i)">
-            <div 
-              *ngFor="let line of getDiffLines(i)" 
-              class="code-rag-diff-line code-rag-line-{{ line.type }}">
-              <div class="code-rag-line-numbers">
-                <div class="code-rag-line-number">{{ line.oldLineNum || '' }}</div>
-                <div class="code-rag-line-number">{{ line.newLineNum || '' }}</div>
-              </div>
-              <div class="code-rag-line-content">
-                <code [innerHTML]="line.highlightedContent"></code>
-              </div>
-            </div>
-          </div>
 
-          <!-- Split View -->
-          <div class="code-rag-split-view" *ngIf="isSplitView() && !isNewFile(i)">
-            <!-- Original Code (Left) -->
-            <div class="code-rag-split-pane code-rag-split-original">
-              <div class="code-rag-split-header">Original</div>
-              <div class="code-rag-split-content">
-                <div 
-                  *ngFor="let line of getSplitViewData(i).oldLines" 
-                  class="code-rag-split-line"
-                  [class.code-rag-split-line-removed]="line.type === 'removed'"
-                  [class.code-rag-split-line-context]="line.type === 'context'"
-                  [class.code-rag-split-line-empty]="line.type === 'empty'">
-                  <div class="code-rag-split-line-number">{{ line.lineNum || '' }}</div>
-                  <div class="code-rag-split-line-content">
-                    <code [innerHTML]="line.highlighted || '&nbsp;'"></code>
-                  </div>
-                </div>
-              </div>
-            </div>
 
-            <!-- Modified Code (Right) -->
-            <div class="code-rag-split-pane code-rag-split-modified">
-              <div class="code-rag-split-header">Modified</div>
-              <div class="code-rag-split-content">
-                <div 
-                  *ngFor="let line of getSplitViewData(i).newLines" 
-                  class="code-rag-split-line"
-                  [class.code-rag-split-line-added]="line.type === 'added'"
-                  [class.code-rag-split-line-context]="line.type === 'context'"
-                  [class.code-rag-split-line-empty]="line.type === 'empty'">
-                  <div class="code-rag-split-line-number">{{ line.lineNum || '' }}</div>
-                  <div class="code-rag-split-line-content">
-                    <code [innerHTML]="line.highlighted || '&nbsp;'"></code>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
 
-          <!-- New File Content -->
-          <div class="code-rag-new-file-content" *ngIf="isNewFile(i)">
-            <div 
-              *ngFor="let line of getDiffLines(i)" 
-              class="code-rag-new-file-line">
-              <div class="code-rag-line-numbers">
-                <div class="code-rag-line-number"></div>
-                <div class="code-rag-line-number">{{ line.newLineNum }}</div>
-              </div>
-              <div class="code-rag-line-content">
-                <code [innerHTML]="line.highlightedContent"></code>
-              </div>
-            </div>
-          </div>
-        </div>
 
-        <!-- File Actions -->
+
+
+
+
+<!-- File Actions -->
         <div class="code-rag-file-actions">
           <button 
             class="code-rag-btn code-rag-btn-accept" 
-            (click)="acceptFile(i)">
-            <span>✓</span>
-            <span>Accept</span>
+            (click)="acceptFile(i)"
+            [disabled]="isFileLoading(i) || isAnyBatchOperationLoading()">
+            <span class="code-rag-spinner" *ngIf="isFileLoading(i) && acceptedFiles.has(i) === false"></span>
+            <span *ngIf="!isFileLoading(i)">✓</span>
+            <span>{{ isFileLoading(i) && !acceptedFiles.has(i) ? 'Approving...' : 'Accept' }}</span>
           </button>
           <button 
             class="code-rag-btn code-rag-btn-reject" 
-            (click)="rejectFile(i)">
-            <span>✗</span>
-            <span>Reject</span>
+            (click)="rejectFile(i)"
+            [disabled]="isFileLoading(i) || isAnyBatchOperationLoading()">
+            <span class="code-rag-spinner" *ngIf="isFileLoading(i) && rejectedFiles.has(i) === false"></span>
+            <span *ngIf="!isFileLoading(i)">✗</span>
+            <span>{{ isFileLoading(i) && !rejectedFiles.has(i) ? 'Rejecting...' : 'Reject' }}</span>
           </button>
         </div>
-      </div>
-    </ng-container>
-  </div>
-</div>
 
 
 
@@ -608,772 +206,37 @@ export class DiffViewerComponent implements OnInit, OnChanges {
 
 
 
-
-
-
-
-
-
-
-
-
-/* Import theme variables */
-@import './vibe-coding-theme-variables.css';
 
 /* ===================================================================
-   WRAPPER AND CONTAINER
+   LOADING SPINNER
    =================================================================== */
 
-.code-rag-wrapper {
-    max-width: 1400px;
-    margin: 0 auto;
-    border-radius: 12px;
-    box-shadow: var(--vibe-coding-shadow-lg);
-    border: 3px dotted var(--vibe-coding-wrapper-border);
-    background: var(--vibe-coding-container-bg);
-}
-
-.code-rag-top-section {
-    margin: 15px;
-}
-
-/* ===================================================================
-   DRAFT HEADER
-   =================================================================== */
-
-.code-rag-draft-header {
-    background: var(--vibe-coding-warning-bg);
-    border-left: 4px solid var(--vibe-coding-warning-border);
-    padding: 15px 20px;
-    border-radius: 6px;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 10px;
-}
-
-.code-rag-draft-icon {
-    font-size: 24px;
-}
-
-.code-rag-draft-text {
-    flex: 1;
-}
-
-.code-rag-draft-title {
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--vibe-coding-warning-text-primary);
-    margin-bottom: 4px;
-}
-
-.code-rag-draft-subtitle {
-    font-size: 13px;
-    color: var(--vibe-coding-warning-text-secondary);
-    line-height: 1.4;
-}
-
-/* ===================================================================
-   TOP ACTION BUTTONS
-   =================================================================== */
-
-.code-rag-top-actions {
-    display: flex;
-    gap: 10px;
-    justify-content: flex-end;
-}
-
-.code-rag-btn-small {
-    padding: 8px 18px;
-    border: 2px solid;
-    border-radius: 6px;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    white-space: nowrap;
-    background: var(--vibe-coding-btn-small-bg);
-}
-
-.code-rag-btn-small.code-rag-btn-accept {
-    border-color: var(--vibe-coding-btn-accept-border);
-    color: var(--vibe-coding-btn-accept-border);
-    background: var(--vibe-coding-btn-small-bg);
-}
-
-.code-rag-btn-small.code-rag-btn-accept:hover {
-    background: var(--vibe-coding-btn-accept-bg) !important;
-    color: var(--vibe-coding-btn-accept-text) !important;
-    transform: translateY(-1px);
-    box-shadow: 0 2px 8px var(--vibe-coding-btn-accept-shadow);
-}
-
-.code-rag-btn-small.code-rag-btn-reject {
-    border-color: var(--vibe-coding-btn-reject-border);
-    color: var(--vibe-coding-btn-reject-border);
-    background: var(--vibe-coding-btn-small-bg);
-}
-
-.code-rag-btn-small.code-rag-btn-reject:hover {
-    background: var(--vibe-coding-btn-reject-bg) !important;
-    color: var(--vibe-coding-btn-reject-text) !important;
-    transform: translateY(-1px);
-    box-shadow: 0 2px 8px var(--vibe-coding-btn-reject-shadow);
-}
-
-/* ===================================================================
-   FILES CONTAINER
-   =================================================================== */
-
-.code-rag-files-container {
-    padding: 20px;
-    background: var(--vibe-coding-secondary-bg);
-}
-
-.code-rag-file-block {
-    background: var(--vibe-coding-primary-bg);
-    border: 1px solid var(--vibe-coding-border-primary);
-    border-radius: 8px;
-    margin-bottom: 20px;
-    overflow: hidden;
-}
-
-.code-rag-file-block:last-child {
-    margin-bottom: 0;
-}
-
-/* ===================================================================
-   FILE HEADER
-   =================================================================== */
-
-.code-rag-header {
-    background: var(--vibe-coding-header-bg);
-    color: var(--vibe-coding-header-text);
-    padding: 12px 20px;
-    border-bottom: 2px solid var(--vibe-coding-header-border);
-    display: flex;
-    align-items: center;
-}
-
-.code-rag-file-info {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    font-size: 14px;
-}
-
-.code-rag-file-icon {
-    font-size: 18px;
-    margin-top: 2px;
-}
-
-.code-rag-file-name-container {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.code-rag-file-name {
-    font-weight: 600;
-    color: var(--vibe-coding-header-text);
-}
-
-.code-rag-file-path-header {
-    font-size: 11px;
-    color: var(--vibe-coding-header-text-secondary);
-    font-family: 'Courier New', monospace;
-    opacity: 0.8;
-}
-
-.code-rag-file-badge {
+.code-rag-spinner {
     display: inline-block;
-    padding: 2px 8px;
-    background: var(--vibe-coding-badge-bg);
-    color: var(--vibe-coding-badge-text);
-    border-radius: 3px;
-    font-size: 11px;
-    font-weight: 600;
-    margin-left: 8px;
-    text-transform: uppercase;
-}
-
-.code-rag-file-badge.new {
-    background: var(--vibe-coding-badge-new-bg);
-}
-
-.code-rag-stats {
-    display: flex;
-    gap: 20px;
-    font-size: 13px;
-    margin-left: auto;
-}
-
-.code-rag-stat-item {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-}
-
-.code-rag-stat-added {
-    color: var(--vibe-coding-stat-added);
-    font-weight: 600;
-}
-
-.code-rag-stat-removed {
-    color: var(--vibe-coding-stat-removed);
-    font-weight: 600;
-}
-
-/* ===================================================================
-   DIFF HEADER WITH VIEW TOGGLE
-   =================================================================== */
-
-.code-rag-diff-block {
-    background: var(--vibe-coding-primary-bg);
-}
-
-.code-rag-diff-header {
-    background: var(--vibe-coding-secondary-bg);
-    padding: 10px 15px;
-    border-bottom: 1px solid var(--vibe-coding-border-primary);
-    border-top: 1px solid var(--vibe-coding-border-primary);
-    font-family: 'Courier New', monospace;
-    font-size: 12px;
-    color: var(--vibe-coding-text-secondary);
-    font-weight: 600;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 10px;
-}
-
-.code-rag-view-toggle {
-    display: flex;
-    gap: 4px;
-    background: var(--vibe-coding-primary-bg);
-    border-radius: 6px;
-    padding: 2px;
-    border: 1px solid var(--vibe-coding-border-primary);
-}
-
-.code-rag-view-btn {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 4px 10px;
-    background: transparent;
-    border: none;
-    border-radius: 4px;
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--vibe-coding-text-secondary);
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.code-rag-view-btn svg {
     width: 14px;
     height: 14px;
-    stroke: currentColor;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    border-top-color: currentColor;
+    animation: code-rag-spin 0.6s linear infinite;
+    margin-right: 6px;
 }
 
-.code-rag-view-btn:hover {
-    background: var(--vibe-coding-secondary-bg);
-    color: var(--vibe-coding-text-primary);
+@keyframes code-rag-spin {
+    to { transform: rotate(360deg); }
 }
 
-.code-rag-view-btn.active {
-    background: var(--vibe-coding-header-border);
-    color: white;
-}
-
-.code-rag-view-btn.active:hover {
-    background: var(--vibe-coding-header-border);
-}
-
-/* ===================================================================
-   UNIFIED DIFF VIEW
-   =================================================================== */
-
-.code-rag-diff-content {
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-    font-size: 13px;
-    line-height: 1.6;
-    overflow-x: auto;
-    max-height: 500px;
-    overflow-y: auto;
-}
-
-.code-rag-diff-line {
-    display: flex;
-    min-height: 22px;
-    position: relative;
-}
-
-.code-rag-line-numbers {
-    display: flex;
-    background: var(--vibe-coding-secondary-bg);
-    border-right: 1px solid var(--vibe-coding-border-primary);
-    flex-shrink: 0;
-    position: sticky;
-    left: 0;
-    z-index: 1;
-}
-
-.code-rag-line-number {
-    width: 45px;
-    padding: 0 8px;
-    text-align: right;
-    user-select: none;
-    color: var(--vibe-coding-text-secondary);
-    font-size: 12px;
-}
-
-.code-rag-line-content {
-    padding: 0 10px;
-    flex: 1;
-    white-space: pre-wrap;
-    word-wrap: break-word;
-    overflow-wrap: break-word;
-}
-
-.code-rag-line-content code {
-    background: transparent !important;
-    padding: 0 !important;
-    font-family: inherit;
-    white-space: pre-wrap;
-    word-wrap: break-word;
-}
-
-.code-rag-line-added {
-    background: var(--vibe-coding-diff-added-bg);
-}
-
-.code-rag-line-added .code-rag-line-numbers {
-    background: var(--vibe-coding-diff-added-line-bg);
-}
-
-.code-rag-line-added .code-rag-line-content::before {
-    content: '+';
-    color: var(--vibe-coding-diff-added-text);
-    margin-right: 8px;
-    font-weight: bold;
-    display: inline-block;
-    width: 10px;
-}
-
-.code-rag-line-removed {
-    background: var(--vibe-coding-diff-removed-bg);
-}
-
-.code-rag-line-removed .code-rag-line-numbers {
-    background: var(--vibe-coding-diff-removed-line-bg);
-}
-
-.code-rag-line-removed .code-rag-line-content::before {
-    content: '-';
-    color: var(--vibe-coding-diff-removed-text);
-    margin-right: 8px;
-    font-weight: bold;
-    display: inline-block;
-    width: 10px;
-}
-
-.code-rag-line-context {
-    background: var(--vibe-coding-diff-context-bg);
-}
-
-.code-rag-line-context .code-rag-line-content::before {
-    content: ' ';
-    margin-right: 8px;
-    display: inline-block;
-    width: 10px;
-}
-
-/* ===================================================================
-   SPLIT VIEW (SIDE BY SIDE)
-   =================================================================== */
-
-.code-rag-split-view {
-    display: flex;
-    height: 500px;
-    overflow: hidden;
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-    font-size: 13px;
-    line-height: 1.6;
-}
-
-.code-rag-split-pane {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    min-width: 0; /* Important for text wrapping */
-}
-
-.code-rag-split-original {
-    border-right: 2px solid var(--vibe-coding-border-primary);
-}
-
-.code-rag-split-header {
-    background: var(--vibe-coding-secondary-bg);
-    padding: 8px 12px;
-    border-bottom: 1px solid var(--vibe-coding-border-primary);
-    font-weight: 600;
-    font-size: 12px;
-    color: var(--vibe-coding-text-primary);
-    text-align: center;
-    flex-shrink: 0;
-}
-
-.code-rag-split-content {
-    flex: 1;
-    overflow-y: auto;
-    overflow-x: hidden; /* Changed from auto to hidden */
-    background: var(--vibe-coding-primary-bg);
-}
-
-.code-rag-split-line {
-    display: flex;
-    min-height: 22px;
-}
-
-.code-rag-split-line-added {
-    background: var(--vibe-coding-diff-added-bg);
-}
-
-.code-rag-split-line-removed {
-    background: var(--vibe-coding-diff-removed-bg);
-}
-
-.code-rag-split-line-context {
-    background: var(--vibe-coding-primary-bg);
-}
-
-.code-rag-split-line-empty {
-    background: var(--vibe-coding-secondary-bg);
-    opacity: 0.3;
-}
-
-.code-rag-split-line-number {
-    width: 50px;
-    padding: 0 10px;
-    text-align: right;
-    user-select: none;
-    color: var(--vibe-coding-text-tertiary);
-    background: var(--vibe-coding-secondary-bg);
-    border-right: 1px solid var(--vibe-coding-border-primary);
-    font-size: 12px;
-    flex-shrink: 0;
-}
-
-.code-rag-split-line-content {
-    padding: 0 10px;
-    flex: 1;
-    min-width: 0; /* Important for text wrapping */
-    white-space: pre-wrap; /* Changed from pre to pre-wrap */
-    word-wrap: break-word;
-    overflow-wrap: break-word;
-}
-
-.code-rag-split-line-content code {
-    background: transparent !important;
-    padding: 0 !important;
-    font-family: inherit;
-    white-space: pre-wrap; /* Changed from inherit to pre-wrap */
-    word-wrap: break-word;
-    overflow-wrap: break-word;
-}
-
-/* Scrollbar styling */
-.code-rag-split-content::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
-}
-
-.code-rag-split-content::-webkit-scrollbar-track {
-    background: var(--vibe-coding-secondary-bg);
-}
-
-.code-rag-split-content::-webkit-scrollbar-thumb {
-    background: var(--vibe-coding-border-primary);
-    border-radius: 5px;
-}
-
-.code-rag-split-content::-webkit-scrollbar-thumb:hover {
-    background: var(--vibe-coding-border-secondary);
-}
-
-/* ===================================================================
-   NEW FILE CONTENT
-   =================================================================== */
-
-.code-rag-new-file-content {
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-    font-size: 13px;
-    line-height: 1.6;
-    overflow-x: auto;
-    max-height: 500px;
-    overflow-y: auto;
-    background: var(--vibe-coding-new-file-bg);
-}
-
-.code-rag-new-file-line {
-    display: flex;
-    min-height: 22px;
-    background: var(--vibe-coding-new-file-line-bg);
-}
-
-.code-rag-new-file-line .code-rag-line-numbers {
-    background: var(--vibe-coding-new-file-line-numbers-bg);
-}
-
-.code-rag-new-file-line .code-rag-line-content::before {
-    content: '+';
-    color: var(--vibe-coding-new-file-text);
-    margin-right: 8px;
-    font-weight: bold;
-    display: inline-block;
-    width: 10px;
-}
-
-/* ===================================================================
-   SYNTAX HIGHLIGHTING ADJUSTMENTS
-   =================================================================== */
-
-.code-rag-line-added .hljs-keyword,
-.code-rag-line-added .hljs-selector-tag,
-.code-rag-line-added .hljs-built_in {
-    color: var(--vibe-coding-diff-added-text-dark);
-}
-
-.code-rag-line-removed .hljs-keyword,
-.code-rag-line-removed .hljs-selector-tag,
-.code-rag-line-removed .hljs-built_in {
-    color: var(--vibe-coding-diff-removed-text-dark);
-}
-
-.code-rag-line-added .hljs-string {
-    color: var(--vibe-coding-diff-added-text-dark);
-}
-
-.code-rag-line-removed .hljs-string {
-    color: var(--vibe-coding-diff-removed-text-dark);
-}
-
-/* ===================================================================
-   FILE ACTIONS
-   =================================================================== */
-
-.code-rag-file-actions {
-    padding: 12px 20px;
-    background: var(--vibe-coding-secondary-bg);
-    border-top: 1px solid var(--vibe-coding-border-primary);
-    display: flex;
-    gap: 10px;
-    justify-content: flex-end;
-}
-
-.code-rag-btn {
-    padding: 8px 20px;
-    border: none;
-    border-radius: 6px;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-
-.code-rag-btn-accept {
-    background: var(--vibe-coding-btn-accept-bg);
-    color: var(--vibe-coding-btn-accept-text);
-}
-
-.code-rag-btn-accept:hover {
-    background: var(--vibe-coding-btn-accept-hover);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px var(--vibe-coding-btn-accept-shadow);
-}
-
-.code-rag-btn-reject {
-    background: var(--vibe-coding-btn-reject-bg);
-    color: var(--vibe-coding-btn-reject-text);
-}
-
-.code-rag-btn-reject:hover {
-    background: var(--vibe-coding-btn-reject-hover);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px var(--vibe-coding-btn-reject-shadow);
-}
-
-.code-rag-btn:active {
-    transform: translateY(0);
-}
-
-.code-rag-btn:disabled {
-    opacity: 0.5;
+/* Disabled button styles */
+.code-rag-btn:disabled,
+.code-rag-btn-small:disabled {
+    opacity: 0.6;
     cursor: not-allowed;
-    transform: none;
+    transform: none !important;
+    box-shadow: none !important;
 }
 
-/* ===================================================================
-   ACCEPTED/REJECTED STATES
-   =================================================================== */
-
-.code-rag-file-accepted {
-    padding: 30px 20px;
-    text-align: center;
-    background: var(--vibe-coding-accepted-bg);
-    border: 2px solid var(--vibe-coding-accepted-border);
-    border-radius: 6px;
-    margin: 15px;
-}
-
-.code-rag-file-accepted-icon {
-    font-size: 32px;
-    margin-bottom: 10px;
-}
-
-.code-rag-file-accepted-text {
-    font-size: 16px;
-    color: var(--vibe-coding-accepted-text);
-    font-weight: 600;
-    margin-bottom: 5px;
-}
-
-.code-rag-file-accepted-filename {
-    font-size: 14px;
-    color: var(--vibe-coding-text-primary);
-    font-family: 'Courier New', monospace;
-}
-
-.code-rag-file-rejected {
-    padding: 30px 20px;
-    text-align: center;
-    background: var(--vibe-coding-rejected-bg);
-    border: 2px solid var(--vibe-coding-rejected-border);
-    border-radius: 6px;
-    margin: 15px;
-}
-
-.code-rag-file-rejected-icon {
-    font-size: 32px;
-    margin-bottom: 10px;
-}
-
-.code-rag-file-rejected-text {
-    font-size: 16px;
-    color: var(--vibe-coding-rejected-text);
-    font-weight: 600;
-    margin-bottom: 5px;
-}
-
-.code-rag-file-rejected-filename {
-    font-size: 14px;
-    color: var(--vibe-coding-text-primary);
-    font-family: 'Courier New', monospace;
-}
-
-.code-rag-file-path {
-    font-size: 12px;
-    color: var(--vibe-coding-text-secondary);
-    font-family: 'Courier New', monospace;
-    margin-top: 5px;
-    opacity: 0.7;
-}
-
-/* ===================================================================
-   RESPONSIVE DESIGN
-   =================================================================== */
-
-@media (max-width: 1024px) {
-    .code-rag-split-view {
-        height: 400px;
-    }
-}
-
-@media (max-width: 768px) {
-    .code-rag-diff-header {
-        flex-direction: column;
-        gap: 10px;
-        align-items: flex-start;
-    }
-
-    .code-rag-view-toggle {
-        width: 100%;
-    }
-
-    .code-rag-view-btn {
-        flex: 1;
-        justify-content: center;
-    }
-
-    .code-rag-split-view {
-        flex-direction: column;
-        height: auto;
-    }
-
-    .code-rag-split-pane {
-        height: 300px;
-    }
-
-    .code-rag-split-original {
-        border-right: none;
-        border-bottom: 2px solid var(--vibe-coding-border-primary);
-    }
-
-    .code-rag-split-line-number {
-        width: 40px;
-        padding: 0 8px;
-    }
-
-    .code-rag-header {
-        padding: 10px 15px;
-    }
-
-    .code-rag-file-actions {
-        flex-direction: column;
-    }
-
-    .code-rag-btn {
-        width: 100%;
-        justify-content: center;
-    }
-
-    .code-rag-line-number {
-        width: 35px;
-        padding: 0 5px;
-    }
-
-    .code-rag-file-path-header {
-        font-size: 10px;
-    }
-
-    .code-rag-file-path {
-        font-size: 11px;
-    }
-
-    .code-rag-file-name-container {
-        gap: 2px;
-    }
-}
-
-@media (max-width: 480px) {
-    .code-rag-view-btn {
-        font-size: 11px;
-        padding: 4px 8px;
-    }
-
-    .code-rag-view-btn svg {
-        width: 12px;
-        height: 12px;
-    }
-
-    .code-rag-split-pane {
-        height: 250px;
-    }
+.code-rag-btn:disabled:hover,
+.code-rag-btn-small:disabled:hover {
+    transform: none !important;
+    box-shadow: none !important;
 }
