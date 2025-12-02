@@ -1,159 +1,539 @@
-parseToolString(input: string): ToolCommand[] {
-  const results: ToolCommand[] = [];
-  
-  try {
-    const str = input.trim();
+import { Injectable } from '@angular/core';
+
+export interface ToolCommand {
+  tool: string;
+  content: any;
+}
+
+export interface WriteModifyContent {
+  reasoning: string;
+  files: Array<{
+    file_path: string;
+    file_name: string;
+    original_code: string;
+    modified_code: string;
+  }>;
+}
+
+export interface ProcessedTool {
+  tool: ToolCommand;
+  status: 'processing' | 'waiting_approval' | 'completed';
+  timestamp: Date;
+}
+
+@Injectable({
+  providedIn: 'root'
+})
+export class ToolParserService {
+  private processingQueue: ToolCommand[] = [];
+  private isProcessing = false;
+  private waitingForApproval = false;
+  private currentBatch: ToolCommand[] = [];
+
+  public allProcessedTools: ProcessedTool[] = [];
+  public isWaitingForUserApproval = false;
+  public pendingBatch: ToolCommand[] = [];
+
+  // Callback for UI updates
+  private onUpdateCallback?: () => void;
+
+  /**
+   * Set callback for UI updates
+   */
+  setUpdateCallback(callback: () => void): void {
+    this.onUpdateCallback = callback;
+  }
+
+  /**
+   * Trigger UI update
+   */
+  private triggerUpdate(): void {
+    if (this.onUpdateCallback) {
+      this.onUpdateCallback();
+    }
+  }
+
+  /**
+   * Add new tool commands from streaming API
+   */
+  addToolFromStream(input: string): void {
+    const tools = this.parseToolString(input);
     
-    if (!str) {
-      return [];
-    }
+    if (tools.length === 0) return;
 
-    const objects = this.extractJsonObjects(str);
+    // Add new tools to the queue
+    this.processingQueue.push(...tools);
     
-    for (const obj of objects) {
-      try {
-        const parsed = this.parseObject(obj);
-        if (parsed && parsed.tool) {
-          results.push(parsed);
-        }
-      } catch (err) {
-        console.warn('Skipping invalid object:', obj, err);
-        // Continue processing other objects instead of failing completely
+    // Start processing if not already processing and not waiting
+    if (!this.isProcessing && !this.waitingForApproval) {
+      this.processQueue();
+    }
+  }
+
+  /**
+   * User clicked OK button - continue processing
+   */
+  approveAndContinue(): void {
+    if (!this.waitingForApproval) return;
+
+    // Execute the current batch (WRITE/MODIFY actions)
+    this.executeBatch(this.currentBatch);
+
+    // Clear current batch
+    this.currentBatch = [];
+    this.waitingForApproval = false;
+    this.isWaitingForUserApproval = false;
+    this.pendingBatch = [];
+
+    this.triggerUpdate();
+
+    // Continue processing remaining queue
+    this.processQueue();
+  }
+
+  /**
+   * Process queue until we hit WRITE/MODIFY
+   */
+  private processQueue(): void {
+    if (this.waitingForApproval) return;
+
+    this.isProcessing = true;
+
+    while (this.processingQueue.length > 0 && !this.waitingForApproval) {
+      const tool = this.processingQueue.shift();
+      
+      if (!tool) continue;
+
+      this.processSingleTool(tool);
+    }
+
+    this.isProcessing = false;
+  }
+
+  /**
+   * Process a single tool command
+   */
+  private processSingleTool(tool: ToolCommand): void {
+    try {
+      if (!tool.tool) {
+        console.warn('Invalid tool object:', tool);
+        return;
       }
-    }
 
-    return results;
+      switch (tool.tool) {
+        case 'READ':
+          // Execute READ immediately
+          this.handleRead(tool.content);
+          this.addToProcessedTools(tool, 'completed');
+          this.triggerUpdate();
+          break;
 
-  } catch (error) {
-    console.error('Parse error:', error);
-    console.error('Input was:', input);
-    return results; // Return partial results if any
-  }
-}
+        case 'WRITE':
+        case 'MODIFY':
+          // Add to current batch
+          this.currentBatch.push(tool);
+          this.addToProcessedTools(tool, 'waiting_approval');
+          
+          // Collect all consecutive WRITE/MODIFY commands
+          this.collectBatch();
+          
+          // Stop processing and wait for approval
+          this.waitingForApproval = true;
+          this.isWaitingForUserApproval = true;
+          this.pendingBatch = [...this.currentBatch];
+          
+          this.triggerUpdate();
+          break;
 
-private extractJsonObjects(str: string): string[] {
-  const objects: string[] = [];
-  let depth = 0;
-  let start = 0;
-  let inString = false;
-  let stringDelimiter = '';
-  let escaped = false;
-
-  for (let i = 0; i < str.length; i++) {
-    const char = str[i];
-    const prevChar = i > 0 ? str[i - 1] : '';
-
-    // Track escape sequences
-    if (escaped) {
-      escaped = false;
-      continue;
-    }
-
-    if (char === '\\') {
-      escaped = true;
-      continue;
-    }
-
-    // Track when we're inside strings
-    if (!inString && (char === '"' || char === "'")) {
-      inString = true;
-      stringDelimiter = char;
-    } else if (inString && char === stringDelimiter && prevChar !== '\\') {
-      inString = false;
-      stringDelimiter = '';
-    }
-
-    // Only process structural characters outside strings
-    if (!inString) {
-      if (char === '{') {
-        if (depth === 0) {
-          start = i;
-        }
-        depth++;
-      } else if (char === '}') {
-        depth--;
-        if (depth === 0 && start < i) {
-          objects.push(str.substring(start, i + 1));
-        }
+        default:
+          console.warn('Unknown tool type:', tool.tool);
       }
+    } catch (error) {
+      console.error('Error processing tool:', tool, error);
     }
   }
 
-  return objects;
-}
-
-private parseObject(obj: string): ToolCommand | null {
-  try {
-    let jsonStr = obj.trim();
-
-    // Step 1: Quote unquoted property names
-    jsonStr = this.quotePropertyNames(jsonStr);
-
-    // Step 2: Convert single quotes to double quotes
-    jsonStr = this.normalizeQuotes(jsonStr);
-
-    // Step 3: Parse JSON
-    const parsed = JSON.parse(jsonStr);
-
-    // Validate structure
-    if (typeof parsed !== 'object' || !parsed.tool) {
-      console.warn('Invalid tool command structure:', parsed);
-      return null;
-    }
-
-    return parsed as ToolCommand;
-
-  } catch (error) {
-    console.error('Parse object error:', error);
-    throw error;
-  }
-}
-
-private quotePropertyNames(str: string): string {
-  // Match unquoted property names followed by colon
-  // Handles: {tool: "READ"} -> {"tool": "READ"}
-  return str.replace(/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)(\s*):/g, '$1"$2"$3:');
-}
-
-private normalizeQuotes(str: string): string {
-  let result = '';
-  let inString = false;
-  let currentQuote = '';
-  let escaped = false;
-
-  for (let i = 0; i < str.length; i++) {
-    const char = str[i];
-
-    if (escaped) {
-      result += char;
-      escaped = false;
-      continue;
-    }
-
-    if (char === '\\' && inString) {
-      result += char;
-      escaped = true;
-      continue;
-    }
-
-    // Handle quote characters
-    if ((char === '"' || char === "'") && !inString) {
-      inString = true;
-      currentQuote = char;
-      result += '"'; // Always use double quotes
-    } else if (char === currentQuote && inString) {
-      inString = false;
-      currentQuote = '';
-      result += '"'; // Always use double quotes
-    } else {
-      // Escape double quotes that were originally single quotes
-      if (char === '"' && inString && currentQuote === "'") {
-        result += '\\"';
+  /**
+   * Collect all consecutive WRITE/MODIFY commands into current batch
+   */
+  private collectBatch(): void {
+    while (this.processingQueue.length > 0) {
+      const nextTool = this.processingQueue[0];
+      
+      if (nextTool.tool === 'WRITE' || nextTool.tool === 'MODIFY') {
+        const tool = this.processingQueue.shift()!;
+        this.currentBatch.push(tool);
+        this.addToProcessedTools(tool, 'waiting_approval');
       } else {
-        result += char;
+        // Stop when we hit a READ or unknown command
+        break;
       }
     }
   }
 
-  return result;
+  /**
+   * Execute the approved batch
+   */
+  private executeBatch(batch: ToolCommand[]): void {
+    batch.forEach(tool => {
+      if (tool.tool === 'WRITE') {
+        this.handleWrite(tool.content);
+      } else if (tool.tool === 'MODIFY') {
+        this.handleModify(tool.content);
+      }
+      
+      // Update status to completed
+      this.updateToolStatus(tool, 'completed');
+    });
+    
+    this.triggerUpdate();
+  }
+
+  /**
+   * Add tool to processed tools list
+   */
+  private addToProcessedTools(tool: ToolCommand, status: 'processing' | 'waiting_approval' | 'completed'): void {
+    this.allProcessedTools.push({
+      tool,
+      status,
+      timestamp: new Date()
+    });
+  }
+
+  /**
+   * Update tool status
+   */
+  private updateToolStatus(tool: ToolCommand, status: 'processing' | 'waiting_approval' | 'completed'): void {
+    const item = this.allProcessedTools.find(pt => pt.tool === tool);
+    if (item) {
+      item.status = status;
+    }
+  }
+
+  /**
+   * Handle READ tool - execute immediately
+   */
+  private handleRead(content: string): void {
+    console.log('READ (executing immediately):', content);
+    // Your read logic here - this executes immediately
+  }
+
+  /**
+   * Handle WRITE tool - only executed after approval
+   */
+  private handleWrite(content: WriteModifyContent): void {
+    console.log('WRITE (executing after approval):', content.reasoning);
+    if (content.files) {
+      content.files.forEach(file => {
+        console.log(`  Writing file: ${file.file_name} at ${file.file_path}`);
+        // Your actual write logic here
+      });
+    }
+  }
+
+  /**
+   * Handle MODIFY tool - only executed after approval
+   */
+  private handleModify(content: WriteModifyContent): void {
+    console.log('MODIFY (executing after approval):', content.reasoning);
+    if (content.files) {
+      content.files.forEach(file => {
+        console.log(`  Modifying file: ${file.file_name} at ${file.file_path}`);
+        // Your actual modify logic here
+      });
+    }
+  }
+
+  /**
+   * Get current queue length
+   */
+  getQueueLength(): number {
+    return this.processingQueue.length;
+  }
+
+  /**
+   * Reset everything
+   */
+  reset(): void {
+    this.processingQueue = [];
+    this.currentBatch = [];
+    this.allProcessedTools = [];
+    this.isProcessing = false;
+    this.waitingForApproval = false;
+    this.isWaitingForUserApproval = false;
+    this.pendingBatch = [];
+    this.triggerUpdate();
+  }
+
+  // ====== PARSING METHODS ======
+
+  parseToolString(input: string): ToolCommand[] {
+    const results: ToolCommand[] = [];
+    
+    try {
+      const str = input.trim();
+      
+      if (!str) {
+        return [];
+      }
+
+      const objects = this.extractJsonObjects(str);
+      
+      for (const obj of objects) {
+        try {
+          const parsed = this.parseObject(obj);
+          if (parsed && parsed.tool) {
+            results.push(parsed);
+          }
+        } catch (err) {
+          console.warn('Skipping invalid object:', obj, err);
+        }
+      }
+
+      return results;
+
+    } catch (error) {
+      console.error('Parse error:', error);
+      console.error('Input was:', input);
+      return results;
+    }
+  }
+
+  private extractJsonObjects(str: string): string[] {
+    const objects: string[] = [];
+    let depth = 0;
+    let start = 0;
+    let inString = false;
+    let stringDelimiter = '';
+    let escaped = false;
+
+    for (let i = 0; i < str.length; i++) {
+      const char = str[i];
+      const prevChar = i > 0 ? str[i - 1] : '';
+
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+
+      if (char === '\\') {
+        escaped = true;
+        continue;
+      }
+
+      if (!inString && (char === '"' || char === "'")) {
+        inString = true;
+        stringDelimiter = char;
+      } else if (inString && char === stringDelimiter && prevChar !== '\\') {
+        inString = false;
+        stringDelimiter = '';
+      }
+
+      if (!inString) {
+        if (char === '{') {
+          if (depth === 0) {
+            start = i;
+          }
+          depth++;
+        } else if (char === '}') {
+          depth--;
+          if (depth === 0 && start < i) {
+            objects.push(str.substring(start, i + 1));
+          }
+        }
+      }
+    }
+
+    return objects;
+  }
+
+  private parseObject(obj: string): ToolCommand | null {
+    try {
+      let jsonStr = obj.trim();
+      jsonStr = this.quotePropertyNames(jsonStr);
+      jsonStr = this.normalizeQuotes(jsonStr);
+      const parsed = JSON.parse(jsonStr);
+
+      if (typeof parsed !== 'object' || !parsed.tool) {
+        console.warn('Invalid tool command structure:', parsed);
+        return null;
+      }
+
+      return parsed as ToolCommand;
+
+    } catch (error) {
+      console.error('Parse object error:', error);
+      throw error;
+    }
+  }
+
+  private quotePropertyNames(str: string): string {
+    return str.replace(/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)(\s*):/g, '$1"$2"$3:');
+  }
+
+  private normalizeQuotes(str: string): string {
+    let result = '';
+    let inString = false;
+    let currentQuote = '';
+    let escaped = false;
+
+    for (let i = 0; i < str.length; i++) {
+      const char = str[i];
+
+      if (escaped) {
+        result += char;
+        escaped = false;
+        continue;
+      }
+
+      if (char === '\\' && inString) {
+        result += char;
+        escaped = true;
+        continue;
+      }
+
+      if ((char === '"' || char === "'") && !inString) {
+        inString = true;
+        currentQuote = char;
+        result += '"';
+      } else if (char === currentQuote && inString) {
+        inString = false;
+        currentQuote = '';
+        result += '"';
+      } else {
+        if (char === '"' && inString && currentQuote === "'") {
+          result += '\\"';
+        } else {
+          result += char;
+        }
+      }
+    }
+
+    return result;
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
+import { ToolParserService, ProcessedTool, ToolCommand } from './services/tool-parser.service';
+import { HttpClient } from '@angular/common/http';
+
+@Component({
+  selector: 'app-tool-processor',
+  templateUrl: './tool-processor.component.html',
+  styleUrls: ['./tool-processor.component.css']
+})
+export class ToolProcessorComponent implements OnInit {
+
+  constructor(
+    public toolParser: ToolParserService,
+    private cdr: ChangeDetectorRef,
+    private http: HttpClient
+  ) {}
+
+  ngOnInit(): void {
+    // Set callback for UI updates
+    this.toolParser.setUpdateCallback(() => {
+      this.cdr.detectChanges();
+    });
+  }
+
+  // Call this when user clicks OK button
+  onApprove(): void {
+    this.toolParser.approveAndContinue();
+  }
+
+  // Reset everything
+  onReset(): void {
+    this.toolParser.reset();
+  }
+
+  // Example: Call your streaming API
+  callStreamingAPI(): void {
+    // Replace with your actual API endpoint
+    this.http.get('your-api-endpoint', { responseType: 'text' })
+      .subscribe({
+        next: (response) => {
+          // Process the streaming response
+          this.toolParser.addToolFromStream(response);
+        },
+        error: (error) => {
+          console.error('API Error:', error);
+        }
+      });
+  }
+
+  // Example: Simulate streaming with setTimeout
+  simulateStreaming(): void {
+    const data = [
+      '{tool: "READ", content: "First read - showing immediately"}',
+      '{tool: "READ", content: "Second read - showing immediately"}',
+      '{tool: "WRITE", content: {reasoning: "Writing new file", files: [{file_path: "/src", file_name:"app.js", original_code:"", modified_code:"console.log(\'hello\');"}]}}',
+      '{tool: "MODIFY", content: {reasoning: "Modifying existing file", files: [{file_path: "/src", file_name:"app.js", original_code:"old code", modified_code:"new code"}]}}',
+      '{tool: "READ", content: "Third read - will show after approval"}',
+      '{tool: "WRITE", content: {reasoning: "Another write operation", files: [{file_path: "/test", file_name:"test.js", original_code:"", modified_code:"test code"}]}}',
+      '{tool: "READ", content: "Final read - will show after second approval"}'
+    ];
+
+    let index = 0;
+    const interval = setInterval(() => {
+      if (index < data.length) {
+        console.log('Streaming chunk:', data[index]);
+        this.toolParser.addToolFromStream(data[index]);
+        index++;
+      } else {
+        clearInterval(interval);
+        console.log('Streaming complete');
+      }
+    }, 1000);
+  }
+
+  // Example: Handle actual streaming API with chunks
+  handleStreamingResponse(): void {
+    // Example with fetch API for streaming
+    fetch('your-streaming-api-endpoint')
+      .then(response => {
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+
+        const processStream = ({ done, value }: any): any => {
+          if (done) {
+            console.log('Stream complete');
+            return;
+          }
+
+          const chunk = decoder.decode(value, { stream: true });
+          console.log('Received chunk:', chunk);
+          
+          // Process the chunk
+          this.toolParser.addToolFromStream(chunk);
+
+          // Read next chunk
+          return reader?.read().then(processStream);
+        };
+
+        return reader?.read().then(processStream);
+      })
+      .catch(error => {
+        console.error('Streaming error:', error);
+      });
+  }
 }
