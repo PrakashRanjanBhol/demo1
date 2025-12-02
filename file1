@@ -1,9 +1,35 @@
-// Loading states for individual files
-  loadingFiles: Set<number> = new Set();
-  
-  // Loading state for batch operations
-  isApproveAllLoading: boolean = false;
-  isRejectAllLoading: boolean = false;
+<!-- File Actions -->
+        <div class="code-rag-file-actions">
+          <button 
+            class="code-rag-btn code-rag-btn-accept" 
+            (click)="acceptFile(i)"
+            [disabled]="isFileLoading(i) || isAnyBatchOperationLoading()">
+            <span class="code-rag-spinner" *ngIf="isFileLoading(i)"></span>
+            <span *ngIf="!isFileLoading(i)">✓</span>
+            <span>{{ isFileLoading(i) ? 'Approving...' : 'Accept' }}</span>
+          </button>
+          <button 
+            class="code-rag-btn code-rag-btn-reject" 
+            (click)="rejectFile(i)"
+            [disabled]="isFileLoading(i) || isAnyBatchOperationLoading()">
+            <span class="code-rag-spinner" *ngIf="isFileLoading(i)"></span>
+            <span *ngIf="!isFileLoading(i)">✗</span>
+            <span>{{ isFileLoading(i) ? 'Rejecting...' : 'Reject' }}</span>
+          </button>
+        </div>
+
+
+
+
+
+
+
+
+
+// Track which action is being performed per file
+  fileActions: Map<number, 'accepting' | 'rejecting'> = new Map();
+
+
 
 
 
@@ -13,8 +39,8 @@
 
 acceptFile(index: number): void {
     this.loadingFiles.add(index);
+    this.fileActions.set(index, 'accepting');
     
-    // Simulate async operation (replace with your actual API call)
     setTimeout(() => {
       console.log(`File ${index} accepted:`, this.files[index].file_name);
       console.log('File path:', this.files[index].file_path);
@@ -22,8 +48,9 @@ acceptFile(index: number): void {
       
       this.acceptedFiles.add(index);
       this.loadingFiles.delete(index);
+      this.fileActions.delete(index);
       this.onFileAccepted.emit({ file: this.files[index], index });
-    }, 1500); // Replace this timeout with your actual async operation
+    }, 1500);
   }
 
 
@@ -37,8 +64,8 @@ acceptFile(index: number): void {
 
 rejectFile(index: number): void {
     this.loadingFiles.add(index);
+    this.fileActions.set(index, 'rejecting');
     
-    // Simulate async operation (replace with your actual API call)
     setTimeout(() => {
       console.log(`File ${index} rejected:`, this.files[index].file_name);
       console.log('File path:', this.files[index].file_path);
@@ -46,8 +73,9 @@ rejectFile(index: number): void {
       
       this.rejectedFiles.add(index);
       this.loadingFiles.delete(index);
+      this.fileActions.delete(index);
       this.onFileRejected.emit({ file: this.files[index], index });
-    }, 1500); // Replace this timeout with your actual async operation
+    }, 1500);
   }
 
 
@@ -59,117 +87,9 @@ rejectFile(index: number): void {
 
 
 
-acceptAll(): void {
-    this.isApproveAllLoading = true;
-    
-    console.log('All files accepted');
-    console.log('Tool:', this.toolType);
-    console.log('Reasoning:', this.reasoning);
-    
-    // Process all files sequentially or in parallel
-    const acceptPromises = this.files.map((file, index) => {
-      return new Promise<void>((resolve) => {
-        this.loadingFiles.add(index);
-        
-        // Simulate async operation (replace with your actual API call)
-        setTimeout(() => {
-          console.log(`${file.file_name} (${file.file_path}): Applied code`, file.modified_code);
-          this.acceptedFiles.add(index);
-          this.loadingFiles.delete(index);
-          resolve();
-        }, 1500); // Replace with actual async operation
-      });
-    });
-    
-    Promise.all(acceptPromises).then(() => {
-      this.isApproveAllLoading = false;
-      this.onAcceptAll.emit();
-    });
+getFileAction(index: number): 'accepting' | 'rejecting' | null {
+    return this.fileActions.get(index) || null;
   }
-
-
-
-
-
-
-
-
-
-
-
-rejectAll(): void {
-    this.isRejectAllLoading = true;
-    
-    console.log('All files rejected');
-    console.log('Tool:', this.toolType);
-    console.log('Reasoning:', this.reasoning);
-    
-    // Process all files sequentially or in parallel
-    const rejectPromises = this.files.map((file, index) => {
-      return new Promise<void>((resolve) => {
-        this.loadingFiles.add(index);
-        
-        // Simulate async operation (replace with your actual API call)
-        setTimeout(() => {
-          console.log(`${file.file_name} (${file.file_path}): Keeping original code`, file.original_code);
-          this.rejectedFiles.add(index);
-          this.loadingFiles.delete(index);
-          resolve();
-        }, 1500); // Replace with actual async operation
-      });
-    });
-    
-    Promise.all(rejectPromises).then(() => {
-      this.isRejectAllLoading = false;
-      this.onRejectAll.emit();
-    });
-  }
-
-
-
-
-
-
-
-
-
-isFileLoading(index: number): boolean {
-    return this.loadingFiles.has(index);
-  }
-
-  isAnyBatchOperationLoading(): boolean {
-    return this.isApproveAllLoading || this.isRejectAllLoading;
-  }
-
-
-
-
-
-
-
-<!-- Action Buttons -->
-    <div class="code-rag-top-actions">
-      <button 
-        class="code-rag-btn-small code-rag-btn-accept" 
-        (click)="acceptAll()"
-        [disabled]="isAnyBatchOperationLoading()">
-        <span class="code-rag-spinner" *ngIf="isApproveAllLoading"></span>
-        <span>{{ isApproveAllLoading ? 'Approving All...' : 'Accept All' }}</span>
-      </button>
-      <button 
-        class="code-rag-btn-small code-rag-btn-reject" 
-        (click)="rejectAll()"
-        [disabled]="isAnyBatchOperationLoading()">
-        <span class="code-rag-spinner" *ngIf="isRejectAllLoading"></span>
-        <span>{{ isRejectAllLoading ? 'Rejecting All...' : 'Reject All' }}</span>
-      </button>
-    </div>
-
-
-
-
-
-
 
 
 
@@ -183,60 +103,16 @@ isFileLoading(index: number): boolean {
             class="code-rag-btn code-rag-btn-accept" 
             (click)="acceptFile(i)"
             [disabled]="isFileLoading(i) || isAnyBatchOperationLoading()">
-            <span class="code-rag-spinner" *ngIf="isFileLoading(i) && acceptedFiles.has(i) === false"></span>
-            <span *ngIf="!isFileLoading(i)">✓</span>
-            <span>{{ isFileLoading(i) && !acceptedFiles.has(i) ? 'Approving...' : 'Accept' }}</span>
+            <span class="code-rag-spinner" *ngIf="getFileAction(i) === 'accepting'"></span>
+            <span *ngIf="getFileAction(i) !== 'accepting'">✓</span>
+            <span>{{ getFileAction(i) === 'accepting' ? 'Approving...' : 'Accept' }}</span>
           </button>
           <button 
             class="code-rag-btn code-rag-btn-reject" 
             (click)="rejectFile(i)"
             [disabled]="isFileLoading(i) || isAnyBatchOperationLoading()">
-            <span class="code-rag-spinner" *ngIf="isFileLoading(i) && rejectedFiles.has(i) === false"></span>
-            <span *ngIf="!isFileLoading(i)">✗</span>
-            <span>{{ isFileLoading(i) && !rejectedFiles.has(i) ? 'Rejecting...' : 'Reject' }}</span>
+            <span class="code-rag-spinner" *ngIf="getFileAction(i) === 'rejecting'"></span>
+            <span *ngIf="getFileAction(i) !== 'rejecting'">✗</span>
+            <span>{{ getFileAction(i) === 'rejecting' ? 'Rejecting...' : 'Reject' }}</span>
           </button>
         </div>
-
-
-
-
-
-
-
-
-
-
-
-/* ===================================================================
-   LOADING SPINNER
-   =================================================================== */
-
-.code-rag-spinner {
-    display: inline-block;
-    width: 14px;
-    height: 14px;
-    border: 2px solid rgba(255, 255, 255, 0.3);
-    border-radius: 50%;
-    border-top-color: currentColor;
-    animation: code-rag-spin 0.6s linear infinite;
-    margin-right: 6px;
-}
-
-@keyframes code-rag-spin {
-    to { transform: rotate(360deg); }
-}
-
-/* Disabled button styles */
-.code-rag-btn:disabled,
-.code-rag-btn-small:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-    transform: none !important;
-    box-shadow: none !important;
-}
-
-.code-rag-btn:disabled:hover,
-.code-rag-btn-small:disabled:hover {
-    transform: none !important;
-    box-shadow: none !important;
-}
