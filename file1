@@ -1,86 +1,159 @@
 parseToolString(input: string): ToolCommand[] {
-    try {
-      const str = input.trim();
-      const objects: string[] = [];
-      let depth = 0;
-      let start = 0;
-
-      // Extract individual JSON objects
-      for (let i = 0; i < str.length; i++) {
-        if (str[i] === '{') {
-          if (depth === 0) start = i;
-          depth++;
-        } else if (str[i] === '}') {
-          depth--;
-          if (depth === 0) {
-            objects.push(str.substring(start, i + 1));
-          }
-        }
-      }
-
-      // Parse each object
-      return objects.map(obj => {
-        // Convert JavaScript object notation to valid JSON
-        let jsonStr = obj
-          .replace(/(\w+):/g, '"$1":')           // Quote property names
-          .replace(/:\s*'([^']*)'/g, ':"$1"');   // Replace single quotes
-
-        return JSON.parse(jsonStr);
-      });
-
-    } catch (error) {
-      console.error('Parse error:', error);
-      console.error('Input was:', input);
+  const results: ToolCommand[] = [];
+  
+  try {
+    const str = input.trim();
+    
+    if (!str) {
       return [];
     }
-  }
 
-  processTools(input: string): void {
-    const tools = this.parseToolString(input);
-
-    tools.forEach(tool => {
-      if (!tool.tool) {
-        console.warn('Invalid tool object:', tool);
-        return;
+    const objects = this.extractJsonObjects(str);
+    
+    for (const obj of objects) {
+      try {
+        const parsed = this.parseObject(obj);
+        if (parsed && parsed.tool) {
+          results.push(parsed);
+        }
+      } catch (err) {
+        console.warn('Skipping invalid object:', obj, err);
+        // Continue processing other objects instead of failing completely
       }
+    }
 
-      switch (tool.tool) {
-        case 'READ':
-          this.handleRead(tool.content);
-          break;
-        case 'WRITE':
-          this.handleWrite(tool.content);
-          break;
-        case 'MODIFY':
-          this.handleModify(tool.content);
-          break;
-        default:
-          console.warn('Unknown tool type:', tool.tool);
+    return results;
+
+  } catch (error) {
+    console.error('Parse error:', error);
+    console.error('Input was:', input);
+    return results; // Return partial results if any
+  }
+}
+
+private extractJsonObjects(str: string): string[] {
+  const objects: string[] = [];
+  let depth = 0;
+  let start = 0;
+  let inString = false;
+  let stringDelimiter = '';
+  let escaped = false;
+
+  for (let i = 0; i < str.length; i++) {
+    const char = str[i];
+    const prevChar = i > 0 ? str[i - 1] : '';
+
+    // Track escape sequences
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (char === '\\') {
+      escaped = true;
+      continue;
+    }
+
+    // Track when we're inside strings
+    if (!inString && (char === '"' || char === "'")) {
+      inString = true;
+      stringDelimiter = char;
+    } else if (inString && char === stringDelimiter && prevChar !== '\\') {
+      inString = false;
+      stringDelimiter = '';
+    }
+
+    // Only process structural characters outside strings
+    if (!inString) {
+      if (char === '{') {
+        if (depth === 0) {
+          start = i;
+        }
+        depth++;
+      } else if (char === '}') {
+        depth--;
+        if (depth === 0 && start < i) {
+          objects.push(str.substring(start, i + 1));
+        }
       }
-    });
-  }
-
-  private handleRead(content: string): void {
-    console.log('READ:', content);
-    // Your read logic here
-  }
-
-  private handleWrite(content: WriteModifyContent): void {
-    console.log('WRITE - Reasoning:', content.reasoning);
-    if (content.files) {
-      content.files.forEach(file => {
-        console.log(`  File: ${file.file_name} at ${file.file_path}`);
-        // Your write logic here
-      });
     }
   }
 
-  private handleModify(content: WriteModifyContent): void {
-    console.log('MODIFY - Reasoning:', content.reasoning);
-    if (content.files) {
-      content.files.forEach(file => {
-        console.log(`  Modifying: ${file.file_name} at ${file.file_path}`);
-        // Your modify logic here
-      });
+  return objects;
+}
+
+private parseObject(obj: string): ToolCommand | null {
+  try {
+    let jsonStr = obj.trim();
+
+    // Step 1: Quote unquoted property names
+    jsonStr = this.quotePropertyNames(jsonStr);
+
+    // Step 2: Convert single quotes to double quotes
+    jsonStr = this.normalizeQuotes(jsonStr);
+
+    // Step 3: Parse JSON
+    const parsed = JSON.parse(jsonStr);
+
+    // Validate structure
+    if (typeof parsed !== 'object' || !parsed.tool) {
+      console.warn('Invalid tool command structure:', parsed);
+      return null;
+    }
+
+    return parsed as ToolCommand;
+
+  } catch (error) {
+    console.error('Parse object error:', error);
+    throw error;
+  }
+}
+
+private quotePropertyNames(str: string): string {
+  // Match unquoted property names followed by colon
+  // Handles: {tool: "READ"} -> {"tool": "READ"}
+  return str.replace(/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)(\s*):/g, '$1"$2"$3:');
+}
+
+private normalizeQuotes(str: string): string {
+  let result = '';
+  let inString = false;
+  let currentQuote = '';
+  let escaped = false;
+
+  for (let i = 0; i < str.length; i++) {
+    const char = str[i];
+
+    if (escaped) {
+      result += char;
+      escaped = false;
+      continue;
+    }
+
+    if (char === '\\' && inString) {
+      result += char;
+      escaped = true;
+      continue;
+    }
+
+    // Handle quote characters
+    if ((char === '"' || char === "'") && !inString) {
+      inString = true;
+      currentQuote = char;
+      result += '"'; // Always use double quotes
+    } else if (char === currentQuote && inString) {
+      inString = false;
+      currentQuote = '';
+      result += '"'; // Always use double quotes
+    } else {
+      // Escape double quotes that were originally single quotes
+      if (char === '"' && inString && currentQuote === "'") {
+        result += '\\"';
+      } else {
+        result += char;
+      }
     }
   }
+
+  return result;
+}
