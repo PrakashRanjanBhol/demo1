@@ -1,4 +1,4 @@
-import { Component, OnInit, Input, Output, EventEmitter } from '@angular/core';
+import { Component, OnInit, Input, Output, EventEmitter, OnChanges } from '@angular/core';
 import * as Diff from 'diff';
 import * as hljs from 'highlight.js';
 
@@ -33,6 +33,13 @@ interface DiffLine {
   highlightedContent: string;
 }
 
+interface SplitLine {
+  lineNum: number | null;
+  content: string;
+  highlighted: string;
+  type: 'added' | 'removed' | 'context' | 'empty';
+}
+
 type ViewMode = 'unified' | 'split';
 
 @Component({
@@ -40,11 +47,10 @@ type ViewMode = 'unified' | 'split';
   templateUrl: './diff-viewer.component.html',
   styleUrls: ['./diff-viewer.component.css']
 })
-export class DiffViewerComponent implements OnInit {
+export class DiffViewerComponent implements OnInit, OnChanges {
   @Input() config!: FileConfig;
-  @Input() defaultViewMode: ViewMode = 'unified'; // Allow parent to set default
+  @Input() defaultViewMode: ViewMode = 'unified';
   
-  // Output events for modal integration
   @Output() onAcceptAll = new EventEmitter<void>();
   @Output() onRejectAll = new EventEmitter<void>();
   @Output() onFileAccepted = new EventEmitter<{ file: FileItem, index: number }>();
@@ -54,21 +60,18 @@ export class DiffViewerComponent implements OnInit {
   rejectedFiles: Set<number> = new Set();
   fileStates: FileState[] = [];
   processedDiffs: Map<number, { lines: DiffLine[], isNewFile: boolean }> = new Map();
+  splitViewCache: Map<number, { oldLines: SplitLine[], newLines: SplitLine[] }> = new Map();
   
-  // View mode state
   viewMode: ViewMode = 'unified';
 
-  // Getter for files array
   get files(): FileItem[] {
     return this.config?.content?.files || [];
   }
 
-  // Getter for tool type
   get toolType(): string {
     return this.config?.tool || '';
   }
 
-  // Getter for reasoning
   get reasoning(): string {
     return this.config?.content?.reasoning || '';
   }
@@ -79,11 +82,11 @@ export class DiffViewerComponent implements OnInit {
   }
 
   ngOnChanges(): void {
-    // Reset state when config changes
     this.acceptedFiles.clear();
     this.rejectedFiles.clear();
     this.fileStates = [];
     this.processedDiffs.clear();
+    this.splitViewCache.clear();
     this.processAllFiles();
   }
 
@@ -182,19 +185,20 @@ export class DiffViewerComponent implements OnInit {
     return diffLines;
   }
 
-  // Get split view data with diff information and alignment
-  getSplitViewData(index: number): { 
-    oldLines: Array<{lineNum: number | null, content: string, highlighted: string, type: 'added' | 'removed' | 'context' | 'empty'}>,
-    newLines: Array<{lineNum: number | null, content: string, highlighted: string, type: 'added' | 'removed' | 'context' | 'empty'}>
-  } {
+  getSplitViewData(index: number): { oldLines: SplitLine[], newLines: SplitLine[] } {
+    // Check cache first
+    if (this.splitViewCache.has(index)) {
+      return this.splitViewCache.get(index)!;
+    }
+
     const file = this.files[index];
     if (!file) {
       return { oldLines: [], newLines: [] };
     }
 
     const diff = Diff.diffLines(file.original_code, file.modified_code);
-    const oldLines: Array<{lineNum: number | null, content: string, highlighted: string, type: 'added' | 'removed' | 'context' | 'empty'}> = [];
-    const newLines: Array<{lineNum: number | null, content: string, highlighted: string, type: 'added' | 'removed' | 'context' | 'empty'}> = [];
+    const oldLines: SplitLine[] = [];
+    const newLines: SplitLine[] = [];
     
     let oldLineNum = 1;
     let newLineNum = 1;
@@ -206,8 +210,6 @@ export class DiffViewerComponent implements OnInit {
       }
 
       if (part.added) {
-        // Added lines only appear in new/modified code
-        // Add empty placeholders in old code for alignment
         lines.forEach(line => {
           oldLines.push({
             lineNum: null,
@@ -223,8 +225,6 @@ export class DiffViewerComponent implements OnInit {
           });
         });
       } else if (part.removed) {
-        // Removed lines only appear in old/original code
-        // Add empty placeholders in new code for alignment
         lines.forEach(line => {
           oldLines.push({
             lineNum: oldLineNum++,
@@ -240,7 +240,6 @@ export class DiffViewerComponent implements OnInit {
           });
         });
       } else {
-        // Context lines appear in both
         lines.forEach(line => {
           oldLines.push({
             lineNum: oldLineNum++,
@@ -258,7 +257,9 @@ export class DiffViewerComponent implements OnInit {
       }
     });
 
-    return { oldLines, newLines };
+    const result = { oldLines, newLines };
+    this.splitViewCache.set(index, result);
+    return result;
   }
 
   highlightCode(code: string, fileName: string): string {
@@ -313,8 +314,6 @@ export class DiffViewerComponent implements OnInit {
     console.log('File path:', this.files[index].file_path);
     console.log('Applied code:', this.files[index].modified_code);
     this.acceptedFiles.add(index);
-    
-    // Emit event for modal
     this.onFileAccepted.emit({ file: this.files[index], index });
   }
 
@@ -323,8 +322,6 @@ export class DiffViewerComponent implements OnInit {
     console.log('File path:', this.files[index].file_path);
     console.log('Keeping original code:', this.files[index].original_code);
     this.rejectedFiles.add(index);
-    
-    // Emit event for modal
     this.onFileRejected.emit({ file: this.files[index], index });
   }
 
@@ -336,8 +333,6 @@ export class DiffViewerComponent implements OnInit {
       console.log(`${file.file_name} (${file.file_path}): Applied code`, file.modified_code);
       this.acceptFile(index);
     });
-    
-    // Emit event for modal
     this.onAcceptAll.emit();
   }
 
@@ -349,8 +344,6 @@ export class DiffViewerComponent implements OnInit {
       console.log(`${file.file_name} (${file.file_path}): Keeping original code`, file.original_code);
       this.rejectFile(index);
     });
-    
-    // Emit event for modal
     this.onRejectAll.emit();
   }
 
@@ -386,6 +379,8 @@ export class DiffViewerComponent implements OnInit {
     return this.files[index]?.file_path || '';
   }
 }
+
+
 
 
 
@@ -622,17 +617,220 @@ export class DiffViewerComponent implements OnInit {
 
 
 
-
-
-
-
-
 /* Import theme variables */
 @import './vibe-coding-theme-variables.css';
 
 /* ===================================================================
-   VIEW TOGGLE STYLES
+   WRAPPER AND CONTAINER
    =================================================================== */
+
+.code-rag-wrapper {
+    max-width: 1400px;
+    margin: 0 auto;
+    border-radius: 12px;
+    box-shadow: var(--vibe-coding-shadow-lg);
+    border: 3px dotted var(--vibe-coding-wrapper-border);
+    background: var(--vibe-coding-container-bg);
+}
+
+.code-rag-top-section {
+    margin: 15px;
+}
+
+/* ===================================================================
+   DRAFT HEADER
+   =================================================================== */
+
+.code-rag-draft-header {
+    background: var(--vibe-coding-warning-bg);
+    border-left: 4px solid var(--vibe-coding-warning-border);
+    padding: 15px 20px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+.code-rag-draft-icon {
+    font-size: 24px;
+}
+
+.code-rag-draft-text {
+    flex: 1;
+}
+
+.code-rag-draft-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--vibe-coding-warning-text-primary);
+    margin-bottom: 4px;
+}
+
+.code-rag-draft-subtitle {
+    font-size: 13px;
+    color: var(--vibe-coding-warning-text-secondary);
+    line-height: 1.4;
+}
+
+/* ===================================================================
+   TOP ACTION BUTTONS
+   =================================================================== */
+
+.code-rag-top-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+.code-rag-btn-small {
+    padding: 8px 18px;
+    border: 2px solid;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    background: var(--vibe-coding-btn-small-bg);
+}
+
+.code-rag-btn-small.code-rag-btn-accept {
+    border-color: var(--vibe-coding-btn-accept-border);
+    color: var(--vibe-coding-btn-accept-border);
+    background: var(--vibe-coding-btn-small-bg);
+}
+
+.code-rag-btn-small.code-rag-btn-accept:hover {
+    background: var(--vibe-coding-btn-accept-bg) !important;
+    color: var(--vibe-coding-btn-accept-text) !important;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px var(--vibe-coding-btn-accept-shadow);
+}
+
+.code-rag-btn-small.code-rag-btn-reject {
+    border-color: var(--vibe-coding-btn-reject-border);
+    color: var(--vibe-coding-btn-reject-border);
+    background: var(--vibe-coding-btn-small-bg);
+}
+
+.code-rag-btn-small.code-rag-btn-reject:hover {
+    background: var(--vibe-coding-btn-reject-bg) !important;
+    color: var(--vibe-coding-btn-reject-text) !important;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px var(--vibe-coding-btn-reject-shadow);
+}
+
+/* ===================================================================
+   FILES CONTAINER
+   =================================================================== */
+
+.code-rag-files-container {
+    padding: 20px;
+    background: var(--vibe-coding-secondary-bg);
+}
+
+.code-rag-file-block {
+    background: var(--vibe-coding-primary-bg);
+    border: 1px solid var(--vibe-coding-border-primary);
+    border-radius: 8px;
+    margin-bottom: 20px;
+    overflow: hidden;
+}
+
+.code-rag-file-block:last-child {
+    margin-bottom: 0;
+}
+
+/* ===================================================================
+   FILE HEADER
+   =================================================================== */
+
+.code-rag-header {
+    background: var(--vibe-coding-header-bg);
+    color: var(--vibe-coding-header-text);
+    padding: 12px 20px;
+    border-bottom: 2px solid var(--vibe-coding-header-border);
+    display: flex;
+    align-items: center;
+}
+
+.code-rag-file-info {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-size: 14px;
+}
+
+.code-rag-file-icon {
+    font-size: 18px;
+    margin-top: 2px;
+}
+
+.code-rag-file-name-container {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.code-rag-file-name {
+    font-weight: 600;
+    color: var(--vibe-coding-header-text);
+}
+
+.code-rag-file-path-header {
+    font-size: 11px;
+    color: var(--vibe-coding-header-text-secondary);
+    font-family: 'Courier New', monospace;
+    opacity: 0.8;
+}
+
+.code-rag-file-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    background: var(--vibe-coding-badge-bg);
+    color: var(--vibe-coding-badge-text);
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-left: 8px;
+    text-transform: uppercase;
+}
+
+.code-rag-file-badge.new {
+    background: var(--vibe-coding-badge-new-bg);
+}
+
+.code-rag-stats {
+    display: flex;
+    gap: 20px;
+    font-size: 13px;
+    margin-left: auto;
+}
+
+.code-rag-stat-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.code-rag-stat-added {
+    color: var(--vibe-coding-stat-added);
+    font-weight: 600;
+}
+
+.code-rag-stat-removed {
+    color: var(--vibe-coding-stat-removed);
+    font-weight: 600;
+}
+
+/* ===================================================================
+   DIFF HEADER WITH VIEW TOGGLE
+   =================================================================== */
+
+.code-rag-diff-block {
+    background: var(--vibe-coding-primary-bg);
+}
 
 .code-rag-diff-header {
     background: var(--vibe-coding-secondary-bg);
@@ -646,6 +844,8 @@ export class DiffViewerComponent implements OnInit {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
 }
 
 .code-rag-view-toggle {
@@ -693,7 +893,106 @@ export class DiffViewerComponent implements OnInit {
 }
 
 /* ===================================================================
-   SPLIT VIEW STYLES
+   UNIFIED DIFF VIEW
+   =================================================================== */
+
+.code-rag-diff-content {
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    overflow-x: auto;
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+.code-rag-diff-line {
+    display: flex;
+    min-height: 22px;
+    position: relative;
+}
+
+.code-rag-line-numbers {
+    display: flex;
+    background: var(--vibe-coding-secondary-bg);
+    border-right: 1px solid var(--vibe-coding-border-primary);
+    flex-shrink: 0;
+    position: sticky;
+    left: 0;
+    z-index: 1;
+}
+
+.code-rag-line-number {
+    width: 45px;
+    padding: 0 8px;
+    text-align: right;
+    user-select: none;
+    color: var(--vibe-coding-text-secondary);
+    font-size: 12px;
+}
+
+.code-rag-line-content {
+    padding: 0 10px;
+    flex: 1;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+.code-rag-line-content code {
+    background: transparent !important;
+    padding: 0 !important;
+    font-family: inherit;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.code-rag-line-added {
+    background: var(--vibe-coding-diff-added-bg);
+}
+
+.code-rag-line-added .code-rag-line-numbers {
+    background: var(--vibe-coding-diff-added-line-bg);
+}
+
+.code-rag-line-added .code-rag-line-content::before {
+    content: '+';
+    color: var(--vibe-coding-diff-added-text);
+    margin-right: 8px;
+    font-weight: bold;
+    display: inline-block;
+    width: 10px;
+}
+
+.code-rag-line-removed {
+    background: var(--vibe-coding-diff-removed-bg);
+}
+
+.code-rag-line-removed .code-rag-line-numbers {
+    background: var(--vibe-coding-diff-removed-line-bg);
+}
+
+.code-rag-line-removed .code-rag-line-content::before {
+    content: '-';
+    color: var(--vibe-coding-diff-removed-text);
+    margin-right: 8px;
+    font-weight: bold;
+    display: inline-block;
+    width: 10px;
+}
+
+.code-rag-line-context {
+    background: var(--vibe-coding-diff-context-bg);
+}
+
+.code-rag-line-context .code-rag-line-content::before {
+    content: ' ';
+    margin-right: 8px;
+    display: inline-block;
+    width: 10px;
+}
+
+/* ===================================================================
+   SPLIT VIEW (SIDE BY SIDE)
    =================================================================== */
 
 .code-rag-split-view {
@@ -710,6 +1009,7 @@ export class DiffViewerComponent implements OnInit {
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    min-width: 0; /* Important for text wrapping */
 }
 
 .code-rag-split-original {
@@ -724,12 +1024,13 @@ export class DiffViewerComponent implements OnInit {
     font-size: 12px;
     color: var(--vibe-coding-text-primary);
     text-align: center;
+    flex-shrink: 0;
 }
 
 .code-rag-split-content {
     flex: 1;
     overflow-y: auto;
-    overflow-x: auto;
+    overflow-x: hidden; /* Changed from auto to hidden */
     background: var(--vibe-coding-primary-bg);
 }
 
@@ -752,7 +1053,7 @@ export class DiffViewerComponent implements OnInit {
 
 .code-rag-split-line-empty {
     background: var(--vibe-coding-secondary-bg);
-    opacity: 0.5;
+    opacity: 0.3;
 }
 
 .code-rag-split-line-number {
@@ -770,17 +1071,22 @@ export class DiffViewerComponent implements OnInit {
 .code-rag-split-line-content {
     padding: 0 10px;
     flex: 1;
-    white-space: pre;
-    overflow-x: auto;
+    min-width: 0; /* Important for text wrapping */
+    white-space: pre-wrap; /* Changed from pre to pre-wrap */
+    word-wrap: break-word;
+    overflow-wrap: break-word;
 }
 
 .code-rag-split-line-content code {
     background: transparent !important;
     padding: 0 !important;
     font-family: inherit;
+    white-space: pre-wrap; /* Changed from inherit to pre-wrap */
+    word-wrap: break-word;
+    overflow-wrap: break-word;
 }
 
-/* Synchronized scrolling styles (optional enhancement) */
+/* Scrollbar styling */
 .code-rag-split-content::-webkit-scrollbar {
     width: 10px;
     height: 10px;
@@ -800,7 +1106,188 @@ export class DiffViewerComponent implements OnInit {
 }
 
 /* ===================================================================
-   RESPONSIVE ADJUSTMENTS
+   NEW FILE CONTENT
+   =================================================================== */
+
+.code-rag-new-file-content {
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    overflow-x: auto;
+    max-height: 500px;
+    overflow-y: auto;
+    background: var(--vibe-coding-new-file-bg);
+}
+
+.code-rag-new-file-line {
+    display: flex;
+    min-height: 22px;
+    background: var(--vibe-coding-new-file-line-bg);
+}
+
+.code-rag-new-file-line .code-rag-line-numbers {
+    background: var(--vibe-coding-new-file-line-numbers-bg);
+}
+
+.code-rag-new-file-line .code-rag-line-content::before {
+    content: '+';
+    color: var(--vibe-coding-new-file-text);
+    margin-right: 8px;
+    font-weight: bold;
+    display: inline-block;
+    width: 10px;
+}
+
+/* ===================================================================
+   SYNTAX HIGHLIGHTING ADJUSTMENTS
+   =================================================================== */
+
+.code-rag-line-added .hljs-keyword,
+.code-rag-line-added .hljs-selector-tag,
+.code-rag-line-added .hljs-built_in {
+    color: var(--vibe-coding-diff-added-text-dark);
+}
+
+.code-rag-line-removed .hljs-keyword,
+.code-rag-line-removed .hljs-selector-tag,
+.code-rag-line-removed .hljs-built_in {
+    color: var(--vibe-coding-diff-removed-text-dark);
+}
+
+.code-rag-line-added .hljs-string {
+    color: var(--vibe-coding-diff-added-text-dark);
+}
+
+.code-rag-line-removed .hljs-string {
+    color: var(--vibe-coding-diff-removed-text-dark);
+}
+
+/* ===================================================================
+   FILE ACTIONS
+   =================================================================== */
+
+.code-rag-file-actions {
+    padding: 12px 20px;
+    background: var(--vibe-coding-secondary-bg);
+    border-top: 1px solid var(--vibe-coding-border-primary);
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+.code-rag-btn {
+    padding: 8px 20px;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.code-rag-btn-accept {
+    background: var(--vibe-coding-btn-accept-bg);
+    color: var(--vibe-coding-btn-accept-text);
+}
+
+.code-rag-btn-accept:hover {
+    background: var(--vibe-coding-btn-accept-hover);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px var(--vibe-coding-btn-accept-shadow);
+}
+
+.code-rag-btn-reject {
+    background: var(--vibe-coding-btn-reject-bg);
+    color: var(--vibe-coding-btn-reject-text);
+}
+
+.code-rag-btn-reject:hover {
+    background: var(--vibe-coding-btn-reject-hover);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px var(--vibe-coding-btn-reject-shadow);
+}
+
+.code-rag-btn:active {
+    transform: translateY(0);
+}
+
+.code-rag-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* ===================================================================
+   ACCEPTED/REJECTED STATES
+   =================================================================== */
+
+.code-rag-file-accepted {
+    padding: 30px 20px;
+    text-align: center;
+    background: var(--vibe-coding-accepted-bg);
+    border: 2px solid var(--vibe-coding-accepted-border);
+    border-radius: 6px;
+    margin: 15px;
+}
+
+.code-rag-file-accepted-icon {
+    font-size: 32px;
+    margin-bottom: 10px;
+}
+
+.code-rag-file-accepted-text {
+    font-size: 16px;
+    color: var(--vibe-coding-accepted-text);
+    font-weight: 600;
+    margin-bottom: 5px;
+}
+
+.code-rag-file-accepted-filename {
+    font-size: 14px;
+    color: var(--vibe-coding-text-primary);
+    font-family: 'Courier New', monospace;
+}
+
+.code-rag-file-rejected {
+    padding: 30px 20px;
+    text-align: center;
+    background: var(--vibe-coding-rejected-bg);
+    border: 2px solid var(--vibe-coding-rejected-border);
+    border-radius: 6px;
+    margin: 15px;
+}
+
+.code-rag-file-rejected-icon {
+    font-size: 32px;
+    margin-bottom: 10px;
+}
+
+.code-rag-file-rejected-text {
+    font-size: 16px;
+    color: var(--vibe-coding-rejected-text);
+    font-weight: 600;
+    margin-bottom: 5px;
+}
+
+.code-rag-file-rejected-filename {
+    font-size: 14px;
+    color: var(--vibe-coding-text-primary);
+    font-family: 'Courier New', monospace;
+}
+
+.code-rag-file-path {
+    font-size: 12px;
+    color: var(--vibe-coding-text-secondary);
+    font-family: 'Courier New', monospace;
+    margin-top: 5px;
+    opacity: 0.7;
+}
+
+/* ===================================================================
+   RESPONSIVE DESIGN
    =================================================================== */
 
 @media (max-width: 1024px) {
@@ -842,6 +1329,36 @@ export class DiffViewerComponent implements OnInit {
     .code-rag-split-line-number {
         width: 40px;
         padding: 0 8px;
+    }
+
+    .code-rag-header {
+        padding: 10px 15px;
+    }
+
+    .code-rag-file-actions {
+        flex-direction: column;
+    }
+
+    .code-rag-btn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .code-rag-line-number {
+        width: 35px;
+        padding: 0 5px;
+    }
+
+    .code-rag-file-path-header {
+        font-size: 10px;
+    }
+
+    .code-rag-file-path {
+        font-size: 11px;
+    }
+
+    .code-rag-file-name-container {
+        gap: 2px;
     }
 }
 
