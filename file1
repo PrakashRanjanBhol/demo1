@@ -1,39 +1,81 @@
 private parseObject(obj: string): ToolCommand | null {
-  try {
-    let jsonStr = obj.trim();
-    
-    // Aggressive sanitization - removes all control characters
-    jsonStr = this.aggressiveSanitize(jsonStr);
-    
-    jsonStr = this.quotePropertyNames(jsonStr);
-    jsonStr = this.normalizeQuotes(jsonStr);
-    
-    // Additional safety: remove any trailing commas
-    jsonStr = jsonStr.replace(/,(\s*[}\]])/g, '$1');
-    
-    const parsed = JSON.parse(jsonStr);
+  const strategies = [
+    // Strategy 1: Gentle sanitization
+    (str: string) => this.sanitizeJsonString(str),
+    // Strategy 2: Aggressive sanitization
+    (str: string) => this.aggressiveSanitize(str),
+    // Strategy 3: Replace all control chars with spaces
+    (str: string) => str.replace(/[\x00-\x1F\x7F]/g, ' ')
+  ];
 
-    if (typeof parsed !== 'object' || !parsed.tool) {
-      console.warn('Invalid tool command structure:', parsed);
-      return null;
+  for (let i = 0; i < strategies.length; i++) {
+    try {
+      let jsonStr = obj.trim();
+      
+      // Apply current sanitization strategy
+      jsonStr = strategies[i](jsonStr);
+      
+      jsonStr = this.quotePropertyNames(jsonStr);
+      jsonStr = this.normalizeQuotes(jsonStr);
+      
+      // Additional safety: remove any trailing commas
+      jsonStr = jsonStr.replace(/,(\s*[}\]])/g, '$1');
+      
+      const parsed = JSON.parse(jsonStr);
+
+      if (typeof parsed !== 'object' || !parsed.tool) {
+        console.warn('Invalid tool command structure:', parsed);
+        return null;
+      }
+
+      if (i > 0) {
+        console.log(`Successfully parsed using strategy ${i + 1}`);
+      }
+
+      return parsed as ToolCommand;
+
+    } catch (error) {
+      if (i === strategies.length - 1) {
+        // All strategies failed
+        console.error('Parse object error after all strategies:', error);
+        console.error('Problematic string:', obj);
+        throw error;
+      }
+      // Try next strategy
+      continue;
     }
-
-    return parsed as ToolCommand;
-
-  } catch (error) {
-    console.error('Parse object error:', error);
-    console.error('Problematic string:', obj);
-    throw error;
   }
+
+  return null;
 }
 
-// Aggressive sanitization - removes all problematic characters
+private sanitizeJsonString(str: string): string {
+  let sanitized = '';
+  
+  for (let i = 0; i < str.length; i++) {
+    const char = str[i];
+    const code = str.charCodeAt(i);
+    
+    // Remove control characters except tab, newline, and carriage return
+    if (code < 32 && code !== 9 && code !== 10 && code !== 13) {
+      continue;
+    }
+    
+    if (code === 8) {
+      sanitized += '\\b';
+    } else if (code === 12) {
+      sanitized += '\\f';
+    } else {
+      sanitized += char;
+    }
+  }
+  
+  return sanitized;
+}
+
 private aggressiveSanitize(str: string): string {
   return str
-    // Remove all control characters except \n, \r, \t
     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
-    // Normalize line breaks
     .replace(/\r\n/g, '\n')
-    // Remove zero-width spaces and other invisible characters
     .replace(/[\u200B-\u200D\uFEFF]/g, '');
 }
