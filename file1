@@ -25,28 +25,17 @@ export class ToolParserService {
   private currentWriteModifyTool: ToolCommand | null = null;
 
   public isWaitingForUserApproval = false;
-  public currentPendingTool: ToolCommand | null = null;
 
   // Callbacks
   private onUpdateCallback?: () => void;
-  private onReadCallback?: (tool: ToolCommand) => void;
-  private onWriteModifyCallback?: (tool: ToolCommand) => void;
-  private onExecuteCallback?: (tool: ToolCommand) => void;
+  private onLogCallback?: (tool: ToolCommand) => void;
 
   setUpdateCallback(callback: () => void): void {
     this.onUpdateCallback = callback;
   }
 
-  setReadCallback(callback: (tool: ToolCommand) => void): void {
-    this.onReadCallback = callback;
-  }
-
-  setWriteModifyCallback(callback: (tool: ToolCommand) => void): void {
-    this.onWriteModifyCallback = callback;
-  }
-
-  setExecuteCallback(callback: (tool: ToolCommand) => void): void {
-    this.onExecuteCallback = callback;
+  setLogCallback(callback: (tool: ToolCommand) => void): void {
+    this.onLogCallback = callback;
   }
 
   private triggerUpdate(): void {
@@ -82,7 +71,6 @@ export class ToolParserService {
         }
 
         const chunk = decoder.decode(value, { stream: true });
-
         buffer += chunk;
 
         const processedBuffer = this.processBuffer(buffer);
@@ -163,14 +151,14 @@ export class ToolParserService {
   approveAndContinue(): void {
     if (!this.waitingForApproval || !this.currentWriteModifyTool) return;
 
-    if (this.onExecuteCallback) {
-      this.onExecuteCallback(this.currentWriteModifyTool);
+    // Execute the WRITE/MODIFY
+    if (this.onLogCallback) {
+      this.onLogCallback(this.currentWriteModifyTool);
     }
 
     this.currentWriteModifyTool = null;
     this.waitingForApproval = false;
     this.isWaitingForUserApproval = false;
-    this.currentPendingTool = null;
 
     this.triggerUpdate();
     this.processQueue();
@@ -201,21 +189,23 @@ export class ToolParserService {
 
       switch (tool.tool) {
         case 'READ':
-          if (this.onReadCallback) {
-            this.onReadCallback(tool);
+          // Log READ immediately
+          if (this.onLogCallback) {
+            this.onLogCallback(tool);
           }
           break;
 
         case 'WRITE':
         case 'MODIFY':
-          if (this.onWriteModifyCallback) {
-            this.onWriteModifyCallback(tool);
+          // Log WRITE/MODIFY immediately (before waiting)
+          if (this.onLogCallback) {
+            this.onLogCallback(tool);
           }
           
+          // Store current tool and wait for approval
           this.currentWriteModifyTool = tool;
           this.waitingForApproval = true;
           this.isWaitingForUserApproval = true;
-          this.currentPendingTool = tool;
           
           this.triggerUpdate();
           break;
@@ -228,17 +218,12 @@ export class ToolParserService {
     }
   }
 
-  getQueueLength(): number {
-    return this.processingQueue.length;
-  }
-
   reset(): void {
     this.processingQueue = [];
     this.currentWriteModifyTool = null;
     this.isProcessing = false;
     this.waitingForApproval = false;
     this.isWaitingForUserApproval = false;
-    this.currentPendingTool = null;
     this.triggerUpdate();
   }
 
@@ -399,6 +384,29 @@ export class ToolParserService {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import { Component, ChangeDetectorRef } from '@angular/core';
 import { ToolParserService, ToolCommand } from './services/tool-parser.service';
 
@@ -415,28 +423,25 @@ export class ToolProcessorComponent {
   ) {}
 
   onApprove(): void {
+    console.log('User clicked OK - Executing and continuing...');
     this.toolParser.approveAndContinue();
   }
 
   async handleStreamingResponse(): Promise<void> {
-    // Setup callbacks here
     this.toolParser.setUpdateCallback(() => {
-      this.cdr.detectChanges(); // This updates the view when isWaitingForUserApproval changes
+      this.cdr.detectChanges();
     });
 
-    this.toolParser.setReadCallback((tool: ToolCommand) => {
-      console.log('READ:', tool.content);
+    this.toolParser.setLogCallback((tool: ToolCommand) => {
+      if (tool.tool === 'READ') {
+        console.log('READ:', tool.content);
+      } else if (tool.tool === 'WRITE') {
+        console.log('WRITE:', tool.content);
+      } else if (tool.tool === 'MODIFY') {
+        console.log('MODIFY:', tool.content);
+      }
     });
 
-    this.toolParser.setWriteModifyCallback((tool: ToolCommand) => {
-      console.log(`${tool.tool}:`, tool.content);
-    });
-
-    this.toolParser.setExecuteCallback((tool: ToolCommand) => {
-      console.log(`EXECUTING ${tool.tool}:`, tool.content);
-    });
-
-    // Call your API
     try {
       const apiUrl = 'https://your-api.com/stream';
       
@@ -456,7 +461,46 @@ export class ToolProcessorComponent {
       console.error('Error:', error);
     }
   }
+
+  // For testing
+  simulateStreaming(): void {
+    this.toolParser.setUpdateCallback(() => {
+      this.cdr.detectChanges();
+    });
+
+    this.toolParser.setLogCallback((tool: ToolCommand) => {
+      if (tool.tool === 'READ') {
+        console.log('READ:', tool.content);
+      } else if (tool.tool === 'WRITE') {
+        console.log('WRITE:', tool.content);
+      } else if (tool.tool === 'MODIFY') {
+        console.log('MODIFY:', tool.content);
+      }
+    });
+
+    console.log('=== Starting Simulation ===\n');
+
+    const data = [
+      '{tool: "READ", content: "First READ - logs immediately"}',
+      '{tool: "READ", content: "Second READ - logs immediately"}',
+      '{tool: "WRITE", content: {reasoning: "Writing file", files: [{file_path: "/src", file_name:"app.js", original_code:"", modified_code:"code"}]}}',
+      '{tool: "READ", content: "Third READ - will NOT log until OK is clicked"}',
+      '{tool: "READ", content: "Fourth READ - will NOT log until OK is clicked"}',
+      '{tool: "MODIFY", content: {reasoning: "Modifying file", files: [{file_path: "/src", file_name:"app.js", original_code:"old", modified_code:"new"}]}}',
+      '{tool: "READ", content: "Fifth READ - will NOT log until OK is clicked"}',
+      '{tool: "READ", content: "Sixth READ - will log after OK"}',
+    ];
+
+    let index = 0;
+    const interval = setInterval(() => {
+      if (index < data.length) {
+        console.log(`\n--- Chunk #${index + 1} received ---`);
+        this.toolParser.addToolFromStream(data[index]);
+        index++;
+      } else {
+        clearInterval(interval);
+        console.log('\n=== Simulation Complete ===');
+      }
+    }, 1000);
+  }
 }
-
-
-
