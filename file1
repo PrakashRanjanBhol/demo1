@@ -1,26 +1,309 @@
-private parseObject(obj: string): ToolCommand | null {
-  const strategies = [
-    // Strategy 1: Gentle sanitization
-    (str: string) => this.sanitizeJsonString(str),
-    // Strategy 2: Aggressive sanitization
-    (str: string) => this.aggressiveSanitize(str),
-    // Strategy 3: Replace all control chars with spaces
-    (str: string) => str.replace(/[\x00-\x1F\x7F]/g, ' ')
-  ];
+import { Injectable } from '@angular/core';
 
-  for (let i = 0; i < strategies.length; i++) {
+export interface ToolCommand {
+  tool: string;
+  content: any;
+}
+
+export interface WriteModifyContent {
+  reasoning: string;
+  files: Array<{
+    file_path: string;
+    file_name: string;
+    original_code: string;
+    modified_code: string;
+  }>;
+}
+
+@Injectable({
+  providedIn: 'root'
+})
+export class ToolParserService {
+  private processingQueue: ToolCommand[] = [];
+  private isProcessing = false;
+  private waitingForApproval = false;
+  private currentWriteModifyTool: ToolCommand | null = null;
+
+  public isWaitingForUserApproval = false;
+
+  // Callbacks
+  private onUpdateCallback?: () => void;
+  private onLogCallback?: (tool: ToolCommand) => void;
+
+  setUpdateCallback(callback: () => void): void {
+    this.onUpdateCallback = callback;
+  }
+
+  setLogCallback(callback: (tool: ToolCommand) => void): void {
+    this.onLogCallback = callback;
+  }
+
+  private triggerUpdate(): void {
+    if (this.onUpdateCallback) {
+      this.onUpdateCallback();
+    }
+  }
+
+  async startStreaming(apiUrl: string, options?: RequestInit): Promise<void> {
+    try {
+      const response = await fetch(apiUrl, options);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('No reader available');
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+
+        if (done) {
+          if (buffer.trim()) {
+            this.addToolFromStream(buffer);
+          }
+          break;
+        }
+
+        const chunk = decoder.decode(value, { stream: true });
+        buffer += chunk;
+
+        const processedBuffer = this.processBuffer(buffer);
+        buffer = processedBuffer.remaining;
+
+        processedBuffer.completeObjects.forEach(obj => {
+          this.addToolFromStream(obj);
+        });
+      }
+    } catch (error) {
+      console.error('Streaming error:', error);
+      throw error;
+    }
+  }
+
+  private processBuffer(buffer: string): { completeObjects: string[], remaining: string } {
+    const completeObjects: string[] = [];
+    let remaining = buffer;
+    let depth = 0;
+    let start = 0;
+    let inString = false;
+    let stringDelimiter = '';
+    let escaped = false;
+
+    for (let i = 0; i < buffer.length; i++) {
+      const char = buffer[i];
+
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+
+      if (char === '\\') {
+        escaped = true;
+        continue;
+      }
+
+      if (!inString && (char === '"' || char === "'")) {
+        inString = true;
+        stringDelimiter = char;
+      } else if (inString && char === stringDelimiter) {
+        inString = false;
+        stringDelimiter = '';
+      }
+
+      if (!inString) {
+        if (char === '{') {
+          if (depth === 0) {
+            start = i;
+          }
+          depth++;
+        } else if (char === '}') {
+          depth--;
+          if (depth === 0) {
+            completeObjects.push(buffer.substring(start, i + 1));
+            start = i + 1;
+          }
+        }
+      }
+    }
+
+    // If we have unclosed braces, try to salvage the content
+    if (depth > 0 && start < buffer.length) {
+      console.warn('Unclosed braces detected, attempting to extract:', buffer.substring(start));
+      // Add closing braces
+      let salvaged = buffer.substring(start) + '}'.repeat(depth);
+      completeObjects.push(salvaged);
+      remaining = '';
+    } else {
+      remaining = buffer.substring(start).trim();
+    }
+
+    return { completeObjects, remaining };
+  }
+
+  addToolFromStream(input: string): void {
+    const tools = this.parseToolString(input);
+    
+    if (tools.length === 0) return;
+
+    this.processingQueue.push(...tools);
+    
+    if (!this.isProcessing && !this.waitingForApproval) {
+      this.processQueue();
+    }
+  }
+
+  approveAndContinue(): void {
+    if (!this.waitingForApproval || !this.currentWriteModifyTool) return;
+
+    // Execute the WRITE/MODIFY
+    if (this.onLogCallback) {
+      this.onLogCallback(this.currentWriteModifyTool);
+    }
+
+    this.currentWriteModifyTool = null;
+    this.waitingForApproval = false;
+    this.isWaitingForUserApproval = false;
+
+    this.triggerUpdate();
+    this.processQueue();
+  }
+
+  private processQueue(): void {
+    if (this.waitingForApproval) return;
+
+    this.isProcessing = true;
+
+    while (this.processingQueue.length > 0 && !this.waitingForApproval) {
+      const tool = this.processingQueue.shift();
+      
+      if (!tool) continue;
+
+      this.processSingleTool(tool);
+    }
+
+    this.isProcessing = false;
+  }
+
+  private processSingleTool(tool: ToolCommand): void {
+    try {
+      if (!tool.tool) {
+        console.warn('Invalid tool object:', tool);
+        return;
+      }
+
+      switch (tool.tool) {
+        case 'READ':
+          // Log READ immediately
+          if (this.onLogCallback) {
+            this.onLogCallback(tool);
+          }
+          break;
+
+        case 'WRITE':
+        case 'MODIFY':
+          // Log WRITE/MODIFY immediately (before waiting)
+          if (this.onLogCallback) {
+            this.onLogCallback(tool);
+          }
+          
+          // Store current tool and wait for approval
+          this.currentWriteModifyTool = tool;
+          this.waitingForApproval = true;
+          this.isWaitingForUserApproval = true;
+          
+          this.triggerUpdate();
+          break;
+
+        default:
+          console.warn('Unknown tool type:', tool.tool);
+      }
+    } catch (error) {
+      console.error('Error processing tool:', tool, error);
+    }
+  }
+
+  reset(): void {
+    this.processingQueue = [];
+    this.currentWriteModifyTool = null;
+    this.isProcessing = false;
+    this.waitingForApproval = false;
+    this.isWaitingForUserApproval = false;
+    this.triggerUpdate();
+  }
+
+  cleanup(): void {
+    this.processingQueue = [];
+    this.currentWriteModifyTool = null;
+    this.isProcessing = false;
+    this.waitingForApproval = false;
+    this.isWaitingForUserApproval = false;
+    this.onUpdateCallback = undefined;
+    this.onLogCallback = undefined;
+  }
+
+  parseToolString(input: string): ToolCommand[] {
+    const results: ToolCommand[] = [];
+    
+    try {
+      const str = input.trim();
+      
+      if (!str) {
+        return [];
+      }
+
+      const objects = this.extractJsonObjects(str);
+      
+      for (const obj of objects) {
+        try {
+          const parsed = this.parseObject(obj);
+          if (parsed && parsed.tool) {
+            results.push(parsed);
+          }
+        } catch (err) {
+          // If parsing fails, try to extract tool type and content manually
+          console.warn('Standard parsing failed, attempting fallback parsing:', obj);
+          const fallbackTool = this.fallbackParse(obj);
+          if (fallbackTool) {
+            results.push(fallbackTool);
+          }
+        }
+      }
+
+      return results;
+
+    } catch (error) {
+      console.error('Parse error:', error);
+      console.error('Input was:', input);
+      return results;
+    }
+  }
+
+  private parseObject(obj: string): ToolCommand | null {
     try {
       let jsonStr = obj.trim();
       
-      // Apply current sanitization strategy
-      jsonStr = strategies[i](jsonStr);
+      // Step 1: Remove all control characters and sanitize
+      jsonStr = this.deepSanitize(jsonStr);
       
+      // Step 2: Try to fix common JSON issues
+      jsonStr = this.fixCommonJsonIssues(jsonStr);
+      
+      // Step 3: Quote property names
       jsonStr = this.quotePropertyNames(jsonStr);
+      
+      // Step 4: Normalize quotes
       jsonStr = this.normalizeQuotes(jsonStr);
       
-      // Additional safety: remove any trailing commas
-      jsonStr = jsonStr.replace(/,(\s*[}\]])/g, '$1');
+      // Step 5: Final cleanup
+      jsonStr = jsonStr.replace(/,(\s*[}\]])/g, '$1'); // Remove trailing commas
       
+      // Try to parse
       const parsed = JSON.parse(jsonStr);
 
       if (typeof parsed !== 'object' || !parsed.tool) {
@@ -28,54 +311,370 @@ private parseObject(obj: string): ToolCommand | null {
         return null;
       }
 
-      if (i > 0) {
-        console.log(`Successfully parsed using strategy ${i + 1}`);
-      }
-
       return parsed as ToolCommand;
 
     } catch (error) {
-      if (i === strategies.length - 1) {
-        // All strategies failed
-        console.error('Parse object error after all strategies:', error);
-        console.error('Problematic string:', obj);
-        throw error;
+      console.error('Parse object error:', error);
+      console.error('Original string:', obj);
+      
+      // Last resort: try to manually extract using regex
+      console.warn('Attempting manual extraction...');
+      return this.manualExtract(obj);
+    }
+  }
+
+  // Deep sanitization - removes all problematic characters
+  private deepSanitize(str: string): string {
+    let result = '';
+    let inString = false;
+    let stringChar = '';
+    
+    for (let i = 0; i < str.length; i++) {
+      const char = str[i];
+      const code = char.charCodeAt(0);
+      
+      // Track if we're inside a string
+      if ((char === '"' || char === "'") && (i === 0 || str[i-1] !== '\\')) {
+        if (!inString) {
+          inString = true;
+          stringChar = char;
+        } else if (char === stringChar) {
+          inString = false;
+          stringChar = '';
+        }
       }
-      // Try next strategy
-      continue;
+      
+      // Inside strings, handle control characters
+      if (inString) {
+        // Remove or escape control characters (0-31 except allowed ones)
+        if (code < 32) {
+          switch (code) {
+            case 9:  // tab
+              result += '\\t';
+              break;
+            case 10: // newline
+              result += '\\n';
+              break;
+            case 13: // carriage return
+              result += '\\r';
+              break;
+            case 8:  // backspace
+              result += '\\b';
+              break;
+            case 12: // form feed
+              result += '\\f';
+              break;
+            default:
+              // Skip other control characters
+              continue;
+          }
+        } else if (code === 127) {
+          // Skip DEL character
+          continue;
+        } else {
+          result += char;
+        }
+      } else {
+        // Outside strings, keep all characters except control chars
+        if (code >= 32 && code !== 127) {
+          result += char;
+        } else if (code === 9 || code === 10 || code === 13) {
+          // Keep whitespace outside strings
+          result += char;
+        }
+        // Skip other control characters
+      }
+    }
+    
+    return result;
+  }
+
+  // Fix common JSON formatting issues
+  private fixCommonJsonIssues(str: string): string {
+    return str
+      // Remove BOM (Byte Order Mark)
+      .replace(/^\uFEFF/, '')
+      // Remove zero-width spaces
+      .replace(/[\u200B-\u200D\uFEFF]/g, '')
+      // Fix multiple spaces
+      .replace(/\s+/g, ' ')
+      // Remove spaces around colons and commas (outside strings)
+      .replace(/\s*:\s*/g, ':')
+      .replace(/\s*,\s*/g, ',')
+      // Add back necessary space after comma
+      .replace(/,/g, ', ')
+      .replace(/:\s*/g, ': ');
+  }
+
+  // Manual extraction as last resort
+  private manualExtract(obj: string): ToolCommand | null {
+    try {
+      // Extract tool type
+      const toolMatch = obj.match(/tool\s*:\s*["']?(READ|WRITE|MODIFY)["']?/i);
+      if (!toolMatch) {
+        console.error('Could not extract tool type');
+        return null;
+      }
+      
+      const toolType = toolMatch[1].toUpperCase();
+      
+      // Extract content based on tool type
+      let content: any;
+      
+      if (toolType === 'READ') {
+        // For READ, try multiple patterns to extract content
+        const patterns = [
+          /content\s*:\s*["']([^"']+)["']/,
+          /content\s*:\s*["'](.+?)["']\s*[,}]/s,
+          /content\s*:\s*["'](.+?)["']$/s
+        ];
+        
+        for (const pattern of patterns) {
+          const match = obj.match(pattern);
+          if (match) {
+            content = match[1]
+              .replace(/\\n/g, '\n')
+              .replace(/\\t/g, '\t')
+              .replace(/\\r/g, '\r')
+              .replace(/\\\\/g, '\\')
+              .replace(/\\"/g, '"')
+              .replace(/\\'/g, "'");
+            break;
+          }
+        }
+        
+        if (!content) {
+          content = 'Could not extract content';
+        }
+      } else {
+        // For WRITE/MODIFY
+        content = {
+          reasoning: 'Manual extraction - content may be incomplete',
+          files: []
+        };
+        
+        // Try to extract reasoning
+        const reasoningMatch = obj.match(/reasoning\s*:\s*["']([^"']+)["']/);
+        if (reasoningMatch) {
+          content.reasoning = reasoningMatch[1];
+        }
+        
+        // Try to extract file information
+        const fileNameMatch = obj.match(/file_name\s*:\s*["']([^"']+)["']/);
+        const filePathMatch = obj.match(/file_path\s*:\s*["']([^"']+)["']/);
+        
+        if (fileNameMatch || filePathMatch) {
+          content.files.push({
+            file_path: filePathMatch ? filePathMatch[1] : '',
+            file_name: fileNameMatch ? fileNameMatch[1] : '',
+            original_code: '',
+            modified_code: ''
+          });
+        }
+      }
+      
+      console.log('Manual extraction successful');
+      return {
+        tool: toolType,
+        content: content
+      };
+      
+    } catch (error) {
+      console.error('Manual extraction failed:', error);
+      return null;
     }
   }
 
-  return null;
-}
+  private fallbackParse(obj: string): ToolCommand | null {
+    try {
+      // First, sanitize the input
+      obj = this.deepSanitize(obj);
+      
+      // Try to extract tool type
+      const toolMatch = obj.match(/tool\s*:\s*["']?(READ|WRITE|MODIFY)["']?/i);
+      if (!toolMatch) {
+        return null;
+      }
 
-private sanitizeJsonString(str: string): string {
-  let sanitized = '';
-  
-  for (let i = 0; i < str.length; i++) {
-    const char = str[i];
-    const code = str.charCodeAt(i);
-    
-    // Remove control characters except tab, newline, and carriage return
-    if (code < 32 && code !== 9 && code !== 10 && code !== 13) {
-      continue;
-    }
-    
-    if (code === 8) {
-      sanitized += '\\b';
-    } else if (code === 12) {
-      sanitized += '\\f';
-    } else {
-      sanitized += char;
+      const toolType = toolMatch[1].toUpperCase();
+
+      // Try to extract content
+      let content: any;
+
+      if (toolType === 'READ') {
+        // For READ, extract simple content with better pattern matching
+        const patterns = [
+          /content\s*:\s*["']([^"']*?)["']\s*[,}]/s,
+          /content\s*:\s*["']([^"']*?)["']$/s,
+          /content\s*:\s*["'](.+?)["']/s
+        ];
+        
+        content = null;
+        for (const pattern of patterns) {
+          const contentMatch = obj.match(pattern);
+          if (contentMatch) {
+            content = contentMatch[1].trim();
+            break;
+          }
+        }
+        
+        if (!content) {
+          content = 'Content extraction failed';
+        }
+      } else {
+        // For WRITE/MODIFY, try to extract the object
+        const contentMatch = obj.match(/content\s*:\s*({.+})\s*}$/s);
+        if (contentMatch) {
+          try {
+            let contentStr = contentMatch[1];
+            contentStr = this.deepSanitize(contentStr);
+            contentStr = this.quotePropertyNames(contentStr);
+            contentStr = this.normalizeQuotes(contentStr);
+            content = JSON.parse(contentStr);
+          } catch (e) {
+            console.warn('Failed to parse WRITE/MODIFY content:', e);
+            content = {
+              reasoning: 'Content extraction failed',
+              files: []
+            };
+          }
+        } else {
+          content = {
+            reasoning: 'Content extraction failed',
+            files: []
+          };
+        }
+      }
+
+      return {
+        tool: toolType,
+        content: content
+      };
+    } catch (error) {
+      console.error('Fallback parsing failed:', error);
+      return null;
     }
   }
-  
-  return sanitized;
-}
 
-private aggressiveSanitize(str: string): string {
-  return str
-    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
-    .replace(/\r\n/g, '\n')
-    .replace(/[\u200B-\u200D\uFEFF]/g, '');
+  private extractJsonObjects(str: string): string[] {
+    const objects: string[] = [];
+    let depth = 0;
+    let start = 0;
+    let inString = false;
+    let stringDelimiter = '';
+    let escaped = false;
+
+    for (let i = 0; i < str.length; i++) {
+      const char = str[i];
+
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+
+      if (char === '\\') {
+        escaped = true;
+        continue;
+      }
+
+      if (!inString && (char === '"' || char === "'")) {
+        inString = true;
+        stringDelimiter = char;
+      } else if (inString && char === stringDelimiter) {
+        // Check if the previous char is not a backslash (not escaped)
+        const prevChar = i > 0 ? str[i - 1] : '';
+        if (prevChar !== '\\') {
+          inString = false;
+          stringDelimiter = '';
+        }
+      }
+
+      if (!inString) {
+        if (char === '{') {
+          if (depth === 0) {
+            start = i;
+          }
+          depth++;
+        } else if (char === '}') {
+          depth--;
+          if (depth === 0 && start < i) {
+            objects.push(str.substring(start, i + 1));
+          }
+        }
+      }
+    }
+
+    // If we have unclosed braces, try to salvage the content
+    if (depth > 0 && start < str.length) {
+      console.warn('Unclosed braces detected in extraction, attempting to close:', str.substring(start));
+      // Add closing braces
+      let salvaged = str.substring(start) + '}'.repeat(depth);
+      objects.push(salvaged);
+    }
+
+    return objects;
+  }
+
+  private quotePropertyNames(str: string): string {
+    return str.replace(/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)(\s*):/g, '$1"$2"$3:');
+  }
+
+  private normalizeQuotes(str: string): string {
+    let result = '';
+    let inString = false;
+    let currentQuote = '';
+    let escaped = false;
+    let depth = 0; // Track object/array depth
+
+    for (let i = 0; i < str.length; i++) {
+      const char = str[i];
+
+      if (escaped) {
+        // Keep escaped characters as-is
+        result += char;
+        escaped = false;
+        continue;
+      }
+
+      if (char === '\\') {
+        result += char;
+        escaped = true;
+        continue;
+      }
+
+      // Track object/array depth when not in string
+      if (!inString) {
+        if (char === '{' || char === '[') {
+          depth++;
+        } else if (char === '}' || char === ']') {
+          depth--;
+        }
+      }
+
+      if ((char === '"' || char === "'") && !inString) {
+        inString = true;
+        currentQuote = char;
+        result += '"'; // Always use double quotes
+      } else if (char === currentQuote && inString) {
+        inString = false;
+        currentQuote = '';
+        result += '"'; // Always use double quotes
+      } else {
+        result += char;
+      }
+    }
+
+    // If string wasn't closed, close it
+    if (inString) {
+      result += '"';
+    }
+
+    // If objects/arrays weren't closed, close them
+    while (depth > 0) {
+      result += '}';
+      depth--;
+    }
+
+    return result;
+  }
 }
