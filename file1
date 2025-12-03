@@ -1,91 +1,15 @@
-function parsemalformedJSON(str) {
-  // Strategy 1: Try parsing as-is
-  try {
-    return JSON.parse(str);
-  } catch (e) {
-    // Continue to repair strategies
-  }
+import json
+import base64
 
-  // Strategy 2: Fix unterminated strings (missing closing quote)
-  try {
-    let fixed = str;
-    // If string doesn't end with proper JSON closure, add missing quote
-    if (!fixed.match(/"\s*\}*\s*$/)) {
-      fixed = fixed.replace(/(\}*)$/, '"}$1');
-    }
-    return JSON.parse(fixed);
-  } catch (e) {
-    // Continue
-  }
+# Your data
+data = {"tool": "READ", "content": '("\\'}
 
-  // Strategy 3: Use a more robust JSON parser that handles malformed input
-  try {
-    // Fix common issues: unescaped quotes, incomplete escape sequences
-    let fixed = str
-      // Fix incomplete escape at end: \} -> \\"}
-      .replace(/\\(\}+)$/, '\\\\"}')
-      // Fix trailing backslash followed by quote then brace
-      .replace(/\\"\\(\}+)$/, '\\\\"}');
-    
-    return JSON.parse(fixed);
-  } catch (e) {
-    // Continue
-  }
+# Convert to JSON string
+json_string = json.dumps(data)
+print("JSON String:", json_string)
+# Output: {"tool": "READ", "content": "(\"\\"}
 
-  // Strategy 4: Character-by-character parsing with escape fixing
-  try {
-    let fixed = fixEscapeSequences(str);
-    return JSON.parse(fixed);
-  } catch (e) {
-    throw new Error('Unable to parse JSON: ' + e.message);
-  }
-}
-
-function fixEscapeSequences(str) {
-  let result = '';
-  let inString = false;
-  let escapeNext = false;
-  
-  for (let i = 0; i < str.length; i++) {
-    let char = str[i];
-    let nextChar = str[i + 1];
-    
-    if (char === '"' && !escapeNext) {
-      inString = !inString;
-      result += char;
-      escapeNext = false;
-      continue;
-    }
-    
-    if (char === '\\' && inString) {
-      // Check if this is a valid escape sequence
-      if (nextChar && '"\\/bfnrtu'.includes(nextChar)) {
-        result += char;
-        escapeNext = true;
-      } else if (nextChar === '\\') {
-        // Valid escaped backslash
-        result += char;
-        escapeNext = true;
-      } else if (i === str.length - 1 || nextChar === '}') {
-        // Dangling backslash at end or before closing brace
-        result += '\\\\';
-        escapeNext = false;
-      } else {
-        // Invalid escape, double it
-        result += '\\\\';
-        escapeNext = false;
-      }
-      continue;
-    }
-    
-    result += char;
-    escapeNext = false;
-  }
-  
-  // Check if string was never closed
-  if (inString) {
-    result += '"';
-  }
-  
-  return result;
-}
+# Encode to base64
+encoded = base64.b64encode(json_string.encode('utf-8')).decode('utf-8')
+print("Base64 Encoded:", encoded)
+# Output: eyJ0b29sIjogIlJFQUQiLCAiY29udGVudCI6ICIoXCJcXCJ9
