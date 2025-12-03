@@ -1,9 +1,57 @@
-cleanup(): void {
-  this.processingQueue = [];
-  this.currentWriteModifyTool = null;
-  this.isProcessing = false;
-  this.waitingForApproval = false;
-  this.isWaitingForUserApproval = false;
-  this.onUpdateCallback = undefined;
-  this.onLogCallback = undefined;
+private parseObject(obj: string): ToolCommand | null {
+  try {
+    let jsonStr = obj.trim();
+    
+    // Remove bad control characters before processing
+    jsonStr = this.sanitizeJsonString(jsonStr);
+    
+    jsonStr = this.quotePropertyNames(jsonStr);
+    jsonStr = this.normalizeQuotes(jsonStr);
+    
+    // Additional safety: remove any trailing commas
+    jsonStr = jsonStr.replace(/,(\s*[}\]])/g, '$1');
+    
+    const parsed = JSON.parse(jsonStr);
+
+    if (typeof parsed !== 'object' || !parsed.tool) {
+      console.warn('Invalid tool command structure:', parsed);
+      return null;
+    }
+
+    return parsed as ToolCommand;
+
+  } catch (error) {
+    console.error('Parse object error:', error);
+    console.error('Problematic string:', obj);
+    throw error;
+  }
+}
+
+// Add this new method to sanitize JSON strings
+private sanitizeJsonString(str: string): string {
+  // Replace bad control characters (ASCII 0-31 except allowed ones)
+  // Keep: \t (tab: 9), \n (newline: 10), \r (carriage return: 13)
+  let sanitized = '';
+  
+  for (let i = 0; i < str.length; i++) {
+    const char = str[i];
+    const code = str.charCodeAt(i);
+    
+    // Remove control characters except tab, newline, and carriage return
+    if (code < 32 && code !== 9 && code !== 10 && code !== 13) {
+      // Skip this character
+      continue;
+    }
+    
+    // Handle special characters that need escaping in JSON strings
+    if (code === 8) { // backspace
+      sanitized += '\\b';
+    } else if (code === 12) { // form feed
+      sanitized += '\\f';
+    } else {
+      sanitized += char;
+    }
+  }
+  
+  return sanitized;
 }
