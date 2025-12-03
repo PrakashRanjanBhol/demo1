@@ -135,7 +135,6 @@ export class ToolParserService {
     // If we have unclosed braces, try to salvage the content
     if (depth > 0 && start < buffer.length) {
       console.warn('Unclosed braces detected, attempting to extract:', buffer.substring(start));
-      // Add closing braces
       let salvaged = buffer.substring(start) + '}'.repeat(depth);
       completeObjects.push(salvaged);
       remaining = '';
@@ -266,7 +265,6 @@ export class ToolParserService {
             results.push(parsed);
           }
         } catch (err) {
-          // If parsing fails, try manual extraction
           console.warn('Standard parsing failed, attempting manual extraction:', obj);
           const manualTool = this.manualExtract(obj);
           if (manualTool) {
@@ -286,238 +284,274 @@ export class ToolParserService {
 
   private parseObject(obj: string): ToolCommand | null {
     try {
-      // Try direct parsing first with minimal processing
       let jsonStr = obj.trim();
       
-      // Step 1: Clean control characters
-      jsonStr = this.cleanControlCharacters(jsonStr);
-      
-      // Step 2: Try parsing with JSON5-like approach
-      jsonStr = this.convertToValidJson(jsonStr);
-      
-      const parsed = JSON.parse(jsonStr);
+      // Try multiple strategies
+      const strategies = [
+        // Strategy 1: Minimal processing
+        (s: string) => this.strategy1_minimal(s),
+        // Strategy 2: Aggressive cleaning
+        (s: string) => this.strategy2_aggressive(s),
+        // Strategy 3: Reconstruct from scratch
+        (s: string) => this.strategy3_reconstruct(s)
+      ];
 
-      if (typeof parsed !== 'object' || !parsed.tool) {
-        console.warn('Invalid tool command structure:', parsed);
-        return null;
+      for (let i = 0; i < strategies.length; i++) {
+        try {
+          const result = strategies[i](jsonStr);
+          if (result) {
+            if (i > 0) console.log(`Success with strategy ${i + 1}`);
+            return result;
+          }
+        } catch (e) {
+          if (i === strategies.length - 1) {
+            throw e;
+          }
+          continue;
+        }
       }
 
-      return parsed as ToolCommand;
+      return null;
 
     } catch (error) {
-      console.error('Parse object error:', error);
-      console.error('Failed string:', obj);
+      console.error('All parsing strategies failed:', error);
+      console.error('Original string:', obj);
       
-      // Fallback to manual extraction
+      // Last resort: manual extraction
       return this.manualExtract(obj);
     }
   }
 
-  // Clean control characters
-  private cleanControlCharacters(str: string): string {
-    return str.replace(/[\x00-\x1F\x7F]/g, (char) => {
-      const code = char.charCodeAt(0);
-      switch (code) {
-        case 9: return '\\t';
-        case 10: return '\\n';
-        case 13: return '\\r';
-        default: return '';
-      }
-    });
+  // Strategy 1: Minimal processing
+  private strategy1_minimal(str: string): ToolCommand | null {
+    // Just clean control chars and try to parse
+    str = str.replace(/[\x00-\x1F\x7F]/g, '');
+    str = str.replace(/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)(\s*):/g, '$1"$2"$3:');
+    
+    const parsed = JSON.parse(str);
+    if (parsed && parsed.tool) {
+      return parsed as ToolCommand;
+    }
+    return null;
   }
 
-  // Convert JS-like object to valid JSON
-  private convertToValidJson(str: string): string {
-    let result = '';
-    let i = 0;
-    let inString = false;
-    let stringDelimiter = '';
+  // Strategy 2: Aggressive cleaning
+  private strategy2_aggressive(str: string): ToolCommand | null {
+    // Remove everything problematic
+    str = str
+      .replace(/[\x00-\x1F\x7F]/g, '') // Remove control chars
+      .replace(/,(\s*[}\]])/g, '$1')   // Remove trailing commas
+      .replace(/'/g, '"');              // Replace single quotes
     
-    while (i < str.length) {
+    // Quote unquoted property names
+    str = str.replace(/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)(\s*):/g, '$1"$2"$3:');
+    
+    const parsed = JSON.parse(str);
+    if (parsed && parsed.tool) {
+      return parsed as ToolCommand;
+    }
+    return null;
+  }
+
+  // Strategy 3: Reconstruct from scratch
+  private strategy3_reconstruct(str: string): ToolCommand | null {
+    // Build valid JSON character by character
+    let result = '';
+    let inString = false;
+    let stringChar = '';
+    let escaped = false;
+    let lastChar = '';
+    
+    for (let i = 0; i < str.length; i++) {
       const char = str[i];
-      const nextChar = i + 1 < str.length ? str[i + 1] : '';
-      const prevChar = i > 0 ? str[i - 1] : '';
       
-      // Handle escaped characters
-      if (prevChar === '\\') {
+      // Handle escapes
+      if (escaped) {
         result += char;
-        i++;
+        escaped = false;
+        lastChar = char;
         continue;
       }
       
-      // Track string state
-      if ((char === '"' || char === "'") && prevChar !== '\\') {
-        if (!inString) {
-          inString = true;
-          stringDelimiter = char;
-          result += '"'; // Always use double quotes
-        } else if (char === stringDelimiter) {
-          inString = false;
-          stringDelimiter = '';
-          result += '"'; // Always use double quotes
-        } else {
-          result += char;
-        }
-        i++;
+      if (char === '\\' && inString) {
+        result += char;
+        escaped = true;
+        lastChar = char;
         continue;
       }
       
-      // If we're in a string, just copy the character
+      // String tracking
+      if (!inString && (char === '"' || char === "'")) {
+        inString = true;
+        stringChar = char;
+        result += '"';
+        lastChar = '"';
+        continue;
+      }
+      
+      if (inString && char === stringChar) {
+        inString = false;
+        stringChar = '';
+        result += '"';
+        lastChar = '"';
+        continue;
+      }
+      
+      // Inside string - copy everything
       if (inString) {
         result += char;
-        i++;
+        lastChar = char;
         continue;
       }
       
-      // Outside strings: handle property names
-      if (/[a-zA-Z_$]/.test(char) && (prevChar === '{' || prevChar === ',' || /\s/.test(prevChar))) {
-        // This might be an unquoted property name
-        let propName = '';
-        let j = i;
-        
-        // Collect the property name
-        while (j < str.length && /[a-zA-Z0-9_$]/.test(str[j])) {
-          propName += str[j];
-          j++;
+      // Outside string - only copy valid JSON chars
+      if (char >= ' ' || char === '\n' || char === '\r' || char === '\t') {
+        // Skip trailing commas
+        if (char === ',') {
+          let next = i + 1;
+          while (next < str.length && /\s/.test(str[next])) next++;
+          if (next < str.length && (str[next] === '}' || str[next] === ']')) {
+            lastChar = char;
+            continue;
+          }
         }
         
-        // Skip whitespace after property name
-        while (j < str.length && /\s/.test(str[j])) {
-          j++;
-        }
-        
-        // Check if followed by colon (indicating it's a property name)
-        if (j < str.length && str[j] === ':') {
-          result += '"' + propName + '"';
-          i = j;
-          continue;
-        }
+        result += char;
+        lastChar = char;
       }
-      
-      // Handle trailing commas
-      if (char === ',') {
-        let j = i + 1;
-        // Skip whitespace
-        while (j < str.length && /\s/.test(str[j])) {
-          j++;
-        }
-        // If next meaningful char is } or ], skip the comma
-        if (j < str.length && (str[j] === '}' || str[j] === ']')) {
-          i++;
-          continue;
-        }
-      }
-      
-      result += char;
-      i++;
+    }
+    
+    // Close any unclosed strings
+    if (inString) {
+      result += '"';
     }
     
     // Balance braces
-    let openBraces = 0;
-    let openBrackets = 0;
+    let depth = 0;
     inString = false;
-    
     for (let i = 0; i < result.length; i++) {
-      const char = result[i];
-      if (char === '"' && (i === 0 || result[i - 1] !== '\\')) {
+      if (result[i] === '"' && (i === 0 || result[i-1] !== '\\')) {
         inString = !inString;
       }
       if (!inString) {
-        if (char === '{') openBraces++;
-        if (char === '}') openBraces--;
-        if (char === '[') openBrackets++;
-        if (char === ']') openBrackets--;
+        if (result[i] === '{' || result[i] === '[') depth++;
+        if (result[i] === '}' || result[i] === ']') depth--;
       }
     }
-    
-    while (openBraces > 0) {
+    while (depth > 0) {
       result += '}';
-      openBraces--;
+      depth--;
     }
     
-    while (openBrackets > 0) {
-      result += ']';
-      openBrackets--;
-    }
+    // Quote unquoted property names
+    result = result.replace(/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)(\s*):/g, '$1"$2"$3:');
     
-    return result;
+    const parsed = JSON.parse(result);
+    if (parsed && parsed.tool) {
+      return parsed as ToolCommand;
+    }
+    return null;
   }
 
   // Manual extraction as last resort
   private manualExtract(obj: string): ToolCommand | null {
     try {
+      console.log('Manual extraction starting...');
+      
+      // Clean the string first
+      obj = obj.replace(/[\x00-\x1F\x7F]/g, '');
+      
       // Extract tool type
       const toolMatch = obj.match(/tool\s*:\s*["']?(READ|WRITE|MODIFY)["']?/i);
       if (!toolMatch) {
-        console.error('Could not extract tool type');
+        console.error('Could not extract tool type from:', obj);
         return null;
       }
       
       const toolType = toolMatch[1].toUpperCase();
+      console.log('Extracted tool type:', toolType);
       
-      // Extract content based on tool type
+      // Extract content
       let content: any;
       
       if (toolType === 'READ') {
-        // For READ, try multiple patterns to extract content
-        const patterns = [
-          /content\s*:\s*["']([^"']+)["']/,
-          /content\s*:\s*["'](.+?)["']\s*[,}]/s,
-          /content\s*:\s*["'](.+?)["']$/s
-        ];
+        // For READ - extract the content string
+        let extracted = null;
         
-        for (const pattern of patterns) {
-          const match = obj.match(pattern);
+        // Pattern 1: content: "something"
+        let match = obj.match(/content\s*:\s*"([^"]*)"/);
+        if (match) {
+          extracted = match[1];
+        } else {
+          // Pattern 2: content: 'something'
+          match = obj.match(/content\s*:\s*'([^']*)'/);
           if (match) {
-            content = match[1]
-              .replace(/\\n/g, '\n')
-              .replace(/\\t/g, '\t')
-              .replace(/\\r/g, '\r')
-              .replace(/\\\\/g, '\\')
-              .replace(/\\"/g, '"')
-              .replace(/\\'/g, "'");
-            break;
+            extracted = match[1];
+          } else {
+            // Pattern 3: content: anything until } or ,
+            match = obj.match(/content\s*:\s*([^,}]+)/);
+            if (match) {
+              extracted = match[1].trim().replace(/^["']|["']$/g, '');
+            }
           }
         }
         
-        if (!content) {
-          content = 'Could not extract content';
-        }
+        content = extracted || 'Manual extraction - could not extract READ content';
+        console.log('Extracted READ content:', content);
+        
       } else {
         // For WRITE/MODIFY
         content = {
-          reasoning: 'Manual extraction - content may be incomplete',
+          reasoning: 'Manual extraction',
           files: []
         };
         
         // Try to extract reasoning
-        const reasoningMatch = obj.match(/reasoning\s*:\s*["']([^"']+)["']/);
-        if (reasoningMatch) {
-          content.reasoning = reasoningMatch[1];
+        let match = obj.match(/reasoning\s*:\s*"([^"]*)"/);
+        if (!match) {
+          match = obj.match(/reasoning\s*:\s*'([^']*)'/);
+        }
+        if (match) {
+          content.reasoning = match[1];
         }
         
-        // Try to extract file information
-        const fileNameMatch = obj.match(/file_name\s*:\s*["']([^"']+)["']/);
-        const filePathMatch = obj.match(/file_path\s*:\s*["']([^"']+)["']/);
+        console.log('Extracted reasoning:', content.reasoning);
         
-        if (fileNameMatch || filePathMatch) {
-          content.files.push({
-            file_path: filePathMatch ? filePathMatch[1] : '',
-            file_name: fileNameMatch ? fileNameMatch[1] : '',
-            original_code: '',
-            modified_code: ''
-          });
+        // Try to extract files array
+        const filesMatch = obj.match(/files\s*:\s*\[([^\]]*)\]/s);
+        if (filesMatch) {
+          console.log('Found files array');
+          
+          // Extract file properties
+          const fileContent = filesMatch[1];
+          
+          const fileName = (fileContent.match(/file_name\s*:\s*["']([^"']*)["']/) || [])[1] || '';
+          const filePath = (fileContent.match(/file_path\s*:\s*["']([^"']*)["']/) || [])[1] || '';
+          const originalCode = (fileContent.match(/original_code\s*:\s*["']([^"']*)["']/) || [])[1] || '';
+          const modifiedCode = (fileContent.match(/modified_code\s*:\s*["']([^"']*)["']/) || [])[1] || '';
+          
+          if (fileName || filePath || modifiedCode) {
+            content.files.push({
+              file_name: fileName,
+              file_path: filePath,
+              original_code: originalCode,
+              modified_code: modifiedCode
+            });
+            console.log('Extracted file info');
+          }
         }
       }
       
-      console.log('Manual extraction successful');
-      return {
+      const result = {
         tool: toolType,
         content: content
       };
       
+      console.log('Manual extraction successful:', result);
+      return result;
+      
     } catch (error) {
-      console.error('Manual extraction failed:', error);
+      console.error('Manual extraction completely failed:', error);
       return null;
     }
   }
@@ -547,7 +581,6 @@ export class ToolParserService {
         inString = true;
         stringDelimiter = char;
       } else if (inString && char === stringDelimiter) {
-        // Check if the previous char is not a backslash (not escaped)
         const prevChar = i > 0 ? str[i - 1] : '';
         if (prevChar !== '\\') {
           inString = false;
@@ -573,7 +606,6 @@ export class ToolParserService {
     // If we have unclosed braces, try to salvage the content
     if (depth > 0 && start < str.length) {
       console.warn('Unclosed braces detected in extraction, attempting to close:', str.substring(start));
-      // Add closing braces
       let salvaged = str.substring(start) + '}'.repeat(depth);
       objects.push(salvaged);
     }
