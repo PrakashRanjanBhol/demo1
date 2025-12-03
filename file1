@@ -1,506 +1,182 @@
-import { Injectable } from '@angular/core';
+@Output() allFilesReviewed = new EventEmitter<void>();
 
-export interface ToolCommand {
-  tool: string;
-  content: any;
-}
 
-export interface WriteModifyContent {
-  reasoning: string;
-  files: Array<{
-    file_path: string;
-    file_name: string;
-    original_code: string;
-    modified_code: string;
-  }>;
-}
-
-@Injectable({
-  providedIn: 'root'
-})
-export class ToolParserService {
-  private processingQueue: ToolCommand[] = [];
-  private isProcessing = false;
-  private waitingForApproval = false;
-  private currentWriteModifyTool: ToolCommand | null = null;
-
-  public isWaitingForUserApproval = false;
-
-  // Callbacks
-  private onUpdateCallback?: () => void;
-  private onLogCallback?: (tool: ToolCommand) => void;
-
-  setUpdateCallback(callback: () => void): void {
-    this.onUpdateCallback = callback;
-  }
-
-  setLogCallback(callback: (tool: ToolCommand) => void): void {
-    this.onLogCallback = callback;
-  }
-
-  private triggerUpdate(): void {
-    if (this.onUpdateCallback) {
-      this.onUpdateCallback();
-    }
-  }
-
-  async startStreaming(apiUrl: string, options?: RequestInit): Promise<void> {
-    try {
-      const response = await fetch(apiUrl, options);
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error('No reader available');
-      }
-
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-
-        if (done) {
-          if (buffer.trim()) {
-            this.addToolFromStream(buffer);
-          }
-          break;
-        }
-
-        const chunk = decoder.decode(value, { stream: true });
-        buffer += chunk;
-
-        const processedBuffer = this.processBuffer(buffer);
-        buffer = processedBuffer.remaining;
-
-        processedBuffer.completeObjects.forEach(obj => {
-          this.addToolFromStream(obj);
-        });
-      }
-    } catch (error) {
-      console.error('Streaming error:', error);
-      throw error;
-    }
-  }
-
-  private processBuffer(buffer: string): { completeObjects: string[], remaining: string } {
-    const completeObjects: string[] = [];
-    let remaining = buffer;
-    let depth = 0;
-    let start = 0;
-    let inString = false;
-    let stringDelimiter = '';
-    let escaped = false;
-
-    for (let i = 0; i < buffer.length; i++) {
-      const char = buffer[i];
-
-      if (escaped) {
-        escaped = false;
-        continue;
-      }
-
-      if (char === '\\') {
-        escaped = true;
-        continue;
-      }
-
-      if (!inString && (char === '"' || char === "'")) {
-        inString = true;
-        stringDelimiter = char;
-      } else if (inString && char === stringDelimiter) {
-        inString = false;
-        stringDelimiter = '';
-      }
-
-      if (!inString) {
-        if (char === '{') {
-          if (depth === 0) {
-            start = i;
-          }
-          depth++;
-        } else if (char === '}') {
-          depth--;
-          if (depth === 0) {
-            completeObjects.push(buffer.substring(start, i + 1));
-            start = i + 1;
-          }
-        }
-      }
-    }
-
-    remaining = buffer.substring(start).trim();
-    return { completeObjects, remaining };
-  }
-
-  addToolFromStream(input: string): void {
-    const tools = this.parseToolString(input);
+acceptFile(index: number): void {
+    this.loadingFiles.add(index);
+    this.fileActions.set(index, 'accepting');
     
-    if (tools.length === 0) return;
+    setTimeout(() => {
+      console.log(`File ${index} accepted:`, this.files[index].file_name);
+      console.log('File path:', this.files[index].file_path);
+      console.log('Applied code:', this.files[index].modified_code);
+      
+      this.acceptedFiles.add(index);
+      this.loadingFiles.delete(index);
+      this.fileActions.delete(index);
+      this.onFileAccepted.emit({ file: this.files[index], index });
+      
+      // Check if all files are reviewed
+      this.checkAndEmitAllFilesReviewed();
+    }, 1500);
+  }
 
-    this.processingQueue.push(...tools);
+
+
+
+
+
+
+rejectFile(index: number): void {
+    this.loadingFiles.add(index);
+    this.fileActions.set(index, 'rejecting');
     
-    if (!this.isProcessing && !this.waitingForApproval) {
-      this.processQueue();
-    }
-  }
-
-  approveAndContinue(): void {
-    if (!this.waitingForApproval || !this.currentWriteModifyTool) return;
-
-    // Execute the WRITE/MODIFY
-    if (this.onLogCallback) {
-      this.onLogCallback(this.currentWriteModifyTool);
-    }
-
-    this.currentWriteModifyTool = null;
-    this.waitingForApproval = false;
-    this.isWaitingForUserApproval = false;
-
-    this.triggerUpdate();
-    this.processQueue();
-  }
-
-  private processQueue(): void {
-    if (this.waitingForApproval) return;
-
-    this.isProcessing = true;
-
-    while (this.processingQueue.length > 0 && !this.waitingForApproval) {
-      const tool = this.processingQueue.shift();
+    setTimeout(() => {
+      console.log(`File ${index} rejected:`, this.files[index].file_name);
+      console.log('File path:', this.files[index].file_path);
+      console.log('Keeping original code:', this.files[index].original_code);
       
-      if (!tool) continue;
-
-      this.processSingleTool(tool);
-    }
-
-    this.isProcessing = false;
+      this.rejectedFiles.add(index);
+      this.loadingFiles.delete(index);
+      this.fileActions.delete(index);
+      this.onFileRejected.emit({ file: this.files[index], index });
+      
+      // Check if all files are reviewed
+      this.checkAndEmitAllFilesReviewed();
+    }, 1500);
   }
 
-  private processSingleTool(tool: ToolCommand): void {
-    try {
-      if (!tool.tool) {
-        console.warn('Invalid tool object:', tool);
-        return;
-      }
 
-      switch (tool.tool) {
-        case 'READ':
-          // Log READ immediately
-          if (this.onLogCallback) {
-            this.onLogCallback(tool);
-          }
-          break;
 
-        case 'WRITE':
-        case 'MODIFY':
-          // Log WRITE/MODIFY immediately (before waiting)
-          if (this.onLogCallback) {
-            this.onLogCallback(tool);
-          }
-          
-          // Store current tool and wait for approval
-          this.currentWriteModifyTool = tool;
-          this.waitingForApproval = true;
-          this.isWaitingForUserApproval = true;
-          
-          this.triggerUpdate();
-          break;
 
-        default:
-          console.warn('Unknown tool type:', tool.tool);
-      }
-    } catch (error) {
-      console.error('Error processing tool:', tool, error);
-    }
-  }
 
-  reset(): void {
-    this.processingQueue = [];
-    this.currentWriteModifyTool = null;
-    this.isProcessing = false;
-    this.waitingForApproval = false;
-    this.isWaitingForUserApproval = false;
-    this.triggerUpdate();
-  }
 
-  parseToolString(input: string): ToolCommand[] {
-    const results: ToolCommand[] = [];
+
+
+acceptAll(): void {
+    this.isApproveAllLoading = true;
     
-    try {
-      const str = input.trim();
+    console.log('All files accepted');
+    console.log('Tool:', this.toolType);
+    console.log('Reasoning:', this.reasoning);
+    
+    const acceptPromises = this.files.map((file, index) => {
+      return new Promise<void>((resolve) => {
+        this.loadingFiles.add(index);
+        
+        setTimeout(() => {
+          console.log(`${file.file_name} (${file.file_path}): Applied code`, file.modified_code);
+          this.acceptedFiles.add(index);
+          this.loadingFiles.delete(index);
+          resolve();
+        }, 1500);
+      });
+    });
+    
+    Promise.all(acceptPromises).then(() => {
+      this.isApproveAllLoading = false;
+      this.onAcceptAll.emit();
       
-      if (!str) {
-        return [];
-      }
+      // Emit all files reviewed and close
+      this.allFilesReviewed.emit();
+    });
+  }
 
-      const objects = this.extractJsonObjects(str);
+
+
+
+
+
+
+
+
+
+
+rejectAll(): void {
+    this.isRejectAllLoading = true;
+    
+    console.log('All files rejected');
+    console.log('Tool:', this.toolType);
+    console.log('Reasoning:', this.reasoning);
+    
+    const rejectPromises = this.files.map((file, index) => {
+      return new Promise<void>((resolve) => {
+        this.loadingFiles.add(index);
+        
+        setTimeout(() => {
+          console.log(`${file.file_name} (${file.file_path}): Keeping original code`, file.original_code);
+          this.rejectedFiles.add(index);
+          this.loadingFiles.delete(index);
+          resolve();
+        }, 1500);
+      });
+    });
+    
+    Promise.all(rejectPromises).then(() => {
+      this.isRejectAllLoading = false;
+      this.onRejectAll.emit();
       
-      for (const obj of objects) {
-        try {
-          const parsed = this.parseObject(obj);
-          if (parsed && parsed.tool) {
-            results.push(parsed);
-          }
-        } catch (err) {
-          console.warn('Skipping invalid object:', obj, err);
-        }
-      }
-
-      return results;
-
-    } catch (error) {
-      console.error('Parse error:', error);
-      console.error('Input was:', input);
-      return results;
-    }
-  }
-
-  private extractJsonObjects(str: string): string[] {
-    const objects: string[] = [];
-    let depth = 0;
-    let start = 0;
-    let inString = false;
-    let stringDelimiter = '';
-    let escaped = false;
-
-    for (let i = 0; i < str.length; i++) {
-      const char = str[i];
-      const prevChar = i > 0 ? str[i - 1] : '';
-
-      if (escaped) {
-        escaped = false;
-        continue;
-      }
-
-      if (char === '\\') {
-        escaped = true;
-        continue;
-      }
-
-      if (!inString && (char === '"' || char === "'")) {
-        inString = true;
-        stringDelimiter = char;
-      } else if (inString && char === stringDelimiter && prevChar !== '\\') {
-        inString = false;
-        stringDelimiter = '';
-      }
-
-      if (!inString) {
-        if (char === '{') {
-          if (depth === 0) {
-            start = i;
-          }
-          depth++;
-        } else if (char === '}') {
-          depth--;
-          if (depth === 0 && start < i) {
-            objects.push(str.substring(start, i + 1));
-          }
-        }
-      }
-    }
-
-    return objects;
-  }
-
-  private parseObject(obj: string): ToolCommand | null {
-    try {
-      let jsonStr = obj.trim();
-      jsonStr = this.quotePropertyNames(jsonStr);
-      jsonStr = this.normalizeQuotes(jsonStr);
-      const parsed = JSON.parse(jsonStr);
-
-      if (typeof parsed !== 'object' || !parsed.tool) {
-        console.warn('Invalid tool command structure:', parsed);
-        return null;
-      }
-
-      return parsed as ToolCommand;
-
-    } catch (error) {
-      console.error('Parse object error:', error);
-      throw error;
-    }
-  }
-
-  private quotePropertyNames(str: string): string {
-    return str.replace(/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)(\s*):/g, '$1"$2"$3:');
-  }
-
-  private normalizeQuotes(str: string): string {
-    let result = '';
-    let inString = false;
-    let currentQuote = '';
-    let escaped = false;
-
-    for (let i = 0; i < str.length; i++) {
-      const char = str[i];
-
-      if (escaped) {
-        result += char;
-        escaped = false;
-        continue;
-      }
-
-      if (char === '\\' && inString) {
-        result += char;
-        escaped = true;
-        continue;
-      }
-
-      if ((char === '"' || char === "'") && !inString) {
-        inString = true;
-        currentQuote = char;
-        result += '"';
-      } else if (char === currentQuote && inString) {
-        inString = false;
-        currentQuote = '';
-        result += '"';
-      } else {
-        if (char === '"' && inString && currentQuote === "'") {
-          result += '\\"';
-        } else {
-          result += char;
-        }
-      }
-    }
-
-    return result;
-  }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-import { Component, ChangeDetectorRef } from '@angular/core';
-import { ToolParserService, ToolCommand } from './services/tool-parser.service';
-
-@Component({
-  selector: 'app-tool-processor',
-  templateUrl: './tool-processor.component.html',
-  styleUrls: ['./tool-processor.component.css']
-})
-export class ToolProcessorComponent {
-
-  constructor(
-    public toolParser: ToolParserService,
-    private cdr: ChangeDetectorRef
-  ) {}
-
-  onApprove(): void {
-    console.log('User clicked OK - Executing and continuing...');
-    this.toolParser.approveAndContinue();
-  }
-
-  async handleStreamingResponse(): Promise<void> {
-    this.toolParser.setUpdateCallback(() => {
-      this.cdr.detectChanges();
+      // Emit all files reviewed and close
+      this.allFilesReviewed.emit();
     });
+  }
 
-    this.toolParser.setLogCallback((tool: ToolCommand) => {
-      if (tool.tool === 'READ') {
-        console.log('READ:', tool.content);
-      } else if (tool.tool === 'WRITE') {
-        console.log('WRITE:', tool.content);
-      } else if (tool.tool === 'MODIFY') {
-        console.log('MODIFY:', tool.content);
-      }
-    });
 
-    try {
-      const apiUrl = 'https://your-api.com/stream';
-      
-      const options: RequestInit = {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer your-token-here'
-        },
-        body: JSON.stringify({
-          query: 'your query here'
-        })
-      };
 
-      await this.toolParser.startStreaming(apiUrl, options);
-    } catch (error: any) {
-      console.error('Error:', error);
+
+
+
+
+
+private checkAndEmitAllFilesReviewed(): void {
+    // Check if all files have been reviewed (either accepted or rejected)
+    if (this.allFilesProcessed()) {
+      // Small delay to show the final state before closing
+      setTimeout(() => {
+        this.allFilesReviewed.emit();
+      }, 500);
     }
   }
 
-  // For testing
-  simulateStreaming(): void {
-    this.toolParser.setUpdateCallback(() => {
-      this.cdr.detectChanges();
-    });
 
-    this.toolParser.setLogCallback((tool: ToolCommand) => {
-      if (tool.tool === 'READ') {
-        console.log('READ:', tool.content);
-      } else if (tool.tool === 'WRITE') {
-        console.log('WRITE:', tool.content);
-      } else if (tool.tool === 'MODIFY') {
-        console.log('MODIFY:', tool.content);
-      }
-    });
 
-    console.log('=== Starting Simulation ===\n');
 
-    const data = [
-      '{tool: "READ", content: "First READ - logs immediately"}',
-      '{tool: "READ", content: "Second READ - logs immediately"}',
-      '{tool: "WRITE", content: {reasoning: "Writing file", files: [{file_path: "/src", file_name:"app.js", original_code:"", modified_code:"code"}]}}',
-      '{tool: "READ", content: "Third READ - will NOT log until OK is clicked"}',
-      '{tool: "READ", content: "Fourth READ - will NOT log until OK is clicked"}',
-      '{tool: "MODIFY", content: {reasoning: "Modifying file", files: [{file_path: "/src", file_name:"app.js", original_code:"old", modified_code:"new"}]}}',
-      '{tool: "READ", content: "Fifth READ - will NOT log until OK is clicked"}',
-      '{tool: "READ", content: "Sixth READ - will log after OK"}',
-    ];
 
-    let index = 0;
-    const interval = setInterval(() => {
-      if (index < data.length) {
-        console.log(`\n--- Chunk #${index + 1} received ---`);
-        this.toolParser.addToolFromStream(data[index]);
-        index++;
-      } else {
-        clearInterval(interval);
-        console.log('\n=== Simulation Complete ===');
-      }
-    }, 1000);
-  }
+
+
+
+
+
+
+<app-diff-viewer 
+  [config]="config"
+  (onAcceptAll)="handleAcceptAll()"
+  (onRejectAll)="handleRejectAll()"
+  (onFileAccepted)="handleFileAccepted($event)"
+  (onFileRejected)="handleFileRejected($event)"
+  (allFilesReviewed)="closeModal()">
+</app-diff-viewer>
+
+
+
+
+
+
+<app-diff-viewer-modal
+  [isOpen]="isModalOpen"
+  [config]="fileConfig"
+  [isLoadingConfig]="isLoadingConfig"
+  (close)="closeModal()"
+  (allFilesReviewed)="handleAllFilesReviewed()">
+</app-diff-viewer-modal>
+
+
+
+
+
+
+
+handleAllFilesReviewed(): void {
+  console.log('All files have been reviewed!');
+  // Auto-close modal
+  this.closeModal();
 }
