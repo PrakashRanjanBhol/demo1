@@ -1,15 +1,87 @@
-// Add this to the callbacks section
-private onCompletionCallback?: () => void;
+// Add this property
+private isStreamingActive = false;
 
-setCompletionCallback(callback: () => void): void {
-  this.onCompletionCallback = callback;
+// Modify startStreaming to track streaming state
+async startStreaming(apiUrl: string, options?: RequestInit): Promise<void> {
+  try {
+    this.isCancelled = false;
+    this.isStreamingActive = true;  // Mark streaming as active
+    
+    this.abortController = new AbortController();
+    
+    const fetchOptions: RequestInit = {
+      ...options,
+      signal: this.abortController.signal
+    };
+
+    const response = await fetch(apiUrl, fetchOptions);
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('No reader available');
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      if (this.isCancelled) {
+        console.log('Streaming cancelled by user');
+        reader.cancel();
+        break;
+      }
+
+      const { done, value } = await reader.read();
+
+      if (done) {
+        if (buffer.trim() && !this.isCancelled) {
+          this.addToolFromStream(buffer);
+        }
+        break;
+      }
+
+      const chunk = decoder.decode(value, { stream: true });
+      buffer += chunk;
+
+      const processedBuffer = this.processBuffer(buffer);
+      buffer = processedBuffer.remaining;
+
+      processedBuffer.completeObjects.forEach(obj => {
+        if (!this.isCancelled) {
+          this.addToolFromStream(obj);
+        }
+      });
+    }
+
+    // Mark streaming as completed
+    this.isStreamingActive = false;
+
+    // Check if everything is truly completed now
+    if (this.processingQueue.length === 0 && !this.waitingForApproval && this.onCompletionCallback) {
+      this.onCompletionCallback();
+    }
+
+  } catch (error: any) {
+    this.isStreamingActive = false;  // Mark streaming as inactive on error
+    if (error.name === 'AbortError') {
+      console.log('Streaming aborted');
+    } else {
+      console.error('Streaming error:', error);
+      throw error;
+    }
+  } finally {
+    this.abortController = null;
+  }
 }
 
-// Modify approveAndContinue method
+// Modify approveAndContinue to check streaming state
 approveAndContinue(): void {
   if (!this.waitingForApproval || !this.currentWriteModifyTool) return;
 
-  // Execute the WRITE/MODIFY
   if (this.onLogCallback) {
     this.onLogCallback(this.currentWriteModifyTool);
   }
@@ -21,13 +93,13 @@ approveAndContinue(): void {
   this.triggerUpdate();
   this.processQueue();
 
-  // Check if everything is completed (no more items in queue and not waiting)
-  if (this.processingQueue.length === 0 && !this.waitingForApproval && this.onCompletionCallback) {
+  // Only trigger completion if streaming is done AND queue is empty
+  if (!this.isStreamingActive && this.processingQueue.length === 0 && !this.waitingForApproval && this.onCompletionCallback) {
     this.onCompletionCallback();
   }
 }
 
-// Modify processQueue method
+// Modify processQueue to check streaming state
 private processQueue(): void {
   if (this.waitingForApproval) return;
 
@@ -43,104 +115,40 @@ private processQueue(): void {
 
   this.isProcessing = false;
 
-  // Check if everything is completed after processing queue
-  if (this.processingQueue.length === 0 && !this.waitingForApproval && this.onCompletionCallback) {
+  // Only trigger completion if streaming is done AND queue is empty
+  if (!this.isStreamingActive && this.processingQueue.length === 0 && !this.waitingForApproval && this.onCompletionCallback) {
     this.onCompletionCallback();
   }
 }
 
-// Modify cleanup to clear completion callback
+// Modify cleanup to reset streaming state
 cleanup(): void {
   this.processingQueue = [];
   this.currentWriteModifyTool = null;
   this.isProcessing = false;
   this.waitingForApproval = false;
   this.isWaitingForUserApproval = false;
+  this.isStreamingActive = false;  // Reset streaming state
   this.onUpdateCallback = undefined;
   this.onLogCallback = undefined;
   this.onCompletionCallback = undefined;
   this.abortController = null;
   this.isCancelled = false;
 }
+```
 
+**Key Changes:**
 
+1. **Added `isStreamingActive` flag**: Tracks whether the stream is still receiving data
+2. **Set to `true`** when streaming starts
+3. **Set to `false`** when streaming ends (in the `done` condition)
+4. **Completion check updated**: Now checks `!this.isStreamingActive && queue empty && not waiting`
 
-
-
-
-
-
-
-
-
-
-
-
-
-async handleStreamingResponse(): Promise<void> {
-  let isFirstChunk = true;
-  let allCompleted = false;  // Add flag to prevent duplicate logs
-
-  this.toolParser.setUpdateCallback(() => {
-    this.cdr.detectChanges();
-  });
-
-  this.toolParser.setLogCallback((tool: ToolCommand) => {
-    if (isFirstChunk) {
-      console.log('🎉 First chunk received!');
-      isFirstChunk = false;
-    }
-
-    try {
-      if (tool.tool === 'READ') {
-        const content = typeof tool.content === 'string' 
-          ? tool.content 
-          : JSON.stringify(tool.content);
-        console.log('READ:', content);
-      } else if (tool.tool === 'WRITE') {
-        console.log('WRITE:', tool.content);
-      } else if (tool.tool === 'MODIFY') {
-        console.log('MODIFY:', tool.content);
-      }
-    } catch (error) {
-      console.error('Error logging tool:', error);
-      console.log('Tool (raw):', tool);
-    }
-  });
-
-  // Add completion callback
-  this.toolParser.setCompletionCallback(() => {
-    if (!allCompleted) {
-      console.log('🎊 All tasks completed - Nothing pending!');
-      allCompleted = true;
-    }
-  });
-
-  try {
-    const apiUrl = 'https://your-api.com/stream';
-    
-    const options: RequestInit = {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer your-token-here'
-      },
-      body: JSON.stringify({
-        query: 'your query here'
-      })
-    };
-
-    await this.toolParser.startStreaming(apiUrl, options);
-    
-    console.log('✅ Streaming completed successfully');
-    
-  } catch (error: any) {
-    if (error.name === 'AbortError') {
-      console.log('⚠️ Streaming was cancelled');
-    } else {
-      console.error('❌ Error:', error);
-    }
-  } finally {
-    this.toolParser.cleanup();
-  }
-}
+**Now the flow is:**
+```
+READ data arrives → processes immediately
+Queue becomes empty → BUT isStreamingActive = true → No completion log
+[5 seconds pass while WRITE tool is generating]
+WRITE tool arrives → logs and waits for approval
+User clicks OK → executes
+Queue becomes empty → isStreamingActive = false → Shows completion log ✅
