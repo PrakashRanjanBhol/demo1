@@ -1,154 +1,116 @@
-// Add this property
-private isStreamingActive = false;
+.code-rag-modal-backdrop {
+    position: fixed;
+    top: 60px;
+    left: 320px;
+    right: 320px;
+    bottom: 34px;
+    background: var(--vibe-coding-modal-backdrop);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    padding: 0;
+    animation: fadeIn 0.3s ease;
+    overflow-y: auto;
+}
 
-// Modify startStreaming to track streaming state
-async startStreaming(apiUrl: string, options?: RequestInit): Promise<void> {
-  try {
-    this.isCancelled = false;
-    this.isStreamingActive = true;  // Mark streaming as active
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+.code-rag-modal-container {
+    background: var(--vibe-coding-modal-bg);
+    border-radius: 12px;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    box-shadow: var(--vibe-coding-shadow-xl);
+    animation: slideInFromLeft 0.4s ease-out;
+}
+
+@keyframes slideInFromLeft {
+    from {
+        transform: translateX(-100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+closeModal(): void {
+  // Add closing class for animation
+  const backdrop = document.querySelector('.code-rag-modal-backdrop');
+  const container = document.querySelector('.code-rag-modal-container');
+  
+  if (backdrop && container) {
+    backdrop.classList.add('closing');
+    container.classList.add('closing');
     
-    this.abortController = new AbortController();
-    
-    const fetchOptions: RequestInit = {
-      ...options,
-      signal: this.abortController.signal
-    };
-
-    const response = await fetch(apiUrl, fetchOptions);
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const reader = response.body?.getReader();
-    if (!reader) {
-      throw new Error('No reader available');
-    }
-
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    while (true) {
-      if (this.isCancelled) {
-        console.log('Streaming cancelled by user');
-        reader.cancel();
-        break;
-      }
-
-      const { done, value } = await reader.read();
-
-      if (done) {
-        if (buffer.trim() && !this.isCancelled) {
-          this.addToolFromStream(buffer);
-        }
-        break;
-      }
-
-      const chunk = decoder.decode(value, { stream: true });
-      buffer += chunk;
-
-      const processedBuffer = this.processBuffer(buffer);
-      buffer = processedBuffer.remaining;
-
-      processedBuffer.completeObjects.forEach(obj => {
-        if (!this.isCancelled) {
-          this.addToolFromStream(obj);
-        }
-      });
-    }
-
-    // Mark streaming as completed
-    this.isStreamingActive = false;
-
-    // Check if everything is truly completed now
-    if (this.processingQueue.length === 0 && !this.waitingForApproval && this.onCompletionCallback) {
-      this.onCompletionCallback();
-    }
-
-  } catch (error: any) {
-    this.isStreamingActive = false;  // Mark streaming as inactive on error
-    if (error.name === 'AbortError') {
-      console.log('Streaming aborted');
-    } else {
-      console.error('Streaming error:', error);
-      throw error;
-    }
-  } finally {
-    this.abortController = null;
+    // Wait for animation to complete before emitting close
+    setTimeout(() => {
+      this.close.emit();
+    }, 300);
+  } else {
+    this.close.emit();
   }
 }
 
-// Modify approveAndContinue to check streaming state
-approveAndContinue(): void {
-  if (!this.waitingForApproval || !this.currentWriteModifyTool) return;
 
-  if (this.onLogCallback) {
-    this.onLogCallback(this.currentWriteModifyTool);
-  }
 
-  this.currentWriteModifyTool = null;
-  this.waitingForApproval = false;
-  this.isWaitingForUserApproval = false;
 
-  this.triggerUpdate();
-  this.processQueue();
 
-  // Only trigger completion if streaming is done AND queue is empty
-  if (!this.isStreamingActive && this.processingQueue.length === 0 && !this.waitingForApproval && this.onCompletionCallback) {
-    this.onCompletionCallback();
-  }
+
+
+
+
+
+
+.code-rag-modal-backdrop.closing {
+    animation: fadeOut 0.3s ease;
 }
 
-// Modify processQueue to check streaming state
-private processQueue(): void {
-  if (this.waitingForApproval) return;
-
-  this.isProcessing = true;
-
-  while (this.processingQueue.length > 0 && !this.waitingForApproval) {
-    const tool = this.processingQueue.shift();
-    
-    if (!tool) continue;
-
-    this.processSingleTool(tool);
-  }
-
-  this.isProcessing = false;
-
-  // Only trigger completion if streaming is done AND queue is empty
-  if (!this.isStreamingActive && this.processingQueue.length === 0 && !this.waitingForApproval && this.onCompletionCallback) {
-    this.onCompletionCallback();
-  }
+.code-rag-modal-container.closing {
+    animation: slideOutToLeft 0.3s ease-out;
 }
 
-// Modify cleanup to reset streaming state
-cleanup(): void {
-  this.processingQueue = [];
-  this.currentWriteModifyTool = null;
-  this.isProcessing = false;
-  this.waitingForApproval = false;
-  this.isWaitingForUserApproval = false;
-  this.isStreamingActive = false;  // Reset streaming state
-  this.onUpdateCallback = undefined;
-  this.onLogCallback = undefined;
-  this.onCompletionCallback = undefined;
-  this.abortController = null;
-  this.isCancelled = false;
+@keyframes fadeOut {
+    from {
+        opacity: 1;
+    }
+    to {
+        opacity: 0;
+    }
 }
-```
 
-**Key Changes:**
-
-1. **Added `isStreamingActive` flag**: Tracks whether the stream is still receiving data
-2. **Set to `true`** when streaming starts
-3. **Set to `false`** when streaming ends (in the `done` condition)
-4. **Completion check updated**: Now checks `!this.isStreamingActive && queue empty && not waiting`
-
-**Now the flow is:**
-```
-READ data arrives → processes immediately
-Queue becomes empty → BUT isStreamingActive = true → No completion log
-[5 seconds pass while WRITE tool is generating]
-WRITE tool arrives → logs and waits for approval
-User clicks OK → executes
-Queue becomes empty → isStreamingActive = false → Shows completion log ✅
+@keyframes slideOutToLeft {
+    from {
+        transform: translateX(0);
+        opacity: 1;
+    }
+    to {
+        transform: translateX(-100%);
+        opacity: 0;
+    }
+}
