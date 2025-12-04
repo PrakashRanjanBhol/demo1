@@ -1,12 +1,146 @@
-npm i jsonrepair
+// Add this to the callbacks section
+private onCompletionCallback?: () => void;
+
+setCompletionCallback(callback: () => void): void {
+  this.onCompletionCallback = callback;
+}
+
+// Modify approveAndContinue method
+approveAndContinue(): void {
+  if (!this.waitingForApproval || !this.currentWriteModifyTool) return;
+
+  // Execute the WRITE/MODIFY
+  if (this.onLogCallback) {
+    this.onLogCallback(this.currentWriteModifyTool);
+  }
+
+  this.currentWriteModifyTool = null;
+  this.waitingForApproval = false;
+  this.isWaitingForUserApproval = false;
+
+  this.triggerUpdate();
+  this.processQueue();
+
+  // Check if everything is completed (no more items in queue and not waiting)
+  if (this.processingQueue.length === 0 && !this.waitingForApproval && this.onCompletionCallback) {
+    this.onCompletionCallback();
+  }
+}
+
+// Modify processQueue method
+private processQueue(): void {
+  if (this.waitingForApproval) return;
+
+  this.isProcessing = true;
+
+  while (this.processingQueue.length > 0 && !this.waitingForApproval) {
+    const tool = this.processingQueue.shift();
+    
+    if (!tool) continue;
+
+    this.processSingleTool(tool);
+  }
+
+  this.isProcessing = false;
+
+  // Check if everything is completed after processing queue
+  if (this.processingQueue.length === 0 && !this.waitingForApproval && this.onCompletionCallback) {
+    this.onCompletionCallback();
+  }
+}
+
+// Modify cleanup to clear completion callback
+cleanup(): void {
+  this.processingQueue = [];
+  this.currentWriteModifyTool = null;
+  this.isProcessing = false;
+  this.waitingForApproval = false;
+  this.isWaitingForUserApproval = false;
+  this.onUpdateCallback = undefined;
+  this.onLogCallback = undefined;
+  this.onCompletionCallback = undefined;
+  this.abortController = null;
+  this.isCancelled = false;
+}
 
 
-const broken = '{"tool":  "READ", "content": "(\\"\\"}';
 
-    const repaired = jsonrepair(broken);
-    console.log(repaired);
 
-    const json = JSON.parse(repaired);
-    console.log(json);
 
-import { jsonrepair } from 'jsonrepair'
+
+
+
+
+
+
+
+
+
+
+async handleStreamingResponse(): Promise<void> {
+  let isFirstChunk = true;
+  let allCompleted = false;  // Add flag to prevent duplicate logs
+
+  this.toolParser.setUpdateCallback(() => {
+    this.cdr.detectChanges();
+  });
+
+  this.toolParser.setLogCallback((tool: ToolCommand) => {
+    if (isFirstChunk) {
+      console.log('🎉 First chunk received!');
+      isFirstChunk = false;
+    }
+
+    try {
+      if (tool.tool === 'READ') {
+        const content = typeof tool.content === 'string' 
+          ? tool.content 
+          : JSON.stringify(tool.content);
+        console.log('READ:', content);
+      } else if (tool.tool === 'WRITE') {
+        console.log('WRITE:', tool.content);
+      } else if (tool.tool === 'MODIFY') {
+        console.log('MODIFY:', tool.content);
+      }
+    } catch (error) {
+      console.error('Error logging tool:', error);
+      console.log('Tool (raw):', tool);
+    }
+  });
+
+  // Add completion callback
+  this.toolParser.setCompletionCallback(() => {
+    if (!allCompleted) {
+      console.log('🎊 All tasks completed - Nothing pending!');
+      allCompleted = true;
+    }
+  });
+
+  try {
+    const apiUrl = 'https://your-api.com/stream';
+    
+    const options: RequestInit = {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer your-token-here'
+      },
+      body: JSON.stringify({
+        query: 'your query here'
+      })
+    };
+
+    await this.toolParser.startStreaming(apiUrl, options);
+    
+    console.log('✅ Streaming completed successfully');
+    
+  } catch (error: any) {
+    if (error.name === 'AbortError') {
+      console.log('⚠️ Streaming was cancelled');
+    } else {
+      console.error('❌ Error:', error);
+    }
+  } finally {
+    this.toolParser.cleanup();
+  }
+}
