@@ -1,12 +1,5 @@
 approveAndContinue(): void {
-  if (!this.waitingForApproval || !this.currentWriteModifyTool) {
-    // Safety: ensure flags are reset even if called incorrectly
-    this.waitingForApproval = false;
-    this.isWaitingForUserApproval = false;
-    this.currentWriteModifyTool = null;
-    this.triggerUpdate();
-    return;
-  }
+  if (!this.waitingForApproval || !this.currentWriteModifyTool) return;
 
   if (this.onLogCallback) {
     this.onLogCallback(this.currentWriteModifyTool);
@@ -18,41 +11,13 @@ approveAndContinue(): void {
 
   this.triggerUpdate();
   
-  // Check if there are more items to process
+  // Process queue only if there are items
   if (this.processingQueue.length > 0) {
     this.processQueue();
   } else {
-    // No more items in queue, check for completion
+    // Queue is empty after approval, check for completion
     if (!this.isStreamingActive && this.onCompletionCallback) {
       this.onCompletionCallback();
     }
-  }
-}
-
-private processQueue(): void {
-  // Safety check: if already waiting, don't process
-  if (this.waitingForApproval) {
-    return;
-  }
-
-  this.isProcessing = true;
-
-  while (this.processingQueue.length > 0 && !this.waitingForApproval) {
-    const tool = this.processingQueue.shift();
-    
-    if (!tool) continue;
-
-    this.processSingleTool(tool);
-  }
-
-  this.isProcessing = false;
-
-  // After processing queue, check completion status
-  // Only complete if: not streaming, queue empty, not waiting
-  if (!this.isStreamingActive && 
-      this.processingQueue.length === 0 && 
-      !this.waitingForApproval && 
-      this.onCompletionCallback) {
-    this.onCompletionCallback();
   }
 }
