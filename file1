@@ -1,23 +1,44 @@
+private processQueue(): void {
+  if (this.waitingForApproval) {
+    return;
+  }
+
+  this.isProcessing = true;
+
+  while (this.processingQueue.length > 0 && !this.waitingForApproval) {
+    const tool = this.processingQueue.shift();
+    
+    if (!tool) continue;
+
+    this.processSingleTool(tool);
+  }
+
+  this.isProcessing = false;
+
+  // After processing queue, check completion status
+  // Only complete if: not streaming, queue empty, not waiting
+  if (!this.isStreamingActive && 
+      this.processingQueue.length === 0 && 
+      !this.waitingForApproval && 
+      this.onCompletionCallback) {
+    this.onCompletionCallback();
+  }
+}
+
+// And update approveAndContinue to always call processQueue
 approveAndContinue(): void {
   if (!this.waitingForApproval || !this.currentWriteModifyTool) return;
-
+  
   if (this.onLogCallback) {
     this.onLogCallback(this.currentWriteModifyTool);
   }
-
+  
   this.currentWriteModifyTool = null;
   this.waitingForApproval = false;
   this.isWaitingForUserApproval = false;
-
+  
   this.triggerUpdate();
   
-  // Process queue only if there are items
-  if (this.processingQueue.length > 0) {
-    this.processQueue();
-  } else {
-    // Queue is empty after approval, check for completion
-    if (!this.isStreamingActive && this.onCompletionCallback) {
-      this.onCompletionCallback();
-    }
-  }
+  // Always call processQueue - it will handle the completion check
+  this.processQueue();
 }
