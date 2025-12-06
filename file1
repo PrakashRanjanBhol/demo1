@@ -1,49 +1,15 @@
 approveAndContinue(): void {
   if (!this.waitingForApproval || !this.currentWriteModifyTool) return;
   
-  if (this.onLogCallback) {
-    this.onLogCallback(this.currentWriteModifyTool);
-  }
+  // DON'T log here - already logged in processSingleTool
+  // Just execute/continue
   
   this.currentWriteModifyTool = null;
   this.waitingForApproval = false;
   this.isWaitingForUserApproval = false;
   
   this.triggerUpdate();
-  
-  // Always call processQueue - it will handle the completion check
   this.processQueue();
-}
-
-private processQueue(): void {
-  if (this.waitingForApproval) {
-    return;
-  }
-
-  this.isProcessing = true;
-
-  while (this.processingQueue.length > 0 && !this.waitingForApproval) {
-    const tool = this.processingQueue.shift();
-    
-    if (!tool) continue;
-
-    this.processSingleTool(tool);
-  }
-
-  this.isProcessing = false;
-
-  // Debug log to see the state
-  console.log('ProcessQueue finished - Streaming:', this.isStreamingActive, 
-              'Queue:', this.processingQueue.length, 
-              'Waiting:', this.waitingForApproval);
-
-  // After processing queue, check completion status
-  if (!this.isStreamingActive && 
-      this.processingQueue.length === 0 && 
-      !this.waitingForApproval && 
-      this.onCompletionCallback) {
-    this.onCompletionCallback();
-  }
 }
 
 private processSingleTool(tool: ToolCommand): void {
@@ -53,11 +19,8 @@ private processSingleTool(tool: ToolCommand): void {
       return;
     }
 
-    console.log('Processing tool:', tool.tool, 'Queue remaining:', this.processingQueue.length);
-
     switch (tool.tool) {
       case 'READ':
-        // Log READ immediately
         if (this.onLogCallback) {
           this.onLogCallback(tool);
         }
@@ -65,17 +28,15 @@ private processSingleTool(tool: ToolCommand): void {
 
       case 'WRITE':
       case 'MODIFY':
-        // Log WRITE/MODIFY immediately (before waiting)
+        // Log WRITE/MODIFY when detected
         if (this.onLogCallback) {
           this.onLogCallback(tool);
         }
         
-        // Store current tool and wait for approval
+        // Then wait for approval
         this.currentWriteModifyTool = tool;
         this.waitingForApproval = true;
         this.isWaitingForUserApproval = true;
-        
-        console.log('Set waitingForApproval=true for', tool.tool);
         
         this.triggerUpdate();
         break;
