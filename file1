@@ -1,45 +1,27 @@
-private processSingleTool(tool: ToolCommand): void {
-  try {
-    if (!tool.tool) {
-      console.warn('Invalid tool object:', tool);
-      return;
+addToolFromStream(input: string): void {
+  const tools = this.parseToolString(input);
+  
+  if (tools.length === 0) return;
+
+  // Filter out WRITE/MODIFY tools with empty files array
+  const validTools = tools.filter(tool => {
+    if (tool.tool === 'WRITE' || tool.tool === 'MODIFY') {
+      const content = tool.content as WriteModifyContent;
+      
+      // Check if files array exists and is not empty
+      if (!content.files || content.files.length === 0) {
+        console.warn(`Ignoring ${tool.tool} tool with empty files array:`, tool);
+        return false;
+      }
     }
+    return true;
+  });
 
-    switch (tool.tool) {
-      case 'READ':
-        // Log READ immediately
-        if (this.onLogCallback) {
-          this.onLogCallback(tool);
-        }
-        break;
+  if (validTools.length === 0) return;
 
-      case 'WRITE':
-      case 'MODIFY':
-        // Log WRITE/MODIFY immediately (before waiting)
-        if (this.onLogCallback) {
-          this.onLogCallback(tool);
-        }
-        
-        // Only set waiting state if there are more items in queue OR streaming is still active
-        const shouldWaitForApproval = this.processingQueue.length > 0 || this.isStreamingActive;
-        
-        if (shouldWaitForApproval) {
-          this.currentWriteModifyTool = tool;
-          this.waitingForApproval = true;
-          this.isWaitingForUserApproval = true;
-          this.triggerUpdate();
-        } else {
-          // This is the last item and streaming is done - don't wait
-          this.waitingForApproval = false;
-          this.isWaitingForUserApproval = false;
-          this.currentWriteModifyTool = null;
-        }
-        break;
-
-      default:
-        console.warn('Unknown tool type:', tool.tool);
-    }
-  } catch (error) {
-    console.error('Error processing tool:', tool, error);
+  this.processingQueue.push(...validTools);
+  
+  if (!this.isProcessing && !this.waitingForApproval) {
+    this.processQueue();
   }
 }
