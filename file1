@@ -1,52 +1,45 @@
-approveAndContinue(): void {
-  if (!this.waitingForApproval || !this.currentWriteModifyTool) return;
-  
-  // Execute/log the approved tool if needed
-  // (Already logged in processSingleTool, so just clear it)
-  
-  this.currentWriteModifyTool = null;
-  this.waitingForApproval = false;
-  this.isWaitingForUserApproval = false;
-  
-  this.triggerUpdate();
-  
-  // Process remaining queue
-  this.processQueue();
-  
-  // IMPORTANT: After processQueue, check completion again
-  // This handles the case where processQueue didn't trigger completion
-  // because the last item was WRITE/MODIFY which set waitingForApproval=true
-  // But we just reset it above, so check again
-  if (!this.isStreamingActive && 
-      this.processingQueue.length === 0 && 
-      !this.waitingForApproval && 
-      this.onCompletionCallback) {
-    this.onCompletionCallback();
-  }
-}
+private processSingleTool(tool: ToolCommand): void {
+  try {
+    if (!tool.tool) {
+      console.warn('Invalid tool object:', tool);
+      return;
+    }
 
-private processQueue(): void {
-  if (this.waitingForApproval) {
-    return;
-  }
+    switch (tool.tool) {
+      case 'READ':
+        // Log READ immediately
+        if (this.onLogCallback) {
+          this.onLogCallback(tool);
+        }
+        break;
 
-  this.isProcessing = true;
+      case 'WRITE':
+      case 'MODIFY':
+        // Log WRITE/MODIFY immediately (before waiting)
+        if (this.onLogCallback) {
+          this.onLogCallback(tool);
+        }
+        
+        // Only set waiting state if there are more items in queue OR streaming is still active
+        const shouldWaitForApproval = this.processingQueue.length > 0 || this.isStreamingActive;
+        
+        if (shouldWaitForApproval) {
+          this.currentWriteModifyTool = tool;
+          this.waitingForApproval = true;
+          this.isWaitingForUserApproval = true;
+          this.triggerUpdate();
+        } else {
+          // This is the last item and streaming is done - don't wait
+          this.waitingForApproval = false;
+          this.isWaitingForUserApproval = false;
+          this.currentWriteModifyTool = null;
+        }
+        break;
 
-  while (this.processingQueue.length > 0 && !this.waitingForApproval) {
-    const tool = this.processingQueue.shift();
-    
-    if (!tool) continue;
-
-    this.processSingleTool(tool);
-  }
-
-  this.isProcessing = false;
-
-  // After processing queue, check completion status
-  if (!this.isStreamingActive && 
-      this.processingQueue.length === 0 && 
-      !this.waitingForApproval && 
-      this.onCompletionCallback) {
-    this.onCompletionCallback();
+      default:
+        console.warn('Unknown tool type:', tool.tool);
+    }
+  } catch (error) {
+    console.error('Error processing tool:', tool, error);
   }
 }
