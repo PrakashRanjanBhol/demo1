@@ -1,92 +1,52 @@
 approveAndContinue(): void {
   if (!this.waitingForApproval || !this.currentWriteModifyTool) return;
   
-  // DON'T log here - already logged in processSingleTool
-  // Just execute/continue
+  // Execute/log the approved tool if needed
+  // (Already logged in processSingleTool, so just clear it)
   
   this.currentWriteModifyTool = null;
   this.waitingForApproval = false;
   this.isWaitingForUserApproval = false;
   
   this.triggerUpdate();
+  
+  // Process remaining queue
   this.processQueue();
-}
-
-private processSingleTool(tool: ToolCommand): void {
-  try {
-    if (!tool.tool) {
-      console.warn('Invalid tool object:', tool);
-      return;
-    }
-
-    switch (tool.tool) {
-      case 'READ':
-        if (this.onLogCallback) {
-          this.onLogCallback(tool);
-        }
-        break;
-
-      case 'WRITE':
-      case 'MODIFY':
-        // Log WRITE/MODIFY when detected
-        if (this.onLogCallback) {
-          this.onLogCallback(tool);
-        }
-        
-        // Then wait for approval
-        this.currentWriteModifyTool = tool;
-        this.waitingForApproval = true;
-        this.isWaitingForUserApproval = true;
-        
-        this.triggerUpdate();
-        break;
-
-      default:
-        console.warn('Unknown tool type:', tool.tool);
-    }
-  } catch (error) {
-    console.error('Error processing tool:', tool, error);
+  
+  // IMPORTANT: After processQueue, check completion again
+  // This handles the case where processQueue didn't trigger completion
+  // because the last item was WRITE/MODIFY which set waitingForApproval=true
+  // But we just reset it above, so check again
+  if (!this.isStreamingActive && 
+      this.processingQueue.length === 0 && 
+      !this.waitingForApproval && 
+      this.onCompletionCallback) {
+    this.onCompletionCallback();
   }
 }
 
+private processQueue(): void {
+  if (this.waitingForApproval) {
+    return;
+  }
 
+  this.isProcessing = true;
 
+  while (this.processingQueue.length > 0 && !this.waitingForApproval) {
+    const tool = this.processingQueue.shift();
+    
+    if (!tool) continue;
 
+    this.processSingleTool(tool);
+  }
 
+  this.isProcessing = false;
 
-
-
-
-private processSingleTool(tool: ToolCommand): void {
-  try {
-    if (!tool.tool) {
-      console.warn('Invalid tool object:', tool);
-      return;
-    }
-
-    switch (tool.tool) {
-      case 'READ':
-        // Log READ immediately
-        if (this.onLogCallback) {
-          this.onLogCallback(tool);
-        }
-        break;
-
-      case 'WRITE':
-      case 'MODIFY':
-        // DON'T log here - log when user approves
-        // Just store and wait for approval
-        this.currentWriteModifyTool = tool;
-        this.waitingForApproval = true;
-        this.isWaitingForUserApproval = true;
-        
-        this.triggerUpdate();
-        break;
-
-      default:
-        console.warn('Unknown tool type:', tool.tool);
-    }
-  } catch (error) {
-    console.error('Error processing tool:', tool, error);
+  // After processing queue, check completion status
+  if (!this.isStreamingActive && 
+      this.processingQueue.length === 0 && 
+      !this.waitingForApproval && 
+      this.onCompletionCallback) {
+    this.onCompletionCallback();
   }
 }
