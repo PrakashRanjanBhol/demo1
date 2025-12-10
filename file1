@@ -3,85 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chunked JSON Parser with Approval</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            padding: 20px;
-        }
-        
-        button {
-            background-color: #4CAF50;
-            color: white;
-            padding: 12px 30px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 16px;
-            font-weight: bold;
-            margin: 5px;
-        }
-        
-        button:hover {
-            background-color: #45a049;
-        }
-
-        button:disabled {
-            background-color: #cccccc;
-            cursor: not-allowed;
-        }
-
-        #approvalSection {
-            display: none;
-            margin-top: 20px;
-            padding: 20px;
-            background-color: #fff3cd;
-            border: 2px solid #ffc107;
-            border-radius: 8px;
-        }
-
-        #approvalSection.show {
-            display: block;
-        }
-
-        #pendingData {
-            background-color: #f8f9fa;
-            padding: 10px;
-            border-radius: 5px;
-            margin: 10px 0;
-            font-family: monospace;
-            font-size: 12px;
-            max-height: 200px;
-            overflow-y: auto;
-        }
-
-        #status {
-            margin-top: 10px;
-            padding: 10px;
-            color: #666;
-            font-weight: bold;
-        }
-
-        .warning {
-            color: #ff6b6b;
-        }
-
-        .success {
-            color: #51cf66;
-        }
-    </style>
+    <title>Chunked JSON Parser</title>
 </head>
 <body>
-    <button id="runBtn" onclick="runDemo()">Run Demo</button>
-    
-    <div id="status"></div>
-
-    <div id="approvalSection">
-        <h3>⚠️ Approval Required for WRITE/MODIFY Tool</h3>
-        <p>The following operation requires your approval:</p>
-        <div id="pendingData"></div>
-        <button id="acceptBtn" onclick="approveAndContinue()">✓ Accept and Continue</button>
-    </div>
+    <button onclick="runDemo()">RUN</button>
+    <button id="acceptBtn" onclick="approveAndContinue()" style="display: none;">ACCEPT AND CONTINUE</button>
 
     <script>
         class ChunkedJSONParser {
@@ -107,22 +33,35 @@
             }
         }
 
+        // Configuration - Update these values
+        const API_URL = 'https://api.anthropic.com/v1/messages';
+        const API_KEY = 'YOUR_API_KEY_HERE';
+        const REQUEST_BODY = {
+            model: 'claude-3-5-sonnet-20241022',
+            max_tokens: 1024,
+            messages: [
+                {
+                    role: 'user',
+                    content: 'Generate 5 JSON objects with this exact structure: {"tool": "READ", "content": "..."}. Mix READ, WRITE, and MODIFY tools. Return only JSON objects, one per line, nothing else.'
+                }
+            ],
+            stream: true
+        };
+
         // Queue system for handling approvals
         let pendingQueue = [];
         let isWaitingForApproval = false;
         let isStreamComplete = false;
         let currentPendingData = null;
 
-        function showApprovalUI(data) {
-            document.getElementById('approvalSection').classList.add('show');
-            document.getElementById('pendingData').textContent = JSON.stringify(data, null, 2);
-            document.getElementById('acceptBtn').disabled = false;
+        function showAcceptButton(data) {
+            document.getElementById('acceptBtn').style.display = 'inline-block';
             currentPendingData = data;
+            console.log('\n⚠️ WAITING FOR APPROVAL - Click "ACCEPT AND CONTINUE" button');
         }
 
-        function hideApprovalUI() {
-            document.getElementById('approvalSection').classList.remove('show');
-            document.getElementById('pendingData').textContent = '';
+        function hideAcceptButton() {
+            document.getElementById('acceptBtn').style.display = 'none';
             currentPendingData = null;
         }
 
@@ -132,7 +71,7 @@
                 console.log(currentPendingData);
                 console.log('');
                 
-                hideApprovalUI();
+                hideAcceptButton();
                 isWaitingForApproval = false;
                 
                 // Process next item in queue
@@ -146,8 +85,7 @@
                 handleParsedJSON(nextItem);
             } else if (pendingQueue.length === 0 && isStreamComplete && !isWaitingForApproval) {
                 // All done
-                console.log('\n🎉 ✅ COMPLETED - All operations processed!');
-                document.getElementById('status').innerHTML = '<span class="success">✅ COMPLETED</span>';
+                console.log('\n🎉 COMPLETED');
             }
         }
 
@@ -156,7 +94,7 @@
 
             if (tool === 'READ') {
                 // READ tool - log immediately
-                console.log('📖 READ Tool - Logged immediately:');
+                console.log('📖 READ Tool:');
                 console.log(data);
                 console.log('');
                 
@@ -164,14 +102,14 @@
                 processQueue();
             } else if (tool === 'WRITE' || tool === 'MODIFY') {
                 // WRITE/MODIFY tool - require approval
-                console.log(`⚠️ ${tool} Tool detected - Waiting for approval...`);
-                document.getElementById('status').innerHTML = `<span class="warning">⚠️ Waiting for approval (${pendingQueue.length} in queue)</span>`;
+                console.log(`⚠️ ${tool} Tool detected:`);
+                console.log(data);
                 
                 isWaitingForApproval = true;
-                showApprovalUI(data);
+                showAcceptButton(data);
             } else {
                 // Unknown tool - log immediately
-                console.log('❓ Unknown Tool - Logged immediately:');
+                console.log('Tool:');
                 console.log(data);
                 console.log('');
                 
@@ -182,105 +120,91 @@
 
         async function runDemo() {
             console.clear();
-            console.log('🚀 Starting streaming demo with approval flow...\n');
+            console.log('🚀 Starting...\n');
             
             // Reset state
             pendingQueue = [];
             isWaitingForApproval = false;
             isStreamComplete = false;
-            hideApprovalUI();
-            
-            document.getElementById('status').textContent = 'Streaming...';
-            document.getElementById('runBtn').disabled = true;
-
-            // Simulated test data
-            const testData = [
-                {tool: "READ", content: "Initializing system..."},
-                {tool: "READ", content: "Loading configuration..."},
-                {tool: "WRITE", content: {
-                    reasoning: "Need to create a new configuration file",
-                    files: [{
-                        file_path: "/app/config",
-                        file_name: "settings.json",
-                        original_code: "",
-                        modified_code: '{"theme": "dark", "language": "en"}'
-                    }]
-                }},
-                {tool: "READ", content: "Reading file: config.json"},
-                {tool: "READ", content: "Validating configuration..."},
-                {tool: "MODIFY", content: {
-                    reasoning: "Update existing file with new settings",
-                    files: [{
-                        file_path: "/app/config",
-                        file_name: "settings.json",
-                        original_code: '{"theme": "dark", "language": "en"}',
-                        modified_code: '{"theme": "dark", "language": "en", "notifications": true}'
-                    }]
-                }},
-                {tool: "READ", content: "Configuration updated successfully"},
-                {tool: "WRITE", content: {
-                    reasoning: "Create log file",
-                    files: [{
-                        file_path: "/app/logs",
-                        file_name: "app.log",
-                        original_code: "",
-                        modified_code: 'System started at ' + new Date().toISOString()
-                    }]
-                }},
-                {tool: "READ", content: "Processing complete!"}
-            ];
+            hideAcceptButton();
 
             try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-api-key': API_KEY,
+                        'anthropic-version': '2023-06-01'
+                    },
+                    body: JSON.stringify(REQUEST_BODY)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
                 const parser = new ChunkedJSONParser();
 
-                // Simulate streaming character by character
-                for (let i = 0; i < testData.length; i++) {
-                    const item = testData[i];
-                    const jsonString = JSON.stringify(item);
+                while (true) {
+                    const { done, value } = await reader.read();
                     
-                    console.log(`\n📦 Streaming object ${i + 1}/${testData.length}...`);
+                    if (done) {
+                        isStreamComplete = true;
+                        
+                        // Check if we're done or still waiting
+                        if (!isWaitingForApproval && pendingQueue.length === 0) {
+                            console.log('\n🎉 COMPLETED');
+                        }
+                        break;
+                    }
 
-                    // Stream character by character
-                    for (let j = 0; j < jsonString.length; j++) {
-                        const char = jsonString[j];
+                    const chunk = decoder.decode(value, { stream: true });
+
+                    // Process each character in the chunk
+                    for (let char of chunk) {
                         const result = parser.processChunk(char);
                         
                         if (result.success) {
-                            console.log('✅ Valid JSON parsed');
+                            let toolData = result.data;
                             
-                            // Add to queue
-                            pendingQueue.push(result.data);
-                            
-                            // If not waiting for approval, process immediately
-                            if (!isWaitingForApproval) {
-                                processQueue();
-                            } else {
-                                document.getElementById('status').innerHTML = `<span class="warning">⚠️ Waiting for approval (${pendingQueue.length} in queue)</span>`;
+                            // Handle Anthropic API response format
+                            if (result.data.type === 'content_block_delta' && result.data.delta?.text) {
+                                try {
+                                    // Try to parse each line as JSON
+                                    const lines = result.data.delta.text.split('\n');
+                                    for (const line of lines) {
+                                        if (line.trim()) {
+                                            try {
+                                                toolData = JSON.parse(line.trim());
+                                                if (toolData.tool) {
+                                                    pendingQueue.push(toolData);
+                                                    if (!isWaitingForApproval) {
+                                                        processQueue();
+                                                    }
+                                                }
+                                            } catch (e) {
+                                                // Not a valid JSON line, continue
+                                            }
+                                        }
+                                    }
+                                } catch (e) {
+                                    // Not JSON, skip
+                                }
+                            } else if (toolData.tool) {
+                                // Direct tool format
+                                pendingQueue.push(toolData);
+                                if (!isWaitingForApproval) {
+                                    processQueue();
+                                }
                             }
                         }
-
-                        // Simulate network delay
-                        await new Promise(resolve => setTimeout(resolve, 20));
                     }
-                }
-
-                // Mark stream as complete
-                isStreamComplete = true;
-                console.log('\n📡 Stream ended');
-                
-                // Check if we're done or still waiting
-                if (!isWaitingForApproval && pendingQueue.length === 0) {
-                    console.log('\n🎉 ✅ COMPLETED - All operations processed!');
-                    document.getElementById('status').innerHTML = '<span class="success">✅ COMPLETED</span>';
-                } else if (isWaitingForApproval) {
-                    document.getElementById('status').innerHTML = `<span class="warning">⚠️ Waiting for approval (${pendingQueue.length} pending)</span>`;
                 }
 
             } catch (error) {
                 console.error('❌ Error:', error);
-                document.getElementById('status').innerHTML = '<span class="warning">Error: ' + error.message + '</span>';
-            } finally {
-                document.getElementById('runBtn').disabled = false;
             }
         }
     </script>
