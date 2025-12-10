@@ -1,74 +1,103 @@
-import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { Component, OnInit, Input } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { trigger, state, style, transition, animate } from '@angular/animations';
+
+interface FileItem {
+  name: string;
+  type: 'file' | 'folder';
+  children?: FileItem[];
+}
 
 @Component({
-  selector: 'app-slider',
+  selector: 'app-file-explorer',
   standalone: true,
   imports: [CommonModule],
-  templateUrl: './slider.component.html',
-  styleUrls: ['./slider.component.css'],
-  animations: [
-    trigger('slideAnimation', [
-      state('closed', style({
-        transform: 'translateX(-100%)'
-      })),
-      state('open-default', style({
-        transform: 'translateX(0)',
-        width: 'calc(100% - 320px)'
-      })),
-      state('open-fullwidth', style({
-        transform: 'translateX(0)',
-        width: '100%'
-      })),
-      transition('closed <=> open-default', [
-        animate('300ms ease-in-out')
-      ]),
-      transition('closed <=> open-fullwidth', [
-        animate('300ms ease-in-out')
-      ]),
-      transition('open-default <=> open-fullwidth', [
-        animate('300ms ease-in-out')
-      ])
-    ]),
-    trigger('overlayAnimation', [
-      state('hidden', style({
-        opacity: 0,
-        visibility: 'hidden'
-      })),
-      state('visible', style({
-        opacity: 1,
-        visibility: 'visible'
-      })),
-      transition('hidden <=> visible', [
-        animate('300ms ease-in-out')
-      ])
-    ])
-  ]
+  templateUrl: './file-explorer.component.html',
+  styleUrls: ['./file-explorer.component.css']
 })
-export class SliderComponent {
-  @Input() isOpen: boolean = false;
-  @Output() closeSlider = new EventEmitter<void>();
+export class FileExplorerComponent implements OnInit {
+  @Input() fileStructure: FileItem[] = [];
+  @Input() theme: 'light' | 'dark' = 'light';
 
-  isFullWidth: boolean = false;
+  currentPath: string[] = [];
+  currentItems: FileItem[] = [];
 
-  get slideState(): string {
-    if (!this.isOpen) return 'closed';
-    return this.isFullWidth ? 'open-fullwidth' : 'open-default';
+  ngOnInit(): void {
+    this.currentItems = this.fileStructure;
   }
 
-  toggleViewMode(): void {
-    this.isFullWidth = !this.isFullWidth;
+  ngOnChanges(): void {
+    if (this.fileStructure && this.fileStructure.length > 0) {
+      this.currentItems = this.fileStructure;
+    }
   }
 
-  onClose(): void {
-    this.isFullWidth = false; // Reset to default view when closing
-    this.closeSlider.emit();
+  navigateIntoFolder(folder: FileItem): void {
+    if (folder.type === 'folder') {
+      this.currentPath.push(folder.name);
+      this.currentItems = folder.children || [];
+    }
   }
 
-  onOverlayClick(): void {
-    this.isFullWidth = false; // Reset to default view when closing
-    this.closeSlider.emit();
+  navigateToPath(index: number): void {
+    if (index === -1) {
+      // Navigate to root
+      this.currentPath = [];
+      this.currentItems = this.fileStructure;
+    } else {
+      // Navigate to specific path level
+      this.currentPath = this.currentPath.slice(0, index + 1);
+      let items = this.fileStructure;
+      
+      for (let i = 0; i <= index; i++) {
+        const folderName = this.currentPath[i];
+        const folder = items.find(item => item.name === folderName && item.type === 'folder');
+        if (folder && folder.children) {
+          items = folder.children;
+        } else {
+          items = [];
+          break;
+        }
+      }
+      
+      this.currentItems = items;
+    }
+  }
+
+  getFileIcon(filename: string): string {
+    const ext = filename.split('.').pop()?.toLowerCase() || '';
+    const iconMap: { [key: string]: string } = {
+      'ts': '📘',
+      'js': '📜',
+      'html': '🌐',
+      'css': '🎨',
+      'scss': '🎨',
+      'json': '📋',
+      'md': '📝',
+      'pdf': '📄',
+      'doc': '📝',
+      'docx': '📝',
+      'txt': '📝',
+      'pptx': '📊',
+      'ppt': '📊',
+      'xls': '📈',
+      'xlsx': '📈',
+      'jpg': '🖼️',
+      'jpeg': '🖼️',
+      'png': '🖼️',
+      'gif': '🖼️',
+      'svg': '🖼️',
+      'mp3': '🎵',
+      'wav': '🎵',
+      'mp4': '🎬',
+      'avi': '🎬',
+      'zip': '📦',
+      'rar': '📦'
+    };
+    return iconMap[ext] || '📄';
+  }
+
+  trackByIndex(index: number): number {
+    return index;
   }
 }
 
@@ -82,74 +111,53 @@ export class SliderComponent {
 
 
 
-<!-- Overlay -->
-<div 
-  class="slider-overlay" 
-  [@overlayAnimation]="isOpen ? 'visible' : 'hidden'"
-  (click)="onOverlayClick()">
-</div>
 
-<!-- Slider -->
-<div 
-  class="slider-container" 
-  [@slideAnimation]="slideState">
-  <div class="slider-header">
-    <h2 class="slider-title">Code RAG Documentation</h2>
-    <div class="header-actions">
-      <!-- View Mode Toggle Button -->
-      <button 
-        class="view-mode-btn" 
-        (click)="toggleViewMode()" 
-        [attr.aria-label]="isFullWidth ? 'Switch to default view' : 'Switch to full width view'">
-        <!-- Default View Icon (shown when in full width mode) -->
-        <svg 
-          *ngIf="isFullWidth"
-          viewBox="0 0 24 24" 
-          fill="none" 
-          stroke="currentColor" 
-          stroke-width="2" 
-          stroke-linecap="round" 
-          stroke-linejoin="round">
-          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-          <line x1="9" y1="3" x2="9" y2="21"></line>
-        </svg>
-        <!-- Full Width View Icon (shown when in default mode) -->
-        <svg 
-          *ngIf="!isFullWidth"
-          viewBox="0 0 24 24" 
-          fill="none" 
-          stroke="currentColor" 
-          stroke-width="2" 
-          stroke-linecap="round" 
-          stroke-linejoin="round">
-          <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
-        </svg>
-      </button>
-      <!-- Close Button -->
-      <button 
-        class="close-btn" 
-        (click)="onClose()" 
-        aria-label="Close slider">
-        <svg 
-          viewBox="0 0 24 24" 
-          fill="none" 
-          stroke="currentColor" 
-          stroke-width="2" 
-          stroke-linecap="round" 
-          stroke-linejoin="round">
-          <line x1="18" y1="6" x2="6" y2="18"></line>
-          <line x1="6" y1="6" x2="18" y2="18"></line>
-        </svg>
-      </button>
+
+
+
+
+
+<div class="file-explorer-container" [attr.data-theme]="theme">
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-title">File Explorer</div>
+      <div class="breadcrumb">
+        <span 
+          class="breadcrumb-item" 
+          [class.current]="currentPath.length === 0"
+          (click)="navigateToPath(-1)">
+          Root
+        </span>
+        
+        <ng-container *ngFor="let pathItem of currentPath; let i = index">
+          <span class="breadcrumb-separator">/</span>
+          <span 
+            class="breadcrumb-item" 
+            [class.current]="i === currentPath.length - 1"
+            (click)="i < currentPath.length - 1 ? navigateToPath(i) : null">
+            {{ pathItem }}
+          </span>
+        </ng-container>
+      </div>
+    </div>
+    
+    <div class="sidebar-content">
+      <div *ngIf="currentItems.length === 0" class="empty-sidebar">
+        No items
+      </div>
+      
+      <div 
+        *ngFor="let item of currentItems; trackBy: trackByIndex"
+        class="sidebar-item"
+        [class.folder]="item.type === 'folder'"
+        (click)="item.type === 'folder' ? navigateIntoFolder(item) : null">
+        <div class="icon">
+          {{ item.type === 'folder' ? '📁' : getFileIcon(item.name) }}
+        </div>
+        <div class="name">{{ item.name }}</div>
+      </div>
     </div>
   </div>
-  <div class="slider-content">
-    <p>Your documentation content goes here...</p>
-    <p style="margin-top: 16px;">
-      This slider opens from left to right with a default width (320px gap from right). 
-      Click the maximize icon to switch to full width view, or click the layout icon to return to default view.
-    </p>
-  </div>
 </div>
 
 
@@ -157,154 +165,190 @@ export class SliderComponent {
 
 
 
-/* CSS Variables for Light Mode (Default) */
-:root {
-  --code-rag-documentation-container-bg: #ffffff;
-  --code-rag-documentation-container-overlay-bg: rgba(0, 0, 0, 0.5);
-  --code-rag-documentation-container-border: #e5e7eb;
-  --code-rag-documentation-container-title-color: #111827;
-  --code-rag-documentation-container-text-color: #6b7280;
-  --code-rag-documentation-container-close-btn-bg: #ffffff;
-  --code-rag-documentation-container-close-btn-border: #d1d5db;
-  --code-rag-documentation-container-close-btn-hover-bg: #f3f4f6;
-  --code-rag-documentation-container-close-btn-hover-border: #9ca3af;
-  --code-rag-documentation-container-close-btn-icon: #374151;
-  --code-rag-documentation-container-shadow: rgba(0, 0, 0, 0.1);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* Light Mode Variables */
+:host {
+  --code-rag-documentation-bg-primary: #ffffff;
+  --code-rag-documentation-bg-secondary: #f5f5f5;
+  --code-rag-documentation-bg-header: #e8e8e8;
+  --code-rag-documentation-bg-hover: #e0e0e0;
+  --code-rag-documentation-bg-hover-breadcrumb: #d8d8d8;
+  --code-rag-documentation-border: #ddd;
+  --code-rag-documentation-text-primary: #333;
+  --code-rag-documentation-text-secondary: #666;
+  --code-rag-documentation-text-link: #0066cc;
+  --code-rag-documentation-text-muted: #999;
 }
 
-/* CSS Variables for Dark Mode */
-:root.dark-mode {
-  --code-rag-documentation-container-bg: #0a0a0b;
-  --code-rag-documentation-container-overlay-bg: rgba(0, 0, 0, 0.7);
-  --code-rag-documentation-container-border: #2d2d2f;
-  --code-rag-documentation-container-title-color: #f9fafb;
-  --code-rag-documentation-container-text-color: #9ca3af;
-  --code-rag-documentation-container-close-btn-bg: #1a1a1b;
-  --code-rag-documentation-container-close-btn-border: #3f3f46;
-  --code-rag-documentation-container-close-btn-hover-bg: #2d2d2f;
-  --code-rag-documentation-container-close-btn-hover-border: #52525b;
-  --code-rag-documentation-container-close-btn-icon: #d1d5db;
-  --code-rag-documentation-container-shadow: rgba(0, 0, 0, 0.3);
+/* Dark Mode Variables */
+.file-explorer-container[data-theme="dark"] {
+  --code-rag-documentation-bg-primary: #1a1a1c;
+  --code-rag-documentation-bg-secondary: #111113;
+  --code-rag-documentation-bg-header: #1e1e20;
+  --code-rag-documentation-bg-hover: #2a2a2c;
+  --code-rag-documentation-bg-hover-breadcrumb: #333335;
+  --code-rag-documentation-border: #2a2a2c;
+  --code-rag-documentation-text-primary: #e0e0e0;
+  --code-rag-documentation-text-secondary: #b0b0b0;
+  --code-rag-documentation-text-link: #4da6ff;
+  --code-rag-documentation-text-muted: #808080;
 }
 
-/* Overlay */
-.slider-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-color: var(--code-rag-documentation-container-overlay-bg);
-  z-index: 999;
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
 
-/* Slider Container */
-.slider-container {
-  position: fixed;
-  top: 64px;
-  bottom: 30px;
-  left: 0;
-  width: calc(100% - 320px);
-  background-color: var(--code-rag-documentation-container-bg);
-  box-shadow: 2px 0 10px var(--code-rag-documentation-container-shadow);
-  z-index: 1000;
+.file-explorer-container {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  height: 100vh;
+  display: flex;
+  background-color: var(--code-rag-documentation-bg-primary);
+}
+
+/* Sidebar Styles */
+.sidebar {
+  width: 320px;
+  background-color: var(--code-rag-documentation-bg-secondary);
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
+  border-right: 1px solid var(--code-rag-documentation-border);
 }
 
-/* Responsive width for larger screens */
-@media (min-width: 1800px) {
-  .slider-container {
-    width: calc(100% - 380px);
-  }
+.sidebar-header {
+  padding: 16px;
+  background-color: var(--code-rag-documentation-bg-header);
+  border-bottom: 1px solid var(--code-rag-documentation-border);
 }
 
-/* Header */
-.slider-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 20px 24px;
-  border-bottom: 1px solid var(--code-rag-documentation-container-border);
-}
-
-.slider-title {
-  font-size: 20px;
+.sidebar-title {
   font-weight: 600;
-  color: var(--code-rag-documentation-container-title-color);
-  margin: 0;
+  font-size: 14px;
+  color: var(--code-rag-documentation-text-primary);
+  margin-bottom: 8px;
 }
 
-/* Header Actions Container */
-.header-actions {
+.breadcrumb {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  font-size: 13px;
+  flex-wrap: wrap;
 }
 
-/* View Mode Toggle Button */
-.view-mode-btn {
-  width: 36px;
-  height: 36px;
-  border: 2px solid var(--code-rag-documentation-container-close-btn-border);
-  border-radius: 6px;
-  background-color: var(--code-rag-documentation-container-close-btn-bg);
+.breadcrumb-item {
+  color: var(--code-rag-documentation-text-link);
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-  padding: 0;
+  padding: 3px 6px;
+  border-radius: 3px;
+  transition: background-color 0.2s;
 }
 
-.view-mode-btn:hover {
-  background-color: var(--code-rag-documentation-container-close-btn-hover-bg);
-  border-color: var(--code-rag-documentation-container-close-btn-hover-border);
+.breadcrumb-item:hover {
+  background-color: var(--code-rag-documentation-bg-hover-breadcrumb);
 }
 
-.view-mode-btn svg {
-  width: 18px;
-  height: 18px;
-  stroke: var(--code-rag-documentation-container-close-btn-icon);
+.breadcrumb-item.current {
+  color: var(--code-rag-documentation-text-primary);
+  font-weight: 500;
+  cursor: default;
 }
 
-/* Close Button */
-.close-btn {
-  width: 36px;
-  height: 36px;
-  border: 2px solid var(--code-rag-documentation-container-close-btn-border);
-  border-radius: 6px;
-  background-color: var(--code-rag-documentation-container-close-btn-bg);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-  padding: 0;
+.breadcrumb-item.current:hover {
+  background-color: transparent;
 }
 
-.close-btn:hover {
-  background-color: var(--code-rag-documentation-container-close-btn-hover-bg);
-  border-color: var(--code-rag-documentation-container-close-btn-hover-border);
+.breadcrumb-separator {
+  color: var(--code-rag-documentation-text-muted);
+  font-size: 12px;
 }
 
-.close-btn svg {
-  width: 18px;
-  height: 18px;
-  stroke: var(--code-rag-documentation-container-close-btn-icon);
-}
-
-/* Content Area */
-.slider-content {
+.sidebar-content {
   flex: 1;
-  padding: 24px;
+  padding: 8px;
   overflow-y: auto;
 }
 
-.slider-content p {
-  color: var(--code-rag-documentation-container-text-color);
-  line-height: 1.6;
-  margin: 0;
+.sidebar-item {
+  padding: 10px 12px;
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-radius: 4px;
+  margin: 2px 0;
+  transition: background-color 0.2s;
+  color: var(--code-rag-documentation-text-primary);
+}
+
+.sidebar-item:hover {
+  background-color: var(--code-rag-documentation-bg-hover);
+}
+
+.sidebar-item.folder {
+  font-weight: 500;
+}
+
+.sidebar-item .icon {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.sidebar-item .name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.empty-sidebar {
+  text-align: center;
+  color: var(--code-rag-documentation-text-muted);
+  padding: 40px 20px;
+  font-size: 13px;
+}
+
+/* Scrollbar Styles */
+.sidebar::-webkit-scrollbar,
+.sidebar-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.sidebar::-webkit-scrollbar-track,
+.sidebar-content::-webkit-scrollbar-track {
+  background: var(--code-rag-documentation-bg-secondary);
+}
+
+.sidebar::-webkit-scrollbar-thumb,
+.sidebar-content::-webkit-scrollbar-thumb {
+  background: var(--code-rag-documentation-text-muted);
+  border-radius: 4px;
+}
+
+.sidebar::-webkit-scrollbar-thumb:hover,
+.sidebar-content::-webkit-scrollbar-thumb:hover {
+  background: var(--code-rag-documentation-text-secondary);
 }
 
 
@@ -312,3 +356,121 @@ export class SliderComponent {
 
 
 
+
+
+
+
+
+
+
+
+
+import { Component } from '@angular/core';
+import { FileExplorerComponent } from './file-explorer/file-explorer.component';
+
+@Component({
+  selector: 'app-root',
+  standalone: true,
+  imports: [FileExplorerComponent],
+  template: `
+    <div class="app-container">
+      <!-- Toggle theme button (optional) -->
+      <button class="theme-toggle" (click)="toggleTheme()">
+        Toggle Theme (Current: {{ currentTheme }})
+      </button>
+      
+      <!-- File Explorer Component -->
+      <app-file-explorer 
+        [fileStructure]="fileData" 
+        [theme]="currentTheme">
+      </app-file-explorer>
+    </div>
+  `,
+  styles: [`
+    .app-container {
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .theme-toggle {
+      padding: 10px 20px;
+      margin: 10px;
+      cursor: pointer;
+      border: none;
+      background-color: #0066cc;
+      color: white;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    
+    .theme-toggle:hover {
+      background-color: #0052a3;
+    }
+    
+    app-file-explorer {
+      flex: 1;
+    }
+  `]
+})
+export class AppComponent {
+  currentTheme: 'light' | 'dark' = 'light';
+
+  // Your file structure data
+  fileData = [
+    {
+      name: 'src',
+      type: 'folder' as const,
+      children: [
+        {
+          name: 'app',
+          type: 'folder' as const,
+          children: [
+            {
+              name: 'components',
+              type: 'folder' as const,
+              children: [
+                { name: 'header.component.ts', type: 'file' as const },
+                { name: 'header.component.html', type: 'file' as const },
+                { name: 'header.component.css', type: 'file' as const }
+              ]
+            },
+            {
+              name: 'services',
+              type: 'folder' as const,
+              children: [
+                { name: 'data.service.ts', type: 'file' as const },
+                { name: 'auth.service.ts', type: 'file' as const }
+              ]
+            },
+            { name: 'app.component.ts', type: 'file' as const },
+            { name: 'app.component.html', type: 'file' as const },
+            { name: 'app.component.css', type: 'file' as const }
+          ]
+        },
+        {
+          name: 'assets',
+          type: 'folder' as const,
+          children: [
+            { name: 'logo.png', type: 'file' as const },
+            { name: 'styles.css', type: 'file' as const }
+          ]
+        },
+        { name: 'index.html', type: 'file' as const },
+        { name: 'main.ts', type: 'file' as const }
+      ]
+    },
+    {
+      name: 'package.json',
+      type: 'file' as const
+    },
+    {
+      name: 'README.md',
+      type: 'file' as const
+    }
+  ];
+
+  toggleTheme(): void {
+    this.currentTheme = this.currentTheme === 'light' ? 'dark' : 'light';
+  }
+}
