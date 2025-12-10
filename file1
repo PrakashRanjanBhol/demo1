@@ -1,97 +1,71 @@
-private tryProcessChunk(chunk: string): void {
-  // If we have broken chunk buffer, prepend it
-  const fullChunk = this.brokenChunkBuffer + chunk;
-  
-  console.log(`📦 Attempting to process chunk (buffer size: ${this.brokenChunkBuffer.length}, new chunk: ${chunk.length})`);
-  
-  // First, check if we have complete JSON objects (balanced braces)
-  if (!this.hasCompleteJsonObjects(fullChunk)) {
-    console.warn('⚠️ Incomplete JSON detected (unbalanced braces), waiting for more data...');
-    this.brokenChunkBuffer = fullChunk;
-    return;
+approveAndContinue(): void {
+  if (!this.waitingForApproval || !this.currentWriteModifyTool) return;
+
+  // Execute the WRITE/MODIFY
+  if (this.onLogCallback) {
+    this.onLogCallback(this.currentWriteModifyTool);
   }
+
+  this.currentWriteModifyTool = null;
+  // DON'T reset waitingForApproval here - let processQueue handle it
+  // this.waitingForApproval = false;  // REMOVE THIS LINE
+  this.isWaitingForUserApproval = false;
+
+  this.triggerUpdate();
   
-  try {
-    // Try to repair the JSON (for quote issues, etc.)
-    const repairedChunk = jsonrepair(fullChunk);
-    
-    console.log('✅ JSON repaired successfully');
-    if (this.brokenChunkBuffer.length > 0) {
-      console.log(`   Combined ${this.brokenChunkBuffer.length} buffered chars with ${chunk.length} new chars`);
-    }
-    
-    // Clear the broken buffer since repair succeeded
-    this.brokenChunkBuffer = '';
-    
-    // Process the repaired chunk using existing logic
-    const processedBuffer = this.processBuffer(repairedChunk);
-    
-    console.log(`   Found ${processedBuffer.completeObjects.length} complete object(s)`);
-    
-    processedBuffer.completeObjects.forEach(obj => {
-      if (!this.isCancelled) {
-        this.addToolFromStream(obj);
-      }
-    });
-    
-    // If there's remaining content, store it in broken buffer
-    if (processedBuffer.remaining.trim()) {
-      console.log(`   Storing ${processedBuffer.remaining.length} chars in buffer for next iteration`);
-      this.brokenChunkBuffer = processedBuffer.remaining;
-    }
-    
-  } catch (error) {
-    // JSON repair failed
-    console.warn('⚠️ JSON repair failed, buffering chunk and waiting for more data...');
-    console.warn(`   Buffer now contains ${fullChunk.length} characters`);
-    this.brokenChunkBuffer = fullChunk;
+  // Process only the next item, which might set waitingForApproval again
+  this.processNextItem();
+
+  // Check completion after processing
+  if (!this.isStreamingActive && this.processingQueue.length === 0 && !this.waitingForApproval && this.onCompletionCallback) {
+    this.onCompletionCallback();
   }
 }
 
-// Add new method to check if JSON has complete objects
-private hasCompleteJsonObjects(str: string): boolean {
-  let depth = 0;
-  let inString = false;
-  let stringDelimiter = '';
-  let escaped = false;
-  let hasAtLeastOneCompleteObject = false;
-
-  for (let i = 0; i < str.length; i++) {
-    const char = str[i];
-
-    if (escaped) {
-      escaped = false;
-      continue;
-    }
-
-    if (char === '\\') {
-      escaped = true;
-      continue;
-    }
-
-    // Track strings to avoid counting braces inside strings
-    if (!inString && (char === '"' || char === "'")) {
-      inString = true;
-      stringDelimiter = char;
-    } else if (inString && char === stringDelimiter) {
-      inString = false;
-      stringDelimiter = '';
-    }
-
-    // Only count braces outside of strings
-    if (!inString) {
-      if (char === '{') {
-        depth++;
-      } else if (char === '}') {
-        depth--;
-        // When depth returns to 0, we have at least one complete object
-        if (depth === 0) {
-          hasAtLeastOneCompleteObject = true;
-        }
-      }
-    }
+// Add new method to process one item at a time
+private processNextItem(): void {
+  // Reset waiting flag before processing next item
+  this.waitingForApproval = false;
+  
+  if (this.processingQueue.length === 0) {
+    return;
   }
 
-  // Return true if we have at least one complete object and depth is 0 (balanced)
-  return hasAtLeastOneCompleteObject && depth === 0;
+  const tool = this.processingQueue.shift();
+  
+  if (!tool) return;
+
+  this.processSingleTool(tool);
+  
+  // If the item didn't trigger waiting (i.e., it was a READ), continue processing
+  if (!this.waitingForApproval && this.processingQueue.length > 0) {
+    this.processNextItem();
+  }
+  
+  // Check completion
+  if (!this.isStreamingActive && this.processingQueue.length === 0 && !this.waitingForApproval && this.onCompletionCallback) {
+    this.onCompletionCallback();
+  }
+}
+
+// Keep processQueue for initial processing only
+private processQueue(): void {
+  if (this.waitingForApproval) return;
+
+  this.isProcessing = true;
+
+  while (this.processingQueue.length > 0 && !this.waitingForApproval) {
+    const tool = this.processingQueue.shift();
+    
+    if (!tool) continue;
+
+    this.processSingleTool(tool);
+  }
+
+  this.isProcessing = false;
+
+  // Check completion
+  if (!this.isStreamingActive && this.processingQueue.length === 0 && !this.waitingForApproval && this.onCompletionCallback) {
+    this.onCompletionCallback();
+  }
 }
