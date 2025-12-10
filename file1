@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chunked JSON Parser Demo</title>
+    <title>Chunked JSON Parser with Approval</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -19,6 +19,7 @@
             cursor: pointer;
             font-size: 16px;
             font-weight: bold;
+            margin: 5px;
         }
         
         button:hover {
@@ -30,15 +31,57 @@
             cursor: not-allowed;
         }
 
+        #approvalSection {
+            display: none;
+            margin-top: 20px;
+            padding: 20px;
+            background-color: #fff3cd;
+            border: 2px solid #ffc107;
+            border-radius: 8px;
+        }
+
+        #approvalSection.show {
+            display: block;
+        }
+
+        #pendingData {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
         #status {
             margin-top: 10px;
+            padding: 10px;
             color: #666;
+            font-weight: bold;
+        }
+
+        .warning {
+            color: #ff6b6b;
+        }
+
+        .success {
+            color: #51cf66;
         }
     </style>
 </head>
 <body>
     <button id="runBtn" onclick="runDemo()">Run Demo</button>
+    
     <div id="status"></div>
+
+    <div id="approvalSection">
+        <h3>⚠️ Approval Required for WRITE/MODIFY Tool</h3>
+        <p>The following operation requires your approval:</p>
+        <div id="pendingData"></div>
+        <button id="acceptBtn" onclick="approveAndContinue()">✓ Accept and Continue</button>
+    </div>
 
     <script>
         class ChunkedJSONParser {
@@ -59,89 +102,183 @@
                 }
             }
 
-            getBuffer() {
-                return this.buffer;
-            }
-
             reset() {
                 this.buffer = '';
             }
         }
 
+        // Queue system for handling approvals
+        let pendingQueue = [];
+        let isWaitingForApproval = false;
+        let isStreamComplete = false;
+        let currentPendingData = null;
+
+        function showApprovalUI(data) {
+            document.getElementById('approvalSection').classList.add('show');
+            document.getElementById('pendingData').textContent = JSON.stringify(data, null, 2);
+            document.getElementById('acceptBtn').disabled = false;
+            currentPendingData = data;
+        }
+
+        function hideApprovalUI() {
+            document.getElementById('approvalSection').classList.remove('show');
+            document.getElementById('pendingData').textContent = '';
+            currentPendingData = null;
+        }
+
+        function approveAndContinue() {
+            if (currentPendingData) {
+                console.log('✅ APPROVED AND LOGGED:');
+                console.log(currentPendingData);
+                console.log('');
+                
+                hideApprovalUI();
+                isWaitingForApproval = false;
+                
+                // Process next item in queue
+                processQueue();
+            }
+        }
+
+        function processQueue() {
+            if (pendingQueue.length > 0 && !isWaitingForApproval) {
+                const nextItem = pendingQueue.shift();
+                handleParsedJSON(nextItem);
+            } else if (pendingQueue.length === 0 && isStreamComplete && !isWaitingForApproval) {
+                // All done
+                console.log('\n🎉 ✅ COMPLETED - All operations processed!');
+                document.getElementById('status').innerHTML = '<span class="success">✅ COMPLETED</span>';
+            }
+        }
+
+        function handleParsedJSON(data) {
+            const tool = data.tool;
+
+            if (tool === 'READ') {
+                // READ tool - log immediately
+                console.log('📖 READ Tool - Logged immediately:');
+                console.log(data);
+                console.log('');
+                
+                // Continue processing queue
+                processQueue();
+            } else if (tool === 'WRITE' || tool === 'MODIFY') {
+                // WRITE/MODIFY tool - require approval
+                console.log(`⚠️ ${tool} Tool detected - Waiting for approval...`);
+                document.getElementById('status').innerHTML = `<span class="warning">⚠️ Waiting for approval (${pendingQueue.length} in queue)</span>`;
+                
+                isWaitingForApproval = true;
+                showApprovalUI(data);
+            } else {
+                // Unknown tool - log immediately
+                console.log('❓ Unknown Tool - Logged immediately:');
+                console.log(data);
+                console.log('');
+                
+                // Continue processing queue
+                processQueue();
+            }
+        }
+
         async function runDemo() {
             console.clear();
-            console.log('🚀 Starting streaming POST request demo...\n');
+            console.log('🚀 Starting streaming demo with approval flow...\n');
+            
+            // Reset state
+            pendingQueue = [];
+            isWaitingForApproval = false;
+            isStreamComplete = false;
+            hideApprovalUI();
+            
             document.getElementById('status').textContent = 'Streaming...';
             document.getElementById('runBtn').disabled = true;
 
-            const API_KEY = 'YOUR_API_KEY_HERE'; // Replace with your API key
+            // Simulated test data
+            const testData = [
+                {tool: "READ", content: "Initializing system..."},
+                {tool: "READ", content: "Loading configuration..."},
+                {tool: "WRITE", content: {
+                    reasoning: "Need to create a new configuration file",
+                    files: [{
+                        file_path: "/app/config",
+                        file_name: "settings.json",
+                        original_code: "",
+                        modified_code: '{"theme": "dark", "language": "en"}'
+                    }]
+                }},
+                {tool: "READ", content: "Reading file: config.json"},
+                {tool: "READ", content: "Validating configuration..."},
+                {tool: "MODIFY", content: {
+                    reasoning: "Update existing file with new settings",
+                    files: [{
+                        file_path: "/app/config",
+                        file_name: "settings.json",
+                        original_code: '{"theme": "dark", "language": "en"}',
+                        modified_code: '{"theme": "dark", "language": "en", "notifications": true}'
+                    }]
+                }},
+                {tool: "READ", content: "Configuration updated successfully"},
+                {tool: "WRITE", content: {
+                    reasoning: "Create log file",
+                    files: [{
+                        file_path: "/app/logs",
+                        file_name: "app.log",
+                        original_code: "",
+                        modified_code: 'System started at ' + new Date().toISOString()
+                    }]
+                }},
+                {tool: "READ", content: "Processing complete!"}
+            ];
 
             try {
-                const response = await fetch('https://api.anthropic.com/v1/messages', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'x-api-key': API_KEY,
-                        'anthropic-version': '2023-06-01'
-                    },
-                    body: JSON.stringify({
-                        model: '',
-                        max_tokens: 1024,
-                        messages: [
-                            {
-                                role: 'user',
-                                content: 'Generate exactly 3 JSON objects. Each object should have a "tool" field and a "content" field. Return only the JSON objects, one per line.'
-                            }
-                        ],
-                        stream: true
-                    })
-                });
-
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-
-                const reader = response.body.getReader();
-                const decoder = new TextDecoder();
                 const parser = new ChunkedJSONParser();
-                let chunkCount = 0;
 
-                console.log('Started receiving stream...\n');
-
-                while (true) {
-                    const { done, value } = await reader.read();
+                // Simulate streaming character by character
+                for (let i = 0; i < testData.length; i++) {
+                    const item = testData[i];
+                    const jsonString = JSON.stringify(item);
                     
-                    if (done) {
-                        console.log('\n✅ Stream complete!');
-                        document.getElementById('status').textContent = 'Stream complete!';
-                        break;
-                    }
+                    console.log(`\n📦 Streaming object ${i + 1}/${testData.length}...`);
 
-                    chunkCount++;
-                    const chunk = decoder.decode(value, { stream: true });
-                    
-                    console.log(`📦 Chunk ${chunkCount}:`, chunk);
-
-                    // Process each character in the chunk
-                    for (let char of chunk) {
+                    // Stream character by character
+                    for (let j = 0; j < jsonString.length; j++) {
+                        const char = jsonString[j];
                         const result = parser.processChunk(char);
                         
                         if (result.success) {
-                            console.log('\n✅ VALID JSON PARSED:');
-                            console.log(result.data);
-                            console.log('');
+                            console.log('✅ Valid JSON parsed');
+                            
+                            // Add to queue
+                            pendingQueue.push(result.data);
+                            
+                            // If not waiting for approval, process immediately
+                            if (!isWaitingForApproval) {
+                                processQueue();
+                            } else {
+                                document.getElementById('status').innerHTML = `<span class="warning">⚠️ Waiting for approval (${pendingQueue.length} in queue)</span>`;
+                            }
                         }
-                    }
 
-                    // Show current buffer if not empty
-                    if (parser.getBuffer()) {
-                        console.log('📋 Current buffer:', parser.getBuffer().substring(0, 100) + (parser.getBuffer().length > 100 ? '...' : ''));
+                        // Simulate network delay
+                        await new Promise(resolve => setTimeout(resolve, 20));
                     }
+                }
+
+                // Mark stream as complete
+                isStreamComplete = true;
+                console.log('\n📡 Stream ended');
+                
+                // Check if we're done or still waiting
+                if (!isWaitingForApproval && pendingQueue.length === 0) {
+                    console.log('\n🎉 ✅ COMPLETED - All operations processed!');
+                    document.getElementById('status').innerHTML = '<span class="success">✅ COMPLETED</span>';
+                } else if (isWaitingForApproval) {
+                    document.getElementById('status').innerHTML = `<span class="warning">⚠️ Waiting for approval (${pendingQueue.length} pending)</span>`;
                 }
 
             } catch (error) {
                 console.error('❌ Error:', error);
-                document.getElementById('status').textContent = 'Error: ' + error.message;
+                document.getElementById('status').innerHTML = '<span class="warning">Error: ' + error.message + '</span>';
             } finally {
                 document.getElementById('runBtn').disabled = false;
             }
