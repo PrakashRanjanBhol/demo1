@@ -1,95 +1,32 @@
-import { jsonrepair } from 'jsonrepair';
-
-// Add this property at the top of the class
-private brokenChunkBuffer = '';
-
-// Modify startStreaming method
-async startStreaming(apiUrl: string, options?: RequestInit): Promise<void> {
-  try {
-    this.isCancelled = false;
-    this.isStreamingActive = true;
-    this.brokenChunkBuffer = '';  // Reset buffer
-    
-    this.abortController = new AbortController();
-    
-    const fetchOptions: RequestInit = {
-      ...options,
-      signal: this.abortController.signal
-    };
-
-    const response = await fetch(apiUrl, fetchOptions);
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const reader = response.body?.getReader();
-    if (!reader) {
-      throw new Error('No reader available');
-    }
-
-    const decoder = new TextDecoder();
-
-    while (true) {
-      if (this.isCancelled) {
-        console.log('Streaming cancelled by user');
-        reader.cancel();
-        break;
-      }
-
-      const { done, value } = await reader.read();
-
-      if (done) {
-        // Process any remaining broken buffer at the end
-        if (this.brokenChunkBuffer.trim() && !this.isCancelled) {
-          console.log('Processing final broken chunk buffer');
-          this.tryProcessChunk(this.brokenChunkBuffer);
-        }
-        break;
-      }
-
-      const chunk = decoder.decode(value, { stream: true });
-      
-      // Try to repair and process the chunk
-      this.tryProcessChunk(chunk);
-    }
-
-    this.isStreamingActive = false;
-
-    if (this.processingQueue.length === 0 && !this.waitingForApproval && this.onCompletionCallback) {
-      this.onCompletionCallback();
-    }
-
-  } catch (error: any) {
-    this.isStreamingActive = false;
-    if (error.name === 'AbortError') {
-      console.log('Streaming aborted');
-    } else {
-      console.error('Streaming error:', error);
-      throw error;
-    }
-  } finally {
-    this.abortController = null;
-    this.brokenChunkBuffer = '';
-  }
-}
-
-// Add new method to try processing chunks with jsonrepair
 private tryProcessChunk(chunk: string): void {
   // If we have broken chunk buffer, prepend it
   const fullChunk = this.brokenChunkBuffer + chunk;
   
+  console.log(`📦 Attempting to process chunk (buffer size: ${this.brokenChunkBuffer.length}, new chunk: ${chunk.length})`);
+  
+  // First, check if we have complete JSON objects (balanced braces)
+  if (!this.hasCompleteJsonObjects(fullChunk)) {
+    console.warn('⚠️ Incomplete JSON detected (unbalanced braces), waiting for more data...');
+    this.brokenChunkBuffer = fullChunk;
+    return;
+  }
+  
   try {
-    // Try to repair the JSON
+    // Try to repair the JSON (for quote issues, etc.)
     const repairedChunk = jsonrepair(fullChunk);
     
     console.log('✅ JSON repaired successfully');
+    if (this.brokenChunkBuffer.length > 0) {
+      console.log(`   Combined ${this.brokenChunkBuffer.length} buffered chars with ${chunk.length} new chars`);
+    }
     
     // Clear the broken buffer since repair succeeded
     this.brokenChunkBuffer = '';
     
     // Process the repaired chunk using existing logic
     const processedBuffer = this.processBuffer(repairedChunk);
+    
+    console.log(`   Found ${processedBuffer.completeObjects.length} complete object(s)`);
     
     processedBuffer.completeObjects.forEach(obj => {
       if (!this.isCancelled) {
@@ -99,28 +36,62 @@ private tryProcessChunk(chunk: string): void {
     
     // If there's remaining content, store it in broken buffer
     if (processedBuffer.remaining.trim()) {
+      console.log(`   Storing ${processedBuffer.remaining.length} chars in buffer for next iteration`);
       this.brokenChunkBuffer = processedBuffer.remaining;
     }
     
   } catch (error) {
-    // JSON repair failed, add to broken buffer and wait for next chunk
-    console.warn('⚠️ JSON repair failed, waiting for next chunk...');
+    // JSON repair failed
+    console.warn('⚠️ JSON repair failed, buffering chunk and waiting for more data...');
+    console.warn(`   Buffer now contains ${fullChunk.length} characters`);
     this.brokenChunkBuffer = fullChunk;
   }
 }
 
-// Modify cleanup to clear broken buffer
-cleanup(): void {
-  this.processingQueue = [];
-  this.currentWriteModifyTool = null;
-  this.isProcessing = false;
-  this.waitingForApproval = false;
-  this.isWaitingForUserApproval = false;
-  this.isStreamingActive = false;
-  this.brokenChunkBuffer = '';  // Clear broken buffer
-  this.onUpdateCallback = undefined;
-  this.onLogCallback = undefined;
-  this.onCompletionCallback = undefined;
-  this.abortController = null;
-  this.isCancelled = false;
+// Add new method to check if JSON has complete objects
+private hasCompleteJsonObjects(str: string): boolean {
+  let depth = 0;
+  let inString = false;
+  let stringDelimiter = '';
+  let escaped = false;
+  let hasAtLeastOneCompleteObject = false;
+
+  for (let i = 0; i < str.length; i++) {
+    const char = str[i];
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (char === '\\') {
+      escaped = true;
+      continue;
+    }
+
+    // Track strings to avoid counting braces inside strings
+    if (!inString && (char === '"' || char === "'")) {
+      inString = true;
+      stringDelimiter = char;
+    } else if (inString && char === stringDelimiter) {
+      inString = false;
+      stringDelimiter = '';
+    }
+
+    // Only count braces outside of strings
+    if (!inString) {
+      if (char === '{') {
+        depth++;
+      } else if (char === '}') {
+        depth--;
+        // When depth returns to 0, we have at least one complete object
+        if (depth === 0) {
+          hasAtLeastOneCompleteObject = true;
+        }
+      }
+    }
+  }
+
+  // Return true if we have at least one complete object and depth is 0 (balanced)
+  return hasAtLeastOneCompleteObject && depth === 0;
 }
