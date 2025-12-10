@@ -1,642 +1,102 @@
-// streaming-json.service.ts
-import { Injectable } from '@angular/core';
-
-interface ToolData {
-  tool: 'READ' | 'WRITE' | 'MODIFY';
-  content: string | FileOperationContent;
-}
-
-interface FileOperationContent {
-  reasoning: string;
-  files: FileOperation[];
-}
-
-interface FileOperation {
-  file_path: string;
-  file_name: string;
-  original_code: string;
-  modified_code: string;
-}
-
-@Injectable({
-  providedIn: 'root'
-})
-export class StreamingJsonService {
-  private buffer: string = '';
-  private processingQueue: ToolData[] = [];
-  private isStreaming: boolean = false;
-  private waitingForApproval: boolean = false;
-  private pendingApproval: ToolData | null = null;
-  private abortController: AbortController | null = null;
-
-  // Callbacks
-  private onReadExecuteCallback?: (content: string) => void;
-  private onApprovalRequiredCallback?: (item: ToolData) => void;
-  private onLogCallback?: (type: string, message: string) => void;
-  private onQueueUpdateCallback?: (queue: ToolData[]) => void;
-  private onStatusChangeCallback?: (status: 'streaming' | 'waiting' | 'idle') => void;
-
-  constructor() {}
-
-  /**
-   * Set callbacks
-   */
-  setCallbacks(callbacks: {
-    onReadExecute?: (content: string) => void;
-    onApprovalRequired?: (item: ToolData) => void;
-    onLog?: (type: string, message: string) => void;
-    onQueueUpdate?: (queue: ToolData[]) => void;
-    onStatusChange?: (status: 'streaming' | 'waiting' | 'idle') => void;
-  }): void {
-    this.onReadExecuteCallback = callbacks.onReadExecute;
-    this.onApprovalRequiredCallback = callbacks.onApprovalRequired;
-    this.onLogCallback = callbacks.onLog;
-    this.onQueueUpdateCallback = callbacks.onQueueUpdate;
-    this.onStatusChangeCallback = callbacks.onStatusChange;
-  }
-
-  /**
-   * Start streaming from a given URL
-   */
-  async startStreaming(apiUrl: string, options: RequestInit = {}): Promise<void> {
-    this.isStreaming = true;
-    this.buffer = '';
-    this.updateStatus('streaming');
-
-    this.abortController = new AbortController();
-
-    try {
-      const fetchOptions: RequestInit = {
-        ...options,
-        signal: this.abortController.signal,
-      };
-
-      const response = await fetch(apiUrl, fetchOptions);
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error('No reader available');
-      }
-
-      const decoder = new TextDecoder();
-
-      while (true) {
-        if (this.abortController.signal.aborted) {
-          console.log('Streaming cancelled by user');
-          reader.cancel();
-          break;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chunked JSON Parser Demo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+        
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+        }
+        
+        button:hover {
+            background-color: #45a049;
         }
 
-        const { done, value } = await reader.read();
-
-        if (done) {
-          // Process any remaining buffer at the end
-          if (this.buffer.trim()) {
-            console.log('Processing final buffer');
-            this.processBuffer();
-          }
-          break;
+        #status {
+            margin-top: 10px;
+            color: #666;
         }
+    </style>
+</head>
+<body>
+    <button onclick="runDemo()">Run Demo</button>
+    <div id="status"></div>
 
-        const chunk = decoder.decode(value, { stream: true });
-        await this.processChunk(chunk);
-      }
-
-      this.isStreaming = false;
-      if (!this.waitingForApproval) {
-        this.updateStatus('idle');
-      }
-
-    } catch (error: any) {
-      this.isStreaming = false;
-      if (error.name === 'AbortError') {
-        this.log('system', 'Streaming aborted by user');
-      } else {
-        console.error('Streaming error:', error);
-        this.log('system', `Error: ${error.message}`);
-      }
-    } finally {
-      this.abortController = null;
-      if (!this.waitingForApproval) {
-        this.updateStatus('idle');
-      }
-    }
-  }
-
-  /**
-   * Simulate streaming (for demo purposes)
-   */
-  async simulateStream(): Promise<void> {
-    const testData: ToolData[] = [
-      { tool: 'READ', content: 'Initializing system...' },
-      { tool: 'READ', content: 'Loading configuration...' },
-      { tool: 'READ', content: 'Reading file: config.json' },
-      {
-        tool: 'WRITE',
-        content: {
-          reasoning: 'Need to create a new configuration file',
-          files: [{
-            file_path: '/app/config',
-            file_name: 'settings.json',
-            original_code: '',
-            modified_code: '{"theme": "dark", "language": "en"}'
-          }]
-        }
-      },
-      { tool: 'READ', content: 'Validating configuration...' },
-      { tool: 'READ', content: 'Configuration is valid' },
-      {
-        tool: 'MODIFY',
-        content: {
-          reasoning: 'Update existing file with new settings',
-          files: [{
-            file_path: '/app/config',
-            file_name: 'settings.json',
-            original_code: '{"theme": "dark", "language": "en"}',
-            modified_code: '{"theme": "dark", "language": "en", "notifications": true}'
-          }]
-        }
-      },
-      { tool: 'READ', content: 'Processing complete!' }
-    ];
-
-    for (let i = 0; i < testData.length; i++) {
-      if (this.abortController?.signal.aborted) break;
-
-      const jsonStr = JSON.stringify(testData[i]);
-
-      // Simulate incomplete chunks sometimes
-      if (Math.random() > 0.7 && jsonStr.length > 20) {
-        const splitPoint = Math.floor(jsonStr.length / 2);
-        await this.processChunk(jsonStr.substring(0, splitPoint));
-        await this.delay(300);
-        await this.processChunk(jsonStr.substring(splitPoint) + '  ');
-      } else {
-        await this.processChunk(jsonStr + '  ');
-      }
-
-      await this.delay(800);
-    }
-
-    // Process any remaining buffer
-    if (this.buffer.trim()) {
-      this.processBuffer();
-    }
-  }
-
-  /**
-   * Stop streaming
-   */
-  stopStreaming(): void {
-    if (this.abortController) {
-      this.abortController.abort();
-    }
-    this.isStreaming = false;
-    if (!this.waitingForApproval) {
-      this.updateStatus('idle');
-    }
-  }
-
-  /**
-   * Process incoming chunk
-   */
-  private async processChunk(chunk: string): Promise<void> {
-    this.buffer += chunk;
-    console.log(`📦 Received chunk: ${chunk.length} chars, buffer: ${this.buffer.length} chars`);
-
-    this.processBuffer();
-  }
-
-  /**
-   * Process the buffer to extract complete JSON objects
-   */
-  private processBuffer(): void {
-    const trimmed = this.buffer.trim();
-    if (!trimmed) return;
-
-    console.log('🔍 Processing buffer:', trimmed.substring(0, 100) + '...');
-
-    // Check if we have complete JSON objects
-    if (!this.hasCompleteJSON(trimmed)) {
-      console.log('⏳ Incomplete JSON, waiting for more data...');
-      return;
-    }
-
-    // Extract all complete JSON objects
-    const result = this.extractJSONObjects(trimmed);
-
-    if (result.parsed.length > 0) {
-      console.log(`📊 Found ${result.parsed.length} complete object(s)`);
-
-      result.parsed.forEach((obj) => {
-        this.addToQueue(obj);
-      });
-
-      // Update buffer with remaining content
-      this.buffer = result.remaining;
-
-      // Process queue
-      this.processQueue();
-    } else {
-      console.log('⏳ Waiting for more data to complete JSON...');
-    }
-  }
-
-  /**
-   * Check if buffer contains at least one complete JSON object
-   */
-  private hasCompleteJSON(str: string): boolean {
-    let depth = 0;
-    let inString = false;
-    let escaped = false;
-    let hasComplete = false;
-
-    for (let i = 0; i < str.length; i++) {
-      const char = str[i];
-
-      if (escaped) {
-        escaped = false;
-        continue;
-      }
-
-      if (char === '\\') {
-        escaped = true;
-        continue;
-      }
-
-      if (!inString && char === '"') {
-        inString = true;
-      } else if (inString && char === '"') {
-        inString = false;
-      }
-
-      if (!inString) {
-        if (char === '{') {
-          depth++;
-        } else if (char === '}') {
-          depth--;
-          if (depth === 0) {
-            hasComplete = true;
-          }
-        }
-      }
-    }
-
-    return hasComplete && depth === 0;
-  }
-
-  /**
-   * Extract all complete JSON objects from a string
-   */
-  private extractJSONObjects(str: string): { parsed: ToolData[]; remaining: string } {
-    const objects: ToolData[] = [];
-    let current = '';
-    let depth = 0;
-    let inString = false;
-    let escaped = false;
-    let remaining = '';
-
-    for (let i = 0; i < str.length; i++) {
-      const char = str[i];
-
-      if (escaped) {
-        escaped = false;
-        current += char;
-        continue;
-      }
-
-      if (char === '\\') {
-        escaped = true;
-        current += char;
-        continue;
-      }
-
-      if (!inString && char === '"') {
-        inString = true;
-      } else if (inString && char === '"') {
-        inString = false;
-      }
-
-      current += char;
-
-      if (!inString) {
-        if (char === '{') {
-          depth++;
-        } else if (char === '}') {
-          depth--;
-          if (depth === 0 && current.trim()) {
-            try {
-              const parsed = JSON.parse(current.trim()) as ToolData;
-              objects.push(parsed);
-              current = '';
-            } catch (e) {
-              console.warn('Failed to parse object:', current, e);
-              current = '';
+    <script>
+        class ChunkedJSONParser {
+            constructor() {
+                this.buffer = '';
             }
-          }
+
+            processChunk(chunk) {
+                this.buffer += chunk;
+
+                try {
+                    const parsed = JSON.parse(this.buffer);
+                    const result = { success: true, data: parsed };
+                    this.buffer = '';
+                    return result;
+                } catch (error) {
+                    return { success: false, data: null };
+                }
+            }
+
+            reset() {
+                this.buffer = '';
+            }
         }
-      }
-    }
 
-    remaining = current.trim();
-
-    return { parsed: objects, remaining };
-  }
-
-  /**
-   * Add item to processing queue
-   */
-  private addToQueue(obj: ToolData): void {
-    if (!obj.tool || !obj.content) {
-      console.warn('Invalid object format:', obj);
-      return;
-    }
-
-    this.processingQueue.push(obj);
-    console.log(`➕ Added to queue: ${obj.tool}`);
-    this.updateQueue();
-  }
-
-  /**
-   * Process the queue
-   */
-  private processQueue(): void {
-    if (this.waitingForApproval) {
-      console.log('⏸️ Waiting for approval, queue processing paused');
-      return;
-    }
-
-    while (this.processingQueue.length > 0 && !this.waitingForApproval) {
-      const item = this.processingQueue[0];
-
-      if (item.tool === 'READ') {
-        // Execute READ immediately
-        this.executeRead(item);
-        this.processingQueue.shift();
-        this.updateQueue();
-      } else if (item.tool === 'WRITE' || item.tool === 'MODIFY') {
-        // Need approval for WRITE/MODIFY
-        this.requestApproval(item);
-        break; // Stop processing until approval
-      } else {
-        console.warn('Unknown tool type:', item.tool);
-        this.processingQueue.shift();
-        this.updateQueue();
-      }
-    }
-  }
-
-  /**
-   * Execute READ operation
-   */
-  private executeRead(item: ToolData): void {
-    console.log(`✅ Executing READ: ${item.content}`);
-    this.log('read', typeof item.content === 'string' ? item.content : JSON.stringify(item.content));
-
-    if (this.onReadExecuteCallback && typeof item.content === 'string') {
-      this.onReadExecuteCallback(item.content);
-    }
-  }
-
-  /**
-   * Request approval for WRITE/MODIFY operation
-   */
-  private requestApproval(item: ToolData): void {
-    this.waitingForApproval = true;
-    this.pendingApproval = item;
-    this.updateStatus('waiting');
-
-    console.log(`⏸️ Waiting for approval: ${item.tool}`);
-    console.log('Pending item:', item);
-
-    if (this.onApprovalRequiredCallback) {
-      this.onApprovalRequiredCallback(item);
-    }
-  }
-
-  /**
-   * Approve pending action (call this from component)
-   */
-  approveAction(): void {
-    if (!this.pendingApproval) return;
-
-    const item = this.pendingApproval;
-    console.log(`✅ Approved: ${item.tool}`);
-
-    const reasoning = typeof item.content === 'object' ? item.content.reasoning : 'N/A';
-    this.log(item.tool.toLowerCase(), `${item.tool} operation approved: ${reasoning}`);
-
-    // Remove from queue
-    this.processingQueue.shift();
-
-    // Clear approval state
-    this.pendingApproval = null;
-    this.waitingForApproval = false;
-
-    this.updateQueue();
-
-    if (!this.isStreaming) {
-      this.updateStatus('idle');
-    }
-
-    // Continue processing queue
-    this.processQueue();
-  }
-
-  /**
-   * Reject pending action (call this from component)
-   */
-  rejectAction(): void {
-    if (!this.pendingApproval) return;
-
-    const item = this.pendingApproval;
-    console.log(`❌ Rejected: ${item.tool}`);
-
-    this.log('system', `${item.tool} operation rejected by user`);
-
-    // Remove from queue
-    this.processingQueue.shift();
-
-    // Clear approval state
-    this.pendingApproval = null;
-    this.waitingForApproval = false;
-
-    this.updateQueue();
-
-    if (!this.isStreaming) {
-      this.updateStatus('idle');
-    }
-
-    // Continue processing queue
-    this.processQueue();
-  }
-
-  /**
-   * Get pending approval item
-   */
-  getPendingApproval(): ToolData | null {
-    return this.pendingApproval;
-  }
-
-  /**
-   * Check if waiting for approval
-   */
-  isWaitingForApproval(): boolean {
-    return this.waitingForApproval;
-  }
-
-  /**
-   * Get current queue
-   */
-  getQueue(): ToolData[] {
-    return [...this.processingQueue];
-  }
-
-  /**
-   * Internal logging
-   */
-  private log(type: string, message: string): void {
-    if (this.onLogCallback) {
-      this.onLogCallback(type, message);
-    }
-  }
-
-  /**
-   * Update queue callback
-   */
-  private updateQueue(): void {
-    if (this.onQueueUpdateCallback) {
-      this.onQueueUpdateCallback([...this.processingQueue]);
-    }
-  }
-
-  /**
-   * Update status callback
-   */
-  private updateStatus(status: 'streaming' | 'waiting' | 'idle'): void {
-    if (this.onStatusChangeCallback) {
-      this.onStatusChangeCallback(status);
-    }
-  }
-
-  /**
-   * Utility: Delay
-   */
-  private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// streaming-json.component.ts
-import { Component, OnInit, OnDestroy } from '@angular/core';
-import { StreamingJsonService } from './streaming-json.service';
-
-@Component({
-  selector: 'app-streaming-json',
-  template: `
-    <div style="padding: 20px;">
-      <h2>Streaming JSON Processor</h2>
-      <button 
-        *ngIf="showApprovalButton" 
-        (click)="onApprove()"
-        style="padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;">
-        ✅ Approve & Continue
-      </button>
-      <p *ngIf="!showApprovalButton" style="color: #6c757d;">Check console for logs...</p>
-    </div>
-  `
-})
-export class StreamingJsonComponent implements OnInit, OnDestroy {
-  showApprovalButton: boolean = false;
-
-  constructor(private streamingService: StreamingJsonService) {}
-
-  ngOnInit(): void {
-    console.log('🚀 Component initialized');
-
-    // Set up callbacks
-    this.streamingService.setCallbacks({
-      onReadExecute: (content: string) => {
-        console.log('📖 READ Executed:', content);
-      },
-      onApprovalRequired: (item: any) => {
-        console.log('⚠️ APPROVAL REQUIRED:', item);
-        this.showApprovalButton = true;
-      },
-      onLog: (type: string, message: string) => {
-        console.log(`[${type.toUpperCase()}] ${message}`);
-      },
-      onQueueUpdate: (queue: any[]) => {
-        console.log('📋 Queue updated, length:', queue.length);
-        console.log('Queue items:', queue);
-      },
-      onStatusChange: (status: string) => {
-        console.log('🔄 Status changed:', status);
-      }
-    });
-
-    // Start streaming automatically
-    this.startStreaming();
-  }
-
-  ngOnDestroy(): void {
-    console.log('🛑 Component destroyed, stopping stream');
-    this.streamingService.stopStreaming();
-  }
-
-  async startStreaming(): Promise<void> {
-    console.log('▶️ Starting streaming...');
-
-    // For demo, use simulated stream
-    // To use real API, replace with:
-    /*
-    await this.streamingService.startStreaming('https://your-api.com/stream', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer YOUR_TOKEN'
-      },
-      body: JSON.stringify({ your: 'data' })
-    });
-    */
-
-    await this.streamingService.simulateStream();
-    console.log('✅ Streaming completed');
-  }
-
-  onApprove(): void {
-    console.log('✅ User clicked Approve button');
-    this.streamingService.approveAction();
-    this.showApprovalButton = false;
-  }
-}
+        async function runDemo() {
+            console.clear();
+            console.log('🚀 Starting streaming demo...\n');
+            document.getElementById('status').textContent = 'Fetching and streaming...';
+
+            try {
+                // Fetch real JSON data
+                const response = await fetch('https://jsonplaceholder.typicode.com/users/1');
+                const jsonString = await response.text();
+                
+                console.log('Total data length:', jsonString.length, 'characters\n');
+
+                const parser = new ChunkedJSONParser();
+
+                // Stream character by character
+                for (let i = 0; i < jsonString.length; i++) {
+                    const char = jsonString[i];
+                    console.log(`[${i+1}/${jsonString.length}] Character: "${char}" | Buffer: "${parser.buffer + char}"`);
+                    
+                    const result = parser.processChunk(char);
+                    
+                    if (result.success) {
+                        console.log('\n✅ VALID JSON PARSED:');
+                        console.log(result.data);
+                        console.log('');
+                    }
+
+                    // Delay to simulate real streaming
+                    await new Promise(resolve => setTimeout(resolve, 30));
+                }
+
+                console.log('✅ Streaming complete!');
+                document.getElementById('status').textContent = 'Complete! Check console.';
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('status').textContent = 'Error: ' + error.message;
+            }
+        }
+    </script>
+</body>
+</html>
