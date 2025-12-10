@@ -1,32 +1,43 @@
+import { Component, OnInit, Input, Output, EventEmitter } from '@angular/core';
+import { CommonModule } from '@angular/common';
+
+interface FileItem {
+  name: string;
+  type: 'file' | 'folder';
+  children?: FileItem[];
+}
+
+@Component({
+  selector: 'app-file-explorer',
+  standalone: true,
+  imports: [CommonModule],
+  templateUrl: './file-explorer.component.html',
+  styleUrls: ['./file-explorer.component.css']
+})
 export class FileExplorerComponent implements OnInit {
   @Input() fileStructure: FileItem[] = [];
   @Input() theme: 'light' | 'dark' = 'light';
+  @Output() fileSelected = new EventEmitter<{ name: string; path: string[] }>(); // Add this
 
   currentPath: string[] = [];
   currentItems: FileItem[] = [];
-  selectedFile: string | null = null; // Add this
+  selectedFile: string | null = null;
 
   // ... existing code ...
 
-  // Add this method
+  // Modified selectFile method
   selectFile(item: FileItem): void {
     if (item.type === 'file') {
       this.selectedFile = item.name;
+      // Emit the event with file name and full path
+      this.fileSelected.emit({
+        name: item.name,
+        path: [...this.currentPath, item.name]
+      });
     }
   }
 
-  navigateIntoFolder(folder: FileItem): void {
-    if (folder.type === 'folder') {
-      this.currentPath.push(folder.name);
-      this.currentItems = folder.children || [];
-      this.selectedFile = null; // Clear selection when navigating
-    }
-  }
-
-  navigateToPath(index: number): void {
-    // ... existing code ...
-    this.selectedFile = null; // Clear selection when navigating
-  }
+  // ... rest of the code ...
 }
 
 
@@ -36,34 +47,16 @@ export class FileExplorerComponent implements OnInit {
 
 
 
+// In your parent component template:
+<app-file-explorer 
+  [fileStructure]="fileData" 
+  [theme]="currentTheme"
+  (fileSelected)="onFileSelected($event)">
+</app-file-explorer>
 
-<div 
-  *ngFor="let item of currentItems; trackBy: trackByIndex"
-  class="sidebar-item"
-  [class.folder]="item.type === 'folder'"
-  [class.selected]="item.type === 'file' && selectedFile === item.name"
-  (click)="item.type === 'folder' ? navigateIntoFolder(item) : selectFile(item)">
-  <div class="icon">
-    {{ item.type === 'folder' ? '📁' : '' }}
-    <svg *ngIf="item.type === 'file'" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-      <polyline points="14 2 14 8 20 8"></polyline>
-    </svg>
-  </div>
-  <div class="name">{{ item.name }}</div>
-</div>
-
-
-
-
-
-
-
-
-
-
-.sidebar-item.selected {
-  background-color: var(--code-rag-documentation-bg-hover);
-  border-left: 3px solid var(--code-rag-documentation-text-link);
-  padding-left: 7px;
+// In your parent component class:
+onFileSelected(fileInfo: { name: string; path: string[] }): void {
+  console.log('File selected:', fileInfo.name);
+  console.log('Full path:', fileInfo.path);
+  // Handle the file selection here
 }
