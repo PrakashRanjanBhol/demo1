@@ -1,75 +1,148 @@
 import { Injectable } from '@angular/core';
 
-export interface ToolCommand {
-  tool: string;
-  content: any;
+export interface ToolData {
+  tool: 'READ' | 'WRITE' | 'MODIFY';
+  content: string;
 }
 
-export interface WriteModifyContent {
-  reasoning: string;
-  files: Array<{
-    file_path: string;
-    file_name: string;
-    original_code: string;
-    modified_code: string;
-  }>;
+export interface ParserResult {
+  success: boolean;
+  data: any;
+}
+
+export interface ApprovalRequest {
+  data: ToolData;
+  timestamp: Date;
+}
+
+export interface ParserCallbacks {
+  onToolDetected?: (toolData: ToolData) => void;
+  onApprovalRequest?: (approvalRequest: ApprovalRequest) => void;
+  onCompletion?: () => void;
+  onError?: (error: string) => void;
 }
 
 @Injectable({
   providedIn: 'root'
 })
-export class ToolParserService {
-  private pendingQueue: ToolCommand[] = [];
+export class ChunkedJsonParserService {
+  private buffer = '';
+  private pendingQueue: ToolData[] = [];
   private isWaitingForApproval = false;
   private isStreamComplete = false;
-  private currentPendingData: ToolCommand | null = null;
-  private buffer = '';
+  private currentPendingData: ToolData | null = null;
 
-  public isWaitingForUserApproval = false;
+  // Callbacks for component
+  private callbacks: ParserCallbacks = {};
 
-  // Callbacks
-  private onUpdateCallback?: () => void;
-  private onLogCallback?: (tool: ToolCommand) => void;
-  private onCompletionCallback?: () => void;
+  // Configuration
+  private readonly API_URL = 'https://api.anthropic.com/v1/messages';
+  private readonly API_KEY = 'YOUR_API_KEY_HERE'; // Replace with your actual API key
+  private readonly REQUEST_BODY = {
+    model: 'claude-3-5-sonnet-20241022',
+    max_tokens: 1024,
+    messages: [
+      {
+        role: 'user',
+        content: 'Generate 5 JSON objects with this exact structure: {"tool": "READ", "content": "..."}. Mix READ, WRITE, and MODIFY tools. Return only JSON objects, one per line, nothing else.'
+      }
+    ],
+    stream: true
+  };
 
-  // Cancellation
-  private abortController: AbortController | null = null;
-  private isCancelled = false;
+  constructor() {}
 
-  setUpdateCallback(callback: () => void): void {
-    this.onUpdateCallback = callback;
+  public setCallbacks(callbacks: ParserCallbacks): void {
+    this.callbacks = callbacks;
   }
 
-  setLogCallback(callback: (tool: ToolCommand) => void): void {
-    this.onLogCallback = callback;
-  }
+  private processChunk(chunk: string): ParserResult {
+    this.buffer += chunk;
 
-  setCompletionCallback(callback: () => void): void {
-    this.onCompletionCallback = callback;
-  }
-
-  private triggerUpdate(): void {
-    if (this.onUpdateCallback) {
-      this.onUpdateCallback();
+    try {
+      const parsed = JSON.parse(this.buffer);
+      const result: ParserResult = { success: true, data: parsed };
+      this.buffer = '';
+      return result;
+    } catch (error) {
+      return { success: false, data: null };
     }
   }
 
-  async startStreaming(apiUrl: string, options?: RequestInit): Promise<void> {
-    try {
-      this.isCancelled = false;
-      this.isStreamComplete = false;
-      this.pendingQueue = [];
+  private reset(): void {
+    this.buffer = '';
+    this.pendingQueue = [];
+    this.isWaitingForApproval = false;
+    this.isStreamComplete = false;
+    this.currentPendingData = null;
+  }
+
+  private handleParsedJSON(data: ToolData): void {
+    const tool = data.tool;
+
+    // Emit tool detected event via callback
+    if (this.callbacks.onToolDetected) {
+      this.callbacks.onToolDetected(data);
+    }
+
+    if (tool === 'READ') {
+      // READ tool - process immediately
+      // Continue processing queue
+      this.processQueue();
+    } else if (tool === 'WRITE' || tool === 'MODIFY') {
+      // WRITE/MODIFY tool - require approval
+      this.isWaitingForApproval = true;
+      this.currentPendingData = data;
+      
+      if (this.callbacks.onApprovalRequest) {
+        this.callbacks.onApprovalRequest({
+          data: data,
+          timestamp: new Date()
+        });
+      }
+    } else {
+      // Unknown tool - process immediately
+      this.processQueue();
+    }
+  }
+
+  private processQueue(): void {
+    if (this.pendingQueue.length > 0 && !this.isWaitingForApproval) {
+      const nextItem = this.pendingQueue.shift();
+      if (nextItem) {
+        this.handleParsedJSON(nextItem);
+      }
+    } else if (this.pendingQueue.length === 0 && this.isStreamComplete && !this.isWaitingForApproval) {
+      // All done
+      if (this.callbacks.onCompletion) {
+        this.callbacks.onCompletion();
+      }
+    }
+  }
+
+  public approveAndContinue(): void {
+    if (this.currentPendingData) {
+      this.currentPendingData = null;
       this.isWaitingForApproval = false;
-      this.buffer = '';
 
-      this.abortController = new AbortController();
+      // Process next item in queue
+      this.processQueue();
+    }
+  }
 
-      const fetchOptions: RequestInit = {
-        ...options,
-        signal: this.abortController.signal
-      };
+  public async startStreaming(): Promise<void> {
+    this.reset();
 
-      const response = await fetch(apiUrl, fetchOptions);
+    try {
+      const response = await fetch(this.API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': this.API_KEY,
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify(this.REQUEST_BODY)
+      });
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -77,18 +150,12 @@ export class ToolParserService {
 
       const reader = response.body?.getReader();
       if (!reader) {
-        throw new Error('No reader available');
+        throw new Error('Failed to get reader from response');
       }
 
       const decoder = new TextDecoder();
 
       while (true) {
-        if (this.isCancelled) {
-          console.log('Streaming cancelled by user');
-          reader.cancel();
-          break;
-        }
-
         const { done, value } = await reader.read();
 
         if (done) {
@@ -96,8 +163,8 @@ export class ToolParserService {
 
           // Check if we're done or still waiting
           if (!this.isWaitingForApproval && this.pendingQueue.length === 0) {
-            if (this.onCompletionCallback) {
-              this.onCompletionCallback();
+            if (this.callbacks.onCompletion) {
+              this.callbacks.onCompletion();
             }
           }
           break;
@@ -109,20 +176,34 @@ export class ToolParserService {
         for (let char of chunk) {
           const result = this.processChunk(char);
 
-          if (result.success && result.data) {
+          if (result.success) {
             let toolData = result.data;
 
-            // Handle tool data
-            if (toolData.tool) {
-              // Validate WRITE/MODIFY tools have files
-              if ((toolData.tool === 'WRITE' || toolData.tool === 'MODIFY')) {
-                const content = toolData.content as WriteModifyContent;
-                if (!content.files || !Array.isArray(content.files) || content.files.length === 0) {
-                  console.warn(`⚠️ Ignoring ${toolData.tool} tool - empty files array`);
-                  continue;
+            // Handle Anthropic API response format
+            if (result.data.type === 'content_block_delta' && result.data.delta?.text) {
+              try {
+                // Try to parse each line as JSON
+                const lines = result.data.delta.text.split('\n');
+                for (const line of lines) {
+                  if (line.trim()) {
+                    try {
+                      toolData = JSON.parse(line.trim());
+                      if (toolData.tool) {
+                        this.pendingQueue.push(toolData);
+                        if (!this.isWaitingForApproval) {
+                          this.processQueue();
+                        }
+                      }
+                    } catch (e) {
+                      // Not a valid JSON line, continue
+                    }
+                  }
                 }
+              } catch (e) {
+                // Not JSON, skip
               }
-
+            } else if (toolData.tool) {
+              // Direct tool format
               this.pendingQueue.push(toolData);
               if (!this.isWaitingForApproval) {
                 this.processQueue();
@@ -131,124 +212,17 @@ export class ToolParserService {
           }
         }
       }
-
-    } catch (error: any) {
-      this.isStreamComplete = true;
-      if (error.name === 'AbortError') {
-        console.log('Streaming aborted');
-      } else {
-        console.error('Streaming error:', error);
-        throw error;
-      }
-    } finally {
-      this.abortController = null;
-    }
-  }
-
-  private processChunk(char: string): { success: boolean; data: any } {
-    this.buffer += char;
-
-    try {
-      const parsed = JSON.parse(this.buffer);
-      this.buffer = '';
-      return { success: true, data: parsed };
     } catch (error) {
-      return { success: false, data: null };
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      if (this.callbacks.onError) {
+        this.callbacks.onError(errorMessage);
+      }
+      throw error;
     }
   }
 
-  approveAndContinue(): void {
-    if (this.currentPendingData && this.onLogCallback) {
-      console.log('✅ APPROVED AND LOGGED:');
-      this.onLogCallback(this.currentPendingData);
-    }
-
-    this.currentPendingData = null;
-    this.isWaitingForApproval = false;
-    this.isWaitingForUserApproval = false;
-
-    this.triggerUpdate();
-
-    // Process next item in queue
-    this.processQueue();
-  }
-
-  private processQueue(): void {
-    if (this.pendingQueue.length > 0 && !this.isWaitingForApproval) {
-      const nextItem = this.pendingQueue.shift();
-      if (nextItem) {
-        this.handleParsedJSON(nextItem);
-      }
-    } else if (this.pendingQueue.length === 0 && this.isStreamComplete && !this.isWaitingForApproval) {
-      // All done
-      if (this.onCompletionCallback) {
-        this.onCompletionCallback();
-      }
-    }
-  }
-
-  private handleParsedJSON(data: ToolCommand): void {
-    const tool = data.tool;
-
-    if (tool === 'READ') {
-      // READ tool - log immediately
-      if (this.onLogCallback) {
-        this.onLogCallback(data);
-      }
-
-      // Continue processing queue
-      this.processQueue();
-    } else if (tool === 'WRITE' || tool === 'MODIFY') {
-      // WRITE/MODIFY tool - require approval
-      if (this.onLogCallback) {
-        this.onLogCallback(data);
-      }
-
-      this.isWaitingForApproval = true;
-      this.isWaitingForUserApproval = true;
-      this.currentPendingData = data;
-
-      this.triggerUpdate();
-    } else {
-      // Unknown tool - log immediately
-      if (this.onLogCallback) {
-        this.onLogCallback(data);
-      }
-
-      // Continue processing queue
-      this.processQueue();
-    }
-  }
-
-  cancelStreaming(): void {
-    console.log('Cancelling streaming...');
-    this.isCancelled = true;
-
-    if (this.abortController) {
-      this.abortController.abort();
-      this.abortController = null;
-    }
-
-    this.cleanup();
-  }
-
-  cleanup(): void {
-    this.pendingQueue = [];
-    this.currentPendingData = null;
-    this.isWaitingForApproval = false;
-    this.isWaitingForUserApproval = false;
-    this.isStreamComplete = false;
-    this.buffer = '';
-    this.onUpdateCallback = undefined;
-    this.onLogCallback = undefined;
-    this.onCompletionCallback = undefined;
-    this.abortController = null;
-    this.isCancelled = false;
-  }
-
-  reset(): void {
-    this.cleanup();
-    this.triggerUpdate();
+  public getIsWaitingForApproval(): boolean {
+    return this.isWaitingForApproval;
   }
 }
 
@@ -263,184 +237,143 @@ export class ToolParserService {
 
 
 
-
-
-
-
-
-
-
-
-
-import { Component, ChangeDetectorRef } from '@angular/core';
-import { ToolParserService, ToolCommand, WriteModifyContent } from './services/tool-parser.service';
+import { Component, OnInit } from '@angular/core';
+import { ChunkedJsonParserService, ToolData, ApprovalRequest } from './chunked-json-parser.service';
 
 @Component({
-  selector: 'app-tool-processor',
-  templateUrl: './tool-processor.component.html',
-  styleUrls: ['./tool-processor.component.css']
+  selector: 'app-chunked-json-parser',
+  templateUrl: './chunked-json-parser.component.html',
+  styleUrls: ['./chunked-json-parser.component.css']
 })
-export class ToolProcessorComponent {
+export class ChunkedJsonParserComponent implements OnInit {
+  public isWaitingForApproval = false;
+  public currentApprovalRequest: ApprovalRequest | null = null;
+  public isProcessing = false;
 
-  constructor(
-    public toolParser: ToolParserService,
-    private cdr: ChangeDetectorRef
-  ) {}
+  constructor(private parserService: ChunkedJsonParserService) {}
 
-  onApprove(): void {
-    console.log('User clicked OK - Executing and continuing...');
-    this.toolParser.approveAndContinue();
+  ngOnInit(): void {
+    this.setupCallbacks();
   }
 
-  onCancel(): void {
-    console.log('User clicked Cancel');
-    this.toolParser.cancelStreaming();
+  private setupCallbacks(): void {
+    this.parserService.setCallbacks({
+      onToolDetected: (toolData: ToolData) => {
+        this.logToolDetected(toolData);
+      },
+      onApprovalRequest: (approvalRequest: ApprovalRequest) => {
+        this.isWaitingForApproval = true;
+        this.currentApprovalRequest = approvalRequest;
+        this.logWaitingForApproval(approvalRequest.data);
+      },
+      onCompletion: () => {
+        this.isProcessing = false;
+        this.logCompleted();
+      },
+      onError: (error: string) => {
+        this.isProcessing = false;
+        this.logError(error);
+      }
+    });
   }
 
-  async handleStreamingResponse(): Promise<void> {
-    let isFirstChunk = true;
-
-    this.toolParser.setUpdateCallback(() => {
-      this.cdr.detectChanges();
-    });
-
-    this.toolParser.setLogCallback((tool: ToolCommand) => {
-      if (isFirstChunk) {
-        console.log('🎉 First chunk received!');
-        isFirstChunk = false;
-      }
-
-      try {
-        if (tool.tool === 'READ') {
-          console.log('📖 READ Tool:');
-          const content = typeof tool.content === 'string'
-            ? tool.content
-            : JSON.stringify(tool.content);
-          console.log(content);
-          console.log('');
-        } else if (tool.tool === 'WRITE') {
-          console.log('⚠️ WRITE Tool detected:');
-          console.log(tool.content);
-          console.log('');
-        } else if (tool.tool === 'MODIFY') {
-          console.log('⚠️ MODIFY Tool detected:');
-          console.log(tool.content);
-          console.log('');
-        }
-      } catch (error) {
-        console.error('Error logging tool:', error);
-        console.log('Tool (raw):', tool);
-      }
-    });
-
-    this.toolParser.setCompletionCallback(() => {
-      console.log('🎊 All tasks completed - Nothing pending!');
-    });
-
-    try {
-      const apiUrl = 'https://your-api.com/stream';
-
-      const options: RequestInit = {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer your-token-here'
-        },
-        body: JSON.stringify({
-          query: 'your query here'
-        })
-      };
-
-      await this.toolParser.startStreaming(apiUrl, options);
-
-      console.log('✅ Streaming completed successfully');
-
-    } catch (error: any) {
-      if (error.name === 'AbortError') {
-        console.log('⚠️ Streaming was cancelled');
-      } else {
-        console.error('❌ Error:', error);
-      }
-    } finally {
-      this.toolParser.cleanup();
+  private logToolDetected(toolData: ToolData): void {
+    const tool = toolData.tool;
+    
+    if (tool === 'READ') {
+      console.log('📖 READ Tool detected:', toolData);
+    } else if (tool === 'WRITE') {
+      console.log('✏️ WRITE Tool detected:', toolData);
+    } else if (tool === 'MODIFY') {
+      console.log('🔧 MODIFY Tool detected:', toolData);
+    } else {
+      console.log('🔹 Tool detected:', toolData);
     }
   }
 
-  simulateStreaming(): void {
-    let isFirstChunk = true;
+  private logWaitingForApproval(toolData: ToolData): void {
+    console.log(`⚠️ WAITING FOR APPROVAL - ${toolData.tool} Tool:`, toolData);
+    console.log('Click "ACCEPT AND CONTINUE" button to proceed');
+  }
 
-    this.toolParser.setUpdateCallback(() => {
-      this.cdr.detectChanges();
-    });
+  private logCompleted(): void {
+    console.log('🎉 COMPLETED - All operations finished successfully');
+  }
 
-    this.toolParser.setLogCallback((tool: ToolCommand) => {
-      if (isFirstChunk) {
-        console.log('🎉 First chunk received!');
-        isFirstChunk = false;
-      }
+  private logError(error: string): void {
+    console.error('❌ Error:', error);
+  }
 
-      try {
-        if (tool.tool === 'READ') {
-          console.log('📖 READ Tool:');
-          const content = typeof tool.content === 'string'
-            ? tool.content
-            : JSON.stringify(tool.content);
-          console.log(content);
-          console.log('');
-        } else if (tool.tool === 'WRITE') {
-          console.log('⚠️ WRITE Tool detected:');
-          console.log(tool.content);
-          console.log('');
-        } else if (tool.tool === 'MODIFY') {
-          console.log('⚠️ MODIFY Tool detected:');
-          console.log(tool.content);
-          console.log('');
-        }
-      } catch (error) {
-        console.error('Error logging tool:', error);
-        console.log('Tool (raw):', tool);
-      }
-    });
+  public async runDemo(): Promise<void> {
+    console.clear();
+    console.log('🚀 Starting streaming process...\n');
+    
+    this.isProcessing = true;
+    
+    try {
+      await this.parserService.startStreaming();
+    } catch (error) {
+      console.error('Failed to start streaming:', error);
+      this.isProcessing = false;
+    }
+  }
 
-    this.toolParser.setCompletionCallback(() => {
-      console.log('🎊 All tasks completed - Nothing pending!');
-    });
-
-    console.log('=== Starting Simulation ===\n');
-
-    const data = [
-      '{"tool": "READ", "content": "First READ - logs immediately"}',
-      '{"tool": "READ", "content": "Second READ - logs immediately"}',
-      '{"tool": "WRITE", "content": {"reasoning": "Writing file", "files": [{"file_path": "/src", "file_name":"app.js", "original_code":"", "modified_code":"code"}]}}',
-      '{"tool": "READ", "content": "Third READ - will NOT log until OK is clicked"}',
-      '{"tool": "READ", "content": "Fourth READ - will NOT log until OK is clicked"}',
-      '{"tool": "MODIFY", "content": {"reasoning": "Modifying file", "files": [{"file_path": "/src", "file_name":"app.js", "original_code":"old", "modified_code":"new"}]}}',
-      '{"tool": "READ", "content": "Fifth READ - will NOT log until OK is clicked"}',
-      '{"tool": "READ", "content": "Sixth READ - will log after OK"}',
-    ];
-
-    let index = 0;
-    const interval = setInterval(() => {
-      if (index < data.length) {
-        console.log(`\n--- Chunk #${index + 1} received ---`);
-        try {
-          // Simulate character-by-character streaming
-          const chunk = data[index];
-          for (let char of chunk) {
-            // This simulates the streaming API
-            // In real usage, the service handles this internally
-          }
-          // For simulation, just add the whole chunk at once
-          // In reality, startStreaming processes char by char
-          console.log('Processing:', chunk);
-        } catch (error) {
-          console.error('Error processing chunk:', error);
-        }
-        index++;
-      } else {
-        clearInterval(interval);
-        console.log('\n=== ✅ Simulation complete - Use handleStreamingResponse() for real API ===');
-      }
-    }, 1000);
+  public approveAndContinue(): void {
+    if (this.currentApprovalRequest) {
+      console.log('✅ APPROVED:', this.currentApprovalRequest.data);
+      console.log('Continuing with next operation...\n');
+      
+      // Reset approval state
+      this.isWaitingForApproval = false;
+      this.currentApprovalRequest = null;
+      
+      this.parserService.approveAndContinue();
+    }
   }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="parser-container">
+  <h2>Chunked JSON Parser</h2>
+  
+  <div class="button-container">
+    <button 
+      class="btn btn-primary" 
+      (click)="runDemo()" 
+      [disabled]="isProcessing">
+      {{ isProcessing ? 'Processing...' : 'RUN' }}
+    </button>
+    
+    <button 
+      *ngIf="isWaitingForApproval" 
+      class="btn btn-success" 
+      (click)="approveAndContinue()">
+      ACCEPT AND CONTINUE
+    </button>
+  </div>
+
+  <div *ngIf="isProcessing" class="status-message">
+    <p>Processing stream... Check console for logs.</p>
+  </div>
+
+  <div *ngIf="isWaitingForApproval && currentApprovalRequest" class="approval-message">
+    <h3>⚠️ Approval Required</h3>
+    <p><strong>Tool:</strong> {{ currentApprovalRequest.data.tool }}</p>
+    <p><strong>Content:</strong> {{ currentApprovalRequest.data.content }}</p>
+    <p class="warning-text">Click "ACCEPT AND CONTINUE" to proceed</p>
+  </div>
+</div>
