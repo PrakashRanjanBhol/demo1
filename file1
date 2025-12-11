@@ -31,6 +31,8 @@ export class ChunkedJsonParserService {
   private isWaitingForApproval = false;
   private isStreamComplete = false;
   private currentPendingData: ToolData | null = null;
+  private abortController: AbortController | null = null;
+  private isStreaming = false;
 
   // Callbacks for component
   private callbacks: ParserCallbacks = {};
@@ -75,6 +77,12 @@ export class ChunkedJsonParserService {
     this.isWaitingForApproval = false;
     this.isStreamComplete = false;
     this.currentPendingData = null;
+    this.isStreaming = false;
+    
+    if (this.abortController) {
+      this.abortController.abort();
+      this.abortController = null;
+    }
   }
 
   private handleParsedJSON(data: ToolData): void {
@@ -130,8 +138,29 @@ export class ChunkedJsonParserService {
     }
   }
 
+  public stopStreaming(): void {
+    if (this.abortController) {
+      this.abortController.abort();
+      this.abortController = null;
+    }
+    
+    this.isStreaming = false;
+    this.isStreamComplete = true;
+    this.pendingQueue = [];
+    
+    console.log('🛑 Streaming stopped by user');
+    
+    if (this.callbacks.onError) {
+      this.callbacks.onError('Streaming stopped by user');
+    }
+  }
+
   public async startStreaming(): Promise<void> {
     this.reset();
+    
+    // Create new abort controller for this stream
+    this.abortController = new AbortController();
+    this.isStreaming = true;
 
     try {
       const response = await fetch(this.API_URL, {
@@ -141,7 +170,8 @@ export class ChunkedJsonParserService {
           'x-api-key': this.API_KEY,
           'anthropic-version': '2023-06-01'
         },
-        body: JSON.stringify(this.REQUEST_BODY)
+        body: JSON.stringify(this.REQUEST_BODY),
+        signal: this.abortController.signal
       });
 
       if (!response.ok) {
@@ -213,6 +243,14 @@ export class ChunkedJsonParserService {
         }
       }
     } catch (error) {
+      this.isStreaming = false;
+      
+      // Check if error is due to abort
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log('🛑 Stream aborted');
+        return; // Don't call error callback for user-initiated stops
+      }
+      
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       if (this.callbacks.onError) {
         this.callbacks.onError(errorMessage);
@@ -224,7 +262,14 @@ export class ChunkedJsonParserService {
   public getIsWaitingForApproval(): boolean {
     return this.isWaitingForApproval;
   }
+  
+  public getIsStreaming(): boolean {
+    return this.isStreaming;
+  }
 }
+
+
+
 
 
 
@@ -253,7 +298,7 @@ export class ChunkedJsonParserComponent implements OnInit {
   constructor(private parserService: ChunkedJsonParserService) {}
 
   ngOnInit(): void {
-    this.setupCallbacks();
+    // Callbacks will be set up when user clicks RUN
   }
 
   private setupCallbacks(): void {
@@ -308,14 +353,28 @@ export class ChunkedJsonParserComponent implements OnInit {
     console.clear();
     console.log('🚀 Starting streaming process...\n');
     
+    // Setup callbacks before starting the stream
+    this.setupCallbacks();
+    
     this.isProcessing = true;
     
     try {
       await this.parserService.startStreaming();
     } catch (error) {
-      console.error('Failed to start streaming:', error);
+      // Only log if it's not an abort error
+      if (error instanceof Error && error.name !== 'AbortError') {
+        console.error('Failed to start streaming:', error);
+      }
       this.isProcessing = false;
     }
+  }
+
+  public stopStreaming(): void {
+    console.log('🛑 Stopping streaming process...\n');
+    this.parserService.stopStreaming();
+    this.isProcessing = false;
+    this.isWaitingForApproval = false;
+    this.currentApprovalRequest = null;
   }
 
   public approveAndContinue(): void {
@@ -347,6 +406,8 @@ export class ChunkedJsonParserComponent implements OnInit {
 
 
 
+
+
 <div class="parser-container">
   <h2>Chunked JSON Parser</h2>
   
@@ -356,6 +417,13 @@ export class ChunkedJsonParserComponent implements OnInit {
       (click)="runDemo()" 
       [disabled]="isProcessing">
       {{ isProcessing ? 'Processing...' : 'RUN' }}
+    </button>
+
+    <button 
+      *ngIf="isProcessing"
+      class="btn btn-danger" 
+      (click)="stopStreaming()">
+      STOP
     </button>
     
     <button 
@@ -377,3 +445,16 @@ export class ChunkedJsonParserComponent implements OnInit {
     <p class="warning-text">Click "ACCEPT AND CONTINUE" to proceed</p>
   </div>
 </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
