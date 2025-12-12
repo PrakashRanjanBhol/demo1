@@ -1,182 +1,3 @@
-<div class="vibe-coding-container">
-  <div class="vibe-coding-header">
-    <div class="vibe-coding-header-content">
-      <div class="vibe-coding-header-left">
-        <h1>Execution Flow Tracker</h1>
-        <p>Monitor your tool execution pipeline</p>
-      </div>
-      
-      <div class="vibe-coding-header-right">
-        <button 
-          class="vibe-coding-btn vibe-coding-btn-primary" 
-          (click)="runDemo()" 
-          [disabled]="isProcessing">
-          RUN
-        </button>
-
-        <!-- Processing Badge -->
-        <span *ngIf="isProcessing" class="vibe-coding-processing-badge">
-          <span class="vibe-coding-processing-dot"></span>
-          Processing
-        </span>
-
-        <!-- Stop Icon (Blinking SVG Square) -->
-        <button 
-          *ngIf="isProcessing"
-          class="vibe-coding-stop-btn" 
-          (click)="stopStreaming()"
-          title="Stop Streaming">
-          <svg class="vibe-coding-stop-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect x="6" y="6" width="12" height="12" fill="currentColor" rx="2"/>
-          </svg>
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <div class="vibe-coding-content">
-    <!-- Executed Files Section -->
-    <div class="vibe-coding-section vibe-coding-executed">
-      <div class="vibe-coding-section-header">
-        <div class="vibe-coding-section-icon">✓</div>
-        <div class="vibe-coding-section-title">
-          <h2>Executed</h2>
-          <div class="vibe-coding-count"><span>{{ executedItems.length }}</span> completed</div>
-        </div>
-      </div>
-      <div class="vibe-coding-file-list">
-        <!-- Empty State -->
-        <div *ngIf="executedItems.length === 0 && !currentApprovalRequest" class="vibe-coding-empty-state">
-          <div class="vibe-coding-empty-state-icon">—</div>
-          <p>No items executed yet</p>
-        </div>
-
-        <!-- Streaming Data Container - For READ items via DOM -->
-        <div id="vibe-coding-streaming-container"></div>
-        
-        <!-- File Operations (WRITE/MODIFY) - Completed ones -->
-        <ng-container *ngFor="let group of groupedExecutedItems">
-          <div *ngIf="group.type === 'FILE_OP' && group.item && hasFileDetails(group.item.content)" class="vibe-coding-file-item">
-            <div class="vibe-coding-file-icon">{{ getFileExtension(getFileDetails(group.item.content)?.file_name) }}</div>
-            <div class="vibe-coding-file-info">
-              <div class="vibe-coding-file-name">{{ getFileDetails(group.item.content)?.file_name }}</div>
-              <div class="vibe-coding-file-path">{{ getFileDetails(group.item.content)?.file_path }}</div>
-            </div>
-            <div class="vibe-coding-file-time" *ngIf="group.item.executedAt">{{ formatTime(group.item.executedAt) }}</div>
-            <div 
-              class="vibe-coding-status-badge" 
-              [ngClass]="{'vibe-coding-rejected': group.item.rejected}">
-              {{ group.item.rejected ? 'REJECTED' : group.item.tool }}
-            </div>
-          </div>
-        </ng-container>
-
-        <!-- Approval Request (at bottom) - WITH CODE CHANGES -->
-        <div *ngIf="currentApprovalRequest && hasFileDetails(currentApprovalRequest.data.content)" class="vibe-coding-file-item vibe-coding-awaiting-approval">
-          <div class="vibe-coding-approval-header">
-            <div class="vibe-coding-file-icon">{{ getFileExtension(getFileDetails(currentApprovalRequest.data.content)?.file_name) }}</div>
-            <div class="vibe-coding-file-info">
-              <div class="vibe-coding-file-name">{{ getFileDetails(currentApprovalRequest.data.content)?.file_name }}</div>
-              <div class="vibe-coding-file-path">{{ getFileDetails(currentApprovalRequest.data.content)?.file_path }}</div>
-            </div>
-            <div class="vibe-coding-approval-badge">{{ currentApprovalRequest.data.tool }}</div>
-          </div>
-          
-          <!-- Reasoning Box -->
-          <div class="vibe-coding-reasoning-box" *ngIf="getReasoning(currentApprovalRequest.data.content)">
-            <h3>Reasoning</h3>
-            <p>{{ getReasoning(currentApprovalRequest.data.content) }}</p>
-          </div>
-          
-          <!-- Code Changes Block -->
-          <div class="vibe-coding-diff-container" *ngIf="getFileDetails(currentApprovalRequest.data.content)?.modified_code">
-            <div class="vibe-coding-diff-header">Changes</div>
-            <div class="vibe-coding-code-block">
-              <pre>{{ getFileDetails(currentApprovalRequest.data.content)?.modified_code }}</pre>
-            </div>
-          </div>
-          
-          <!-- Approval Actions -->
-          <div class="vibe-coding-approval-actions">
-            <button class="vibe-coding-approval-btn vibe-coding-reject" (click)="rejectChanges()">✕ Reject</button>
-            <button class="vibe-coding-approval-btn vibe-coding-accept" (click)="approveAndContinue()">✓ Accept & Continue</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Queued Files Section -->
-    <div class="vibe-coding-section vibe-coding-queued">
-      <div class="vibe-coding-section-header">
-        <div class="vibe-coding-section-icon">⋯</div>
-        <div class="vibe-coding-section-title">
-          <h2>Queued</h2>
-          <div class="vibe-coding-count"><span>{{ queuedItems.length }}</span> pending</div>
-        </div>
-      </div>
-      <div class="vibe-coding-file-list">
-        <!-- Empty State -->
-        <div *ngIf="queuedItems.length === 0 && !isProcessing" class="vibe-coding-empty-state">
-          <div class="vibe-coding-empty-state-icon">—</div>
-          <p>No items in queue</p>
-        </div>
-
-        <!-- Loading State -->
-        <div *ngIf="queuedItems.length === 0 && isProcessing && executedItems.length > 0" class="vibe-coding-loading-state">
-          <div class="vibe-coding-loading-spinner"></div>
-          <h3>Generating Next Task<span class="vibe-coding-loading-dots"><span>.</span><span>.</span><span>.</span></span></h3>
-          <p>Analyzing execution results</p>
-        </div>
-
-        <!-- Queued Items -->
-        <div *ngFor="let item of queuedItems; let i = index" class="vibe-coding-file-item">
-          <!-- READ Item -->
-          <ng-container *ngIf="item.tool === 'READ'">
-            <div class="vibe-coding-file-icon">{{ getToolIcon(item.tool) }}</div>
-            <div class="vibe-coding-file-info">
-              <div class="vibe-coding-file-name">{{ getReadContent(item.content) }}</div>
-            </div>
-            <div class="vibe-coding-status-badge">Position {{ i + 1 }}</div>
-          </ng-container>
-
-          <!-- File Operation Item -->
-          <ng-container *ngIf="item.tool !== 'READ' && hasFileDetails(item.content)">
-            <div class="vibe-coding-file-icon">{{ getFileExtension(getFileDetails(item.content)?.file_name) }}</div>
-            <div class="vibe-coding-file-info">
-              <div class="vibe-coding-file-name">{{ getFileDetails(item.content)?.file_name }}</div>
-              <div class="vibe-coding-file-path">{{ getFileDetails(item.content)?.file_path }}</div>
-            </div>
-            <div class="vibe-coding-status-badge">{{ item.tool }}</div>
-          </ng-container>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 * {
   margin: 0;
   padding: 0;
@@ -185,18 +6,22 @@
 
 .vibe-coding-container {
   width: 100%;
-  max-width: none;
+  height: 100vh;
   background: white;
-  border-radius: 0;
-  box-shadow: none;
-  overflow: auto;
-  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .vibe-coding-header {
   background: white;
   padding: 20px 30px;
   border-bottom: 1px solid #e5e5e5;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
 }
 
 .vibe-coding-header-content {
@@ -328,26 +153,42 @@
 }
 
 .vibe-coding-content {
+  margin-top: 100px; /* Space for fixed header */
   padding: 30px;
   display: grid;
   grid-template-columns: 2.5fr 1fr;
   gap: 30px;
+  height: calc(100vh - 100px);
+  overflow: hidden;
 }
 
 .vibe-coding-section {
   background: white;
   border: 1px solid #e5e5e5;
   border-radius: 6px;
-  padding: 20px;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
+}
+
+.vibe-coding-executed {
+  height: 100%;
+  overflow: hidden;
+}
+
+.vibe-coding-queued {
+  height: 100%;
+  overflow: hidden;
+  position: sticky;
+  top: 130px;
 }
 
 .vibe-coding-section-header {
   display: flex;
   align-items: center;
-  margin-bottom: 20px;
-  padding-bottom: 12px;
+  padding: 20px 20px 12px 20px;
   border-bottom: 1px solid #e5e5e5;
+  flex-shrink: 0;
 }
 
 .vibe-coding-section-icon {
@@ -380,9 +221,10 @@
 }
 
 .vibe-coding-file-list {
-  max-height: 450px;
+  flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
+  padding: 20px;
 }
 
 .vibe-coding-file-list::-webkit-scrollbar {
@@ -792,13 +634,16 @@
   }
 
   .vibe-coding-content {
+    margin-top: 130px;
     padding: 20px 15px;
     gap: 15px;
     grid-template-columns: 1fr;
+    height: calc(100vh - 130px);
   }
 
-  .vibe-coding-section {
-    padding: 15px;
+  .vibe-coding-queued {
+    position: relative;
+    top: 0;
   }
 
   .vibe-coding-code-block pre {
