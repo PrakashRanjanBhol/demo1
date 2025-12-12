@@ -42,10 +42,6 @@ export class ChunkedJsonParserComponent implements OnInit {
         this.currentApprovalRequest = approvalRequest;
         this.logWaitingForApproval(approvalRequest.data);
         this.updateLists();
-        
-        // Debug log to check data structure
-        console.log('Approval Request Data:', approvalRequest.data);
-        console.log('File Details:', this.getFileDetails(approvalRequest.data.content));
       },
       onCompletion: () => {
         this.isProcessing = false;
@@ -79,7 +75,8 @@ export class ChunkedJsonParserComponent implements OnInit {
 
     // Create the READ item element
     const readItemDiv = document.createElement('div');
-    readItemDiv.className = 'vibe-coding-file-item vibe-coding-read-group vibe-coding-new';
+    readItemDiv.className = 'vibe-coding-file-item vibe-coding-read-group vibe-coding-new vibe-coding-dom-item';
+    readItemDiv.setAttribute('data-read-item', 'true'); // Mark as DOM-added item
     
     // Create file icon
     const iconDiv = document.createElement('div');
@@ -107,9 +104,27 @@ export class ChunkedJsonParserComponent implements OnInit {
       // Insert before approval request
       executedListElement.insertBefore(readItemDiv, approvalElement);
     } else {
-      // Append at the end
-      executedListElement.appendChild(readItemDiv);
+      // Find the last Angular-rendered item (FILE_OP items)
+      const angularItems = executedListElement.querySelectorAll('.vibe-coding-file-item:not([data-read-item])');
+      if (angularItems.length > 0) {
+        const lastAngularItem = angularItems[angularItems.length - 1];
+        lastAngularItem.insertAdjacentElement('afterend', readItemDiv);
+      } else {
+        // Append at the end if no Angular items exist
+        executedListElement.appendChild(readItemDiv);
+      }
     }
+  }
+
+  private clearDOMReadItems(): void {
+    const executedListElement = document.getElementById('vibe-coding-executed-list');
+    if (!executedListElement) {
+      return;
+    }
+
+    // Remove only DOM-added READ items, keep Angular-rendered items
+    const readItems = executedListElement.querySelectorAll('[data-read-item="true"]');
+    readItems.forEach(item => item.remove());
   }
 
   private updateLists(): void {
@@ -184,11 +199,8 @@ export class ChunkedJsonParserComponent implements OnInit {
     this.queuedItems = [];
     this.groupedExecutedItems = [];
     
-    // Clear the executed list DOM
-    const executedListElement = document.getElementById('vibe-coding-executed-list');
-    if (executedListElement) {
-      executedListElement.innerHTML = '';
-    }
+    // Clear only DOM-added READ items, NOT the entire container
+    this.clearDOMReadItems();
     
     // Setup callbacks before starting the stream
     this.setupCallbacks();
@@ -280,21 +292,16 @@ export class ChunkedJsonParserComponent implements OnInit {
   }
 
   public getFileDetails(content: any): any {
-    console.log('getFileDetails input:', content);
-    
     if (!content) {
-      console.warn('Content is null or undefined');
       return null;
     }
     
     if (typeof content === 'object') {
       if (content.files && Array.isArray(content.files) && content.files.length > 0) {
-        console.log('Returning file:', content.files[0]);
         return content.files[0];
       }
     }
     
-    console.warn('No valid file details found');
     return null;
   }
 
@@ -310,166 +317,3 @@ export class ChunkedJsonParserComponent implements OnInit {
     return details !== null && details !== undefined;
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<div class="vibe-coding-container">
-  <div class="vibe-coding-header">
-    <h1>Execution Flow Tracker</h1>
-    <p>Monitor your tool execution pipeline</p>
-    
-    <div class="vibe-coding-button-container">
-      <button 
-        class="vibe-coding-btn vibe-coding-btn-primary" 
-        (click)="runDemo()" 
-        [disabled]="isProcessing">
-        {{ isProcessing ? 'Processing...' : 'RUN' }}
-      </button>
-
-      <button 
-        *ngIf="isProcessing"
-        class="vibe-coding-btn vibe-coding-btn-danger" 
-        (click)="stopStreaming()">
-        STOP
-      </button>
-    </div>
-  </div>
-
-  <div class="vibe-coding-content">
-    <!-- Executed Files Section -->
-    <div class="vibe-coding-section vibe-coding-executed">
-      <div class="vibe-coding-section-header">
-        <div class="vibe-coding-section-icon">✓</div>
-        <div class="vibe-coding-section-title">
-          <h2>Executed</h2>
-          <div class="vibe-coding-count"><span>{{ executedItems.length }}</span> completed</div>
-        </div>
-      </div>
-      <div class="vibe-coding-file-list" id="vibe-coding-executed-list">
-        <!-- Empty State -->
-        <div *ngIf="executedItems.length === 0 && !currentApprovalRequest" class="vibe-coding-empty-state">
-          <div class="vibe-coding-empty-state-icon">—</div>
-          <p>No items executed yet</p>
-        </div>
-
-        <!-- READ items will be appended here via DOM manipulation -->
-        
-        <!-- File Operations (WRITE/MODIFY) - Completed ones -->
-        <ng-container *ngFor="let group of groupedExecutedItems">
-          <div *ngIf="group.type === 'FILE_OP' && group.item && hasFileDetails(group.item.content)" class="vibe-coding-file-item">
-            <div class="vibe-coding-file-icon">{{ getFileExtension(getFileDetails(group.item.content)?.file_name) }}</div>
-            <div class="vibe-coding-file-info">
-              <div class="vibe-coding-file-name">{{ getFileDetails(group.item.content)?.file_name }}</div>
-              <div class="vibe-coding-file-path">{{ getFileDetails(group.item.content)?.file_path }}</div>
-            </div>
-            <div class="vibe-coding-file-time" *ngIf="group.item.executedAt">{{ formatTime(group.item.executedAt) }}</div>
-            <div 
-              class="vibe-coding-status-badge" 
-              [ngClass]="{'vibe-coding-rejected': group.item.rejected}">
-              {{ group.item.rejected ? 'REJECTED' : group.item.tool }}
-            </div>
-          </div>
-        </ng-container>
-
-        <!-- Approval Request (at bottom) - WITH CODE CHANGES -->
-        <div *ngIf="currentApprovalRequest && hasFileDetails(currentApprovalRequest.data.content)" class="vibe-coding-file-item vibe-coding-awaiting-approval">
-          <div class="vibe-coding-approval-header">
-            <div class="vibe-coding-file-icon">{{ getFileExtension(getFileDetails(currentApprovalRequest.data.content)?.file_name) }}</div>
-            <div class="vibe-coding-file-info">
-              <div class="vibe-coding-file-name">{{ getFileDetails(currentApprovalRequest.data.content)?.file_name }}</div>
-              <div class="vibe-coding-file-path">{{ getFileDetails(currentApprovalRequest.data.content)?.file_path }}</div>
-            </div>
-            <div class="vibe-coding-approval-badge">{{ currentApprovalRequest.data.tool }}</div>
-          </div>
-          
-          <!-- Reasoning Box -->
-          <div class="vibe-coding-reasoning-box" *ngIf="getReasoning(currentApprovalRequest.data.content)">
-            <h3>Reasoning</h3>
-            <p>{{ getReasoning(currentApprovalRequest.data.content) }}</p>
-          </div>
-          
-          <!-- Code Changes Block - SHOWING MODIFIED CODE -->
-          <div class="vibe-coding-diff-container" *ngIf="getFileDetails(currentApprovalRequest.data.content)?.modified_code">
-            <div class="vibe-coding-diff-header">Changes</div>
-            <div class="vibe-coding-code-block">
-              <pre>{{ getFileDetails(currentApprovalRequest.data.content)?.modified_code }}</pre>
-            </div>
-          </div>
-          
-          <!-- Approval Actions -->
-          <div class="vibe-coding-approval-actions">
-            <button class="vibe-coding-approval-btn vibe-coding-reject" (click)="rejectChanges()">✕ Reject</button>
-            <button class="vibe-coding-approval-btn vibe-coding-accept" (click)="approveAndContinue()">✓ Accept & Continue</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Queued Files Section -->
-    <div class="vibe-coding-section vibe-coding-queued">
-      <div class="vibe-coding-section-header">
-        <div class="vibe-coding-section-icon">⋯</div>
-        <div class="vibe-coding-section-title">
-          <h2>Queued</h2>
-          <div class="vibe-coding-count"><span>{{ queuedItems.length }}</span> pending</div>
-        </div>
-      </div>
-      <div class="vibe-coding-file-list">
-        <!-- Empty State -->
-        <div *ngIf="queuedItems.length === 0 && !isProcessing" class="vibe-coding-empty-state">
-          <div class="vibe-coding-empty-state-icon">—</div>
-          <p>No items in queue</p>
-        </div>
-
-        <!-- Loading State -->
-        <div *ngIf="queuedItems.length === 0 && isProcessing && executedItems.length > 0" class="vibe-coding-loading-state">
-          <div class="vibe-coding-loading-spinner"></div>
-          <h3>Generating Next Task<span class="vibe-coding-loading-dots"><span>.</span><span>.</span><span>.</span></span></h3>
-          <p>Analyzing execution results</p>
-        </div>
-
-        <!-- Queued Items -->
-        <div *ngFor="let item of queuedItems; let i = index" class="vibe-coding-file-item">
-          <!-- READ Item -->
-          <ng-container *ngIf="item.tool === 'READ'">
-            <div class="vibe-coding-file-icon">{{ getToolIcon(item.tool) }}</div>
-            <div class="vibe-coding-file-info">
-              <div class="vibe-coding-file-name">{{ getReadContent(item.content) }}</div>
-            </div>
-            <div class="vibe-coding-status-badge">Position {{ i + 1 }}</div>
-          </ng-container>
-
-          <!-- File Operation Item -->
-          <ng-container *ngIf="item.tool !== 'READ' && hasFileDetails(item.content)">
-            <div class="vibe-coding-file-icon">{{ getFileExtension(getFileDetails(item.content)?.file_name) }}</div>
-            <div class="vibe-coding-file-info">
-              <div class="vibe-coding-file-name">{{ getFileDetails(item.content)?.file_name }}</div>
-              <div class="vibe-coding-file-path">{{ getFileDetails(item.content)?.file_path }}</div>
-            </div>
-            <div class="vibe-coding-status-badge">{{ item.tool }}</div>
-          </ng-container>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
