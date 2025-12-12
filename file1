@@ -1,586 +1,11 @@
-import { Injectable } from '@angular/core';
-
-export interface ToolData {
-  tool: 'READ' | 'WRITE' | 'MODIFY';
-  content: string | ToolContentDetails;
-  executedAt?: Date;
-  rejected?: boolean;
-}
-
-export interface ToolContentDetails {
-  reasoning: string;
-  files: ToolFile[];
-}
-
-export interface ToolFile {
-  file_path: string;
-  file_name: string;
-  original_code: string;
-  modified_code: string;
-}
-
-export interface ParserResult {
-  success: boolean;
-  data: any;
-}
-
-export interface ApprovalRequest {
-  data: ToolData;
-  timestamp: Date;
-}
-
-export interface ParserCallbacks {
-  onToolDetected?: (toolData: ToolData) => void;
-  onApprovalRequest?: (approvalRequest: ApprovalRequest) => void;
-  onCompletion?: () => void;
-  onError?: (error: string) => void;
-  onFirstChunk?: () => void;
-}
-
-@Injectable({
-  providedIn: 'root'
-})
-export class ChunkedJsonParserService {
-  private buffer = '';
-  private pendingQueue: ToolData[] = [];
-  private completedTools: ToolData[] = [];
-  private isWaitingForApproval = false;
-  private isStreamComplete = false;
-  private currentPendingData: ToolData | null = null;
-  private abortController: AbortController | null = null;
-  private isStreaming = false;
-  private firstChunkReceived = false;
-
-  // Callbacks for component
-  private callbacks: ParserCallbacks = {};
-
-  // Configuration
-  private readonly API_URL = 'https://api.anthropic.com/v1/messages';
-  private readonly API_KEY = 'YOUR_API_KEY_HERE'; // Replace with your actual API key
-  private readonly REQUEST_BODY = {
-    model: 'claude-3-5-sonnet-20241022',
-    max_tokens: 1024,
-    messages: [
-      {
-        role: 'user',
-        content: 'Generate 5 JSON objects with this exact structure: {"tool": "READ", "content": "..."}. Mix READ, WRITE, and MODIFY tools. Return only JSON objects, one per line, nothing else.'
-      }
-    ],
-    stream: true
-  };
-
-  constructor() {}
-
-  public setCallbacks(callbacks: ParserCallbacks): void {
-    this.callbacks = callbacks;
-  }
-
-  private processChunk(chunk: string): ParserResult {
-    this.buffer += chunk;
-
-    try {
-      const parsed = JSON.parse(this.buffer);
-      const result: ParserResult = { success: true, data: parsed };
-      this.buffer = '';
-      return result;
-    } catch (error) {
-      return { success: false, data: null };
-    }
-  }
-
-  private reset(): void {
-    this.buffer = '';
-    this.pendingQueue = [];
-    this.completedTools = [];
-    this.isWaitingForApproval = false;
-    this.isStreamComplete = false;
-    this.currentPendingData = null;
-    this.isStreaming = false;
-    this.firstChunkReceived = false;
-    
-    if (this.abortController) {
-      this.abortController.abort();
-      this.abortController = null;
-    }
-  }
-
-  private handleParsedJSON(data: ToolData): void {
-    const tool = data.tool;
-
-    // Emit tool detected event via callback
-    if (this.callbacks.onToolDetected) {
-      this.callbacks.onToolDetected(data);
-    }
-
-    if (tool === 'READ') {
-      // READ tool - process immediately
-      this.completedTools.push(data);
-      // Continue processing queue
-      this.processQueue();
-    } else if (tool === 'WRITE' || tool === 'MODIFY') {
-      // WRITE/MODIFY tool - require approval
-      this.isWaitingForApproval = true;
-      this.currentPendingData = data;
-      
-      if (this.callbacks.onApprovalRequest) {
-        this.callbacks.onApprovalRequest({
-          data: data,
-          timestamp: new Date()
-        });
-      }
-    } else {
-      // Unknown tool - process immediately
-      this.completedTools.push(data);
-      this.processQueue();
-    }
-  }
-
-  private processQueue(): void {
-    if (this.pendingQueue.length > 0 && !this.isWaitingForApproval) {
-      const nextItem = this.pendingQueue.shift();
-      if (nextItem) {
-        this.handleParsedJSON(nextItem);
-      }
-    } else if (this.pendingQueue.length === 0 && this.isStreamComplete && !this.isWaitingForApproval) {
-      // All done
-      if (this.callbacks.onCompletion) {
-        this.callbacks.onCompletion();
-      }
-    }
-  }
-
-  public approveAndContinue(): void {
-    if (this.currentPendingData) {
-      // Mark as completed after approval
-      this.completedTools.push(this.currentPendingData);
-      
-      this.currentPendingData = null;
-      this.isWaitingForApproval = false;
-
-      // Process next item in queue
-      this.processQueue();
-    }
-  }
-
-  public stopStreaming(): void {
-    if (this.abortController) {
-      this.abortController.abort();
-      this.abortController = null;
-    }
-    
-    this.isStreaming = false;
-    this.isStreamComplete = true;
-    this.pendingQueue = [];
-    
-    console.log('🛑 Streaming stopped by user');
-    
-    // Call onCompletion when stopped
-    if (this.callbacks.onCompletion) {
-      this.callbacks.onCompletion();
-    }
-  }
-
-  public async startStreaming(): Promise<void> {
-    this.reset();
-    
-    // Create new abort controller for this stream
-    this.abortController = new AbortController();
-    this.isStreaming = true;
-
-    try {
-      const response = await fetch(this.API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': this.API_KEY,
-          'anthropic-version': '2023-06-01'
-        },
-        body: JSON.stringify(this.REQUEST_BODY),
-        signal: this.abortController.signal
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error('Failed to get reader from response');
-      }
-
-      const decoder = new TextDecoder();
-
-      while (true) {
-        const { done, value } = await reader.read();
-
-        if (done) {
-          this.isStreamComplete = true;
-
-          // Check if we're done or still waiting
-          if (!this.isWaitingForApproval && this.pendingQueue.length === 0) {
-            if (this.callbacks.onCompletion) {
-              this.callbacks.onCompletion();
-            }
-          }
-          break;
-        }
-
-        const chunk = decoder.decode(value, { stream: true });
-
-        // Notify when first chunk is received
-        if (!this.firstChunkReceived) {
-          this.firstChunkReceived = true;
-          if (this.callbacks.onFirstChunk) {
-            this.callbacks.onFirstChunk();
-          }
-        }
-
-        // Process each character in the chunk
-        for (let char of chunk) {
-          const result = this.processChunk(char);
-
-          if (result.success) {
-            let toolData = result.data;
-
-            // Handle Anthropic API response format
-            if (result.data.type === 'content_block_delta' && result.data.delta?.text) {
-              try {
-                // Try to parse each line as JSON
-                const lines = result.data.delta.text.split('\n');
-                for (const line of lines) {
-                  if (line.trim()) {
-                    try {
-                      toolData = JSON.parse(line.trim());
-                      if (toolData.tool) {
-                        this.pendingQueue.push(toolData);
-                        if (!this.isWaitingForApproval) {
-                          this.processQueue();
-                        }
-                      }
-                    } catch (e) {
-                      // Not a valid JSON line, continue
-                    }
-                  }
-                }
-              } catch (e) {
-                // Not JSON, skip
-              }
-            } else if (toolData.tool) {
-              // Direct tool format
-              this.pendingQueue.push(toolData);
-              if (!this.isWaitingForApproval) {
-                this.processQueue();
-              }
-            }
-          }
-        }
-      }
-    } catch (error) {
-      this.isStreaming = false;
-      
-      // Check if error is due to abort
-      if (error instanceof Error && error.name === 'AbortError') {
-        console.log('🛑 Stream aborted');
-        return; // Don't call error callback for user-initiated stops
-      }
-      
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      if (this.callbacks.onError) {
-        this.callbacks.onError(errorMessage);
-      }
-      throw error;
-    }
-  }
-
-  public getIsWaitingForApproval(): boolean {
-    return this.isWaitingForApproval;
-  }
-  
-  public getIsStreaming(): boolean {
-    return this.isStreaming;
-  }
-
-  public getCompletedTools(): ToolData[] {
-    return [...this.completedTools];
-  }
-
-  public getPendingTools(): ToolData[] {
-    const pending: ToolData[] = [...this.pendingQueue];
-    
-    // Add currently waiting for approval tool if exists
-    if (this.currentPendingData) {
-      pending.unshift(this.currentPendingData);
-    }
-    
-    return pending;
-  }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-import { Component, OnInit } from '@angular/core';
-import { ChunkedJsonParserService, ToolData, ApprovalRequest } from './chunked-json-parser.service';
-
-interface GroupedItem {
-  type: 'READ_GROUP' | 'FILE_OP';
-  items?: ToolData[];
-  item?: ToolData;
-}
-
-@Component({
-  selector: 'app-chunked-json-parser',
-  templateUrl: './chunked-json-parser.component.html',
-  styleUrls: ['./chunked-json-parser.component.css']
-})
-export class ChunkedJsonParserComponent implements OnInit {
-  public isWaitingForApproval = false;
-  public currentApprovalRequest: ApprovalRequest | null = null;
-  public isProcessing = false;
-  public executedItems: ToolData[] = [];
-  public queuedItems: ToolData[] = [];
-  public groupedExecutedItems: GroupedItem[] = [];
-
-  constructor(private parserService: ChunkedJsonParserService) {}
-
-  ngOnInit(): void {
-    // Callbacks will be set up when user clicks RUN
-  }
-
-  private setupCallbacks(): void {
-    this.parserService.setCallbacks({
-      onToolDetected: (toolData: ToolData) => {
-        this.logToolDetected(toolData);
-        this.updateLists();
-      },
-      onApprovalRequest: (approvalRequest: ApprovalRequest) => {
-        this.isWaitingForApproval = true;
-        this.currentApprovalRequest = approvalRequest;
-        this.logWaitingForApproval(approvalRequest.data);
-        this.updateLists();
-      },
-      onCompletion: () => {
-        this.isProcessing = false;
-        this.logCompleted();
-        this.updateLists();
-      },
-      onError: (error: string) => {
-        this.isProcessing = false;
-        this.logError(error);
-      },
-      onFirstChunk: () => {
-        this.logFirstChunkReceived();
-      }
-    });
-  }
-
-  private updateLists(): void {
-    this.executedItems = this.parserService.getCompletedTools();
-    this.queuedItems = this.parserService.getPendingTools();
-    this.groupExecutedItems();
-  }
-
-  private groupExecutedItems(): void {
-    const grouped: GroupedItem[] = [];
-    let currentReadGroup: ToolData[] = [];
-
-    this.executedItems.forEach((item) => {
-      if (item.tool === 'READ') {
-        currentReadGroup.push(item);
-      } else {
-        // If we have accumulated READ operations, add them as a group
-        if (currentReadGroup.length > 0) {
-          grouped.push({ type: 'READ_GROUP', items: [...currentReadGroup] });
-          currentReadGroup = [];
-        }
-        // Add the WRITE/MODIFY operation
-        grouped.push({ type: 'FILE_OP', item: item });
-      }
-    });
-
-    // Don't forget remaining READ operations
-    if (currentReadGroup.length > 0) {
-      grouped.push({ type: 'READ_GROUP', items: [...currentReadGroup] });
-    }
-
-    this.groupedExecutedItems = grouped;
-  }
-
-  private logToolDetected(toolData: ToolData): void {
-    const tool = toolData.tool;
-    
-    if (tool === 'READ') {
-      console.log('📖 READ Tool detected:', toolData);
-    } else if (tool === 'WRITE') {
-      console.log('✏️ WRITE Tool detected:', toolData);
-    } else if (tool === 'MODIFY') {
-      console.log('🔧 MODIFY Tool detected:', toolData);
-    } else {
-      console.log('🔹 Tool detected:', toolData);
-    }
-  }
-
-  private logFirstChunkReceived(): void {
-    console.log('📦 First chunk received from stream');
-  }
-
-  private logWaitingForApproval(toolData: ToolData): void {
-    console.log(`⚠️ WAITING FOR APPROVAL - ${toolData.tool} Tool:`, toolData);
-    console.log('Click "ACCEPT AND CONTINUE" button to proceed');
-  }
-
-  private logCompleted(): void {
-    console.log('🎉 COMPLETED - All operations finished successfully');
-  }
-
-  private logError(error: string): void {
-    console.error('❌ Error:', error);
-  }
-
-  public async runDemo(): Promise<void> {
-    console.clear();
-    console.log('🚀 Starting streaming process...\n');
-    
-    // Reset lists
-    this.executedItems = [];
-    this.queuedItems = [];
-    this.groupedExecutedItems = [];
-    
-    // Setup callbacks before starting the stream
-    this.setupCallbacks();
-    
-    this.isProcessing = true;
-    
-    try {
-      await this.parserService.startStreaming();
-    } catch (error) {
-      // Only log if it's not an abort error
-      if (error instanceof Error && error.name !== 'AbortError') {
-        console.error('Failed to start streaming:', error);
-      }
-      this.isProcessing = false;
-    }
-  }
-
-  public stopStreaming(): void {
-    console.log('🛑 Stopping streaming process...\n');
-    this.parserService.stopStreaming();
-    this.isProcessing = false;
-    this.isWaitingForApproval = false;
-    this.currentApprovalRequest = null;
-  }
-
-  public approveAndContinue(): void {
-    if (this.currentApprovalRequest) {
-      console.log('✅ APPROVED:', this.currentApprovalRequest.data);
-      console.log('Continuing with next operation...\n');
-      
-      // Reset approval state
-      this.isWaitingForApproval = false;
-      this.currentApprovalRequest = null;
-      
-      this.parserService.approveAndContinue();
-      this.updateLists();
-    }
-  }
-
-  public rejectChanges(): void {
-    if (this.currentApprovalRequest) {
-      console.log('❌ REJECTED:', this.currentApprovalRequest.data);
-      console.log('Continuing with next operation...\n');
-      
-      // Mark as rejected and continue
-      const rejectedData = { ...this.currentApprovalRequest.data, rejected: true };
-      
-      // Reset approval state
-      this.isWaitingForApproval = false;
-      this.currentApprovalRequest = null;
-      
-      this.parserService.approveAndContinue();
-      this.updateLists();
-    }
-  }
-
-  public getToolIcon(tool: string): string {
-    const icons: { [key: string]: string } = {
-      'READ': 'READ',
-      'WRITE': 'WRITE',
-      'MODIFY': 'EDIT'
-    };
-    return icons[tool] || 'TOOL';
-  }
-
-  public getFileExtension(filename: string): string {
-    return filename.split('.').pop()?.toUpperCase() || 'FILE';
-  }
-
-  public formatTime(date: Date): string {
-    return date.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
-    });
-  }
-
-  public isReadContent(content: any): boolean {
-    return typeof content === 'string';
-  }
-
-  public getReadContent(content: any): string {
-    return typeof content === 'string' ? content : '';
-  }
-
-  public getReadContents(items: ToolData[]): string {
-    return items.map(item => this.getReadContent(item.content)).join(', ');
-  }
-
-  public getFileDetails(content: any): any {
-    if (typeof content === 'object' && content.files && content.files.length > 0) {
-      return content.files[0];
-    }
-    return null;
-  }
-
-  public getReasoning(content: any): string {
-    if (typeof content === 'object' && content.reasoning) {
-      return content.reasoning;
-    }
-    return '';
-  }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-<div class="container">
-  <div class="header">
+<div class="vibe-coding-container">
+  <div class="vibe-coding-header">
     <h1>Execution Flow Tracker</h1>
     <p>Monitor your tool execution pipeline</p>
     
-    <div class="button-container">
+    <div class="vibe-coding-button-container">
       <button 
-        class="btn btn-primary" 
+        class="vibe-coding-btn vibe-coding-btn-primary" 
         (click)="runDemo()" 
         [disabled]="isProcessing">
         {{ isProcessing ? 'Processing...' : 'RUN' }}
@@ -588,77 +13,77 @@ export class ChunkedJsonParserComponent implements OnInit {
 
       <button 
         *ngIf="isProcessing"
-        class="btn btn-danger" 
+        class="vibe-coding-btn vibe-coding-btn-danger" 
         (click)="stopStreaming()">
         STOP
       </button>
     </div>
   </div>
 
-  <div class="content">
+  <div class="vibe-coding-content">
     <!-- Executed Files Section -->
-    <div class="section executed">
-      <div class="section-header">
-        <div class="section-icon">✓</div>
-        <div class="section-title">
+    <div class="vibe-coding-section vibe-coding-executed">
+      <div class="vibe-coding-section-header">
+        <div class="vibe-coding-section-icon">✓</div>
+        <div class="vibe-coding-section-title">
           <h2>Executed</h2>
-          <div class="count"><span>{{ executedItems.length }}</span> completed</div>
+          <div class="vibe-coding-count"><span>{{ executedItems.length }}</span> completed</div>
         </div>
       </div>
-      <div class="file-list">
+      <div class="vibe-coding-file-list">
         <!-- Empty State -->
-        <div *ngIf="executedItems.length === 0 && !currentApprovalRequest" class="empty-state">
-          <div class="empty-state-icon">—</div>
+        <div *ngIf="executedItems.length === 0 && !currentApprovalRequest" class="vibe-coding-empty-state">
+          <div class="vibe-coding-empty-state-icon">—</div>
           <p>No items executed yet</p>
         </div>
 
         <!-- Approval Request -->
-        <div *ngIf="currentApprovalRequest" class="file-item awaiting-approval">
-          <div class="approval-header">
-            <div class="file-icon">{{ getFileExtension(getFileDetails(currentApprovalRequest.data.content)?.file_name || '') }}</div>
-            <div class="file-info">
-              <div class="file-name">{{ getFileDetails(currentApprovalRequest.data.content)?.file_name }}</div>
-              <div class="file-path">{{ getFileDetails(currentApprovalRequest.data.content)?.file_path }}</div>
+        <div *ngIf="currentApprovalRequest" class="vibe-coding-file-item vibe-coding-awaiting-approval">
+          <div class="vibe-coding-approval-header">
+            <div class="vibe-coding-file-icon">{{ getFileExtension(getFileDetails(currentApprovalRequest.data.content)?.file_name || '') }}</div>
+            <div class="vibe-coding-file-info">
+              <div class="vibe-coding-file-name">{{ getFileDetails(currentApprovalRequest.data.content)?.file_name }}</div>
+              <div class="vibe-coding-file-path">{{ getFileDetails(currentApprovalRequest.data.content)?.file_path }}</div>
             </div>
-            <div class="approval-badge">{{ currentApprovalRequest.data.tool }}</div>
+            <div class="vibe-coding-approval-badge">{{ currentApprovalRequest.data.tool }}</div>
           </div>
-          <div class="reasoning-box">
+          <div class="vibe-coding-reasoning-box">
             <h3>Reasoning</h3>
             <p>{{ getReasoning(currentApprovalRequest.data.content) }}</p>
           </div>
-          <div class="diff-container">
-            <div class="diff-header">Changes</div>
-            <div class="code-block">
+          <div class="vibe-coding-diff-container">
+            <div class="vibe-coding-diff-header">Changes</div>
+            <div class="vibe-coding-code-block">
               <pre>{{ getFileDetails(currentApprovalRequest.data.content)?.modified_code }}</pre>
             </div>
           </div>
-          <div class="approval-actions">
-            <button class="approval-btn reject" (click)="rejectChanges()">✕ Reject</button>
-            <button class="approval-btn accept" (click)="approveAndContinue()">✓ Accept & Continue</button>
+          <div class="vibe-coding-approval-actions">
+            <button class="vibe-coding-approval-btn vibe-coding-reject" (click)="rejectChanges()">✕ Reject</button>
+            <button class="vibe-coding-approval-btn vibe-coding-accept" (click)="approveAndContinue()">✓ Accept & Continue</button>
           </div>
         </div>
 
         <!-- Executed Items -->
         <ng-container *ngFor="let group of groupedExecutedItems">
           <!-- READ Group -->
-          <div *ngIf="group.type === 'READ_GROUP'" class="file-item read-group">
-            <div class="file-icon">{{ getToolIcon('READ') }}</div>
-            <div class="file-info">
-              <div class="file-name">{{ getReadContents(group.items || []) }}</div>
+          <div *ngIf="group.type === 'READ_GROUP'" class="vibe-coding-file-item vibe-coding-read-group">
+            <div class="vibe-coding-file-icon">{{ getToolIcon('READ') }}</div>
+            <div class="vibe-coding-file-info">
+              <div class="vibe-coding-file-name">{{ getReadContents(group.items || []) }}</div>
             </div>
           </div>
 
           <!-- File Operation -->
-          <div *ngIf="group.type === 'FILE_OP' && group.item" class="file-item">
-            <div class="file-icon">{{ getFileExtension(getFileDetails(group.item.content)?.file_name || '') }}</div>
-            <div class="file-info">
-              <div class="file-name">{{ getFileDetails(group.item.content)?.file_name }}</div>
-              <div class="file-path">{{ getFileDetails(group.item.content)?.file_path }}</div>
+          <div *ngIf="group.type === 'FILE_OP' && group.item" class="vibe-coding-file-item">
+            <div class="vibe-coding-file-icon">{{ getFileExtension(getFileDetails(group.item.content)?.file_name || '') }}</div>
+            <div class="vibe-coding-file-info">
+              <div class="vibe-coding-file-name">{{ getFileDetails(group.item.content)?.file_name }}</div>
+              <div class="vibe-coding-file-path">{{ getFileDetails(group.item.content)?.file_path }}</div>
             </div>
-            <div class="file-time" *ngIf="group.item.executedAt">{{ formatTime(group.item.executedAt) }}</div>
+            <div class="vibe-coding-file-time" *ngIf="group.item.executedAt">{{ formatTime(group.item.executedAt) }}</div>
             <div 
-              class="status-badge" 
-              [ngClass]="{'rejected': group.item.rejected}">
+              class="vibe-coding-status-badge" 
+              [ngClass]="{'vibe-coding-rejected': group.item.rejected}">
               {{ group.item.rejected ? 'REJECTED' : group.item.tool }}
             </div>
           </div>
@@ -667,47 +92,47 @@ export class ChunkedJsonParserComponent implements OnInit {
     </div>
 
     <!-- Queued Files Section -->
-    <div class="section queued">
-      <div class="section-header">
-        <div class="section-icon">⋯</div>
-        <div class="section-title">
+    <div class="vibe-coding-section vibe-coding-queued">
+      <div class="vibe-coding-section-header">
+        <div class="vibe-coding-section-icon">⋯</div>
+        <div class="vibe-coding-section-title">
           <h2>Queued</h2>
-          <div class="count"><span>{{ queuedItems.length }}</span> pending</div>
+          <div class="vibe-coding-count"><span>{{ queuedItems.length }}</span> pending</div>
         </div>
       </div>
-      <div class="file-list">
+      <div class="vibe-coding-file-list">
         <!-- Empty State -->
-        <div *ngIf="queuedItems.length === 0 && !isProcessing" class="empty-state">
-          <div class="empty-state-icon">—</div>
+        <div *ngIf="queuedItems.length === 0 && !isProcessing" class="vibe-coding-empty-state">
+          <div class="vibe-coding-empty-state-icon">—</div>
           <p>No items in queue</p>
         </div>
 
         <!-- Loading State -->
-        <div *ngIf="queuedItems.length === 0 && isProcessing && executedItems.length > 0" class="loading-state">
-          <div class="loading-spinner"></div>
-          <h3>Generating Next Task<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span></h3>
+        <div *ngIf="queuedItems.length === 0 && isProcessing && executedItems.length > 0" class="vibe-coding-loading-state">
+          <div class="vibe-coding-loading-spinner"></div>
+          <h3>Generating Next Task<span class="vibe-coding-loading-dots"><span>.</span><span>.</span><span>.</span></span></h3>
           <p>Analyzing execution results</p>
         </div>
 
         <!-- Queued Items -->
-        <div *ngFor="let item of queuedItems; let i = index" class="file-item">
+        <div *ngFor="let item of queuedItems; let i = index" class="vibe-coding-file-item">
           <!-- READ Item -->
           <ng-container *ngIf="item.tool === 'READ'">
-            <div class="file-icon">{{ getToolIcon(item.tool) }}</div>
-            <div class="file-info">
-              <div class="file-name">{{ getReadContent(item.content) }}</div>
+            <div class="vibe-coding-file-icon">{{ getToolIcon(item.tool) }}</div>
+            <div class="vibe-coding-file-info">
+              <div class="vibe-coding-file-name">{{ getReadContent(item.content) }}</div>
             </div>
-            <div class="status-badge">Position {{ i + 1 }}</div>
+            <div class="vibe-coding-status-badge">Position {{ i + 1 }}</div>
           </ng-container>
 
           <!-- File Operation Item -->
           <ng-container *ngIf="item.tool !== 'READ'">
-            <div class="file-icon">{{ getFileExtension(getFileDetails(item.content)?.file_name || '') }}</div>
-            <div class="file-info">
-              <div class="file-name">{{ getFileDetails(item.content)?.file_name }}</div>
-              <div class="file-path">{{ getFileDetails(item.content)?.file_path }}</div>
+            <div class="vibe-coding-file-icon">{{ getFileExtension(getFileDetails(item.content)?.file_name || '') }}</div>
+            <div class="vibe-coding-file-info">
+              <div class="vibe-coding-file-name">{{ getFileDetails(item.content)?.file_name }}</div>
+              <div class="vibe-coding-file-path">{{ getFileDetails(item.content)?.file_path }}</div>
             </div>
-            <div class="status-badge">{{ item.tool }}</div>
+            <div class="vibe-coding-status-badge">{{ item.tool }}</div>
           </ng-container>
         </div>
       </div>
@@ -723,20 +148,13 @@ export class ChunkedJsonParserComponent implements OnInit {
 
 
 
-
-
-
-
-
-
-
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
-.container {
+.vibe-coding-container {
   width: 100%;
   max-width: none;
   background: white;
@@ -746,32 +164,32 @@ export class ChunkedJsonParserComponent implements OnInit {
   min-height: 100vh;
 }
 
-.header {
+.vibe-coding-header {
   background: white;
   padding: 30px;
   border-bottom: 1px solid #e5e5e5;
 }
 
-.header h1 {
+.vibe-coding-header h1 {
   font-size: 1.75rem;
   color: #1a1a1a;
   margin-bottom: 8px;
   font-weight: 600;
 }
 
-.header p {
+.vibe-coding-header p {
   color: #666;
   font-size: 0.9rem;
   margin-bottom: 20px;
 }
 
-.button-container {
+.vibe-coding-button-container {
   display: flex;
   gap: 10px;
   margin-top: 20px;
 }
 
-.btn {
+.vibe-coding-btn {
   padding: 10px 20px;
   font-size: 16px;
   border: none;
@@ -780,44 +198,44 @@ export class ChunkedJsonParserComponent implements OnInit {
   transition: background-color 0.3s ease;
 }
 
-.btn-primary {
+.vibe-coding-btn-primary {
   background-color: #007bff;
   color: white;
 }
 
-.btn-primary:hover:not(:disabled) {
+.vibe-coding-btn-primary:hover:not(:disabled) {
   background-color: #0056b3;
 }
 
-.btn-primary:disabled {
+.vibe-coding-btn-primary:disabled {
   background-color: #6c757d;
   cursor: not-allowed;
 }
 
-.btn-danger {
+.vibe-coding-btn-danger {
   background-color: #dc3545;
   color: white;
 }
 
-.btn-danger:hover {
+.vibe-coding-btn-danger:hover {
   background-color: #c82333;
 }
 
-.content {
+.vibe-coding-content {
   padding: 30px;
   display: grid;
   grid-template-columns: 2.5fr 1fr;
   gap: 30px;
 }
 
-.section {
+.vibe-coding-section {
   background: white;
   border: 1px solid #e5e5e5;
   border-radius: 6px;
   padding: 20px;
 }
 
-.section-header {
+.vibe-coding-section-header {
   display: flex;
   align-items: center;
   margin-bottom: 20px;
@@ -825,7 +243,7 @@ export class ChunkedJsonParserComponent implements OnInit {
   border-bottom: 1px solid #e5e5e5;
 }
 
-.section-icon {
+.vibe-coding-section-icon {
   width: 32px;
   height: 32px;
   border-radius: 6px;
@@ -838,45 +256,45 @@ export class ChunkedJsonParserComponent implements OnInit {
   color: #666;
 }
 
-.section-title {
+.vibe-coding-section-title {
   flex: 1;
 }
 
-.section-title h2 {
+.vibe-coding-section-title h2 {
   font-size: 1.1rem;
   color: #1a1a1a;
   margin-bottom: 4px;
   font-weight: 600;
 }
 
-.section-title .count {
+.vibe-coding-section-title .vibe-coding-count {
   font-size: 0.85rem;
   color: #666;
 }
 
-.file-list {
+.vibe-coding-file-list {
   max-height: 450px;
   overflow-y: auto;
 }
 
-.file-list::-webkit-scrollbar {
+.vibe-coding-file-list::-webkit-scrollbar {
   width: 6px;
 }
 
-.file-list::-webkit-scrollbar-track {
+.vibe-coding-file-list::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.file-list::-webkit-scrollbar-thumb {
+.vibe-coding-file-list::-webkit-scrollbar-thumb {
   background: #d5d5d5;
   border-radius: 3px;
 }
 
-.file-list::-webkit-scrollbar-thumb:hover {
+.vibe-coding-file-list::-webkit-scrollbar-thumb:hover {
   background: #bbb;
 }
 
-.file-item {
+.vibe-coding-file-item {
   background: #fafafa;
   padding: 14px;
   border-radius: 4px;
@@ -887,29 +305,29 @@ export class ChunkedJsonParserComponent implements OnInit {
   border: 1px solid #e5e5e5;
 }
 
-.file-item:hover {
+.vibe-coding-file-item:hover {
   background: #f5f5f5;
   border-color: #d5d5d5;
 }
 
-.file-item.read-group {
+.vibe-coding-file-item.vibe-coding-read-group {
   align-items: flex-start;
 }
 
-.file-item.read-group .file-icon {
+.vibe-coding-file-item.vibe-coding-read-group .vibe-coding-file-icon {
   margin-top: 2px;
 }
 
-.executed .file-item {
+.vibe-coding-executed .vibe-coding-file-item {
   background: white;
 }
 
-.queued .file-item {
+.vibe-coding-queued .vibe-coding-file-item {
   background: white;
   opacity: 0.9;
 }
 
-.file-icon {
+.vibe-coding-file-icon {
   width: 40px;
   height: 32px;
   border-radius: 4px;
@@ -924,11 +342,11 @@ export class ChunkedJsonParserComponent implements OnInit {
   letter-spacing: -0.5px;
 }
 
-.file-info {
+.vibe-coding-file-info {
   flex: 1;
 }
 
-.file-name {
+.vibe-coding-file-name {
   font-weight: 500;
   color: #1a1a1a;
   margin-bottom: 4px;
@@ -936,19 +354,19 @@ export class ChunkedJsonParserComponent implements OnInit {
   line-height: 1.5;
 }
 
-.file-path {
+.vibe-coding-file-path {
   font-size: 0.8rem;
   color: #888;
 }
 
-.file-time {
+.vibe-coding-file-time {
   font-size: 0.75rem;
   color: #999;
   white-space: nowrap;
   margin-right: 12px;
 }
 
-.status-badge {
+.vibe-coding-status-badge {
   padding: 4px 10px;
   border-radius: 3px;
   font-size: 0.75rem;
@@ -958,80 +376,80 @@ export class ChunkedJsonParserComponent implements OnInit {
   border: 1px solid #e5e5e5;
 }
 
-.status-badge.rejected {
+.vibe-coding-status-badge.vibe-coding-rejected {
   background: #dc3545;
   color: white;
   border-color: #dc3545;
 }
 
-.executed .status-badge {
+.vibe-coding-executed .vibe-coding-status-badge {
   background: #1a1a1a;
   color: white;
   border-color: #1a1a1a;
 }
 
-.empty-state {
+.vibe-coding-empty-state {
   text-align: center;
   padding: 60px 20px;
   color: #999;
 }
 
-.empty-state-icon {
+.vibe-coding-empty-state-icon {
   font-size: 2.5rem;
   margin-bottom: 12px;
   opacity: 0.4;
 }
 
-.empty-state p {
+.vibe-coding-empty-state p {
   font-size: 0.9rem;
 }
 
-.loading-state {
+.vibe-coding-loading-state {
   text-align: center;
   padding: 50px 20px;
 }
 
-.loading-spinner {
+.vibe-coding-loading-spinner {
   width: 50px;
   height: 50px;
   margin: 0 auto 20px;
   border: 3px solid #e5e5e5;
   border-top: 3px solid #666;
   border-radius: 50%;
-  animation: spin 1s linear infinite;
+  animation: vibe-coding-spin 1s linear infinite;
 }
 
-.loading-state h3 {
+.vibe-coding-loading-state h3 {
   font-size: 1rem;
   color: #1a1a1a;
   margin-bottom: 8px;
   font-weight: 500;
 }
 
-.loading-state p {
+.vibe-coding-loading-state p {
   font-size: 0.85rem;
   color: #999;
 }
 
-.loading-dots {
+.vibe-coding-loading-dots {
   display: inline-block;
   margin-left: 2px;
 }
 
-.loading-dots span {
-  animation: blink 1.4s infinite;
+.vibe-coding-loading-dots span {
+  animation: vibe-coding-blink 1.4s infinite;
   font-weight: bold;
 }
 
-.loading-dots span:nth-child(2) {
+.vibe-coding-loading-dots span:nth-child(2) {
   animation-delay: 0.2s;
 }
 
-.loading-dots span:nth-child(3) {
+.vibe-coding-loading-dots span:nth-child(3) {
   animation-delay: 0.4s;
 }
 
-@keyframes spin {
+@keyframes vibe-coding-spin {
   0% {
     transform: rotate(0deg);
   }
@@ -1040,7 +458,7 @@ export class ChunkedJsonParserComponent implements OnInit {
   }
 }
 
-@keyframes blink {
+@keyframes vibe-coding-blink {
   0%, 20% {
     opacity: 0.2;
   }
@@ -1052,14 +470,14 @@ export class ChunkedJsonParserComponent implements OnInit {
   }
 }
 
-.file-item.awaiting-approval {
+.vibe-coding-file-item.vibe-coding-awaiting-approval {
   background: #fff9e6;
   border: 2px solid #ffc107;
   padding: 0;
   display: block;
 }
 
-.approval-header {
+.vibe-coding-approval-header {
   display: flex;
   align-items: center;
   padding: 14px;
@@ -1067,7 +485,7 @@ export class ChunkedJsonParserComponent implements OnInit {
   border-bottom: 1px solid #e5e5e5;
 }
 
-.approval-header .file-icon {
+.vibe-coding-approval-header .vibe-coding-file-icon {
   width: 40px;
   height: 32px;
   border-radius: 4px;
@@ -1082,11 +500,11 @@ export class ChunkedJsonParserComponent implements OnInit {
   letter-spacing: -0.5px;
 }
 
-.approval-header .file-info {
+.vibe-coding-approval-header .vibe-coding-file-info {
   flex: 1;
 }
 
-.approval-header .file-name {
+.vibe-coding-approval-header .vibe-coding-file-name {
   font-weight: 500;
   color: #1a1a1a;
   margin-bottom: 4px;
@@ -1094,12 +512,12 @@ export class ChunkedJsonParserComponent implements OnInit {
   line-height: 1.5;
 }
 
-.approval-header .file-path {
+.vibe-coding-approval-header .vibe-coding-file-path {
   font-size: 0.8rem;
   color: #888;
 }
 
-.approval-badge {
+.vibe-coding-approval-badge {
   padding: 4px 10px;
   border-radius: 3px;
   font-size: 0.75rem;
@@ -1110,7 +528,7 @@ export class ChunkedJsonParserComponent implements OnInit {
   margin-left: 12px;
 }
 
-.reasoning-box {
+.vibe-coding-reasoning-box {
   background: #f8f9fa;
   border-left: 3px solid #1a1a1a;
   padding: 12px 14px;
@@ -1118,21 +536,21 @@ export class ChunkedJsonParserComponent implements OnInit {
   border-radius: 4px;
 }
 
-.reasoning-box h3 {
+.vibe-coding-reasoning-box h3 {
   font-size: 0.85rem;
   color: #1a1a1a;
   margin: 0 0 6px 0;
   font-weight: 600;
 }
 
-.reasoning-box p {
+.vibe-coding-reasoning-box p {
   font-size: 0.8rem;
   color: #666;
   margin: 0;
   line-height: 1.5;
 }
 
-.diff-container {
+.vibe-coding-diff-container {
   margin: 0 14px 14px 14px;
   border: 1px solid #e5e5e5;
   border-radius: 4px;
@@ -1140,12 +558,12 @@ export class ChunkedJsonParserComponent implements OnInit {
   background: #f6f8fa;
 }
 
-.code-block {
+.vibe-coding-code-block {
   margin: 0;
   padding: 0;
 }
 
-.code-block pre {
+.vibe-coding-code-block pre {
   margin: 0;
   padding: 12px;
   background: #ffffff;
@@ -1156,7 +574,7 @@ export class ChunkedJsonParserComponent implements OnInit {
   line-height: 1.5;
 }
 
-.diff-header {
+.vibe-coding-diff-header {
   background: #f1f3f5;
   padding: 8px 12px;
   font-weight: 600;
@@ -1165,7 +583,7 @@ export class ChunkedJsonParserComponent implements OnInit {
   font-size: 0.8rem;
 }
 
-.approval-actions {
+.vibe-coding-approval-actions {
   display: flex;
   gap: 10px;
   padding: 14px;
@@ -1173,7 +591,7 @@ export class ChunkedJsonParserComponent implements OnInit {
   border-top: 1px solid #e5e5e5;
 }
 
-.approval-btn {
+.vibe-coding-approval-btn {
   flex: 1;
   padding: 10px 20px;
   border: 1px solid #d5d5d5;
@@ -1186,31 +604,31 @@ export class ChunkedJsonParserComponent implements OnInit {
   color: #1a1a1a;
 }
 
-.approval-btn:hover {
+.vibe-coding-approval-btn:hover {
   background: #f5f5f5;
 }
 
-.approval-btn.accept {
+.vibe-coding-approval-btn.vibe-coding-accept {
   background: #28a745;
   color: white;
   border-color: #28a745;
 }
 
-.approval-btn.accept:hover {
+.vibe-coding-approval-btn.vibe-coding-accept:hover {
   background: #218838;
 }
 
-.approval-btn.reject {
+.vibe-coding-approval-btn.vibe-coding-reject {
   background: #dc3545;
   color: white;
   border-color: #dc3545;
 }
 
-.approval-btn.reject:hover {
+.vibe-coding-approval-btn.vibe-coding-reject:hover {
   background: #c82333;
 }
 
-@keyframes slideIn {
+@keyframes vibe-coding-slideIn {
   from {
     opacity: 0;
     transform: translateY(-8px);
@@ -1221,22 +639,22 @@ export class ChunkedJsonParserComponent implements OnInit {
   }
 }
 
-.file-item.new {
-  animation: slideIn 0.3s ease;
+.vibe-coding-file-item.vibe-coding-new {
+  animation: vibe-coding-slideIn 0.3s ease;
 }
 
 @media (max-width: 768px) {
-  .header h1 {
+  .vibe-coding-header h1 {
     font-size: 1.5rem;
   }
 
-  .content {
+  .vibe-coding-content {
     padding: 20px 15px;
     gap: 15px;
     grid-template-columns: 1fr;
   }
 
-  .section {
+  .vibe-coding-section {
     padding: 15px;
   }
 }
