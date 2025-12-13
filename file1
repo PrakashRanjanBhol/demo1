@@ -6,8 +6,8 @@
   font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Fira Mono', 'Roboto Mono', 'Consolas', 'Liberation Mono', 'Menlo', monospace;
   font-size: 0.75rem;
   line-height: 1.6;
-  white-space: pre;
   position: relative;
+  align-items: flex-start; /* ADDED: Align items to top for wrapped lines */
 }
 
 .vibe-coding-line-number {
@@ -20,6 +20,8 @@
   flex-shrink: 0;
   border-right: 1px solid var(--vibe-border-primary);
   margin-right: 8px;
+  align-self: flex-start; /* ADDED: Keep line numbers at top */
+  padding-top: 2px; /* ADDED: Align with first line of text */
 }
 
 .vibe-coding-line-prefix {
@@ -28,12 +30,17 @@
   user-select: none;
   font-weight: bold;
   flex-shrink: 0;
+  align-self: flex-start; /* ADDED: Keep prefix at top */
+  padding-top: 2px; /* ADDED: Align with first line of text */
 }
 
 .vibe-coding-line-content {
   flex: 1;
-  white-space: pre;
-  overflow-x: auto;
+  white-space: pre-wrap; /* CHANGED: from 'pre' to 'pre-wrap' for line wrapping */
+  word-wrap: break-word; /* ADDED: Break long words */
+  word-break: break-word; /* ADDED: Break long words */
+  overflow-wrap: break-word; /* ADDED: Modern property for word breaking */
+  min-width: 0; /* ADDED: Allow flex item to shrink below content size */
 }
 
 .vibe-coding-diff-line.vibe-coding-added {
@@ -63,16 +70,14 @@
   color: var(--vibe-text-muted);
 }
 
-/* Update code block styles - REMOVED min-height and max-height */
+/* Update code block styles */
 .vibe-coding-code-block pre {
   margin: 0;
   padding: 0 !important;
   background: var(--vibe-code-bg);
-  /* REMOVED: overflow-x: auto; */
-  /* REMOVED: overflow-y: auto; */
-  /* REMOVED: max-height: 400px; */
   line-height: 1.6;
   font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Fira Mono', 'Roboto Mono', 'Consolas', 'Liberation Mono', 'Menlo', monospace;
+  overflow-x: hidden; /* ADDED: Hide horizontal overflow */
 }
 
 .vibe-coding-code-block pre code {
@@ -80,98 +85,4 @@
   background: transparent !important;
   display: block;
   font-family: inherit;
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-public getDiffHtml(originalCode: string, modifiedCode: string, filename: string): string {
-  const original = (originalCode || '').split('\n');
-  const modified = (modifiedCode || '').split('\n');
-  const language = this.getLanguageFromFilename(filename);
-  
-  let diffHtml = '';
-  let originalLineNum = 1;
-  let modifiedLineNum = 1;
-  let i = 0, j = 0;
-  
-  while (i < original.length || j < modified.length) {
-    if (i < original.length && j < modified.length) {
-      if (original[i] === modified[j]) {
-        // Unchanged line
-        const highlightedCode = this.highlightCode(original[i], language);
-        diffHtml += `<div class="vibe-coding-diff-line vibe-coding-unchanged">`;
-        diffHtml += `<span class="vibe-coding-line-number">${originalLineNum}</span>`;
-        diffHtml += `<span class="vibe-coding-line-number">${modifiedLineNum}</span>`;
-        diffHtml += `<span class="vibe-coding-line-prefix">  </span>`;
-        diffHtml += `<span class="vibe-coding-line-content">${highlightedCode}</span>`;
-        diffHtml += `</div>`;
-        originalLineNum++;
-        modifiedLineNum++;
-        i++;
-        j++;
-      } else {
-        // Modified line - show removed then added
-        const highlightedOriginal = this.highlightCode(original[i], language);
-        const highlightedModified = this.highlightCode(modified[j], language);
-        
-        // Removed line
-        diffHtml += `<div class="vibe-coding-diff-line vibe-coding-removed">`;
-        diffHtml += `<span class="vibe-coding-line-number">${originalLineNum}</span>`;
-        diffHtml += `<span class="vibe-coding-line-number"></span>`;
-        diffHtml += `<span class="vibe-coding-line-prefix">- </span>`;
-        diffHtml += `<span class="vibe-coding-line-content">${highlightedOriginal}</span>`;
-        diffHtml += `</div>`;
-        
-        // Added line
-        diffHtml += `<div class="vibe-coding-diff-line vibe-coding-added">`;
-        diffHtml += `<span class="vibe-coding-line-number"></span>`;
-        diffHtml += `<span class="vibe-coding-line-number">${modifiedLineNum}</span>`;
-        diffHtml += `<span class="vibe-coding-line-prefix">+ </span>`;
-        diffHtml += `<span class="vibe-coding-line-content">${highlightedModified}</span>`;
-        diffHtml += `</div>`;
-        
-        originalLineNum++;
-        modifiedLineNum++;
-        i++;
-        j++;
-      }
-    } else if (i < original.length) {
-      // Removed line only
-      const highlightedCode = this.highlightCode(original[i], language);
-      diffHtml += `<div class="vibe-coding-diff-line vibe-coding-removed">`;
-      diffHtml += `<span class="vibe-coding-line-number">${originalLineNum}</span>`;
-      diffHtml += `<span class="vibe-coding-line-number"></span>`;
-      diffHtml += `<span class="vibe-coding-line-prefix">- </span>`;
-      diffHtml += `<span class="vibe-coding-line-content">${highlightedCode}</span>`;
-      diffHtml += `</div>`;
-      originalLineNum++;
-      i++;
-    } else if (j < modified.length) {
-      // Added line only
-      const highlightedCode = this.highlightCode(modified[j], language);
-      diffHtml += `<div class="vibe-coding-diff-line vibe-coding-added">`;
-      diffHtml += `<span class="vibe-coding-line-number"></span>`;
-      diffHtml += `<span class="vibe-coding-line-number">${modifiedLineNum}</span>`;
-      diffHtml += `<span class="vibe-coding-line-prefix">+ </span>`;
-      diffHtml += `<span class="vibe-coding-line-content">${highlightedCode}</span>`;
-      diffHtml += `</div>`;
-      modifiedLineNum++;
-      j++;
-    }
-  }
-  
-  return diffHtml;
 }
