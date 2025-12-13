@@ -1,5 +1,197 @@
-<!-- Empty State - HIDE when processing OR has content -->
-<div *ngIf="executedItems.length === 0 && !currentApprovalRequest && !hasReceivedFirstChunk" class="vibe-coding-empty-state">
-  <div class="vibe-coding-empty-state-icon">—</div>
-  <p>No items executed yet</p>
+<!-- Queued Files Section -->
+<div class="vibe-coding-section vibe-coding-queued">
+  <div class="vibe-coding-section-header">
+    <div class="vibe-coding-section-icon">⋯</div>
+    <div class="vibe-coding-section-title">
+      <h2>Queued</h2>
+      <div class="vibe-coding-count"><span>{{ queuedItems.length }}</span> pending</div>
+    </div>
+  </div>
+  <div class="vibe-coding-file-list">
+    <!-- Empty State -->
+    <div *ngIf="queuedItems.length === 0 && !isProcessing && !isCompleted" class="vibe-coding-empty-state">
+      <div class="vibe-coding-empty-state-icon">—</div>
+      <p>No items in queue</p>
+    </div>
+
+    <!-- Finished All Tasks State - NEW -->
+    <div *ngIf="isCompleted && queuedItems.length === 0" class="vibe-coding-finished-state">
+      <div class="vibe-coding-finished-icon">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+          <path d="M8 12L11 15L16 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <h3>All Tasks Completed</h3>
+      <p>Successfully executed all operations</p>
+      <div class="vibe-coding-finished-stats">
+        <div class="vibe-coding-stat">
+          <span class="vibe-coding-stat-value">{{ executedItems.length }}</span>
+          <span class="vibe-coding-stat-label">Tasks</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Waiting for First Chunk State -->
+    <div *ngIf="isProcessing && !hasReceivedFirstChunk && executedItems.length === 0" class="vibe-coding-waiting-state">
+      <div class="vibe-coding-waiting-spinner"></div>
+      <h3>Connecting to AI Agent<span class="vibe-coding-waiting-dots"><span>.</span><span>.</span><span>.</span></span></h3>
+      <p>Analyzing your request and preparing execution plan</p>
+      <div class="vibe-coding-waiting-steps">
+        <div class="vibe-coding-step">
+          <span class="vibe-coding-step-icon">⚡</span>
+          <span class="vibe-coding-step-text">Processing request</span>
+        </div>
+        <div class="vibe-coding-step">
+          <span class="vibe-coding-step-icon">🔍</span>
+          <span class="vibe-coding-step-text">Analyzing codebase</span>
+        </div>
+        <div class="vibe-coding-step">
+          <span class="vibe-coding-step-icon">📋</span>
+          <span class="vibe-coding-step-text">Generating tasks</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Loading State (Generating Next Task) -->
+    <div *ngIf="queuedItems.length === 0 && isProcessing && executedItems.length > 0 && hasReceivedFirstChunk" class="vibe-coding-loading-state">
+      <div class="vibe-coding-loading-spinner"></div>
+      <h3>Generating Next Task<span class="vibe-coding-loading-dots"><span>.</span><span>.</span><span>.</span></span></h3>
+      <p>Analyzing execution results</p>
+    </div>
+
+    <!-- Queued Items -->
+    <div *ngFor="let item of queuedItems; let i = index" class="vibe-coding-file-item" [ngClass]="{'vibe-coding-pending-approval': item.tool === 'WRITE' || item.tool === 'MODIFY'}">
+      <!-- READ Item -->
+      <ng-container *ngIf="item.tool === 'READ'">
+        <div class="vibe-coding-file-icon">{{ getToolIcon(item.tool) }}</div>
+        <div class="vibe-coding-file-info">
+          <div class="vibe-coding-file-name">{{ getReadContent(item.content) }}</div>
+        </div>
+        <div class="vibe-coding-status-badge">Position {{ i + 1 }}</div>
+      </ng-container>
+
+      <!-- File Operation Item -->
+      <ng-container *ngIf="item.tool !== 'READ' && hasFileDetails(item.content)">
+        <div class="vibe-coding-file-icon">{{ getFileExtension(getFileDetails(item.content)?.file_name) }}</div>
+        <div class="vibe-coding-file-info">
+          <div class="vibe-coding-file-name">{{ getFileDetails(item.content)?.file_name }}</div>
+          <div class="vibe-coding-file-path">{{ getFileDetails(item.content)?.file_path }}</div>
+        </div>
+        <div class="vibe-coding-status-badge">{{ item.tool }}</div>
+      </ng-container>
+    </div>
+  </div>
 </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* Light Mode Variables (Default) */
+:root {
+  /* ... existing variables ... */
+  
+  /* Finished State Colors - ADD THESE */
+  --vibe-finished-icon-color: #10b981;
+  --vibe-finished-icon-bg: #d1fae5;
+  --vibe-finished-text: #065f46;
+  --vibe-finished-stat-bg: #d1fae5;
+  --vibe-finished-stat-border: #10b981;
+}
+
+/* Dark Mode Variables */
+[data-theme="dark"] {
+  /* ... existing variables ... */
+  
+  /* Finished State Colors - ADD THESE */
+  --vibe-finished-icon-color: #6ee7b7;
+  --vibe-finished-icon-bg: #064e3b;
+  --vibe-finished-text: #6ee7b7;
+  --vibe-finished-stat-bg: #064e3b;
+  --vibe-finished-stat-border: #059669;
+}
+
+
+
+
+
+
+
+/* Finished All Tasks State */
+.vibe-coding-finished-state {
+  text-align: center;
+  padding: 50px 20px;
+}
+
+.vibe-coding-finished-icon {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--vibe-finished-icon-bg);
+  border-radius: 50%;
+  color: var(--vibe-finished-icon-color);
+}
+
+.vibe-coding-finished-icon svg {
+  width: 36px;
+  height: 36px;
+}
+
+.vibe-coding-finished-state h3 {
+  font-size: 1.1rem;
+  color: var(--vibe-text-primary);
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.vibe-coding-finished-state p {
+  font-size: 0.85rem;
+  color: var(--vibe-text-secondary);
+  margin-bottom: 24px;
+}
+
+.vibe-coding-finished-stats {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.vibe-coding-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 20px;
+  background: var(--vibe-finished-stat-bg);
+  border: 1px solid var(--vibe-finished-stat-border);
+  border-radius: 8px;
+  min-width: 80px;
+}
+
+.vibe-coding-stat-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--vibe-finished-text);
+  line-height: 1;
+}
+
+.vibe-coding-stat-label {
+  font-size: 0.75rem;
+  color: var(--vibe-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
