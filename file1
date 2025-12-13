@@ -1,10 +1,8 @@
 export class ChunkedJsonParserComponent implements OnInit {
   // ... existing properties ...
-  public hasReceivedFirstChunk = false; // ADD THIS
+  public isCompleted = false; // ADD THIS
 
-  // ... existing methods ...
-
-  // MODIFY setupCallbacks - add firstChunk tracking
+  // MODIFY setupCallbacks - set completed flag
   private setupCallbacks(): void {
     this.parserService.setCallbacks({
       onToolDetected: (toolData: ToolData) => {
@@ -26,25 +24,27 @@ export class ChunkedJsonParserComponent implements OnInit {
       onCompletion: () => {
         this.isProcessing = false;
         this.isApprovingChanges = false;
-        this.hasReceivedFirstChunk = false; // RESET on completion
+        this.hasReceivedFirstChunk = false;
+        this.isCompleted = true; // SET completed to true
         this.logCompleted();
         this.updateLists();
+        this.cdr.detectChanges();
       },
       onError: (error: string) => {
         this.isProcessing = false;
         this.isApprovingChanges = false;
-        this.hasReceivedFirstChunk = false; // RESET on error
+        this.hasReceivedFirstChunk = false;
         this.logError(error);
       },
       onFirstChunk: () => {
-        this.hasReceivedFirstChunk = true; // SET to true when first chunk arrives
+        this.hasReceivedFirstChunk = true;
         this.logFirstChunkReceived();
         this.cdr.detectChanges();
       }
     });
   }
 
-  // MODIFY runDemo - reset the flag
+  // MODIFY runDemo - reset completed flag
   public async runDemo(): Promise<void> {
     console.clear();
     console.log('🚀 Starting streaming process...\n');
@@ -53,7 +53,8 @@ export class ChunkedJsonParserComponent implements OnInit {
     this.executedItems = [];
     this.queuedItems = [];
     this.groupedExecutedItems = [];
-    this.hasReceivedFirstChunk = false; // RESET when starting
+    this.hasReceivedFirstChunk = false;
+    this.isCompleted = false; // RESET on new run
     
     // Clear the streaming container
     this.clearStreamingContainer();
@@ -86,56 +87,36 @@ export class ChunkedJsonParserComponent implements OnInit {
 
 
 
+<div class="vibe-coding-header-right">
+  <button 
+    class="vibe-coding-btn vibe-coding-btn-primary" 
+    (click)="runDemo()" 
+    [disabled]="isProcessing">
+    RUN
+  </button>
 
-<!-- Queued Files Section -->
-<div class="vibe-coding-section vibe-coding-queued">
-  <div class="vibe-coding-section-header">
-    <div class="vibe-coding-section-icon">⋯</div>
-    <div class="vibe-coding-section-title">
-      <h2>Queued</h2>
-      <div class="vibe-coding-count"><span>{{ queuedItems.length }}</span> pending</div>
-    </div>
-  </div>
-  <div class="vibe-coding-file-list">
-    <!-- Empty State -->
-    <div *ngIf="queuedItems.length === 0 && !isProcessing" class="vibe-coding-empty-state">
-      <div class="vibe-coding-empty-state-icon">—</div>
-      <p>No items in queue</p>
-    </div>
+  <!-- Processing Badge -->
+  <span *ngIf="isProcessing && !isCompleted" class="vibe-coding-processing-badge">
+    <span class="vibe-coding-processing-dot"></span>
+    Processing
+  </span>
 
-    <!-- Waiting for First Chunk State - NEW -->
-    <div *ngIf="isProcessing && !hasReceivedFirstChunk && executedItems.length === 0" class="vibe-coding-waiting-state">
-      <div class="vibe-coding-waiting-spinner"></div>
-      <h3>Connecting to AI Agent<span class="vibe-coding-waiting-dots"><span>.</span><span>.</span><span>.</span></span></h3>
-      <p>Analyzing your request and preparing execution plan</p>
-      <div class="vibe-coding-waiting-steps">
-        <div class="vibe-coding-step">
-          <span class="vibe-coding-step-icon">⚡</span>
-          <span class="vibe-coding-step-text">Processing request</span>
-        </div>
-        <div class="vibe-coding-step">
-          <span class="vibe-coding-step-icon">🔍</span>
-          <span class="vibe-coding-step-text">Analyzing codebase</span>
-        </div>
-        <div class="vibe-coding-step">
-          <span class="vibe-coding-step-icon">📋</span>
-          <span class="vibe-coding-step-text">Generating tasks</span>
-        </div>
-      </div>
-    </div>
+  <!-- Completed Badge - NEW -->
+  <span *ngIf="isCompleted" class="vibe-coding-completed-badge">
+    <span class="vibe-coding-completed-icon">✓</span>
+    Completed
+  </span>
 
-    <!-- Loading State (Generating Next Task) -->
-    <div *ngIf="queuedItems.length === 0 && isProcessing && executedItems.length > 0 && hasReceivedFirstChunk" class="vibe-coding-loading-state">
-      <div class="vibe-coding-loading-spinner"></div>
-      <h3>Generating Next Task<span class="vibe-coding-loading-dots"><span>.</span><span>.</span><span>.</span></span></h3>
-      <p>Analyzing execution results</p>
-    </div>
-
-    <!-- Queued Items -->
-    <div *ngFor="let item of queuedItems; let i = index" class="vibe-coding-file-item">
-      <!-- ... existing queued items code ... -->
-    </div>
-  </div>
+  <!-- Stop Icon (Blinking SVG Square) -->
+  <button 
+    *ngIf="isProcessing && !isCompleted"
+    class="vibe-coding-stop-btn" 
+    (click)="stopStreaming()"
+    title="Stop Streaming">
+    <svg class="vibe-coding-stop-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="6" y="6" width="12" height="12" fill="currentColor" rx="2"/>
+    </svg>
+  </button>
 </div>
 
 
@@ -147,91 +128,30 @@ export class ChunkedJsonParserComponent implements OnInit {
 
 
 
-/* Waiting for First Chunk State */
-.vibe-coding-waiting-state {
-  text-align: center;
-  padding: 40px 20px;
+
+
+
+
+/* Light Mode Variables (Default) */
+:root {
+  /* ... existing variables ... */
+  
+  /* Completed Badge Colors - ADD THESE */
+  --vibe-completed-bg: #d1fae5;
+  --vibe-completed-text: #065f46;
+  --vibe-completed-border: #10b981;
+  --vibe-completed-icon-bg: #10b981;
+  --vibe-completed-icon-text: #ffffff;
 }
 
-.vibe-coding-waiting-spinner {
-  width: 50px;
-  height: 50px;
-  margin: 0 auto 24px;
-  border: 3px solid var(--vibe-border-primary);
-  border-top: 3px solid var(--vibe-accent-blue);
-  border-radius: 50%;
-  animation: vibe-coding-spin 1s linear infinite;
-}
-
-.vibe-coding-waiting-state h3 {
-  font-size: 1rem;
-  color: var(--vibe-text-primary);
-  margin-bottom: 8px;
-  font-weight: 500;
-}
-
-.vibe-coding-waiting-state p {
-  font-size: 0.85rem;
-  color: var(--vibe-text-secondary);
-  margin-bottom: 24px;
-}
-
-.vibe-coding-waiting-dots {
-  display: inline-block;
-  margin-left: 2px;
-}
-
-.vibe-coding-waiting-dots span {
-  animation: vibe-coding-blink 1.4s infinite;
-  font-weight: bold;
-}
-
-.vibe-coding-waiting-dots span:nth-child(2) {
-  animation-delay: 0.2s;
-}
-
-.vibe-coding-waiting-dots span:nth-child(3) {
-  animation-delay: 0.4s;
-}
-
-.vibe-coding-waiting-steps {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  max-width: 280px;
-  margin: 0 auto;
-}
-
-.vibe-coding-step {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 16px;
-  background: var(--vibe-bg-secondary);
-  border: 1px solid var(--vibe-border-primary);
-  border-radius: 6px;
-  transition: all 0.3s ease;
-}
-
-.vibe-coding-step-icon {
-  font-size: 1.2rem;
-  flex-shrink: 0;
-  animation: vibe-coding-step-pulse 2s ease-in-out infinite;
-}
-
-.vibe-coding-step-text {
-  font-size: 0.85rem;
-  color: var(--vibe-text-secondary);
-  text-align: left;
-}
-
-@keyframes vibe-coding-step-pulse {
-  0%, 100% {
-    opacity: 0.6;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.1);
-  }
+/* Dark Mode Variables */
+[data-theme="dark"] {
+  /* ... existing variables ... */
+  
+  /* Completed Badge Colors - ADD THESE */
+  --vibe-completed-bg: #064e3b;
+  --vibe-completed-text: #6ee7b7;
+  --vibe-completed-border: #059669;
+  --vibe-completed-icon-bg: #059669;
+  --vibe-completed-icon-text: #d1fae5;
 }
