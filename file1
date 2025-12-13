@@ -1,88 +1,195 @@
-/* Diff Line Styles with Line Numbers */
-.vibe-coding-diff-line {
-  padding: 2px 8px 2px 0;
-  margin: 0;
-  display: flex;
-  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Fira Mono', 'Roboto Mono', 'Consolas', 'Liberation Mono', 'Menlo', monospace;
-  font-size: 0.75rem;
-  line-height: 1.6;
-  position: relative;
-  align-items: flex-start; /* ADDED: Align items to top for wrapped lines */
+public getDiffHtml(originalCode: string, modifiedCode: string, filename: string): string {
+  const original = (originalCode || '').split('\n');
+  const modified = (modifiedCode || '').split('\n');
+  const language = this.getLanguageFromFilename(filename);
+  
+  const diff = this.computeDiff(original, modified);
+  let diffHtml = '';
+  let originalLineNum = 1;
+  let modifiedLineNum = 1;
+  
+  for (const block of diff) {
+    if (block.type === 'unchanged') {
+      // Unchanged lines
+      for (const line of block.lines) {
+        const highlightedCode = this.highlightCode(line, language);
+        diffHtml += `<div class="vibe-coding-diff-line vibe-coding-unchanged">`;
+        diffHtml += `<span class="vibe-coding-line-number">${originalLineNum}</span>`;
+        diffHtml += `<span class="vibe-coding-line-number">${modifiedLineNum}</span>`;
+        diffHtml += `<span class="vibe-coding-line-prefix">  </span>`;
+        diffHtml += `<span class="vibe-coding-line-content">${highlightedCode}</span>`;
+        diffHtml += `</div>`;
+        originalLineNum++;
+        modifiedLineNum++;
+      }
+    } else if (block.type === 'changed') {
+      // Group all removed lines first
+      for (const line of block.removed) {
+        const highlightedCode = this.highlightCode(line, language);
+        diffHtml += `<div class="vibe-coding-diff-line vibe-coding-removed">`;
+        diffHtml += `<span class="vibe-coding-line-number">${originalLineNum}</span>`;
+        diffHtml += `<span class="vibe-coding-line-number"></span>`;
+        diffHtml += `<span class="vibe-coding-line-prefix">- </span>`;
+        diffHtml += `<span class="vibe-coding-line-content">${highlightedCode}</span>`;
+        diffHtml += `</div>`;
+        originalLineNum++;
+      }
+      
+      // Then group all added lines
+      for (const line of block.added) {
+        const highlightedCode = this.highlightCode(line, language);
+        diffHtml += `<div class="vibe-coding-diff-line vibe-coding-added">`;
+        diffHtml += `<span class="vibe-coding-line-number"></span>`;
+        diffHtml += `<span class="vibe-coding-line-number">${modifiedLineNum}</span>`;
+        diffHtml += `<span class="vibe-coding-line-prefix">+ </span>`;
+        diffHtml += `<span class="vibe-coding-line-content">${highlightedCode}</span>`;
+        diffHtml += `</div>`;
+        modifiedLineNum++;
+      }
+    }
+  }
+  
+  return diffHtml;
 }
 
-.vibe-coding-line-number {
-  display: inline-block;
-  width: 50px;
-  padding: 0 8px;
-  text-align: right;
-  user-select: none;
-  color: var(--vibe-text-muted);
-  flex-shrink: 0;
-  border-right: 1px solid var(--vibe-border-primary);
-  margin-right: 8px;
-  align-self: flex-start; /* ADDED: Keep line numbers at top */
-  padding-top: 2px; /* ADDED: Align with first line of text */
+private computeDiff(original: string[], modified: string[]): Array<{type: 'unchanged' | 'changed', lines?: string[], removed?: string[], added?: string[]}> {
+  const diff: Array<{type: 'unchanged' | 'changed', lines?: string[], removed?: string[], added?: string[]}> = [];
+  let i = 0, j = 0;
+  
+  while (i < original.length || j < modified.length) {
+    // Collect unchanged lines
+    const unchangedLines: string[] = [];
+    while (i < original.length && j < modified.length && original[i] === modified[j]) {
+      unchangedLines.push(original[i]);
+      i++;
+      j++;
+    }
+    
+    if (unchangedLines.length > 0) {
+      diff.push({ type: 'unchanged', lines: unchangedLines });
+    }
+    
+    // Collect changed lines (removed and added)
+    const removedLines: string[] = [];
+    const addedLines: string[] = [];
+    
+    // Look ahead to find the next matching line
+    let matchFound = false;
+    let tempI = i;
+    let tempJ = j;
+    
+    // Try to find a common line within a reasonable window (e.g., next 10 lines)
+    const lookAheadWindow = 10;
+    for (let offsetI = 0; offsetI < lookAheadWindow && tempI + offsetI < original.length; offsetI++) {
+      for (let offsetJ = 0; offsetJ < lookAheadWindow && tempJ + offsetJ < modified.length; offsetJ++) {
+        if (original[tempI + offsetI] === modified[tempJ + offsetJ]) {
+          // Found a match
+          // Collect all removed lines before the match
+          for (let k = 0; k < offsetI; k++) {
+            removedLines.push(original[i + k]);
+          }
+          // Collect all added lines before the match
+          for (let k = 0; k < offsetJ; k++) {
+            addedLines.push(modified[j + k]);
+          }
+          i += offsetI;
+          j += offsetJ;
+          matchFound = true;
+          break;
+        }
+      }
+      if (matchFound) break;
+    }
+    
+    // If no match found within window, collect remaining lines
+    if (!matchFound) {
+      while (i < original.length && j < modified.length) {
+        // Check if lines match
+        if (original[i] === modified[j]) {
+          break;
+        }
+        removedLines.push(original[i]);
+        addedLines.push(modified[j]);
+        i++;
+        j++;
+      }
+      
+      // Collect any remaining removed lines
+      while (i < original.length && (j >= modified.length || original[i] !== modified[j])) {
+        removedLines.push(original[i]);
+        i++;
+      }
+      
+      // Collect any remaining added lines
+      while (j < modified.length && (i >= original.length || original[i] !== modified[j])) {
+        addedLines.push(modified[j]);
+        j++;
+      }
+    }
+    
+    if (removedLines.length > 0 || addedLines.length > 0) {
+      diff.push({ type: 'changed', removed: removedLines, added: addedLines });
+    }
+  }
+  
+  return diff;
 }
 
-.vibe-coding-line-prefix {
-  display: inline-block;
-  width: 20px;
-  user-select: none;
-  font-weight: bold;
-  flex-shrink: 0;
-  align-self: flex-start; /* ADDED: Keep prefix at top */
-  padding-top: 2px; /* ADDED: Align with first line of text */
+private highlightCode(code: string, language: string): string {
+  if (!code || typeof hljs === 'undefined') {
+    return this.escapeHtml(code);
+  }
+  
+  try {
+    if (language !== 'plaintext' && hljs.getLanguage(language)) {
+      const result = hljs.highlight(code, { language: language, ignoreIllegals: true });
+      return result.value;
+    }
+  } catch (e) {
+    return this.escapeHtml(code);
+  }
+  
+  return this.escapeHtml(code);
 }
 
-.vibe-coding-line-content {
-  flex: 1;
-  white-space: pre-wrap; /* CHANGED: from 'pre' to 'pre-wrap' for line wrapping */
-  word-wrap: break-word; /* ADDED: Break long words */
-  word-break: break-word; /* ADDED: Break long words */
-  overflow-wrap: break-word; /* ADDED: Modern property for word breaking */
-  min-width: 0; /* ADDED: Allow flex item to shrink below content size */
+public getLanguageFromFilename(filename: string): string {
+  if (!filename) return 'plaintext';
+  
+  const ext = filename.split('.').pop()?.toLowerCase();
+  const langMap: { [key: string]: string } = {
+    'js': 'javascript',
+    'jsx': 'javascript',
+    'ts': 'typescript',
+    'tsx': 'typescript',
+    'py': 'python',
+    'java': 'java',
+    'cpp': 'cpp',
+    'c': 'c',
+    'cs': 'csharp',
+    'php': 'php',
+    'rb': 'ruby',
+    'go': 'go',
+    'rs': 'rust',
+    'swift': 'swift',
+    'kt': 'kotlin',
+    'sql': 'sql',
+    'html': 'html',
+    'css': 'css',
+    'scss': 'scss',
+    'json': 'json',
+    'xml': 'xml',
+    'yaml': 'yaml',
+    'yml': 'yaml',
+    'md': 'markdown',
+    'sh': 'bash',
+    'bash': 'bash'
+  };
+  return langMap[ext || ''] || 'plaintext';
 }
 
-.vibe-coding-diff-line.vibe-coding-added {
-  background-color: var(--vibe-diff-added-bg);
-  color: var(--vibe-diff-added-text);
-}
-
-.vibe-coding-diff-line.vibe-coding-added .vibe-coding-line-prefix {
-  color: var(--vibe-accent-green);
-}
-
-.vibe-coding-diff-line.vibe-coding-removed {
-  background-color: var(--vibe-diff-removed-bg);
-  color: var(--vibe-diff-removed-text);
-}
-
-.vibe-coding-diff-line.vibe-coding-removed .vibe-coding-line-prefix {
-  color: var(--vibe-accent-red);
-}
-
-.vibe-coding-diff-line.vibe-coding-unchanged {
-  background-color: transparent;
-  color: var(--vibe-text-primary);
-}
-
-.vibe-coding-diff-line.vibe-coding-unchanged .vibe-coding-line-prefix {
-  color: var(--vibe-text-muted);
-}
-
-/* Update code block styles */
-.vibe-coding-code-block pre {
-  margin: 0;
-  padding: 0 !important;
-  background: var(--vibe-code-bg);
-  line-height: 1.6;
-  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Fira Mono', 'Roboto Mono', 'Consolas', 'Liberation Mono', 'Menlo', monospace;
-  overflow-x: hidden; /* ADDED: Hide horizontal overflow */
-}
-
-.vibe-coding-code-block pre code {
-  padding: 0 !important;
-  background: transparent !important;
-  display: block;
-  font-family: inherit;
+private escapeHtml(text: string): string {
+  if (!text) return '';
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
 }
