@@ -1,105 +1,68 @@
-export class ChunkedJsonParserComponent implements OnInit {
-  public isWaitingForApproval = false;
-  public currentApprovalRequest: ApprovalRequest | null = null;
-  public isProcessing = false;
-  public executedItems: ToolData[] = [];
-  public queuedItems: ToolData[] = [];
-  public groupedExecutedItems: GroupedItem[] = [];
-  public isApprovingChanges = false;
-
-  constructor(
-    private parserService: ChunkedJsonParserService,
-    private cdr: ChangeDetectorRef
-  ) {}
-
-  ngOnInit(): void {
-    // Callbacks will be set up when user clicks RUN
+public getDiffHtml(originalCode: string, modifiedCode: string, filename: string): string {
+  const original = (originalCode || '').split('\n');
+  const modified = (modifiedCode || '').split('\n');
+  const language = this.getLanguageFromFilename(filename);
+  
+  // Safety check - limit total lines
+  if (original.length > 1000 || modified.length > 1000) {
+    return '<div class="vibe-coding-diff-line">File too large to display diff (>1000 lines)</div>';
   }
-
-  private setupCallbacks(): void {
-    this.parserService.setCallbacks({
-      onToolDetected: (toolData: ToolData) => {
-        this.logToolDetected(toolData);
-        this.updateLists();
-        
-        if (toolData.tool === 'READ') {
-          this.appendReadContent(toolData);
-        }
-      },
-      onApprovalRequest: (approvalRequest: ApprovalRequest) => {
-        this.isWaitingForApproval = true;
-        this.currentApprovalRequest = approvalRequest;
-        this.isApprovingChanges = false; // ADDED: Reset approving state when new approval comes
-        this.logWaitingForApproval(approvalRequest.data);
-        this.updateLists();
-        this.cdr.detectChanges();
-      },
-      onCompletion: () => {
-        this.isProcessing = false;
-        this.isApprovingChanges = false; // ADDED: Reset on completion
-        this.logCompleted();
-        this.updateLists();
-      },
-      onError: (error: string) => {
-        this.isProcessing = false;
-        this.isApprovingChanges = false; // ADDED: Reset on error
-        this.logError(error);
-      },
-      onFirstChunk: () => {
-        this.logFirstChunkReceived();
+  
+  const diff = this.computeDiff(original, modified);
+  let diffHtml = '';
+  let originalLineNum = 1;
+  let modifiedLineNum = 1;
+  
+  // Safety counter to prevent infinite loops
+  let blockCount = 0;
+  const maxBlocks = 500;
+  
+  for (const block of diff) {
+    blockCount++;
+    if (blockCount > maxBlocks) {
+      diffHtml += '<div class="vibe-coding-diff-line">... (diff truncated, too many changes)</div>';
+      break;
+    }
+    
+    if (block.type === 'unchanged') {
+      // Unchanged lines
+      for (const line of block.lines || []) {
+        const highlightedCode = this.highlightCode(line, language);
+        diffHtml += `<div class="vibe-coding-diff-line vibe-coding-unchanged">`;
+        diffHtml += `<span class="vibe-coding-line-number">${originalLineNum}</span>`;
+        diffHtml += `<span class="vibe-coding-line-number">${modifiedLineNum}</span>`;
+        diffHtml += `<span class="vibe-coding-line-prefix">  </span>`;
+        diffHtml += `<span class="vibe-coding-line-content">${highlightedCode}</span>`;
+        diffHtml += `</div>`;
+        originalLineNum++;
+        modifiedLineNum++;
       }
-    });
-  }
-
-  // CORRECTED approveAndContinue method
-  public approveAndContinue(): void {
-    if (this.currentApprovalRequest && !this.isApprovingChanges) {
-      console.log('✅ APPROVED:', this.currentApprovalRequest.data);
-      console.log('Continuing with next operation...\n');
+    } else if (block.type === 'changed') {
+      // Group all removed lines first
+      for (const line of block.removed || []) {
+        const highlightedCode = this.highlightCode(line, language);
+        diffHtml += `<div class="vibe-coding-diff-line vibe-coding-removed">`;
+        diffHtml += `<span class="vibe-coding-line-number">${originalLineNum}</span>`;
+        diffHtml += `<span class="vibe-coding-line-number"></span>`;
+        diffHtml += `<span class="vibe-coding-line-prefix">- </span>`;
+        diffHtml += `<span class="vibe-coding-line-content">${highlightedCode}</span>`;
+        diffHtml += `</div>`;
+        originalLineNum++;
+      }
       
-      // Set loading state immediately
-      this.isApprovingChanges = true;
-      
-      // Force change detection to show the spinner immediately
-      this.cdr.detectChanges();
-      
-      // Use requestAnimationFrame to ensure the UI updates before processing
-      requestAnimationFrame(() => {
-        // Reset approval UI state
-        this.isWaitingForApproval = false;
-        this.currentApprovalRequest = null;
-        
-        // Approve and continue - this will trigger the next operation
-        this.parserService.approveAndContinue();
-        
-        // Update lists
-        this.updateLists();
-        
-        // The isApprovingChanges will be reset when:
-        // 1. Next approval comes (in onApprovalRequest callback)
-        // 2. Stream completes (in onCompletion callback)
-        // 3. Error occurs (in onError callback)
-      });
+      // Then group all added lines
+      for (const line of block.added || []) {
+        const highlightedCode = this.highlightCode(line, language);
+        diffHtml += `<div class="vibe-coding-diff-line vibe-coding-added">`;
+        diffHtml += `<span class="vibe-coding-line-number"></span>`;
+        diffHtml += `<span class="vibe-coding-line-number">${modifiedLineNum}</span>`;
+        diffHtml += `<span class="vibe-coding-line-prefix">+ </span>`;
+        diffHtml += `<span class="vibe-coding-line-content">${highlightedCode}</span>`;
+        diffHtml += `</div>`;
+        modifiedLineNum++;
+      }
     }
   }
-
-  // Keep rejectChanges as is
-  public rejectChanges(): void {
-    if (this.currentApprovalRequest) {
-      console.log('❌ REJECTED:', this.currentApprovalRequest.data);
-      console.log('Continuing with next operation...\n');
-      
-      // Mark as rejected and continue
-      const rejectedData = { ...this.currentApprovalRequest.data, rejected: true };
-      
-      // Reset approval state
-      this.isWaitingForApproval = false;
-      this.currentApprovalRequest = null;
-      
-      this.parserService.approveAndContinue();
-      this.updateLists();
-    }
-  }
-
-  // ... rest of the methods remain the same ...
+  
+  return diffHtml;
 }
