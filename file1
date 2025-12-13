@@ -1,45 +1,132 @@
-/* ============================================================================
-   PENDING APPROVAL HIGHLIGHT - Simple Border Only
-   ============================================================================ */
+import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { ChunkedJsonParserService, ToolData, ApprovalRequest } from './chunked-json-parser.service';
 
-/* Pending approval item in queue - simple border highlight */
-.vibe-coding-queued .vibe-coding-file-item.vibe-coding-pending-approval {
-  border: 1px solid var(--vibe-accent-blue);
+// ... existing interfaces ...
+
+@Component({
+  selector: 'vibe-coding-chunked-json-parser',
+  templateUrl: './chunked-json-parser.component.html',
+  styleUrls: ['./chunked-json-parser.component.css']
+})
+export class ChunkedJsonParserComponent implements OnInit {
+  public isWaitingForApproval = false;
+  public currentApprovalRequest: ApprovalRequest | null = null;
+  public isProcessing = false;
+  public executedItems: ToolData[] = [];
+  public queuedItems: ToolData[] = [];
+  public groupedExecutedItems: GroupedItem[] = [];
+  public isApprovingChanges = false;
+
+  constructor(
+    private parserService: ChunkedJsonParserService,
+    private cdr: ChangeDetectorRef,
+    private http: HttpClient // ADD HttpClient
+  ) {}
+
+  // ... existing methods ...
+
+  // UPDATED approveAndContinue with API call
+  public async approveAndContinue(): Promise<void> {
+    if (this.currentApprovalRequest && !this.isApprovingChanges) {
+      console.log('✅ APPROVED:', this.currentApprovalRequest.data);
+      console.log('Saving code changes via API...\n');
+      
+      // Set loading state immediately
+      this.isApprovingChanges = true;
+      this.cdr.detectChanges();
+      
+      try {
+        // Extract file details from approval request
+        const fileDetails = this.getFileDetails(this.currentApprovalRequest.data.content);
+        
+        if (fileDetails) {
+          // Prepare API payload
+          const payload = {
+            tool: this.currentApprovalRequest.data.tool,
+            file_path: fileDetails.file_path,
+            file_name: fileDetails.file_name,
+            original_code: fileDetails.original_code || '',
+            modified_code: fileDetails.modified_code || '',
+            reasoning: this.getReasoning(this.currentApprovalRequest.data.content),
+            timestamp: new Date().toISOString()
+          };
+          
+          // Make real-time API call to save the code
+          await this.saveCodeChanges(payload);
+          
+          console.log('✅ Code changes saved successfully');
+        }
+        
+        // Reset approval UI state
+        this.isWaitingForApproval = false;
+        this.currentApprovalRequest = null;
+        
+        // Approve and continue with next operation
+        this.parserService.approveAndContinue();
+        
+        // Update lists
+        this.updateLists();
+        
+      } catch (error) {
+        console.error('❌ Failed to save code changes:', error);
+        
+        // Show error to user (you can add a toast/notification here)
+        alert('Failed to save code changes. Please try again.');
+        
+        // Reset loading state on error
+        this.isApprovingChanges = false;
+        this.cdr.detectChanges();
+        return;
+      }
+      
+      // Keep spinner for minimum duration for better UX
+      setTimeout(() => {
+        this.isApprovingChanges = false;
+        this.cdr.detectChanges();
+      }, 500);
+    }
+  }
+
+  // NEW METHOD: API call to save code changes
+  private async saveCodeChanges(payload: any): Promise<void> {
+    // Replace with your actual API endpoint
+    const apiUrl = 'https://your-api-endpoint.com/api/save-code';
+    
+    const headers = new HttpHeaders({
+      'Content-Type': 'application/json',
+      // Add any authentication headers if needed
+      // 'Authorization': `Bearer ${your_token}`
+    });
+    
+    return new Promise((resolve, reject) => {
+      this.http.post(apiUrl, payload, { headers }).subscribe({
+        next: (response) => {
+          console.log('API Response:', response);
+          resolve();
+        },
+        error: (error) => {
+          console.error('API Error:', error);
+          reject(error);
+        }
+      });
+    });
+  }
+
+  // Keep rejectChanges as is
+  public rejectChanges(): void {
+    if (this.currentApprovalRequest) {
+      console.log('❌ REJECTED:', this.currentApprovalRequest.data);
+      console.log('Continuing with next operation...\n');
+      
+      // Reset approval state
+      this.isWaitingForApproval = false;
+      this.currentApprovalRequest = null;
+      
+      this.parserService.approveAndContinue();
+      this.updateLists();
+    }
+  }
+
+  // ... rest of the existing methods ...
 }
-
-/* Icon highlight for pending approval */
-.vibe-coding-queued .vibe-coding-file-item.vibe-coding-pending-approval .vibe-coding-file-icon {
-  background: var(--vibe-accent-blue-light);
-  color: var(--vibe-accent-blue-text);
-  border-color: var(--vibe-accent-blue);
-}
-
-/* Status badge highlight */
-.vibe-coding-queued .vibe-coding-file-item.vibe-coding-pending-approval .vibe-coding-status-badge {
-  background: var(--vibe-accent-blue);
-  color: white;
-  border-color: var(--vibe-accent-blue);
-  font-weight: 600;
-}
-
-/* ============================================================================
-   END OF PENDING APPROVAL HIGHLIGHT
-   ============================================================================ */
-
-
-
-
-
-
-
-<!-- In the Queued Items section, update File Operation Item -->
-<ng-container *ngIf="item.tool !== 'READ' && hasFileDetails(item.content)">
-  <div class="vibe-coding-file-item" [ngClass]="{'vibe-coding-pending-approval': item.tool === 'WRITE' || item.tool === 'MODIFY'}">
-    <div class="vibe-coding-file-icon">{{ getFileExtension(getFileDetails(item.content)?.file_name) }}</div>
-    <div class="vibe-coding-file-info">
-      <div class="vibe-coding-file-name">{{ getFileDetails(item.content)?.file_name }}</div>
-      <div class="vibe-coding-file-path">{{ getFileDetails(item.content)?.file_path }}</div>
-    </div>
-    <div class="vibe-coding-status-badge">{{ item.tool }}</div>
-  </div>
-</ng-container>
