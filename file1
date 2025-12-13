@@ -1,749 +1,289 @@
-* {
+// Update imports
+import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
+
+declare var hljs: any;
+
+export class ChunkedJsonParserComponent implements OnInit {
+  // ... existing properties ...
+
+  constructor(
+    private parserService: ChunkedJsonParserService,
+    private cdr: ChangeDetectorRef
+  ) {}
+
+  // MODIFY setupCallbacks
+  private setupCallbacks(): void {
+    this.parserService.setCallbacks({
+      onToolDetected: (toolData: ToolData) => {
+        this.logToolDetected(toolData);
+        this.updateLists();
+        
+        if (toolData.tool === 'READ') {
+          this.appendReadContent(toolData);
+        }
+      },
+      onApprovalRequest: (approvalRequest: ApprovalRequest) => {
+        this.isWaitingForApproval = true;
+        this.currentApprovalRequest = approvalRequest;
+        this.logWaitingForApproval(approvalRequest.data);
+        this.updateLists();
+        // Force change detection to render the approval card immediately
+        this.cdr.detectChanges();
+      },
+      onCompletion: () => {
+        this.isProcessing = false;
+        this.logCompleted();
+        this.updateLists();
+      },
+      onError: (error: string) => {
+        this.isProcessing = false;
+        this.logError(error);
+      },
+      onFirstChunk: () => {
+        this.logFirstChunkReceived();
+      }
+    });
+  }
+
+  // BEST APPROACH: Generate highlighted diff HTML directly
+  public getDiffHtml(originalCode: string, modifiedCode: string, filename: string): string {
+    const original = (originalCode || '').split('\n');
+    const modified = (modifiedCode || '').split('\n');
+    const language = this.getLanguageFromFilename(filename);
+    
+    let diffHtml = '';
+    let i = 0, j = 0;
+    
+    while (i < original.length || j < modified.length) {
+      if (i < original.length && j < modified.length) {
+        if (original[i] === modified[j]) {
+          // Unchanged line
+          const highlightedCode = this.highlightCode(original[i], language);
+          diffHtml += `<div class="vibe-coding-diff-line vibe-coding-unchanged"><span class="vibe-coding-line-prefix">  </span>${highlightedCode}</div>`;
+          i++;
+          j++;
+        } else {
+          // Modified line
+          const highlightedOriginal = this.highlightCode(original[i], language);
+          const highlightedModified = this.highlightCode(modified[j], language);
+          diffHtml += `<div class="vibe-coding-diff-line vibe-coding-removed"><span class="vibe-coding-line-prefix">- </span>${highlightedOriginal}</div>`;
+          diffHtml += `<div class="vibe-coding-diff-line vibe-coding-added"><span class="vibe-coding-line-prefix">+ </span>${highlightedModified}</div>`;
+          i++;
+          j++;
+        }
+      } else if (i < original.length) {
+        // Removed line
+        const highlightedCode = this.highlightCode(original[i], language);
+        diffHtml += `<div class="vibe-coding-diff-line vibe-coding-removed"><span class="vibe-coding-line-prefix">- </span>${highlightedCode}</div>`;
+        i++;
+      } else if (j < modified.length) {
+        // Added line
+        const highlightedCode = this.highlightCode(modified[j], language);
+        diffHtml += `<div class="vibe-coding-diff-line vibe-coding-added"><span class="vibe-coding-line-prefix">+ </span>${highlightedCode}</div>`;
+        j++;
+      }
+    }
+    
+    return diffHtml;
+  }
+
+  private highlightCode(code: string, language: string): string {
+    if (!code || typeof hljs === 'undefined') {
+      return this.escapeHtml(code);
+    }
+    
+    try {
+      if (language !== 'plaintext' && hljs.getLanguage(language)) {
+        const result = hljs.highlight(code, { language: language, ignoreIllegals: true });
+        return result.value;
+      }
+    } catch (e) {
+      // Fallback to escaped HTML if highlighting fails
+      return this.escapeHtml(code);
+    }
+    
+    return this.escapeHtml(code);
+  }
+
+  public getLanguageFromFilename(filename: string): string {
+    if (!filename) return 'plaintext';
+    
+    const ext = filename.split('.').pop()?.toLowerCase();
+    const langMap: { [key: string]: string } = {
+      'js': 'javascript',
+      'jsx': 'javascript',
+      'ts': 'typescript',
+      'tsx': 'typescript',
+      'py': 'python',
+      'java': 'java',
+      'cpp': 'cpp',
+      'c': 'c',
+      'cs': 'csharp',
+      'php': 'php',
+      'rb': 'ruby',
+      'go': 'go',
+      'rs': 'rust',
+      'swift': 'swift',
+      'kt': 'kotlin',
+      'sql': 'sql',
+      'html': 'html',
+      'css': 'css',
+      'scss': 'scss',
+      'json': 'json',
+      'xml': 'xml',
+      'yaml': 'yaml',
+      'yml': 'yaml',
+      'md': 'markdown',
+      'sh': 'bash',
+      'bash': 'bash'
+    };
+    return langMap[ext || ''] || 'plaintext';
+  }
+
+  private escapeHtml(text: string): string {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- Code Changes Block with Diff Highlighting -->
+<div class="vibe-coding-diff-container" *ngIf="getFileDetails(currentApprovalRequest.data.content)">
+  <div class="vibe-coding-diff-header">
+    <span>Changes in {{ getFileDetails(currentApprovalRequest.data.content)?.file_name }}</span>
+  </div>
+  <div class="vibe-coding-code-block">
+    <pre><code 
+      [innerHTML]="getDiffHtml(
+        getFileDetails(currentApprovalRequest.data.content)?.original_code || '', 
+        getFileDetails(currentApprovalRequest.data.content)?.modified_code || '',
+        getFileDetails(currentApprovalRequest.data.content)?.file_name || ''
+      )">
+    </code></pre>
+  </div>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+/* Diff Line Styles */
+.vibe-coding-diff-line {
+  padding: 2px 8px;
   margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-/* Light Mode Variables (Default) */
-:root {
-  --vibe-bg-primary: #ffffff;
-  --vibe-bg-secondary: #f5f5f5;
-  --vibe-bg-tertiary: #fafafa;
-  --vibe-bg-hover: #f5f5f5;
-  --vibe-bg-empty: #f8f9fa;
-  
-  --vibe-text-primary: #1a1a1a;
-  --vibe-text-secondary: #666;
-  --vibe-text-tertiary: #888;
-  --vibe-text-muted: #999;
-  
-  --vibe-border-primary: #e5e5e5;
-  --vibe-border-secondary: #d5d5d5;
-  
-  --vibe-accent-blue: #007bff;
-  --vibe-accent-blue-hover: #0056b3;
-  --vibe-accent-blue-light: #e3f2fd;
-  --vibe-accent-blue-text: #1976d2;
-  
-  --vibe-accent-red: #dc3545;
-  --vibe-accent-red-hover: #c82333;
-  
-  --vibe-accent-green: #28a745;
-  --vibe-accent-green-hover: #218838;
-  
-  --vibe-accent-yellow: #ffc107;
-  --vibe-accent-yellow-bg: #fff9e6;
-  --vibe-accent-yellow-light: #fff3cd;
-  --vibe-accent-yellow-text: #856404;
-  
-  --vibe-badge-bg: #f5f5f5;
-  --vibe-badge-text: #666;
-  --vibe-badge-active-bg: #1a1a1a;
-  --vibe-badge-active-text: #ffffff;
-  
-  --vibe-code-bg: #ffffff;
-  --vibe-code-border: #f6f8fa;
-  --vibe-code-header: #f1f3f5;
-  
-  --vibe-shadow: rgba(0, 0, 0, 0.1);
-  --vibe-disabled-bg: #6c757d;
-}
-
-/* Dark Mode Variables */
-[data-theme="dark"] {
-  --vibe-bg-primary: #0a0a0b;
-  --vibe-bg-secondary: #1a1a1b;
-  --vibe-bg-tertiary: #2a2a2b;
-  --vibe-bg-hover: #3a3a3b;
-  --vibe-bg-empty: #1a1a1b;
-  
-  --vibe-text-primary: #e5e5e5;
-  --vibe-text-secondary: #b3b3b3;
-  --vibe-text-tertiary: #8a8a8a;
-  --vibe-text-muted: #6a6a6a;
-  
-  --vibe-border-primary: #2a2a2b;
-  --vibe-border-secondary: #3a3a3b;
-  
-  --vibe-accent-blue: #1e88e5;
-  --vibe-accent-blue-hover: #1976d2;
-  --vibe-accent-blue-light: #1a2332;
-  --vibe-accent-blue-text: #42a5f5;
-  
-  --vibe-accent-red: #e53935;
-  --vibe-accent-red-hover: #c62828;
-  
-  --vibe-accent-green: #43a047;
-  --vibe-accent-green-hover: #388e3c;
-  
-  --vibe-accent-yellow: #ffa726;
-  --vibe-accent-yellow-bg: #2a2418;
-  --vibe-accent-yellow-light: #3a3020;
-  --vibe-accent-yellow-text: #ffb74d;
-  
-  --vibe-badge-bg: #2a2a2b;
-  --vibe-badge-text: #b3b3b3;
-  --vibe-badge-active-bg: #e5e5e5;
-  --vibe-badge-active-text: #0a0a0b;
-  
-  --vibe-code-bg: #1a1a1b;
-  --vibe-code-border: #2a2a2b;
-  --vibe-code-header: #1a1a1b;
-  
-  --vibe-shadow: rgba(0, 0, 0, 0.5);
-  --vibe-disabled-bg: #3a3a3b;
-}
-
-.vibe-coding-container {
-  width: 100%;
-  height: 100vh;
-  background: var(--vibe-bg-primary);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.vibe-coding-header {
-  background: var(--vibe-bg-primary);
-  padding: 20px 30px;
-  border-bottom: 1px solid var(--vibe-border-primary);
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 100;
-}
-
-.vibe-coding-header-content {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.vibe-coding-header-left {
-  flex: 1;
-}
-
-.vibe-coding-header h1 {
-  font-size: 1.75rem;
-  color: var(--vibe-text-primary);
-  margin-bottom: 4px;
-  font-weight: 600;
-}
-
-.vibe-coding-header p {
-  color: var(--vibe-text-secondary);
-  font-size: 0.9rem;
-  margin: 0;
-}
-
-.vibe-coding-header-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.vibe-coding-btn {
-  padding: 8px 16px;
-  font-size: 14px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background-color 0.3s ease;
-  font-weight: 500;
-}
-
-.vibe-coding-btn-primary {
-  background-color: var(--vibe-accent-blue);
-  color: white;
-}
-
-.vibe-coding-btn-primary:hover:not(:disabled) {
-  background-color: var(--vibe-accent-blue-hover);
-}
-
-.vibe-coding-btn-primary:disabled {
-  background-color: var(--vibe-disabled-bg);
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-
-/* Processing Badge */
-.vibe-coding-processing-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  background: var(--vibe-accent-blue-light);
-  color: var(--vibe-accent-blue-text);
-  border-radius: 12px;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.3px;
-}
-
-.vibe-coding-processing-dot {
-  width: 6px;
-  height: 6px;
-  background: var(--vibe-accent-blue-text);
-  border-radius: 50%;
-  animation: vibe-coding-pulse 1.5s ease-in-out infinite;
-}
-
-@keyframes vibe-coding-pulse {
-  0%, 100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.5;
-    transform: scale(0.8);
-  }
-}
-
-/* Stop Button (Blinking Square Icon) */
-.vibe-coding-stop-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  background: var(--vibe-bg-primary);
-  border: 2px solid var(--vibe-accent-red);
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.vibe-coding-stop-btn:hover {
-  background: var(--vibe-accent-red);
-  transform: scale(1.05);
-}
-
-.vibe-coding-stop-btn:hover .vibe-coding-stop-icon {
-  color: white;
-}
-
-.vibe-coding-stop-icon {
-  width: 16px;
-  height: 16px;
-  color: var(--vibe-accent-red);
-  animation: vibe-coding-blink-icon 1s ease-in-out infinite;
-  transition: color 0.2s ease;
-}
-
-@keyframes vibe-coding-blink-icon {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.3;
-  }
-}
-
-.vibe-coding-content {
-  margin-top: 100px;
-  padding: 30px;
-  display: grid;
-  grid-template-columns: 2.5fr 1fr;
-  gap: 30px;
-  height: calc(100vh - 100px);
-  overflow: hidden;
-}
-
-.vibe-coding-section {
-  background: var(--vibe-bg-primary);
-  border: 1px solid var(--vibe-border-primary);
-  border-radius: 6px;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.vibe-coding-executed {
-  height: 100%;
-  overflow: hidden;
-}
-
-.vibe-coding-queued {
-  height: 100%;
-  overflow: hidden;
-  position: sticky;
-  top: 130px;
-}
-
-.vibe-coding-section-header {
-  display: flex;
-  align-items: center;
-  padding: 20px 20px 12px 20px;
-  border-bottom: 1px solid var(--vibe-border-primary);
-  flex-shrink: 0;
-}
-
-.vibe-coding-section-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-right: 12px;
-  font-size: 1rem;
-  background: var(--vibe-bg-secondary);
-  color: var(--vibe-text-secondary);
-}
-
-.vibe-coding-section-title {
-  flex: 1;
-}
-
-.vibe-coding-section-title h2 {
-  font-size: 1.1rem;
-  color: var(--vibe-text-primary);
-  margin-bottom: 4px;
-  font-weight: 600;
-}
-
-.vibe-coding-section-title .vibe-coding-count {
-  font-size: 0.85rem;
-  color: var(--vibe-text-secondary);
-}
-
-.vibe-coding-file-list {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 20px;
-}
-
-.vibe-coding-file-list::-webkit-scrollbar {
-  width: 6px;
-}
-
-.vibe-coding-file-list::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.vibe-coding-file-list::-webkit-scrollbar-thumb {
-  background: var(--vibe-border-secondary);
-  border-radius: 3px;
-}
-
-.vibe-coding-file-list::-webkit-scrollbar-thumb:hover {
-  background: var(--vibe-text-tertiary);
-}
-
-.vibe-coding-file-item {
-  background: var(--vibe-bg-tertiary);
-  padding: 14px;
-  border-radius: 4px;
-  margin-bottom: 8px;
-  display: flex;
-  align-items: center;
-  transition: all 0.2s ease;
-  border: 1px solid var(--vibe-border-primary);
-}
-
-.vibe-coding-file-item:hover {
-  background: var(--vibe-bg-hover);
-  border-color: var(--vibe-border-secondary);
-}
-
-.vibe-coding-file-item.vibe-coding-read-group {
-  align-items: flex-start;
-}
-
-.vibe-coding-file-item.vibe-coding-read-group .vibe-coding-file-icon {
-  margin-top: 2px;
-}
-
-.vibe-coding-executed .vibe-coding-file-item {
-  background: var(--vibe-bg-primary);
-}
-
-.vibe-coding-queued .vibe-coding-file-item {
-  background: var(--vibe-bg-primary);
-  opacity: 0.9;
-}
-
-.vibe-coding-file-icon {
-  width: 40px;
-  height: 32px;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-right: 12px;
-  font-size: 0.7rem;
-  font-weight: 600;
-  background: var(--vibe-bg-secondary);
-  color: var(--vibe-text-secondary);
-  letter-spacing: -0.5px;
-  flex-shrink: 0;
-}
-
-.vibe-coding-file-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.vibe-coding-file-name {
-  font-weight: 500;
-  color: var(--vibe-text-primary);
-  margin-bottom: 4px;
-  font-size: 0.9rem;
-  line-height: 1.5;
-  word-break: break-word;
-}
-
-.vibe-coding-file-path {
-  font-size: 0.8rem;
-  color: var(--vibe-text-tertiary);
-  word-break: break-word;
-}
-
-.vibe-coding-file-time {
+  display: block;
+  font-family: 'Courier New', Courier, monospace;
   font-size: 0.75rem;
-  color: var(--vibe-text-muted);
-  white-space: nowrap;
-  margin-right: 12px;
-  flex-shrink: 0;
+  line-height: 1.6;
+  white-space: pre;
+  position: relative;
 }
 
-.vibe-coding-status-badge {
-  padding: 4px 10px;
-  border-radius: 3px;
-  font-size: 0.75rem;
-  font-weight: 500;
-  background: var(--vibe-badge-bg);
-  color: var(--vibe-badge-text);
-  border: 1px solid var(--vibe-border-primary);
-  flex-shrink: 0;
-}
-
-.vibe-coding-status-badge.vibe-coding-rejected {
-  background: var(--vibe-accent-red);
-  color: white;
-  border-color: var(--vibe-accent-red);
-}
-
-.vibe-coding-executed .vibe-coding-status-badge {
-  background: var(--vibe-badge-active-bg);
-  color: var(--vibe-badge-active-text);
-  border-color: var(--vibe-badge-active-bg);
-}
-
-.vibe-coding-empty-state {
-  text-align: center;
-  padding: 60px 20px;
-  color: var(--vibe-text-muted);
-}
-
-.vibe-coding-empty-state-icon {
-  font-size: 2.5rem;
-  margin-bottom: 12px;
-  opacity: 0.4;
-}
-
-.vibe-coding-empty-state p {
-  font-size: 0.9rem;
-}
-
-.vibe-coding-loading-state {
-  text-align: center;
-  padding: 50px 20px;
-}
-
-.vibe-coding-loading-spinner {
-  width: 50px;
-  height: 50px;
-  margin: 0 auto 20px;
-  border: 3px solid var(--vibe-border-primary);
-  border-top: 3px solid var(--vibe-text-secondary);
-  border-radius: 50%;
-  animation: vibe-coding-spin 1s linear infinite;
-}
-
-.vibe-coding-loading-state h3 {
-  font-size: 1rem;
-  color: var(--vibe-text-primary);
-  margin-bottom: 8px;
-  font-weight: 500;
-}
-
-.vibe-coding-loading-state p {
-  font-size: 0.85rem;
-  color: var(--vibe-text-muted);
-}
-
-.vibe-coding-loading-dots {
+.vibe-coding-line-prefix {
   display: inline-block;
-  margin-left: 2px;
-}
-
-.vibe-coding-loading-dots span {
-  animation: vibe-coding-blink 1.4s infinite;
+  width: 20px;
+  user-select: none;
   font-weight: bold;
 }
 
-.vibe-coding-loading-dots span:nth-child(2) {
-  animation-delay: 0.2s;
+.vibe-coding-diff-line.vibe-coding-added {
+  background-color: var(--vibe-diff-added-bg);
+  color: var(--vibe-diff-added-text);
 }
 
-.vibe-coding-loading-dots span:nth-child(3) {
-  animation-delay: 0.4s;
+.vibe-coding-diff-line.vibe-coding-added .vibe-coding-line-prefix {
+  color: var(--vibe-accent-green);
 }
 
-@keyframes vibe-coding-spin {
-  0% {
-    transform: rotate(0deg);
-  }
-  100% {
-    transform: rotate(360deg);
-  }
+.vibe-coding-diff-line.vibe-coding-removed {
+  background-color: var(--vibe-diff-removed-bg);
+  color: var(--vibe-diff-removed-text);
+  text-decoration: line-through;
+  opacity: 0.8;
 }
 
-@keyframes vibe-coding-blink {
-  0%, 20% {
-    opacity: 0.2;
-  }
-  50% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0.2;
-  }
+.vibe-coding-diff-line.vibe-coding-removed .vibe-coding-line-prefix {
+  color: var(--vibe-accent-red);
 }
 
-.vibe-coding-file-item.vibe-coding-awaiting-approval {
-  background: var(--vibe-accent-yellow-bg);
-  border: 2px solid var(--vibe-accent-yellow);
-  padding: 0;
-  display: block;
-  overflow: hidden;
-}
-
-.vibe-coding-approval-header {
-  display: flex;
-  align-items: center;
-  padding: 14px;
-  background: var(--vibe-bg-primary);
-  border-bottom: 1px solid var(--vibe-border-primary);
-}
-
-.vibe-coding-approval-header .vibe-coding-file-icon {
-  width: 40px;
-  height: 32px;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-right: 12px;
-  font-size: 0.7rem;
-  font-weight: 600;
-  background: var(--vibe-accent-yellow-light);
-  color: var(--vibe-accent-yellow-text);
-  letter-spacing: -0.5px;
-  flex-shrink: 0;
-}
-
-.vibe-coding-approval-header .vibe-coding-file-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.vibe-coding-approval-header .vibe-coding-file-name {
-  font-weight: 500;
+.vibe-coding-diff-line.vibe-coding-unchanged {
+  background-color: transparent;
   color: var(--vibe-text-primary);
-  margin-bottom: 4px;
-  font-size: 0.9rem;
-  line-height: 1.5;
-  word-break: break-word;
 }
 
-.vibe-coding-approval-header .vibe-coding-file-path {
-  font-size: 0.8rem;
-  color: var(--vibe-text-tertiary);
-  word-break: break-word;
+.vibe-coding-diff-line.vibe-coding-unchanged .vibe-coding-line-prefix {
+  color: var(--vibe-text-muted);
 }
 
-.vibe-coding-approval-badge {
-  padding: 4px 10px;
-  border-radius: 3px;
-  font-size: 0.75rem;
-  font-weight: 500;
-  background: var(--vibe-accent-yellow);
-  color: var(--vibe-accent-yellow-text);
-  border: 1px solid var(--vibe-accent-yellow);
-  margin-left: 12px;
-  flex-shrink: 0;
-}
-
-.vibe-coding-reasoning-box {
-  background: var(--vibe-bg-empty);
-  border-left: 3px solid var(--vibe-text-primary);
-  padding: 12px 14px;
-  margin: 14px;
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.vibe-coding-reasoning-box h3 {
-  font-size: 0.85rem;
-  color: var(--vibe-text-primary);
-  margin: 0 0 6px 0;
-  font-weight: 600;
-}
-
-.vibe-coding-reasoning-box p {
-  font-size: 0.8rem;
-  color: var(--vibe-text-secondary);
-  margin: 0;
-  line-height: 1.5;
-  word-break: break-word;
-}
-
-.vibe-coding-diff-container {
-  margin: 0 14px 14px 14px;
-  border: 1px solid var(--vibe-border-primary);
-  border-radius: 4px;
-  overflow: hidden;
-  background: var(--vibe-code-border);
-}
-
-.vibe-coding-code-block {
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
-}
-
+/* Update code block styles */
 .vibe-coding-code-block pre {
   margin: 0;
-  padding: 12px;
+  padding: 0 !important;
   background: var(--vibe-code-bg);
   overflow-x: auto;
   overflow-y: auto;
-  max-height: 300px;
-  font-family: 'Courier New', Courier, monospace;
-  font-size: 0.75rem;
-  line-height: 1.4;
-  white-space: pre;
-  word-break: normal;
-  word-wrap: normal;
-  color: var(--vibe-text-primary);
+  max-height: 400px;
+  line-height: 1.6;
 }
 
-.vibe-coding-diff-header {
-  background: var(--vibe-code-header);
-  padding: 8px 12px;
-  font-weight: 600;
-  border-bottom: 1px solid var(--vibe-border-primary);
-  color: var(--vibe-text-secondary);
-  font-size: 0.8rem;
+.vibe-coding-code-block pre code {
+  padding: 0 !important;
+  background: transparent !important;
+  display: block;
 }
 
-.vibe-coding-approval-actions {
-  display: flex;
-  gap: 10px;
-  padding: 14px;
-  background: var(--vibe-bg-empty);
-  border-top: 1px solid var(--vibe-border-primary);
-  flex-wrap: wrap;
+
+
+
+
+/* Light Mode Variables (Default) - ADD THESE */
+:root {
+  /* ... existing variables ... */
+  
+  /* Diff Colors */
+  --vibe-diff-added-bg: #e6ffed;
+  --vibe-diff-added-text: #24292e;
+  --vibe-diff-removed-bg: #ffebe9;
+  --vibe-diff-removed-text: #24292e;
 }
 
-.vibe-coding-approval-btn {
-  flex: 1;
-  padding: 10px 20px;
-  border: 1px solid var(--vibe-border-secondary);
-  border-radius: 4px;
-  font-size: 0.85rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  background: var(--vibe-bg-primary);
-  color: var(--vibe-text-primary);
-  min-width: 100px;
-}
 
-.vibe-coding-approval-btn:hover {
-  background: var(--vibe-bg-hover);
-}
 
-.vibe-coding-approval-btn.vibe-coding-accept {
-  background: var(--vibe-accent-green);
-  color: white;
-  border-color: var(--vibe-accent-green);
-}
 
-.vibe-coding-approval-btn.vibe-coding-accept:hover {
-  background: var(--vibe-accent-green-hover);
-}
 
-.vibe-coding-approval-btn.vibe-coding-reject {
-  background: var(--vibe-accent-red);
-  color: white;
-  border-color: var(--vibe-accent-red);
-}
 
-.vibe-coding-approval-btn.vibe-coding-reject:hover {
-  background: var(--vibe-accent-red-hover);
-}
 
-@keyframes vibe-coding-slideIn {
-  from {
-    opacity: 0;
-    transform: translateY(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
 
-.vibe-coding-file-item.vibe-coding-new {
-  animation: vibe-coding-slideIn 0.3s ease;
-}
 
-@media (max-width: 768px) {
-  .vibe-coding-header {
-    padding: 15px 20px;
-  }
 
-  .vibe-coding-header-content {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 15px;
-  }
-
-  .vibe-coding-header-right {
-    align-self: flex-end;
-  }
-
-  .vibe-coding-header h1 {
-    font-size: 1.5rem;
-  }
-
-  .vibe-coding-content {
-    margin-top: 130px;
-    padding: 20px 15px;
-    gap: 15px;
-    grid-template-columns: 1fr;
-    height: calc(100vh - 130px);
-  }
-
-  .vibe-coding-queued {
-    position: relative;
-    top: 0;
-  }
-
-  .vibe-coding-code-block pre {
-    font-size: 0.7rem;
-    max-height: 250px;
-  }
-
-  .vibe-coding-approval-btn {
-    min-width: 80px;
-    font-size: 0.8rem;
-  }
+/* Dark Mode Variables - ADD THESE */
+[data-theme="dark"] {
+  /* ... existing variables ... */
+  
+  /* Diff Colors */
+  --vibe-diff-added-bg: #1a3d2e;
+  --vibe-diff-added-text: #e5e5e5;
+  --vibe-diff-removed-bg: #3d1a1a;
+  --vibe-diff-removed-text: #e5e5e5;
 }
