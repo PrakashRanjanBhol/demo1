@@ -1,85 +1,47 @@
-<!-- Queued Files Section -->
-<div class="vibe-coding-section vibe-coding-queued">
-  <div class="vibe-coding-section-header">
-    <div class="vibe-coding-section-icon">⋯</div>
-    <div class="vibe-coding-section-title">
-      <h2>Queued</h2>
-      <div class="vibe-coding-count"><span>{{ queuedItems.length }}</span> pending</div>
+<!-- Finished All Tasks State - UPDATED -->
+<div *ngIf="isCompleted && queuedItems.length === 0" class="vibe-coding-finished-state">
+  <div class="vibe-coding-finished-icon">
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+      <path d="M8 12L11 15L16 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </div>
+  <h3>All Tasks Completed</h3>
+  <p>Successfully executed all operations</p>
+  <div class="vibe-coding-finished-stats">
+    <div class="vibe-coding-stat">
+      <span class="vibe-coding-stat-value">{{ executedItems.length }}</span>
+      <span class="vibe-coding-stat-label">Tasks</span>
     </div>
   </div>
-  <div class="vibe-coding-file-list">
-    <!-- Empty State -->
-    <div *ngIf="queuedItems.length === 0 && !isProcessing && !isCompleted" class="vibe-coding-empty-state">
-      <div class="vibe-coding-empty-state-icon">—</div>
-      <p>No items in queue</p>
-    </div>
 
-    <!-- Finished All Tasks State - NEW -->
-    <div *ngIf="isCompleted && queuedItems.length === 0" class="vibe-coding-finished-state">
-      <div class="vibe-coding-finished-icon">
-        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
-          <path d="M8 12L11 15L16 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </div>
-      <h3>All Tasks Completed</h3>
-      <p>Successfully executed all operations</p>
-      <div class="vibe-coding-finished-stats">
-        <div class="vibe-coding-stat">
-          <span class="vibe-coding-stat-value">{{ executedItems.length }}</span>
-          <span class="vibe-coding-stat-label">Tasks</span>
+  <!-- Files Modified Section - NEW -->
+  <div class="vibe-coding-files-modified" *ngIf="getModifiedFiles().length > 0">
+    <div class="vibe-coding-files-header">
+      <h4>Files Modified</h4>
+      <span class="vibe-coding-files-count">{{ getModifiedFiles().length }} file(s)</span>
+    </div>
+    
+    <div class="vibe-coding-files-list">
+      <div *ngFor="let file of getModifiedFiles()" class="vibe-coding-modified-file">
+        <div class="vibe-coding-modified-file-header">
+          <span class="vibe-coding-modified-badge" [ngClass]="{'vibe-coding-badge-write': file.tool === 'WRITE', 'vibe-coding-badge-modify': file.tool === 'MODIFY'}">
+            {{ file.tool }}
+          </span>
+          <span class="vibe-coding-modified-filename">{{ file.fileName }}</span>
         </div>
+        <div class="vibe-coding-modified-filepath">{{ file.filePath }}</div>
       </div>
     </div>
 
-    <!-- Waiting for First Chunk State -->
-    <div *ngIf="isProcessing && !hasReceivedFirstChunk && executedItems.length === 0" class="vibe-coding-waiting-state">
-      <div class="vibe-coding-waiting-spinner"></div>
-      <h3>Connecting to AI Agent<span class="vibe-coding-waiting-dots"><span>.</span><span>.</span><span>.</span></span></h3>
-      <p>Analyzing your request and preparing execution plan</p>
-      <div class="vibe-coding-waiting-steps">
-        <div class="vibe-coding-step">
-          <span class="vibe-coding-step-icon">⚡</span>
-          <span class="vibe-coding-step-text">Processing request</span>
-        </div>
-        <div class="vibe-coding-step">
-          <span class="vibe-coding-step-icon">🔍</span>
-          <span class="vibe-coding-step-text">Analyzing codebase</span>
-        </div>
-        <div class="vibe-coding-step">
-          <span class="vibe-coding-step-icon">📋</span>
-          <span class="vibe-coding-step-text">Generating tasks</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- Loading State (Generating Next Task) -->
-    <div *ngIf="queuedItems.length === 0 && isProcessing && executedItems.length > 0 && hasReceivedFirstChunk" class="vibe-coding-loading-state">
-      <div class="vibe-coding-loading-spinner"></div>
-      <h3>Generating Next Task<span class="vibe-coding-loading-dots"><span>.</span><span>.</span><span>.</span></span></h3>
-      <p>Analyzing execution results</p>
-    </div>
-
-    <!-- Queued Items -->
-    <div *ngFor="let item of queuedItems; let i = index" class="vibe-coding-file-item" [ngClass]="{'vibe-coding-pending-approval': item.tool === 'WRITE' || item.tool === 'MODIFY'}">
-      <!-- READ Item -->
-      <ng-container *ngIf="item.tool === 'READ'">
-        <div class="vibe-coding-file-icon">{{ getToolIcon(item.tool) }}</div>
-        <div class="vibe-coding-file-info">
-          <div class="vibe-coding-file-name">{{ getReadContent(item.content) }}</div>
-        </div>
-        <div class="vibe-coding-status-badge">Position {{ i + 1 }}</div>
-      </ng-container>
-
-      <!-- File Operation Item -->
-      <ng-container *ngIf="item.tool !== 'READ' && hasFileDetails(item.content)">
-        <div class="vibe-coding-file-icon">{{ getFileExtension(getFileDetails(item.content)?.file_name) }}</div>
-        <div class="vibe-coding-file-info">
-          <div class="vibe-coding-file-name">{{ getFileDetails(item.content)?.file_name }}</div>
-          <div class="vibe-coding-file-path">{{ getFileDetails(item.content)?.file_path }}</div>
-        </div>
-        <div class="vibe-coding-status-badge">{{ item.tool }}</div>
-      </ng-container>
+    <!-- Refresh Instruction - NEW -->
+    <div class="vibe-coding-refresh-instruction">
+      <svg class="vibe-coding-refresh-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M21 10C21 10 18.995 7.26822 17.3662 5.63824C15.7373 4.00827 13.4864 3 11 3C6.02944 3 2 7.02944 2 12C2 16.9706 6.02944 21 11 21C15.1031 21 18.5649 18.2543 19.6482 14.5M21 10V4M21 10H15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <p>
+        <strong>Refresh your folder</strong> to view the created or modified files in your workspace.
+      </p>
     </div>
   </div>
 </div>
@@ -95,30 +57,66 @@
 
 
 
+// ADD this method to get only WRITE/MODIFY files
+public getModifiedFiles(): Array<{tool: string, fileName: string, filePath: string}> {
+  const modifiedFiles: Array<{tool: string, fileName: string, filePath: string}> = [];
+  
+  this.executedItems.forEach(item => {
+    if (item.tool === 'WRITE' || item.tool === 'MODIFY') {
+      const fileDetails = this.getFileDetails(item.content);
+      if (fileDetails && fileDetails.file_name && fileDetails.file_path) {
+        modifiedFiles.push({
+          tool: item.tool,
+          fileName: fileDetails.file_name,
+          filePath: fileDetails.file_path
+        });
+      }
+    }
+  });
+  
+  return modifiedFiles;
+}
+
+
+
+
+
+
+
+
+
 
 
 /* Light Mode Variables (Default) */
 :root {
   /* ... existing variables ... */
   
-  /* Finished State Colors - ADD THESE */
-  --vibe-finished-icon-color: #10b981;
-  --vibe-finished-icon-bg: #d1fae5;
-  --vibe-finished-text: #065f46;
-  --vibe-finished-stat-bg: #d1fae5;
-  --vibe-finished-stat-border: #10b981;
+  /* Modified Files Colors - ADD THESE */
+  --vibe-files-header-bg: #f9fafb;
+  --vibe-files-border: #e5e7eb;
+  --vibe-badge-write-bg: #dbeafe;
+  --vibe-badge-write-text: #1e40af;
+  --vibe-badge-modify-bg: #fef3c7;
+  --vibe-badge-modify-text: #92400e;
+  --vibe-refresh-bg: #eff6ff;
+  --vibe-refresh-border: #3b82f6;
+  --vibe-refresh-icon: #3b82f6;
 }
 
 /* Dark Mode Variables */
 [data-theme="dark"] {
   /* ... existing variables ... */
   
-  /* Finished State Colors - ADD THESE */
-  --vibe-finished-icon-color: #6ee7b7;
-  --vibe-finished-icon-bg: #064e3b;
-  --vibe-finished-text: #6ee7b7;
-  --vibe-finished-stat-bg: #064e3b;
-  --vibe-finished-stat-border: #059669;
+  /* Modified Files Colors - ADD THESE */
+  --vibe-files-header-bg: #1a1a1c;
+  --vibe-files-border: #27272a;
+  --vibe-badge-write-bg: #1e3a8a;
+  --vibe-badge-write-text: #93c5fd;
+  --vibe-badge-modify-bg: #713f12;
+  --vibe-badge-modify-text: #fcd34d;
+  --vibe-refresh-bg: #1e293b;
+  --vibe-refresh-border: #3b82f6;
+  --vibe-refresh-icon: #60a5fa;
 }
 
 
@@ -127,71 +125,143 @@
 
 
 
-/* Finished All Tasks State */
-.vibe-coding-finished-state {
-  text-align: center;
-  padding: 50px 20px;
+
+
+/* Files Modified Section */
+.vibe-coding-files-modified {
+  margin-top: 24px;
+  width: 100%;
+  max-width: 400px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
-.vibe-coding-finished-icon {
-  width: 64px;
-  height: 64px;
-  margin: 0 auto 20px;
+.vibe-coding-files-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--vibe-files-header-bg);
+  border: 1px solid var(--vibe-files-border);
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+}
+
+.vibe-coding-files-header h4 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--vibe-text-primary);
+  margin: 0;
+}
+
+.vibe-coding-files-count {
+  font-size: 0.75rem;
+  color: var(--vibe-text-secondary);
+  background: var(--vibe-bg-tertiary);
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--vibe-border-primary);
+}
+
+.vibe-coding-files-list {
+  border: 1px solid var(--vibe-files-border);
+  border-radius: 0 0 6px 6px;
+  overflow: hidden;
+}
+
+.vibe-coding-modified-file {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--vibe-border-primary);
+  background: var(--vibe-bg-primary);
+  transition: background 0.2s ease;
+}
+
+.vibe-coding-modified-file:last-child {
+  border-bottom: none;
+}
+
+.vibe-coding-modified-file:hover {
+  background: var(--vibe-bg-hover);
+}
+
+.vibe-coding-modified-file-header {
   display: flex;
   align-items: center;
-  justify-content: center;
-  background: var(--vibe-finished-icon-bg);
-  border-radius: 50%;
-  color: var(--vibe-finished-icon-color);
+  gap: 8px;
+  margin-bottom: 4px;
 }
 
-.vibe-coding-finished-icon svg {
-  width: 36px;
-  height: 36px;
+.vibe-coding-modified-badge {
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  flex-shrink: 0;
 }
 
-.vibe-coding-finished-state h3 {
-  font-size: 1.1rem;
+.vibe-coding-modified-badge.vibe-coding-badge-write {
+  background: var(--vibe-badge-write-bg);
+  color: var(--vibe-badge-write-text);
+}
+
+.vibe-coding-modified-badge.vibe-coding-badge-modify {
+  background: var(--vibe-badge-modify-bg);
+  color: var(--vibe-badge-modify-text);
+}
+
+.vibe-coding-modified-filename {
+  font-size: 0.85rem;
+  font-weight: 500;
   color: var(--vibe-text-primary);
-  margin-bottom: 8px;
+  word-break: break-word;
+}
+
+.vibe-coding-modified-filepath {
+  font-size: 0.75rem;
+  color: var(--vibe-text-tertiary);
+  padding-left: 0;
+  word-break: break-word;
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+}
+
+/* Refresh Instruction */
+.vibe-coding-refresh-instruction {
+  margin-top: 16px;
+  padding: 12px 14px;
+  background: var(--vibe-refresh-bg);
+  border: 1px solid var(--vibe-refresh-border);
+  border-radius: 6px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.vibe-coding-refresh-icon {
+  width: 20px;
+  height: 20px;
+  color: var(--vibe-refresh-icon);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.vibe-coding-refresh-instruction p {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--vibe-text-secondary);
+  line-height: 1.5;
+  text-align: left;
+}
+
+.vibe-coding-refresh-instruction strong {
+  color: var(--vibe-text-primary);
   font-weight: 600;
 }
 
-.vibe-coding-finished-state p {
-  font-size: 0.85rem;
-  color: var(--vibe-text-secondary);
-  margin-bottom: 24px;
-}
-
-.vibe-coding-finished-stats {
-  display: flex;
-  justify-content: center;
-  gap: 16px;
-  margin-top: 20px;
-}
-
-.vibe-coding-stat {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  padding: 12px 20px;
-  background: var(--vibe-finished-stat-bg);
-  border: 1px solid var(--vibe-finished-stat-border);
-  border-radius: 8px;
-  min-width: 80px;
-}
-
-.vibe-coding-stat-value {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--vibe-finished-text);
-  line-height: 1;
-}
-
-.vibe-coding-stat-label {
-  font-size: 0.75rem;
-  color: var(--vibe-text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+/* Mobile responsive */
+@media (max-width: 768px) {
+  .vibe-coding-files-modified {
+    max-width: 100%;
+  }
 }
