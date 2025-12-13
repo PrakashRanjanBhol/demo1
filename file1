@@ -1,195 +1,192 @@
-public getDiffHtml(originalCode: string, modifiedCode: string, filename: string): string {
-  const original = (originalCode || '').split('\n');
-  const modified = (modifiedCode || '').split('\n');
-  const language = this.getLanguageFromFilename(filename);
-  
-  const diff = this.computeDiff(original, modified);
-  let diffHtml = '';
-  let originalLineNum = 1;
-  let modifiedLineNum = 1;
-  
-  for (const block of diff) {
-    if (block.type === 'unchanged') {
-      // Unchanged lines
-      for (const line of block.lines) {
-        const highlightedCode = this.highlightCode(line, language);
-        diffHtml += `<div class="vibe-coding-diff-line vibe-coding-unchanged">`;
-        diffHtml += `<span class="vibe-coding-line-number">${originalLineNum}</span>`;
-        diffHtml += `<span class="vibe-coding-line-number">${modifiedLineNum}</span>`;
-        diffHtml += `<span class="vibe-coding-line-prefix">  </span>`;
-        diffHtml += `<span class="vibe-coding-line-content">${highlightedCode}</span>`;
-        diffHtml += `</div>`;
-        originalLineNum++;
-        modifiedLineNum++;
-      }
-    } else if (block.type === 'changed') {
-      // Group all removed lines first
-      for (const line of block.removed) {
-        const highlightedCode = this.highlightCode(line, language);
-        diffHtml += `<div class="vibe-coding-diff-line vibe-coding-removed">`;
-        diffHtml += `<span class="vibe-coding-line-number">${originalLineNum}</span>`;
-        diffHtml += `<span class="vibe-coding-line-number"></span>`;
-        diffHtml += `<span class="vibe-coding-line-prefix">- </span>`;
-        diffHtml += `<span class="vibe-coding-line-content">${highlightedCode}</span>`;
-        diffHtml += `</div>`;
-        originalLineNum++;
-      }
+<!-- Approval Actions - MODIFIED -->
+<div class="vibe-coding-approval-actions">
+  <button 
+    class="vibe-coding-approval-btn vibe-coding-reject" 
+    (click)="rejectChanges()"
+    [disabled]="isApprovingChanges">
+    ✕ Reject
+  </button>
+  <button 
+    class="vibe-coding-approval-btn vibe-coding-accept" 
+    (click)="approveAndContinue()"
+    [disabled]="isApprovingChanges">
+    <span *ngIf="!isApprovingChanges">✓ Accept & Continue</span>
+    <span *ngIf="isApprovingChanges" class="vibe-coding-accepting-wrapper">
+      <span class="vibe-coding-inline-spinner"></span>
+      Accepting Changes
+    </span>
+  </button>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export class ChunkedJsonParserComponent implements OnInit {
+  public isWaitingForApproval = false;
+  public currentApprovalRequest: ApprovalRequest | null = null;
+  public isProcessing = false;
+  public executedItems: ToolData[] = [];
+  public queuedItems: ToolData[] = [];
+  public groupedExecutedItems: GroupedItem[] = [];
+  public isApprovingChanges = false; // ADD THIS
+
+  constructor(
+    private parserService: ChunkedJsonParserService,
+    private cdr: ChangeDetectorRef
+  ) {}
+
+  // ... existing methods ...
+
+  // MODIFY approveAndContinue method
+  public approveAndContinue(): void {
+    if (this.currentApprovalRequest && !this.isApprovingChanges) {
+      console.log('✅ APPROVED:', this.currentApprovalRequest.data);
+      console.log('Continuing with next operation...\n');
       
-      // Then group all added lines
-      for (const line of block.added) {
-        const highlightedCode = this.highlightCode(line, language);
-        diffHtml += `<div class="vibe-coding-diff-line vibe-coding-added">`;
-        diffHtml += `<span class="vibe-coding-line-number"></span>`;
-        diffHtml += `<span class="vibe-coding-line-number">${modifiedLineNum}</span>`;
-        diffHtml += `<span class="vibe-coding-line-prefix">+ </span>`;
-        diffHtml += `<span class="vibe-coding-line-content">${highlightedCode}</span>`;
-        diffHtml += `</div>`;
-        modifiedLineNum++;
-      }
-    }
-  }
-  
-  return diffHtml;
-}
-
-private computeDiff(original: string[], modified: string[]): Array<{type: 'unchanged' | 'changed', lines?: string[], removed?: string[], added?: string[]}> {
-  const diff: Array<{type: 'unchanged' | 'changed', lines?: string[], removed?: string[], added?: string[]}> = [];
-  let i = 0, j = 0;
-  
-  while (i < original.length || j < modified.length) {
-    // Collect unchanged lines
-    const unchangedLines: string[] = [];
-    while (i < original.length && j < modified.length && original[i] === modified[j]) {
-      unchangedLines.push(original[i]);
-      i++;
-      j++;
-    }
-    
-    if (unchangedLines.length > 0) {
-      diff.push({ type: 'unchanged', lines: unchangedLines });
-    }
-    
-    // Collect changed lines (removed and added)
-    const removedLines: string[] = [];
-    const addedLines: string[] = [];
-    
-    // Look ahead to find the next matching line
-    let matchFound = false;
-    let tempI = i;
-    let tempJ = j;
-    
-    // Try to find a common line within a reasonable window (e.g., next 10 lines)
-    const lookAheadWindow = 10;
-    for (let offsetI = 0; offsetI < lookAheadWindow && tempI + offsetI < original.length; offsetI++) {
-      for (let offsetJ = 0; offsetJ < lookAheadWindow && tempJ + offsetJ < modified.length; offsetJ++) {
-        if (original[tempI + offsetI] === modified[tempJ + offsetJ]) {
-          // Found a match
-          // Collect all removed lines before the match
-          for (let k = 0; k < offsetI; k++) {
-            removedLines.push(original[i + k]);
-          }
-          // Collect all added lines before the match
-          for (let k = 0; k < offsetJ; k++) {
-            addedLines.push(modified[j + k]);
-          }
-          i += offsetI;
-          j += offsetJ;
-          matchFound = true;
-          break;
-        }
-      }
-      if (matchFound) break;
-    }
-    
-    // If no match found within window, collect remaining lines
-    if (!matchFound) {
-      while (i < original.length && j < modified.length) {
-        // Check if lines match
-        if (original[i] === modified[j]) {
-          break;
-        }
-        removedLines.push(original[i]);
-        addedLines.push(modified[j]);
-        i++;
-        j++;
-      }
+      // Set loading state
+      this.isApprovingChanges = true;
+      this.cdr.detectChanges();
       
-      // Collect any remaining removed lines
-      while (i < original.length && (j >= modified.length || original[i] !== modified[j])) {
-        removedLines.push(original[i]);
-        i++;
-      }
+      // Simulate processing delay (if needed) or call service immediately
+      // The service will handle the actual processing
+      this.parserService.approveAndContinue();
       
-      // Collect any remaining added lines
-      while (j < modified.length && (i >= original.length || original[i] !== modified[j])) {
-        addedLines.push(modified[j]);
-        j++;
-      }
-    }
-    
-    if (removedLines.length > 0 || addedLines.length > 0) {
-      diff.push({ type: 'changed', removed: removedLines, added: addedLines });
+      // Reset states after a short delay to show the "Accepting Changes" state
+      setTimeout(() => {
+        this.isWaitingForApproval = false;
+        this.currentApprovalRequest = null;
+        this.isApprovingChanges = false;
+        this.updateLists();
+      }, 500); // Adjust delay as needed
     }
   }
-  
-  return diff;
-}
 
-private highlightCode(code: string, language: string): string {
-  if (!code || typeof hljs === 'undefined') {
-    return this.escapeHtml(code);
-  }
-  
-  try {
-    if (language !== 'plaintext' && hljs.getLanguage(language)) {
-      const result = hljs.highlight(code, { language: language, ignoreIllegals: true });
-      return result.value;
+  // Keep rejectChanges as is - NO CHANGES
+  public rejectChanges(): void {
+    if (this.currentApprovalRequest) {
+      console.log('❌ REJECTED:', this.currentApprovalRequest.data);
+      console.log('Continuing with next operation...\n');
+      
+      // Mark as rejected and continue
+      const rejectedData = { ...this.currentApprovalRequest.data, rejected: true };
+      
+      // Reset approval state
+      this.isWaitingForApproval = false;
+      this.currentApprovalRequest = null;
+      
+      this.parserService.approveAndContinue();
+      this.updateLists();
     }
-  } catch (e) {
-    return this.escapeHtml(code);
   }
-  
-  return this.escapeHtml(code);
+
+  // ... rest of the methods remain the same ...
 }
 
-public getLanguageFromFilename(filename: string): string {
-  if (!filename) return 'plaintext';
-  
-  const ext = filename.split('.').pop()?.toLowerCase();
-  const langMap: { [key: string]: string } = {
-    'js': 'javascript',
-    'jsx': 'javascript',
-    'ts': 'typescript',
-    'tsx': 'typescript',
-    'py': 'python',
-    'java': 'java',
-    'cpp': 'cpp',
-    'c': 'c',
-    'cs': 'csharp',
-    'php': 'php',
-    'rb': 'ruby',
-    'go': 'go',
-    'rs': 'rust',
-    'swift': 'swift',
-    'kt': 'kotlin',
-    'sql': 'sql',
-    'html': 'html',
-    'css': 'css',
-    'scss': 'scss',
-    'json': 'json',
-    'xml': 'xml',
-    'yaml': 'yaml',
-    'yml': 'yaml',
-    'md': 'markdown',
-    'sh': 'bash',
-    'bash': 'bash'
-  };
-  return langMap[ext || ''] || 'plaintext';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+.vibe-coding-approval-actions {
+  display: flex;
+  gap: 8px; /* CHANGED: from 10px to 8px for more compact */
+  padding: 12px 14px; /* CHANGED: reduced padding */
+  background: var(--vibe-bg-empty);
+  border-top: 1px solid var(--vibe-border-primary);
+  justify-content: flex-end; /* ADDED: align buttons to right */
 }
 
-private escapeHtml(text: string): string {
-  if (!text) return '';
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
+.vibe-coding-approval-btn {
+  padding: 6px 14px; /* CHANGED: more compact padding */
+  border: 1px solid var(--vibe-border-secondary);
+  border-radius: 4px;
+  font-size: 0.8rem; /* CHANGED: smaller font */
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: var(--vibe-bg-primary);
+  color: var(--vibe-text-primary);
+  white-space: nowrap; /* ADDED: prevent text wrapping */
+  min-width: auto; /* CHANGED: remove min-width */
+  flex: none; /* CHANGED: don't flex grow */
+}
+
+.vibe-coding-approval-btn:hover:not(:disabled) {
+  background: var(--vibe-bg-hover);
+  transform: translateY(-1px); /* ADDED: subtle lift on hover */
+}
+
+.vibe-coding-approval-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.vibe-coding-approval-btn.vibe-coding-accept {
+  background: var(--vibe-accent-green);
+  color: white;
+  border-color: var(--vibe-accent-green);
+}
+
+.vibe-coding-approval-btn.vibe-coding-accept:hover:not(:disabled) {
+  background: var(--vibe-accent-green-hover);
+}
+
+.vibe-coding-approval-btn.vibe-coding-reject {
+  background: var(--vibe-accent-red);
+  color: white;
+  border-color: var(--vibe-accent-red);
+}
+
+.vibe-coding-approval-btn.vibe-coding-reject:hover:not(:disabled) {
+  background: var(--vibe-accent-red-hover);
+}
+
+/* Accepting Changes Inline Spinner */
+.vibe-coding-accepting-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vibe-coding-inline-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top: 2px solid white;
+  border-radius: 50%;
+  animation: vibe-coding-spin 0.8s linear infinite;
+  display: inline-block;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+  .vibe-coding-approval-actions {
+    padding: 10px 12px;
+    gap: 6px;
+  }
+
+  .vibe-coding-approval-btn {
+    padding: 5px 12px;
+    font-size: 0.75rem;
+  }
 }
