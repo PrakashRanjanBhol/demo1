@@ -1,199 +1,9 @@
-// Update imports
-import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
-
-declare var hljs: any;
-
-export class ChunkedJsonParserComponent implements OnInit {
-  // ... existing properties ...
-
-  constructor(
-    private parserService: ChunkedJsonParserService,
-    private cdr: ChangeDetectorRef
-  ) {}
-
-  // MODIFY setupCallbacks
-  private setupCallbacks(): void {
-    this.parserService.setCallbacks({
-      onToolDetected: (toolData: ToolData) => {
-        this.logToolDetected(toolData);
-        this.updateLists();
-        
-        if (toolData.tool === 'READ') {
-          this.appendReadContent(toolData);
-        }
-      },
-      onApprovalRequest: (approvalRequest: ApprovalRequest) => {
-        this.isWaitingForApproval = true;
-        this.currentApprovalRequest = approvalRequest;
-        this.logWaitingForApproval(approvalRequest.data);
-        this.updateLists();
-        // Force change detection to render the approval card immediately
-        this.cdr.detectChanges();
-      },
-      onCompletion: () => {
-        this.isProcessing = false;
-        this.logCompleted();
-        this.updateLists();
-      },
-      onError: (error: string) => {
-        this.isProcessing = false;
-        this.logError(error);
-      },
-      onFirstChunk: () => {
-        this.logFirstChunkReceived();
-      }
-    });
-  }
-
-  // BEST APPROACH: Generate highlighted diff HTML directly
-  public getDiffHtml(originalCode: string, modifiedCode: string, filename: string): string {
-    const original = (originalCode || '').split('\n');
-    const modified = (modifiedCode || '').split('\n');
-    const language = this.getLanguageFromFilename(filename);
-    
-    let diffHtml = '';
-    let i = 0, j = 0;
-    
-    while (i < original.length || j < modified.length) {
-      if (i < original.length && j < modified.length) {
-        if (original[i] === modified[j]) {
-          // Unchanged line
-          const highlightedCode = this.highlightCode(original[i], language);
-          diffHtml += `<div class="vibe-coding-diff-line vibe-coding-unchanged"><span class="vibe-coding-line-prefix">  </span>${highlightedCode}</div>`;
-          i++;
-          j++;
-        } else {
-          // Modified line
-          const highlightedOriginal = this.highlightCode(original[i], language);
-          const highlightedModified = this.highlightCode(modified[j], language);
-          diffHtml += `<div class="vibe-coding-diff-line vibe-coding-removed"><span class="vibe-coding-line-prefix">- </span>${highlightedOriginal}</div>`;
-          diffHtml += `<div class="vibe-coding-diff-line vibe-coding-added"><span class="vibe-coding-line-prefix">+ </span>${highlightedModified}</div>`;
-          i++;
-          j++;
-        }
-      } else if (i < original.length) {
-        // Removed line
-        const highlightedCode = this.highlightCode(original[i], language);
-        diffHtml += `<div class="vibe-coding-diff-line vibe-coding-removed"><span class="vibe-coding-line-prefix">- </span>${highlightedCode}</div>`;
-        i++;
-      } else if (j < modified.length) {
-        // Added line
-        const highlightedCode = this.highlightCode(modified[j], language);
-        diffHtml += `<div class="vibe-coding-diff-line vibe-coding-added"><span class="vibe-coding-line-prefix">+ </span>${highlightedCode}</div>`;
-        j++;
-      }
-    }
-    
-    return diffHtml;
-  }
-
-  private highlightCode(code: string, language: string): string {
-    if (!code || typeof hljs === 'undefined') {
-      return this.escapeHtml(code);
-    }
-    
-    try {
-      if (language !== 'plaintext' && hljs.getLanguage(language)) {
-        const result = hljs.highlight(code, { language: language, ignoreIllegals: true });
-        return result.value;
-      }
-    } catch (e) {
-      // Fallback to escaped HTML if highlighting fails
-      return this.escapeHtml(code);
-    }
-    
-    return this.escapeHtml(code);
-  }
-
-  public getLanguageFromFilename(filename: string): string {
-    if (!filename) return 'plaintext';
-    
-    const ext = filename.split('.').pop()?.toLowerCase();
-    const langMap: { [key: string]: string } = {
-      'js': 'javascript',
-      'jsx': 'javascript',
-      'ts': 'typescript',
-      'tsx': 'typescript',
-      'py': 'python',
-      'java': 'java',
-      'cpp': 'cpp',
-      'c': 'c',
-      'cs': 'csharp',
-      'php': 'php',
-      'rb': 'ruby',
-      'go': 'go',
-      'rs': 'rust',
-      'swift': 'swift',
-      'kt': 'kotlin',
-      'sql': 'sql',
-      'html': 'html',
-      'css': 'css',
-      'scss': 'scss',
-      'json': 'json',
-      'xml': 'xml',
-      'yaml': 'yaml',
-      'yml': 'yaml',
-      'md': 'markdown',
-      'sh': 'bash',
-      'bash': 'bash'
-    };
-    return langMap[ext || ''] || 'plaintext';
-  }
-
-  private escapeHtml(text: string): string {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-  }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<!-- Code Changes Block with Diff Highlighting -->
-<div class="vibe-coding-diff-container" *ngIf="getFileDetails(currentApprovalRequest.data.content)">
-  <div class="vibe-coding-diff-header">
-    <span>Changes in {{ getFileDetails(currentApprovalRequest.data.content)?.file_name }}</span>
-  </div>
-  <div class="vibe-coding-code-block">
-    <pre><code 
-      [innerHTML]="getDiffHtml(
-        getFileDetails(currentApprovalRequest.data.content)?.original_code || '', 
-        getFileDetails(currentApprovalRequest.data.content)?.modified_code || '',
-        getFileDetails(currentApprovalRequest.data.content)?.file_name || ''
-      )">
-    </code></pre>
-  </div>
-</div>
-
-
-
-
-
-
-
-
-
-
-
-
 /* Diff Line Styles */
 .vibe-coding-diff-line {
   padding: 2px 8px;
   margin: 0;
   display: block;
-  font-family: 'Courier New', Courier, monospace;
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Fira Mono', 'Roboto Mono', 'Consolas', 'Liberation Mono', 'Menlo', monospace;
   font-size: 0.75rem;
   line-height: 1.6;
   white-space: pre;
@@ -219,8 +29,8 @@ export class ChunkedJsonParserComponent implements OnInit {
 .vibe-coding-diff-line.vibe-coding-removed {
   background-color: var(--vibe-diff-removed-bg);
   color: var(--vibe-diff-removed-text);
-  text-decoration: line-through;
-  opacity: 0.8;
+  /* REMOVED: text-decoration: line-through; */
+  /* REMOVED: opacity: 0.8; */
 }
 
 .vibe-coding-diff-line.vibe-coding-removed .vibe-coding-line-prefix {
@@ -245,45 +55,12 @@ export class ChunkedJsonParserComponent implements OnInit {
   overflow-y: auto;
   max-height: 400px;
   line-height: 1.6;
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Fira Mono', 'Roboto Mono', 'Consolas', 'Liberation Mono', 'Menlo', monospace;
 }
 
 .vibe-coding-code-block pre code {
   padding: 0 !important;
   background: transparent !important;
   display: block;
-}
-
-
-
-
-
-/* Light Mode Variables (Default) - ADD THESE */
-:root {
-  /* ... existing variables ... */
-  
-  /* Diff Colors */
-  --vibe-diff-added-bg: #e6ffed;
-  --vibe-diff-added-text: #24292e;
-  --vibe-diff-removed-bg: #ffebe9;
-  --vibe-diff-removed-text: #24292e;
-}
-
-
-
-
-
-
-
-
-
-
-/* Dark Mode Variables - ADD THESE */
-[data-theme="dark"] {
-  /* ... existing variables ... */
-  
-  /* Diff Colors */
-  --vibe-diff-added-bg: #1a3d2e;
-  --vibe-diff-added-text: #e5e5e5;
-  --vibe-diff-removed-bg: #3d1a1a;
-  --vibe-diff-removed-text: #e5e5e5;
+  font-family: inherit;
 }
