@@ -1,132 +1,237 @@
-import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
-import { HttpClient, HttpHeaders } from '@angular/common/http';
-import { ChunkedJsonParserService, ToolData, ApprovalRequest } from './chunked-json-parser.service';
-
-// ... existing interfaces ...
-
-@Component({
-  selector: 'vibe-coding-chunked-json-parser',
-  templateUrl: './chunked-json-parser.component.html',
-  styleUrls: ['./chunked-json-parser.component.css']
-})
 export class ChunkedJsonParserComponent implements OnInit {
-  public isWaitingForApproval = false;
-  public currentApprovalRequest: ApprovalRequest | null = null;
-  public isProcessing = false;
-  public executedItems: ToolData[] = [];
-  public queuedItems: ToolData[] = [];
-  public groupedExecutedItems: GroupedItem[] = [];
-  public isApprovingChanges = false;
-
-  constructor(
-    private parserService: ChunkedJsonParserService,
-    private cdr: ChangeDetectorRef,
-    private http: HttpClient // ADD HttpClient
-  ) {}
+  // ... existing properties ...
+  public hasReceivedFirstChunk = false; // ADD THIS
 
   // ... existing methods ...
 
-  // UPDATED approveAndContinue with API call
-  public async approveAndContinue(): Promise<void> {
-    if (this.currentApprovalRequest && !this.isApprovingChanges) {
-      console.log('✅ APPROVED:', this.currentApprovalRequest.data);
-      console.log('Saving code changes via API...\n');
-      
-      // Set loading state immediately
-      this.isApprovingChanges = true;
-      this.cdr.detectChanges();
-      
-      try {
-        // Extract file details from approval request
-        const fileDetails = this.getFileDetails(this.currentApprovalRequest.data.content);
-        
-        if (fileDetails) {
-          // Prepare API payload
-          const payload = {
-            tool: this.currentApprovalRequest.data.tool,
-            file_path: fileDetails.file_path,
-            file_name: fileDetails.file_name,
-            original_code: fileDetails.original_code || '',
-            modified_code: fileDetails.modified_code || '',
-            reasoning: this.getReasoning(this.currentApprovalRequest.data.content),
-            timestamp: new Date().toISOString()
-          };
-          
-          // Make real-time API call to save the code
-          await this.saveCodeChanges(payload);
-          
-          console.log('✅ Code changes saved successfully');
-        }
-        
-        // Reset approval UI state
-        this.isWaitingForApproval = false;
-        this.currentApprovalRequest = null;
-        
-        // Approve and continue with next operation
-        this.parserService.approveAndContinue();
-        
-        // Update lists
+  // MODIFY setupCallbacks - add firstChunk tracking
+  private setupCallbacks(): void {
+    this.parserService.setCallbacks({
+      onToolDetected: (toolData: ToolData) => {
+        this.logToolDetected(toolData);
         this.updateLists();
         
-      } catch (error) {
-        console.error('❌ Failed to save code changes:', error);
-        
-        // Show error to user (you can add a toast/notification here)
-        alert('Failed to save code changes. Please try again.');
-        
-        // Reset loading state on error
-        this.isApprovingChanges = false;
-        this.cdr.detectChanges();
-        return;
-      }
-      
-      // Keep spinner for minimum duration for better UX
-      setTimeout(() => {
-        this.isApprovingChanges = false;
-        this.cdr.detectChanges();
-      }, 500);
-    }
-  }
-
-  // NEW METHOD: API call to save code changes
-  private async saveCodeChanges(payload: any): Promise<void> {
-    // Replace with your actual API endpoint
-    const apiUrl = 'https://your-api-endpoint.com/api/save-code';
-    
-    const headers = new HttpHeaders({
-      'Content-Type': 'application/json',
-      // Add any authentication headers if needed
-      // 'Authorization': `Bearer ${your_token}`
-    });
-    
-    return new Promise((resolve, reject) => {
-      this.http.post(apiUrl, payload, { headers }).subscribe({
-        next: (response) => {
-          console.log('API Response:', response);
-          resolve();
-        },
-        error: (error) => {
-          console.error('API Error:', error);
-          reject(error);
+        if (toolData.tool === 'READ') {
+          this.appendReadContent(toolData);
         }
-      });
+      },
+      onApprovalRequest: (approvalRequest: ApprovalRequest) => {
+        this.isWaitingForApproval = true;
+        this.currentApprovalRequest = approvalRequest;
+        this.isApprovingChanges = false;
+        this.logWaitingForApproval(approvalRequest.data);
+        this.updateLists();
+        this.cdr.detectChanges();
+      },
+      onCompletion: () => {
+        this.isProcessing = false;
+        this.isApprovingChanges = false;
+        this.hasReceivedFirstChunk = false; // RESET on completion
+        this.logCompleted();
+        this.updateLists();
+      },
+      onError: (error: string) => {
+        this.isProcessing = false;
+        this.isApprovingChanges = false;
+        this.hasReceivedFirstChunk = false; // RESET on error
+        this.logError(error);
+      },
+      onFirstChunk: () => {
+        this.hasReceivedFirstChunk = true; // SET to true when first chunk arrives
+        this.logFirstChunkReceived();
+        this.cdr.detectChanges();
+      }
     });
   }
 
-  // Keep rejectChanges as is
-  public rejectChanges(): void {
-    if (this.currentApprovalRequest) {
-      console.log('❌ REJECTED:', this.currentApprovalRequest.data);
-      console.log('Continuing with next operation...\n');
-      
-      // Reset approval state
-      this.isWaitingForApproval = false;
-      this.currentApprovalRequest = null;
-      
-      this.parserService.approveAndContinue();
-      this.updateLists();
+  // MODIFY runDemo - reset the flag
+  public async runDemo(): Promise<void> {
+    console.clear();
+    console.log('🚀 Starting streaming process...\n');
+    
+    // Reset lists
+    this.executedItems = [];
+    this.queuedItems = [];
+    this.groupedExecutedItems = [];
+    this.hasReceivedFirstChunk = false; // RESET when starting
+    
+    // Clear the streaming container
+    this.clearStreamingContainer();
+    
+    // Setup callbacks before starting the stream
+    this.setupCallbacks();
+    
+    this.isProcessing = true;
+    
+    try {
+      await this.parserService.startStreaming();
+    } catch (error) {
+      if (error instanceof Error && error.name !== 'AbortError') {
+        console.error('Failed to start streaming:', error);
+      }
+      this.isProcessing = false;
     }
   }
 
-  // ... rest of the existing methods ...
+  // ... rest of existing methods ...
+}
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- Queued Files Section -->
+<div class="vibe-coding-section vibe-coding-queued">
+  <div class="vibe-coding-section-header">
+    <div class="vibe-coding-section-icon">⋯</div>
+    <div class="vibe-coding-section-title">
+      <h2>Queued</h2>
+      <div class="vibe-coding-count"><span>{{ queuedItems.length }}</span> pending</div>
+    </div>
+  </div>
+  <div class="vibe-coding-file-list">
+    <!-- Empty State -->
+    <div *ngIf="queuedItems.length === 0 && !isProcessing" class="vibe-coding-empty-state">
+      <div class="vibe-coding-empty-state-icon">—</div>
+      <p>No items in queue</p>
+    </div>
+
+    <!-- Waiting for First Chunk State - NEW -->
+    <div *ngIf="isProcessing && !hasReceivedFirstChunk && executedItems.length === 0" class="vibe-coding-waiting-state">
+      <div class="vibe-coding-waiting-spinner"></div>
+      <h3>Connecting to AI Agent<span class="vibe-coding-waiting-dots"><span>.</span><span>.</span><span>.</span></span></h3>
+      <p>Analyzing your request and preparing execution plan</p>
+      <div class="vibe-coding-waiting-steps">
+        <div class="vibe-coding-step">
+          <span class="vibe-coding-step-icon">⚡</span>
+          <span class="vibe-coding-step-text">Processing request</span>
+        </div>
+        <div class="vibe-coding-step">
+          <span class="vibe-coding-step-icon">🔍</span>
+          <span class="vibe-coding-step-text">Analyzing codebase</span>
+        </div>
+        <div class="vibe-coding-step">
+          <span class="vibe-coding-step-icon">📋</span>
+          <span class="vibe-coding-step-text">Generating tasks</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Loading State (Generating Next Task) -->
+    <div *ngIf="queuedItems.length === 0 && isProcessing && executedItems.length > 0 && hasReceivedFirstChunk" class="vibe-coding-loading-state">
+      <div class="vibe-coding-loading-spinner"></div>
+      <h3>Generating Next Task<span class="vibe-coding-loading-dots"><span>.</span><span>.</span><span>.</span></span></h3>
+      <p>Analyzing execution results</p>
+    </div>
+
+    <!-- Queued Items -->
+    <div *ngFor="let item of queuedItems; let i = index" class="vibe-coding-file-item">
+      <!-- ... existing queued items code ... -->
+    </div>
+  </div>
+</div>
+
+
+
+
+
+
+
+
+
+
+/* Waiting for First Chunk State */
+.vibe-coding-waiting-state {
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.vibe-coding-waiting-spinner {
+  width: 50px;
+  height: 50px;
+  margin: 0 auto 24px;
+  border: 3px solid var(--vibe-border-primary);
+  border-top: 3px solid var(--vibe-accent-blue);
+  border-radius: 50%;
+  animation: vibe-coding-spin 1s linear infinite;
+}
+
+.vibe-coding-waiting-state h3 {
+  font-size: 1rem;
+  color: var(--vibe-text-primary);
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.vibe-coding-waiting-state p {
+  font-size: 0.85rem;
+  color: var(--vibe-text-secondary);
+  margin-bottom: 24px;
+}
+
+.vibe-coding-waiting-dots {
+  display: inline-block;
+  margin-left: 2px;
+}
+
+.vibe-coding-waiting-dots span {
+  animation: vibe-coding-blink 1.4s infinite;
+  font-weight: bold;
+}
+
+.vibe-coding-waiting-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.vibe-coding-waiting-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+.vibe-coding-waiting-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 280px;
+  margin: 0 auto;
+}
+
+.vibe-coding-step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--vibe-bg-secondary);
+  border: 1px solid var(--vibe-border-primary);
+  border-radius: 6px;
+  transition: all 0.3s ease;
+}
+
+.vibe-coding-step-icon {
+  font-size: 1.2rem;
+  flex-shrink: 0;
+  animation: vibe-coding-step-pulse 2s ease-in-out infinite;
+}
+
+.vibe-coding-step-text {
+  font-size: 0.85rem;
+  color: var(--vibe-text-secondary);
+  text-align: left;
+}
+
+@keyframes vibe-coding-step-pulse {
+  0%, 100% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
 }
