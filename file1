@@ -1,44 +1,81 @@
-// MODIFIED rejectChanges method with consistent timing
-public async rejectChanges(): Promise<void> {
-  if (this.currentApprovalRequest && !this.isRejectingChanges) {
-    console.log('❌ REJECTED:', this.currentApprovalRequest.data);
-    console.log('Continuing with next operation...\n');
-    
-    // Set loading state
-    this.isRejectingChanges = true;
-    this.cdr.detectChanges();
-    
-    // Minimum display time for spinner (for consistent UX)
-    const minSpinnerTime = 500; // ms
-    const startTime = Date.now();
-    
-    // Mark the current tool as rejected in the data
-    this.currentApprovalRequest.data.rejected = true;
-    
-    // Add to executed items with rejected flag BEFORE resetting
-    this.executedItems.push(this.currentApprovalRequest.data);
-    
-    // Reset approval state
-    this.isWaitingForApproval = false;
-    this.currentApprovalRequest = null;
-    
-    // Continue to next operation
-    this.parserService.approveAndContinue();
-    this.updateLists();
-    
-    // Ensure spinner shows for minimum time
-    const elapsed = Date.now() - startTime;
-    const remainingTime = Math.max(0, minSpinnerTime - elapsed);
-    
-    await this.delay(remainingTime);
-    
-    // Reset loading state
-    this.isRejectingChanges = false;
-    this.cdr.detectChanges();
+// SIMPLIFIED getDiffHtml - Much faster, minimal DOM manipulation
+public getDiffHtml(originalCode: string, modifiedCode: string, filename: string): string {
+  const original = (originalCode || '').split('\n');
+  const modified = (modifiedCode || '').split('\n');
+  
+  // Safety check - limit lines for performance
+  const maxLines = 500;
+  if (original.length > maxLines || modified.length > maxLines) {
+    return `<div class="vibe-coding-diff-line">File too large to display diff (max ${maxLines} lines)</div>`;
   }
+  
+  const language = this.getLanguageFromFilename(filename);
+  const lines: string[] = [];
+  let originalLineNum = 1;
+  let modifiedLineNum = 1;
+  
+  const maxLen = Math.max(original.length, modified.length);
+  
+  for (let i = 0; i < maxLen; i++) {
+    const origLine = i < original.length ? original[i] : null;
+    const modLine = i < modified.length ? modified[i] : null;
+    
+    if (origLine === modLine && origLine !== null) {
+      // Unchanged line
+      const escapedCode = this.escapeHtml(origLine);
+      lines.push(
+        `<div class="vibe-coding-diff-line vibe-coding-unchanged">` +
+        `<span class="vibe-coding-line-number">${originalLineNum}</span>` +
+        `<span class="vibe-coding-line-number">${modifiedLineNum}</span>` +
+        `<span class="vibe-coding-line-prefix">  </span>` +
+        `<span class="vibe-coding-line-content">${escapedCode}</span>` +
+        `</div>`
+      );
+      originalLineNum++;
+      modifiedLineNum++;
+    } else {
+      // Changed lines - show removed then added
+      if (origLine !== null) {
+        const escapedCode = this.escapeHtml(origLine);
+        lines.push(
+          `<div class="vibe-coding-diff-line vibe-coding-removed">` +
+          `<span class="vibe-coding-line-number">${originalLineNum}</span>` +
+          `<span class="vibe-coding-line-number"></span>` +
+          `<span class="vibe-coding-line-prefix">- </span>` +
+          `<span class="vibe-coding-line-content">${escapedCode}</span>` +
+          `</div>`
+        );
+        originalLineNum++;
+      }
+      
+      if (modLine !== null) {
+        const escapedCode = this.escapeHtml(modLine);
+        lines.push(
+          `<div class="vibe-coding-diff-line vibe-coding-added">` +
+          `<span class="vibe-coding-line-number"></span>` +
+          `<span class="vibe-coding-line-number">${modifiedLineNum}</span>` +
+          `<span class="vibe-coding-line-prefix">+ </span>` +
+          `<span class="vibe-coding-line-content">${escapedCode}</span>` +
+          `</div>`
+        );
+        modifiedLineNum++;
+      }
+    }
+  }
+  
+  return lines.join('');
 }
 
-// Helper method for delay (if not already present)
-private delay(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+// REMOVE these methods - no longer needed:
+// - computeDiff()
+// - highlightCode()
+
+// KEEP this simple helper
+private escapeHtml(text: string): string {
+  if (!text) return '';
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
 }
+
+// REMOVE getLanguageFromFilename - no longer needed for this simplified version
