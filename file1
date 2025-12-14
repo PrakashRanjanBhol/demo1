@@ -1,4 +1,31 @@
-// MODIFIED approveAndContinue - Make parserService call non-blocking
+// MODIFIED rejectChanges - Remove executedItems.push to prevent re-render
+public rejectChanges(): void {
+  if (this.currentApprovalRequest) {
+    console.log('❌ REJECTED:', this.currentApprovalRequest.data);
+    console.log('Continuing with next operation...\n');
+    
+    // Just mark as rejected, don't push to executedItems
+    this.currentApprovalRequest.data.rejected = true;
+    
+    // MODIFIED: State changes immediately
+    this.showApprovalCard = false;
+    this.isWaitingForApproval = false;
+    const rejectedData = this.currentApprovalRequest;
+    this.currentApprovalRequest = null;
+    this.showStreamingContainer = true;
+    this.cdr.detectChanges();
+    
+    // MODIFIED: Use requestAnimationFrame for better performance
+    requestAnimationFrame(() => {
+      this.parserService.approveAndContinue();
+      // Only update queued items, not executed
+      this.queuedItems = this.parserService.getPendingTools();
+      this.scrollToBottom();
+    });
+  }
+}
+
+// MODIFIED approveAndContinue - Also optimize
 public async approveAndContinue(): Promise<void> {
   if (this.currentApprovalRequest && !this.isApprovingChanges) {
     console.log('✅ APPROVED:', this.currentApprovalRequest.data);
@@ -25,19 +52,20 @@ public async approveAndContinue(): Promise<void> {
         console.log('✅ Code changes saved successfully');
       }
       
-      // MODIFIED: State changes BEFORE calling parser service
+      // State changes immediately
       this.showApprovalCard = false;
       this.isWaitingForApproval = false;
       this.currentApprovalRequest = null;
       this.showStreamingContainer = true;
       this.cdr.detectChanges();
       
-      // MODIFIED: Call parser service asynchronously (non-blocking)
-      setTimeout(() => {
+      // MODIFIED: Use requestAnimationFrame for better performance
+      requestAnimationFrame(() => {
         this.parserService.approveAndContinue();
-        this.updateLists();
+        // Only update queued items, not executed
+        this.queuedItems = this.parserService.getPendingTools();
         this.scrollToBottom();
-      }, 0);
+      });
       
     } catch (error) {
       console.error('❌ Failed to save code changes:', error);
@@ -47,7 +75,6 @@ public async approveAndContinue(): Promise<void> {
       return;
     }
     
-    // Keep spinner for minimum duration
     setTimeout(() => {
       this.isApprovingChanges = false;
       this.cdr.detectChanges();
@@ -55,27 +82,13 @@ public async approveAndContinue(): Promise<void> {
   }
 }
 
-// MODIFIED rejectChanges - Make parserService call non-blocking
-public rejectChanges(): void {
-  if (this.currentApprovalRequest) {
-    console.log('❌ REJECTED:', this.currentApprovalRequest.data);
-    console.log('Continuing with next operation...\n');
-    
-    this.currentApprovalRequest.data.rejected = true;
-    this.executedItems.push(this.currentApprovalRequest.data);
-    
-    // MODIFIED: State changes BEFORE calling parser service
-    this.showApprovalCard = false;
-    this.isWaitingForApproval = false;
-    this.currentApprovalRequest = null;
-    this.showStreamingContainer = true;
-    this.cdr.detectChanges();
-    
-    // MODIFIED: Call parser service asynchronously (non-blocking)
-    setTimeout(() => {
-      this.parserService.approveAndContinue();
-      this.updateLists();
-      this.scrollToBottom();
-    }, 0);
+// MODIFIED updateLists - Only update queued, not executed (since we don't render them)
+private updateLists(): void {
+  // Only update queued items to avoid heavy re-renders
+  this.queuedItems = this.parserService.getPendingTools();
+  
+  // Only get executed items for the finished state file list
+  if (this.isCompleted) {
+    this.executedItems = this.parserService.getCompletedTools();
   }
 }
