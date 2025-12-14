@@ -1,4 +1,60 @@
-// MODIFIED approveAndContinue - Remove appendAcceptedFile call
+// MODIFIED setupCallbacks - Reduce delay
+private setupCallbacks(): void {
+  this.parserService.setCallbacks({
+    onToolDetected: (toolData: ToolData) => {
+      this.logToolDetected(toolData);
+      this.updateLists();
+      
+      if (toolData.tool === 'READ') {
+        this.appendReadContent(toolData);
+        this.scrollToBottom();
+      } else {
+        this.cdr.detectChanges();
+        this.scrollToBottom();
+      }
+    },
+    onApprovalRequest: (approvalRequest: ApprovalRequest) => {
+      this.isWaitingForApproval = true;
+      this.currentApprovalRequest = approvalRequest;
+      this.isApprovingChanges = false;
+      this.logWaitingForApproval(approvalRequest.data);
+      this.updateLists();
+      
+      // MODIFIED: Faster transition
+      this.showStreamingContainer = false;
+      this.cdr.detectChanges();
+      
+      // REDUCED: 400ms -> 200ms
+      setTimeout(() => {
+        this.showApprovalCard = true;
+        this.cdr.detectChanges();
+        this.scrollToBottom();
+      }, 200);
+    },
+    onCompletion: () => {
+      this.isProcessing = false;
+      this.isApprovingChanges = false;
+      this.hasReceivedFirstChunk = false;
+      this.isCompleted = true;
+      this.logCompleted();
+      this.updateLists();
+      this.cdr.detectChanges();
+    },
+    onError: (error: string) => {
+      this.isProcessing = false;
+      this.isApprovingChanges = false;
+      this.hasReceivedFirstChunk = false;
+      this.logError(error);
+    },
+    onFirstChunk: () => {
+      this.hasReceivedFirstChunk = true;
+      this.logFirstChunkReceived();
+      this.cdr.detectChanges();
+    }
+  });
+}
+
+// MODIFIED approveAndContinue - Reduce delays
 public async approveAndContinue(): Promise<void> {
   if (this.currentApprovalRequest && !this.isApprovingChanges) {
     console.log('✅ APPROVED:', this.currentApprovalRequest.data);
@@ -25,11 +81,11 @@ public async approveAndContinue(): Promise<void> {
         console.log('✅ Code changes saved successfully');
       }
       
-      // MODIFIED: Animate transition
+      // Hide approval card immediately
       this.showApprovalCard = false;
       this.cdr.detectChanges();
       
-      // REMOVED: appendAcceptedFile call
+      // REDUCED: 400ms -> 200ms
       setTimeout(() => {
         this.isWaitingForApproval = false;
         this.currentApprovalRequest = null;
@@ -39,7 +95,7 @@ public async approveAndContinue(): Promise<void> {
         this.updateLists();
         this.scrollToBottom();
         this.cdr.detectChanges();
-      }, 400);
+      }, 200);
       
     } catch (error) {
       console.error('❌ Failed to save code changes:', error);
@@ -49,27 +105,28 @@ public async approveAndContinue(): Promise<void> {
       return;
     }
     
+    // REDUCED: 500ms -> 300ms
     setTimeout(() => {
       this.isApprovingChanges = false;
       this.cdr.detectChanges();
-    }, 500);
+    }, 300);
   }
 }
 
-// MODIFIED rejectChanges - Remove appendAcceptedFile call
+// MODIFIED rejectChanges - Reduce delays
 public rejectChanges(): void {
   if (this.currentApprovalRequest) {
     console.log('❌ REJECTED:', this.currentApprovalRequest.data);
     console.log('Continuing with next operation...\n');
     
     this.currentApprovalRequest.data.rejected = true;
-    this.executedItems.push(this.currentApprovalRequest.data);
+    this.executedItems.push(this.currentApprovalRequest.data.rejected);
     
-    // MODIFIED: Animate transition
+    // Hide approval card immediately
     this.showApprovalCard = false;
     this.cdr.detectChanges();
     
-    // REMOVED: appendAcceptedFile call
+    // REDUCED: 400ms -> 200ms
     setTimeout(() => {
       this.isWaitingForApproval = false;
       this.currentApprovalRequest = null;
@@ -79,9 +136,55 @@ public rejectChanges(): void {
       this.updateLists();
       this.scrollToBottom();
       this.cdr.detectChanges();
-    }, 400);
+    }, 200);
   }
 }
 
-// REMOVE this entire method
-// private appendAcceptedFile(toolData: ToolData, isRejected: boolean): void { ... }
+
+
+
+
+
+
+
+
+
+
+
+animations: [
+  trigger('fadeSlide', [
+    state('void', style({
+      opacity: 0,
+      transform: 'translateY(-10px)'
+    })),
+    state('*', style({
+      opacity: 1,
+      transform: 'translateY(0)'
+    })),
+    transition('void => *', [
+      animate('200ms ease-out') // REDUCED: 300ms -> 200ms
+    ]),
+    transition('* => void', [
+      animate('200ms ease-in') // REDUCED: 300ms -> 200ms
+    ])
+  ]),
+  trigger('expandCollapse', [
+    state('collapsed', style({
+      height: '0',
+      opacity: 0,
+      overflow: 'hidden',
+      pointerEvents: 'none'
+    })),
+    state('expanded', style({
+      height: '*',
+      opacity: 1,
+      overflow: 'visible',
+      pointerEvents: 'auto'
+    })),
+    transition('collapsed <=> expanded', [
+      animate('250ms ease-in-out') // REDUCED: 400ms -> 250ms
+    ])
+  ])
+]
+
+
