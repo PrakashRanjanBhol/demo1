@@ -4,11 +4,9 @@ import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { trigger, state, style, transition, animate } from '@angular/animations';
 import { ChunkedJsonParserService, ToolData, ApprovalRequest } from './chunked-json-parser.service';
 import { marked } from 'marked';
-import { markedHighlight } from 'marked-highlight';
+import hljs from 'highlight.js'; // CORRECT IMPORT
 
-declare var hljs: any;
-
-// ... rest of interfaces remain same ...
+// ... rest of imports and interface ...
 
 @Component({
   selector: 'vibe-coding-chunked-json-parser',
@@ -24,7 +22,7 @@ declare var hljs: any;
   ]
 })
 export class ChunkedJsonParserComponent implements OnInit {
-  // ... all properties remain same ...
+  // ... existing properties ...
 
   constructor(
     private parserService: ChunkedJsonParserService,
@@ -35,35 +33,77 @@ export class ChunkedJsonParserComponent implements OnInit {
     this.configureMarked();
   }
 
-  ngOnInit(): void {
-    // Setup will happen on RUN click
-  }
-
-  // UPDATED: Configure marked with highlight extension
+  // CORRECTED: Configure marked with highlight.js
   private configureMarked(): void {
-    marked.use(
-      markedHighlight({
-        langPrefix: 'hljs language-',
-        highlight(code: string, lang: string) {
-          if (typeof hljs !== 'undefined') {
-            const language = hljs.getLanguage(lang) ? lang : 'plaintext';
-            try {
-              return hljs.highlight(code, { language }).value;
-            } catch (e) {
-              console.warn('Highlight error:', e);
-              return code;
-            }
-          }
-          return code;
-        }
-      })
-    );
+    // Custom renderer for code blocks
+    const renderer = new marked.Renderer();
+    
+    renderer.code = (code: string, language: string | undefined) => {
+      const validLanguage = language && hljs.getLanguage(language) ? language : 'plaintext';
+      const highlighted = hljs.highlight(code, { language: validLanguage }).value;
+      return `<pre><code class="hljs language-${validLanguage}">${highlighted}</code></pre>`;
+    };
+
+    renderer.codespan = (code: string) => {
+      return `<code class="inline-code">${this.escapeHtml(code)}</code>`;
+    };
 
     marked.setOptions({
+      renderer: renderer,
       breaks: true,
       gfm: true
     });
   }
 
-  // ... rest of the code remains exactly the same ...
+  private handleReadTool(toolData: ToolData): void {
+    const content = typeof toolData.content === 'string' ? toolData.content : '';
+    
+    if (content) {
+      try {
+        // Parse markdown with highlight.js support
+        const htmlContent = marked.parse(content) as string;
+        const safeHtml = this.sanitizer.sanitize(SecurityContext.HTML, htmlContent);
+        
+        if (safeHtml) {
+          this.readContents.push(this.sanitizer.bypassSecurityTrustHtml(safeHtml));
+          this.addToExecutionFlow(toolData, 'completed');
+          this.scrollReadToBottom();
+        }
+      } catch (e) {
+        console.error('Markdown parse error:', e);
+      }
+    }
+  }
+
+  // ... rest of the methods remain the same ...
+
+  private highlightCode(code: string, language: string): string {
+    if (!code) {
+      return this.escapeHtml('');
+    }
+    
+    try {
+      if (language !== 'plaintext' && hljs.getLanguage(language)) {
+        const result = hljs.highlight(code, { language: language, ignoreIllegals: true });
+        return result.value;
+      }
+    } catch (e) {
+      return this.escapeHtml(code);
+    }
+    
+    return this.escapeHtml(code);
+  }
+
+  private escapeHtml(text: string): string {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  public trackByIndex(index: number): number {
+    return index;
+  }
+
+  // ... rest of existing methods ...
 }
