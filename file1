@@ -1,104 +1,29 @@
-export class ChunkedJsonParserComponent implements OnInit {
-  // ... existing properties ...
-  
-  isApproving = false;
-  isRejecting = false; // ADD THIS
+<div class="vibe-coding-header-right">
+  <button class="vibe-coding-btn vibe-coding-btn-primary" (click)="run()" [disabled]="isProcessing">RUN</button>
 
-  // ... existing methods ...
+  <span *ngIf="isProcessing && !isCompleted" class="vibe-coding-badge vibe-coding-badge-processing">
+    <span class="vibe-coding-pulse-dot"></span>
+    Processing
+  </span>
 
-  async accept(): Promise<void> {
-    if (!this.approvalData || this.isApproving || this.isRejecting) return;
-    
-    this.isApproving = true;
-    this.cdr.markForCheck();
-    
-    try {
-      await this.saveChanges(this.approvalData);
-      this.updateFlowStatus('completed');
-      this.continueFlow();
-    } catch (e) {
-      console.error('Save failed:', e);
-      alert('Failed to save changes');
-      this.isApproving = false;
-      this.cdr.markForCheck();
-    }
-  }
+  <span *ngIf="isCompleted" class="vibe-coding-badge vibe-coding-badge-completed">
+    <span class="vibe-coding-check-icon">✓</span>
+    Completed
+  </span>
 
-  reject(): void {
-    if (!this.approvalData || this.isApproving || this.isRejecting) return;
-    
-    this.isRejecting = true; // ADD THIS
-    this.cdr.markForCheck();
-    
-    this.updateFlowStatus('rejected');
-    
-    // Small delay to show the animation
-    setTimeout(() => {
-      this.continueFlow();
-    }, 500);
-  }
+  <!-- MODIFIED: Show spinner before first chunk, then show stop button -->
+  <div *ngIf="isProcessing && !isCompleted && !hasFirstChunk" class="vibe-coding-header-spinner">
+    <div class="vibe-coding-spinner-header"></div>
+  </div>
 
-  private continueFlow(): void {
-    this.approvalData = null;
-    this.showApproval = false;
-    this.diffHtml = null;
-    this.isApproving = false;
-    this.isRejecting = false; // ADD THIS
-    
-    this.parser.approveAndContinue();
-    this.queuedCount = this.parser.getPendingTools().length;
-    this.cdr.markForCheck();
-  }
-
-  private reset(): void {
-    const container = document.getElementById('vibe-coding-read-container');
-    if (container) container.innerHTML = '';
-    
-    this.executionFlow = [];
-    this.queuedCount = 0;
-    this.approvalData = null;
-    this.diffHtml = null;
-    this.showApproval = false;
-    this.isCompleted = false;
-    this.hasFirstChunk = false;
-    this.isApproving = false;
-    this.isRejecting = false; // ADD THIS
-    this.flowIdCounter = 0;
-    this.readFlowItem = null;
-  }
-
-  // ... rest of the code ...
-}
-
-
-
-
-
-
-
-
-<!-- Approval Actions - MODIFIED -->
-<div class="vibe-coding-approval-actions">
   <button 
-    class="vibe-coding-btn vibe-coding-btn-reject" 
-    (click)="reject()" 
-    [disabled]="isApproving || isRejecting">
-    <span *ngIf="!isRejecting">✕ Reject</span>
-    <span *ngIf="isRejecting" class="vibe-coding-processing-inline">
-      <span class="vibe-coding-spinner-small"></span>
-      Rejecting...
-    </span>
-  </button>
-  
-  <button 
-    class="vibe-coding-btn vibe-coding-btn-accept" 
-    (click)="accept()" 
-    [disabled]="isApproving || isRejecting">
-    <span *ngIf="!isApproving">✓ Accept & Continue</span>
-    <span *ngIf="isApproving" class="vibe-coding-processing-inline">
-      <span class="vibe-coding-spinner-small"></span>
-      Accepting...
-    </span>
+    *ngIf="isProcessing && !isCompleted && hasFirstChunk" 
+    class="vibe-coding-btn-stop" 
+    (click)="stop()" 
+    title="Stop">
+    <svg viewBox="0 0 24 24" fill="none">
+      <rect x="6" y="6" width="12" height="12" fill="currentColor" rx="2"/>
+    </svg>
   </button>
 </div>
 
@@ -109,25 +34,20 @@ export class ChunkedJsonParserComponent implements OnInit {
 
 
 
-
-
-
-/* Processing Inline - for both Accept and Reject */
-.vibe-coding-processing-inline {
-  display: inline-flex;
+/* Header Spinner - Shows before first chunk */
+.vibe-coding-header-spinner {
+  display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
 }
 
-.vibe-coding-spinner-small {
-  width: 12px;
-  height: 12px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top: 2px solid white;
+.vibe-coding-spinner-header {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--vibe-border);
+  border-top: 2px solid var(--vibe-blue);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
 }
