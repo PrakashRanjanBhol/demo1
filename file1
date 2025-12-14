@@ -1,80 +1,24 @@
-// MODIFIED method to include accepted/rejected status
-public getModifiedFiles(): Array<{tool: string, fileName: string, filePath: string | null, isNewFile: boolean, rejected: boolean}> {
-  const modifiedFiles: Array<{tool: string, fileName: string, filePath: string | null, isNewFile: boolean, rejected: boolean}> = [];
-  
-  this.executedItems.forEach(item => {
-    if (item.tool === 'WRITE' || item.tool === 'MODIFY') {
-      const fileDetails = this.getFileDetails(item.content);
-      if (fileDetails && fileDetails.file_name) {
-        modifiedFiles.push({
-          tool: item.tool,
-          fileName: fileDetails.file_name,
-          filePath: fileDetails.file_path || null,
-          isNewFile: !fileDetails.file_path || fileDetails.file_path === null,
-          rejected: item.rejected || false // ADD rejected status
-        });
-      }
-    }
-  });
-  
-  return modifiedFiles;
-}
-
-
-
-
-
-
-
-
-<!-- File Operations (WRITE/MODIFY) - Completed ones -->
-<ng-container *ngFor="let group of groupedExecutedItems">
-  <div *ngIf="group.type === 'FILE_OP' && group.item && hasFileDetails(group.item.content)" class="vibe-coding-file-item">
-    <div class="vibe-coding-file-icon">{{ getFileExtension(getFileDetails(group.item.content)?.file_name) }}</div>
-    <div class="vibe-coding-file-info">
-      <div class="vibe-coding-file-name">{{ getFileDetails(group.item.content)?.file_name }}</div>
-      <div class="vibe-coding-file-path">{{ getFileDetails(group.item.content)?.file_path }}</div>
-    </div>
-    <div class="vibe-coding-file-time" *ngIf="group.item.executedAt">{{ formatTime(group.item.executedAt) }}</div>
-    
-    <!-- MODIFIED: Show both tool badge and status badge -->
-    <div class="vibe-coding-status-badge">{{ group.item.tool }}</div>
-    <div 
-      class="vibe-coding-approval-status-badge" 
-      [ngClass]="{'vibe-coding-status-rejected': group.item.rejected, 'vibe-coding-status-accepted': !group.item.rejected}">
-      {{ group.item.rejected ? 'REJECTED' : 'ACCEPTED' }}
-    </div>
-  </div>
-</ng-container>
-
-
-
-
-
-
-
-
-
-
-
 <div class="vibe-coding-files-list">
   <div *ngFor="let file of getModifiedFiles()" class="vibe-coding-modified-file">
-    <div class="vibe-coding-modified-file-header">
+    <!-- MODIFIED: New layout structure -->
+    <div class="vibe-coding-modified-file-name-row">
+      <span class="vibe-coding-modified-filename">{{ file.fileName }}</span>
+      <span *ngIf="file.isNewFile && !file.rejected" class="vibe-coding-new-file-badge">New File</span>
+    </div>
+    
+    <div *ngIf="!file.isNewFile" class="vibe-coding-modified-filepath">{{ file.filePath }}</div>
+    
+    <!-- MODIFIED: Tool and Status in one row -->
+    <div class="vibe-coding-modified-file-badges">
       <span class="vibe-coding-modified-badge" [ngClass]="{'vibe-coding-badge-write': file.tool === 'WRITE', 'vibe-coding-badge-modify': file.tool === 'MODIFY'}">
         {{ file.tool }}
       </span>
-      <span class="vibe-coding-modified-filename">{{ file.fileName }}</span>
-      
-      <!-- MODIFIED: Show New File or Status badge -->
-      <span *ngIf="file.isNewFile && !file.rejected" class="vibe-coding-new-file-badge">New File</span>
       <span 
         class="vibe-coding-status-indicator" 
         [ngClass]="{'vibe-coding-indicator-rejected': file.rejected, 'vibe-coding-indicator-accepted': !file.rejected}">
         {{ file.rejected ? 'REJECTED' : 'ACCEPTED' }}
       </span>
     </div>
-    <!-- Only show path if it exists -->
-    <div *ngIf="!file.isNewFile" class="vibe-coding-modified-filepath">{{ file.filePath }}</div>
   </div>
 </div>
 
@@ -86,76 +30,88 @@ public getModifiedFiles(): Array<{tool: string, fileName: string, filePath: stri
 
 
 
-
-/* Light Mode Variables (Default) */
-:root {
-  /* ... existing variables ... */
-  
-  /* Status Badge Colors - ADD THESE */
-  --vibe-status-accepted-bg: #d1fae5;
-  --vibe-status-accepted-text: #065f46;
-  --vibe-status-accepted-border: #10b981;
-  --vibe-status-rejected-bg: #fee2e2;
-  --vibe-status-rejected-text: #991b1b;
-  --vibe-status-rejected-border: #ef4444;
+/* MODIFIED: Files list layout */
+.vibe-coding-modified-file {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--vibe-border-primary);
+  background: var(--vibe-bg-primary);
+  transition: background 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
-/* Dark Mode Variables */
-[data-theme="dark"] {
-  /* ... existing variables ... */
-  
-  /* Status Badge Colors - ADD THESE */
-  --vibe-status-accepted-bg: #064e3b;
-  --vibe-status-accepted-text: #6ee7b7;
-  --vibe-status-accepted-border: #059669;
-  --vibe-status-rejected-bg: #450a0a;
-  --vibe-status-rejected-text: #fca5a5;
-  --vibe-status-rejected-border: #dc2626;
+.vibe-coding-modified-file:last-child {
+  border-bottom: none;
 }
 
+.vibe-coding-modified-file:hover {
+  background: var(--vibe-bg-hover);
+}
 
+/* MODIFIED: Filename row */
+.vibe-coding-modified-file-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
 
+/* REMOVED: .vibe-coding-modified-file-header - no longer needed */
 
+.vibe-coding-modified-filename {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--vibe-text-primary);
+  word-break: break-word;
+  flex: 1;
+  min-width: 0;
+}
 
+.vibe-coding-modified-filepath {
+  font-size: 0.75rem;
+  color: var(--vibe-text-tertiary);
+  word-break: break-word;
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+}
 
+/* NEW: Badges row - Tool and Status together */
+.vibe-coding-modified-file-badges {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
 
-
-
-
-/* Approval Status Badge - In Executed Container */
-.vibe-coding-approval-status-badge {
-  padding: 4px 10px;
-  border-radius: 3px;
+.vibe-coding-modified-badge {
   font-size: 0.65rem;
   font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 3px;
   text-transform: uppercase;
   letter-spacing: 0.3px;
   flex-shrink: 0;
-  margin-left: 6px;
 }
 
-.vibe-coding-approval-status-badge.vibe-coding-status-accepted {
-  background: var(--vibe-status-accepted-bg);
-  color: var(--vibe-status-accepted-text);
-  border: 1px solid var(--vibe-status-accepted-border);
+.vibe-coding-modified-badge.vibe-coding-badge-write {
+  background: var(--vibe-badge-write-bg);
+  color: var(--vibe-badge-write-text);
 }
 
-.vibe-coding-approval-status-badge.vibe-coding-status-rejected {
-  background: var(--vibe-status-rejected-bg);
-  color: var(--vibe-status-rejected-text);
-  border: 1px solid var(--vibe-status-rejected-border);
+.vibe-coding-modified-badge.vibe-coding-badge-modify {
+  background: var(--vibe-badge-modify-bg);
+  color: var(--vibe-badge-modify-text);
 }
 
-/* Status Indicator - In Queued Finished State */
+/* Status Indicator - Updated sizing */
 .vibe-coding-status-indicator {
   font-size: 0.65rem;
   font-weight: 600;
-  padding: 2px 6px;
+  padding: 3px 8px;
   border-radius: 3px;
   text-transform: uppercase;
   letter-spacing: 0.3px;
   flex-shrink: 0;
-  margin-left: auto;
 }
 
 .vibe-coding-status-indicator.vibe-coding-indicator-accepted {
@@ -168,4 +124,17 @@ public getModifiedFiles(): Array<{tool: string, fileName: string, filePath: stri
   background: var(--vibe-status-rejected-bg);
   color: var(--vibe-status-rejected-text);
   border: 1px solid var(--vibe-status-rejected-border);
+}
+
+/* New File Badge - Updated */
+.vibe-coding-new-file-badge {
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 3px;
+  background: var(--vibe-accent-green);
+  color: white;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  flex-shrink: 0;
 }
