@@ -1,55 +1,4 @@
-// MODIFIED setupCallbacks - Remove setTimeout
-private setupCallbacks(): void {
-  this.parserService.setCallbacks({
-    onToolDetected: (toolData: ToolData) => {
-      this.logToolDetected(toolData);
-      this.updateLists();
-      
-      if (toolData.tool === 'READ') {
-        this.appendReadContent(toolData);
-        this.scrollToBottom();
-      } else {
-        this.cdr.detectChanges();
-        this.scrollToBottom();
-      }
-    },
-    onApprovalRequest: (approvalRequest: ApprovalRequest) => {
-      this.isWaitingForApproval = true;
-      this.currentApprovalRequest = approvalRequest;
-      this.isApprovingChanges = false;
-      this.logWaitingForApproval(approvalRequest.data);
-      this.updateLists();
-      
-      // MODIFIED: No setTimeout, just state changes
-      this.showStreamingContainer = false;
-      this.showApprovalCard = true;
-      this.cdr.detectChanges();
-      this.scrollToBottom();
-    },
-    onCompletion: () => {
-      this.isProcessing = false;
-      this.isApprovingChanges = false;
-      this.hasReceivedFirstChunk = false;
-      this.isCompleted = true;
-      this.logCompleted();
-      this.updateLists();
-      this.cdr.detectChanges();
-    },
-    onError: (error: string) => {
-      this.isProcessing = false;
-      this.isApprovingChanges = false;
-      this.hasReceivedFirstChunk = false;
-      this.logError(error);
-    },
-    onFirstChunk: () => {
-      this.hasReceivedFirstChunk = true;
-      this.logFirstChunkReceived();
-      this.cdr.detectChanges();
-    }
-  });
-}
-
-// MODIFIED approveAndContinue - Remove setTimeout except for spinner
+// MODIFIED approveAndContinue - Make parserService call non-blocking
 public async approveAndContinue(): Promise<void> {
   if (this.currentApprovalRequest && !this.isApprovingChanges) {
     console.log('✅ APPROVED:', this.currentApprovalRequest.data);
@@ -76,16 +25,19 @@ public async approveAndContinue(): Promise<void> {
         console.log('✅ Code changes saved successfully');
       }
       
-      // MODIFIED: Remove setTimeout, direct state changes
+      // MODIFIED: State changes BEFORE calling parser service
       this.showApprovalCard = false;
       this.isWaitingForApproval = false;
       this.currentApprovalRequest = null;
       this.showStreamingContainer = true;
-      
-      this.parserService.approveAndContinue();
-      this.updateLists();
-      this.scrollToBottom();
       this.cdr.detectChanges();
+      
+      // MODIFIED: Call parser service asynchronously (non-blocking)
+      setTimeout(() => {
+        this.parserService.approveAndContinue();
+        this.updateLists();
+        this.scrollToBottom();
+      }, 0);
       
     } catch (error) {
       console.error('❌ Failed to save code changes:', error);
@@ -95,7 +47,7 @@ public async approveAndContinue(): Promise<void> {
       return;
     }
     
-    // KEEP: Only setTimeout for spinner (for better UX)
+    // Keep spinner for minimum duration
     setTimeout(() => {
       this.isApprovingChanges = false;
       this.cdr.detectChanges();
@@ -103,7 +55,7 @@ public async approveAndContinue(): Promise<void> {
   }
 }
 
-// MODIFIED rejectChanges - Remove setTimeout
+// MODIFIED rejectChanges - Make parserService call non-blocking
 public rejectChanges(): void {
   if (this.currentApprovalRequest) {
     console.log('❌ REJECTED:', this.currentApprovalRequest.data);
@@ -112,15 +64,18 @@ public rejectChanges(): void {
     this.currentApprovalRequest.data.rejected = true;
     this.executedItems.push(this.currentApprovalRequest.data);
     
-    // MODIFIED: Remove setTimeout, direct state changes
+    // MODIFIED: State changes BEFORE calling parser service
     this.showApprovalCard = false;
     this.isWaitingForApproval = false;
     this.currentApprovalRequest = null;
     this.showStreamingContainer = true;
-    
-    this.parserService.approveAndContinue();
-    this.updateLists();
-    this.scrollToBottom();
     this.cdr.detectChanges();
+    
+    // MODIFIED: Call parser service asynchronously (non-blocking)
+    setTimeout(() => {
+      this.parserService.approveAndContinue();
+      this.updateLists();
+      this.scrollToBottom();
+    }, 0);
   }
 }
