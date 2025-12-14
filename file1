@@ -1,136 +1,119 @@
-// MODIFIED runDemo - Clear only on fresh start
-public async runDemo(): Promise<void> {
-  console.clear();
-  console.log('🚀 Starting streaming process...\n');
+<div class="vibe-coding-file-list" #executedFileList>
+  <!-- Empty State -->
+  <div *ngIf="!isProcessing && executedItems.length === 0 && !currentApprovalRequest" class="vibe-coding-empty-state">
+    <div class="vibe-coding-empty-state-icon">—</div>
+    <p>No items executed yet</p>
+  </div>
+
+  <!-- Streaming Data Container - Always present, just animated -->
+  <div 
+    id="vibe-coding-streaming-container"
+    [@expandCollapse]="showStreamingContainer ? 'expanded' : 'collapsed'">
+  </div>
   
-  // Reset lists
-  this.executedItems = [];
-  this.queuedItems = [];
-  this.groupedExecutedItems = [];
-  this.hasReceivedFirstChunk = false;
-  this.isCompleted = false;
-  this.showStreamingContainer = true;
-  this.showApprovalCard = false;
-  
-  // Clear the streaming container ONLY when starting fresh
-  this.clearStreamingContainer();
-  
-  // Setup callbacks before starting the stream
-  this.setupCallbacks();
-  
-  this.isProcessing = true;
-  
-  try {
-    await this.parserService.startStreaming();
-  } catch (error) {
-    if (error instanceof Error && error.name !== 'AbortError') {
-      console.error('Failed to start streaming:', error);
-    }
-    this.isProcessing = false;
-  }
-}
-
-
-
-
-
-
-
-
-
-// MODIFIED approveAndContinue - DON'T hide streaming container content
-public async approveAndContinue(): Promise<void> {
-  if (this.currentApprovalRequest && !this.isApprovingChanges) {
-    console.log('✅ APPROVED:', this.currentApprovalRequest.data);
-    console.log('Saving code changes via API...\n');
+  <!-- Approval Request (with animation) -->
+  <div 
+    *ngIf="showApprovalCard && currentApprovalRequest && hasFileDetails(currentApprovalRequest.data.content)" 
+    class="vibe-coding-file-item vibe-coding-awaiting-approval"
+    [@fadeSlide]>
+    <div class="vibe-coding-approval-header">
+      <div class="vibe-coding-file-icon">{{ getFileExtension(getFileDetails(currentApprovalRequest.data.content)?.file_name) }}</div>
+      <div class="vibe-coding-file-info">
+        <div class="vibe-coding-file-name">{{ getFileDetails(currentApprovalRequest.data.content)?.file_name }}</div>
+        <div class="vibe-coding-file-path">{{ getFileDetails(currentApprovalRequest.data.content)?.file_path }}</div>
+      </div>
+      <div class="vibe-coding-approval-badge">{{ currentApprovalRequest.data.tool }}</div>
+    </div>
     
-    this.isApprovingChanges = true;
-    this.cdr.detectChanges();
+    <!-- Reasoning Box -->
+    <div class="vibe-coding-reasoning-box" *ngIf="getReasoning(currentApprovalRequest.data.content)">
+      <h3>Reasoning</h3>
+      <p>{{ getReasoning(currentApprovalRequest.data.content) }}</p>
+    </div>
     
-    try {
-      const fileDetails = this.getFileDetails(this.currentApprovalRequest.data.content);
-      
-      if (fileDetails) {
-        const payload = {
-          tool: this.currentApprovalRequest.data.tool,
-          file_path: fileDetails.file_path,
-          file_name: fileDetails.file_name,
-          original_code: fileDetails.original_code || '',
-          modified_code: fileDetails.modified_code || '',
-          reasoning: this.getReasoning(this.currentApprovalRequest.data.content),
-          timestamp: new Date().toISOString()
-        };
-        
-        await this.saveCodeChanges(payload);
-        console.log('✅ Code changes saved successfully');
-      }
-      
-      // Hide approval card
-      this.showApprovalCard = false;
-      this.cdr.detectChanges();
-      
-      // Wait for approval card to hide, then append and show streaming container
-      setTimeout(() => {
-        // Append accepted file BEFORE showing streaming container
-        this.appendAcceptedFile(this.currentApprovalRequest!.data, false);
-        
-        // Reset states
-        this.isWaitingForApproval = false;
-        this.currentApprovalRequest = null;
-        
-        // Show streaming container (this won't clear content, just shows it)
-        this.showStreamingContainer = true;
-        
-        this.parserService.approveAndContinue();
-        this.updateLists();
-        this.scrollToBottom();
-        this.cdr.detectChanges();
-      }, 400);
-      
-    } catch (error) {
-      console.error('❌ Failed to save code changes:', error);
-      alert('Failed to save code changes. Please try again.');
-      this.isApprovingChanges = false;
-      this.cdr.detectChanges();
-      return;
-    }
+    <!-- Code Changes Block with Diff Highlighting -->
+    <div class="vibe-coding-diff-container" *ngIf="getFileDetails(currentApprovalRequest.data.content)">
+      <div class="vibe-coding-diff-header">
+        <span>Changes in {{ getFileDetails(currentApprovalRequest.data.content)?.file_name }}</span>
+      </div>
+      <div class="vibe-coding-code-block">
+        <pre><code 
+          [innerHTML]="getDiffHtml(
+            getFileDetails(currentApprovalRequest.data.content)?.original_code || '', 
+            getFileDetails(currentApprovalRequest.data.content)?.modified_code || '',
+            getFileDetails(currentApprovalRequest.data.content)?.file_name || ''
+          )">
+        </code></pre>
+      </div>
+    </div>
     
-    setTimeout(() => {
-      this.isApprovingChanges = false;
-      this.cdr.detectChanges();
-    }, 500);
-  }
-}
+    <!-- Approval Actions -->
+    <div class="vibe-coding-approval-actions">
+      <button 
+        class="vibe-coding-approval-btn vibe-coding-reject" 
+        (click)="rejectChanges()"
+        [disabled]="isApprovingChanges">
+        ✕ Reject
+      </button>
+      <button 
+        class="vibe-coding-approval-btn vibe-coding-accept" 
+        (click)="approveAndContinue()"
+        [disabled]="isApprovingChanges">
+        <span *ngIf="!isApprovingChanges">✓ Accept & Continue</span>
+        <span *ngIf="isApprovingChanges" class="vibe-coding-accepting-wrapper">
+          <span class="vibe-coding-inline-spinner"></span>
+          Accepting Changes
+        </span>
+      </button>
+    </div>
+  </div>
+</div>
 
-// MODIFIED rejectChanges - DON'T hide streaming container content
-public rejectChanges(): void {
-  if (this.currentApprovalRequest) {
-    console.log('❌ REJECTED:', this.currentApprovalRequest.data);
-    console.log('Continuing with next operation...\n');
-    
-    this.currentApprovalRequest.data.rejected = true;
-    this.executedItems.push(this.currentApprovalRequest.data);
-    
-    // Hide approval card
-    this.showApprovalCard = false;
-    this.cdr.detectChanges();
-    
-    // Wait for approval card to hide, then append and show streaming container
-    setTimeout(() => {
-      // Append rejected file BEFORE showing streaming container
-      this.appendAcceptedFile(this.currentApprovalRequest!.data, true);
-      
-      // Reset states
-      this.isWaitingForApproval = false;
-      this.currentApprovalRequest = null;
-      
-      // Show streaming container (this won't clear content, just shows it)
-      this.showStreamingContainer = true;
-      
-      this.parserService.approveAndContinue();
-      this.updateLists();
-      this.scrollToBottom();
-      this.cdr.detectChanges();
-    }, 400);
-  }
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+animations: [
+  trigger('fadeSlide', [
+    state('void', style({
+      opacity: 0,
+      transform: 'translateY(-10px)'
+    })),
+    state('*', style({
+      opacity: 1,
+      transform: 'translateY(0)'
+    })),
+    transition('void => *', [
+      animate('300ms ease-out')
+    ]),
+    transition('* => void', [
+      animate('300ms ease-in')
+    ])
+  ]),
+  trigger('expandCollapse', [
+    state('collapsed', style({
+      height: '0',
+      opacity: 0,
+      overflow: 'hidden',
+      pointerEvents: 'none' // ADD THIS - prevent interaction when collapsed
+    })),
+    state('expanded', style({
+      height: '*',
+      opacity: 1,
+      overflow: 'visible',
+      pointerEvents: 'auto' // ADD THIS - allow interaction when expanded
+    })),
+    transition('collapsed <=> expanded', [
+      animate('400ms ease-in-out')
+    ])
+  ])
+]
