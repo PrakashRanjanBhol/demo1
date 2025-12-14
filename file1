@@ -1,86 +1,133 @@
-<!-- READ Content - with typing indicator -->
-<div 
-  id="vibe-coding-read-container" 
-  class="vibe-coding-read-content"
-  [hidden]="showApproval">
-</div>
+export class ChunkedJsonParserComponent implements OnInit {
+  // ... existing properties ...
+  
+  isApproving = false;
+  isRejecting = false; // ADD THIS
 
-<!-- Typing Indicator - NEW -->
-<div 
-  *ngIf="!showApproval && isProcessing && !isCompleted" 
-  class="vibe-coding-typing-indicator">
-  <div class="vibe-coding-typing-dots">
-    <span></span>
-    <span></span>
-    <span></span>
-  </div>
-  <span class="vibe-coding-typing-text">Generating chunks...</span>
-</div>
+  // ... existing methods ...
 
+  async accept(): Promise<void> {
+    if (!this.approvalData || this.isApproving || this.isRejecting) return;
+    
+    this.isApproving = true;
+    this.cdr.markForCheck();
+    
+    try {
+      await this.saveChanges(this.approvalData);
+      this.updateFlowStatus('completed');
+      this.continueFlow();
+    } catch (e) {
+      console.error('Save failed:', e);
+      alert('Failed to save changes');
+      this.isApproving = false;
+      this.cdr.markForCheck();
+    }
+  }
 
+  reject(): void {
+    if (!this.approvalData || this.isApproving || this.isRejecting) return;
+    
+    this.isRejecting = true; // ADD THIS
+    this.cdr.markForCheck();
+    
+    this.updateFlowStatus('rejected');
+    
+    // Small delay to show the animation
+    setTimeout(() => {
+      this.continueFlow();
+    }, 500);
+  }
 
+  private continueFlow(): void {
+    this.approvalData = null;
+    this.showApproval = false;
+    this.diffHtml = null;
+    this.isApproving = false;
+    this.isRejecting = false; // ADD THIS
+    
+    this.parser.approveAndContinue();
+    this.queuedCount = this.parser.getPendingTools().length;
+    this.cdr.markForCheck();
+  }
 
+  private reset(): void {
+    const container = document.getElementById('vibe-coding-read-container');
+    if (container) container.innerHTML = '';
+    
+    this.executionFlow = [];
+    this.queuedCount = 0;
+    this.approvalData = null;
+    this.diffHtml = null;
+    this.showApproval = false;
+    this.isCompleted = false;
+    this.hasFirstChunk = false;
+    this.isApproving = false;
+    this.isRejecting = false; // ADD THIS
+    this.flowIdCounter = 0;
+    this.readFlowItem = null;
+  }
 
-
-
-
-
-
-
-/* Typing Indicator */
-.vibe-coding-typing-indicator {
-  position: sticky;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 30px;
-  background: var(--vibe-bg-secondary);
-  border-top: 1px solid var(--vibe-border);
-  z-index: 10;
+  // ... rest of the code ...
 }
 
-.vibe-coding-typing-dots {
-  display: flex;
-  gap: 4px;
+
+
+
+
+
+
+
+<!-- Approval Actions - MODIFIED -->
+<div class="vibe-coding-approval-actions">
+  <button 
+    class="vibe-coding-btn vibe-coding-btn-reject" 
+    (click)="reject()" 
+    [disabled]="isApproving || isRejecting">
+    <span *ngIf="!isRejecting">✕ Reject</span>
+    <span *ngIf="isRejecting" class="vibe-coding-processing-inline">
+      <span class="vibe-coding-spinner-small"></span>
+      Rejecting...
+    </span>
+  </button>
+  
+  <button 
+    class="vibe-coding-btn vibe-coding-btn-accept" 
+    (click)="accept()" 
+    [disabled]="isApproving || isRejecting">
+    <span *ngIf="!isApproving">✓ Accept & Continue</span>
+    <span *ngIf="isApproving" class="vibe-coding-processing-inline">
+      <span class="vibe-coding-spinner-small"></span>
+      Accepting...
+    </span>
+  </button>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+/* Processing Inline - for both Accept and Reject */
+.vibe-coding-processing-inline {
+  display: inline-flex;
   align-items: center;
+  gap: 8px;
 }
 
-.vibe-coding-typing-dots span {
-  width: 8px;
-  height: 8px;
-  background: var(--vibe-blue);
+.vibe-coding-spinner-small {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top: 2px solid white;
   border-radius: 50%;
-  animation: typing-bounce 1.4s infinite ease-in-out;
+  animation: spin 0.8s linear infinite;
 }
 
-.vibe-coding-typing-dots span:nth-child(1) {
-  animation-delay: 0s;
-}
-
-.vibe-coding-typing-dots span:nth-child(2) {
-  animation-delay: 0.2s;
-}
-
-.vibe-coding-typing-dots span:nth-child(3) {
-  animation-delay: 0.4s;
-}
-
-@keyframes typing-bounce {
-  0%, 60%, 100% {
-    transform: translateY(0);
-    opacity: 0.7;
-  }
-  30% {
-    transform: translateY(-10px);
-    opacity: 1;
-  }
-}
-
-.vibe-coding-typing-text {
-  font-size: 0.85rem;
-  color: var(--vibe-text-secondary);
-  font-weight: 500;
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
