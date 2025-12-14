@@ -1,498 +1,772 @@
-import { Component, OnInit, ChangeDetectionStrategy, ChangeDetectorRef } from '@angular/core';
-import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
-import { HttpClient, HttpHeaders } from '@angular/common/http';
-import { trigger, state, style, transition, animate } from '@angular/animations';
-import { ChunkedJsonParserService, ToolData, ApprovalRequest } from './chunked-json-parser.service';
-
-declare var hljs: any;
-
-interface ExecutionFlowItem {
-  id: string;
-  tool: string;
-  fileName?: string;
-  status: 'executing' | 'completed' | 'rejected';
-  timestamp: number;
+/* CSS Variables */
+:root {
+  --vibe-bg-primary: #ffffff;
+  --vibe-bg-secondary: #f8f9fa;
+  --vibe-bg-tertiary: #f1f3f5;
+  --vibe-text-primary: #1a1a1a;
+  --vibe-text-secondary: #6c757d;
+  --vibe-text-muted: #adb5bd;
+  --vibe-border: #dee2e6;
+  --vibe-blue: #3b82f6;
+  --vibe-blue-light: #dbeafe;
+  --vibe-green: #22c55e;
+  --vibe-green-light: #d1fae5;
+  --vibe-red: #ef4444;
+  --vibe-red-light: #fee2e2;
+  --vibe-yellow: #eab308;
+  --vibe-diff-added-bg: #e6ffed;
+  --vibe-diff-added-text: #24292e;
+  --vibe-diff-removed-bg: #ffebe9;
+  --vibe-diff-removed-text: #24292e;
 }
 
-@Component({
-  selector: 'vibe-coding-chunked-json-parser',
-  templateUrl: './chunked-json-parser.component.html',
-  styleUrls: ['./chunked-json-parser.component.css'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  animations: [
-    trigger('fadeIn', [
-      transition(':enter', [
-        style({ opacity: 0 }),
-        animate('200ms ease-out', style({ opacity: 1 }))
-      ])
-    ])
-  ]
-})
-export class ChunkedJsonParserComponent implements OnInit {
-  // State
-  isProcessing = false;
-  isCompleted = false;
-  hasFirstChunk = false;
-  showApproval = false;
-  isApproving = false;
+[data-theme="dark"] {
+  --vibe-bg-primary: #0a0a0b;
+  --vibe-bg-secondary: #111113;
+  --vibe-bg-tertiary: #1a1a1c;
+  --vibe-text-primary: #e5e5e5;
+  --vibe-text-secondary: #a3a3a3;
+  --vibe-text-muted: #6c757d;
+  --vibe-border: #27272a;
+  --vibe-blue: #3b82f6;
+  --vibe-blue-light: #1e293b;
+  --vibe-green: #22c55e;
+  --vibe-green-light: #064e3b;
+  --vibe-red: #ef4444;
+  --vibe-red-light: #450a0a;
+  --vibe-yellow: #eab308;
+  --vibe-diff-added-bg: #0d3a26;
+  --vibe-diff-added-text: #a7f3d0;
+  --vibe-diff-removed-bg: #3a0d0d;
+  --vibe-diff-removed-text: #fca5a5;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.container {
+  width: 100%;
+  height: 100vh;
+  background: var(--vibe-bg-primary);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Header */
+.header {
+  background: var(--vibe-bg-secondary);
+  padding: 20px 30px;
+  border-bottom: 1px solid var(--vibe-border);
+  flex-shrink: 0;
+}
+
+.header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header-left h1 {
+  font-size: 1.75rem;
+  color: var(--vibe-text-primary);
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+.header-left p {
+  color: var(--vibe-text-secondary);
+  font-size: 0.9rem;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Buttons */
+.btn {
+  padding: 8px 16px;
+  font-size: 14px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.btn-primary {
+  background: var(--vibe-blue);
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-stop {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 2px solid var(--vibe-red);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  padding: 0;
+}
+
+.btn-stop svg {
+  width: 16px;
+  height: 16px;
+  color: var(--vibe-red);
+}
+
+.btn-stop:hover {
+  background: var(--vibe-red);
+}
+
+.btn-stop:hover svg {
+  color: white;
+}
+
+/* Badges */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.badge-processing {
+  background: var(--vibe-blue-light);
+  color: var(--vibe-blue);
+  border: 1px solid var(--vibe-border);
+}
+
+.badge-completed {
+  background: var(--vibe-green-light);
+  color: var(--vibe-green);
+  border: 1px solid var(--vibe-green);
+}
+
+.pulse-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--vibe-blue);
+  border-radius: 50%;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.8); }
+}
+
+.check-icon {
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--vibe-green);
+  color: white;
+  border-radius: 50%;
+  font-size: 10px;
+}
+
+/* Main Content */
+.content {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+/* Read Panel (80%) */
+.read-panel {
+  flex: 0 0 80%;
+  background: var(--vibe-bg-primary);
+  border-right: 1px solid var(--vibe-border);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.read-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 30px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.read-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.read-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.read-content::-webkit-scrollbar-thumb {
+  background: var(--vibe-border);
+  border-radius: 4px;
+}
+
+.read-item {
+  margin-bottom: 16px;
+  color: var(--vibe-text-primary);
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-size: 0.95rem;
+}
+
+/* Approval View */
+.approval-view {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.approval-header {
+  background: var(--vibe-bg-secondary);
+  padding: 20px 30px;
+  border-bottom: 1px solid var(--vibe-border);
+  flex-shrink: 0;
+}
+
+.approval-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.approval-icon {
+  width: 40px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--vibe-bg-tertiary);
+  border: 1px solid var(--vibe-border);
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--vibe-text-secondary);
+  flex-shrink: 0;
+}
+
+.approval-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.approval-info h3 {
+  font-size: 1rem;
+  color: var(--vibe-text-primary);
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+.approval-info p {
+  font-size: 0.85rem;
+  color: var(--vibe-text-secondary);
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  word-break: break-word;
+}
+
+.approval-badge {
+  padding: 4px 10px;
+  background: var(--vibe-yellow);
+  color: #78350f;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.reasoning {
+  padding: 20px 30px;
+  background: var(--vibe-bg-secondary);
+  border-bottom: 1px solid var(--vibe-border);
+  flex-shrink: 0;
+}
+
+.reasoning h4 {
+  font-size: 0.9rem;
+  color: var(--vibe-text-primary);
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.reasoning p {
+  font-size: 0.85rem;
+  color: var(--vibe-text-secondary);
+  line-height: 1.6;
+}
+
+/* Diff Container */
+.diff-container {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  margin: 20px 30px;
+  border: 1px solid var(--vibe-border);
+  border-radius: 6px;
+}
+
+.diff-header {
+  background: var(--vibe-bg-secondary);
+  padding: 10px 14px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--vibe-border);
+  color: var(--vibe-text-secondary);
+  font-size: 0.8rem;
+  flex-shrink: 0;
+}
+
+.diff-content {
+  flex: 1;
+  overflow-y: auto;
+  background: var(--vibe-bg-primary);
+}
+
+.diff-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.diff-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.diff-content::-webkit-scrollbar-thumb {
+  background: var(--vibe-border);
+  border-radius: 4px;
+}
+
+.diff-content pre {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.diff-content code {
+  display: block;
+  padding: 0;
+  background: transparent;
+}
+
+/* Diff Lines */
+.diff-line {
+  padding: 2px 8px 2px 0;
+  margin: 0;
+  display: flex;
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Fira Mono', 'Roboto Mono', 'Consolas', monospace;
+  font-size: 0.75rem;
+  line-height: 1.6;
+  align-items: flex-start;
+}
+
+.line-num {
+  display: inline-block;
+  width: 50px;
+  padding: 0 8px;
+  text-align: right;
+  user-select: none;
+  color: var(--vibe-text-muted);
+  flex-shrink: 0;
+  border-right: 1px solid var(--vibe-border);
+  margin-right: 8px;
+  padding-top: 2px;
+}
+
+.line-prefix {
+  display: inline-block;
+  width: 20px;
+  user-select: none;
+  font-weight: bold;
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.line-code {
+  flex: 1;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  min-width: 0;
+}
+
+.diff-added {
+  background-color: var(--vibe-diff-added-bg);
+  color: var(--vibe-diff-added-text);
+}
+
+.diff-added .line-prefix {
+  color: var(--vibe-green);
+}
+
+.diff-removed {
+  background-color: var(--vibe-diff-removed-bg);
+  color: var(--vibe-diff-removed-text);
+}
+
+.diff-removed .line-prefix {
+  color: var(--vibe-red);
+}
+
+.diff-unchanged {
+  background-color: transparent;
+  color: var(--vibe-text-primary);
+}
+
+.diff-unchanged .line-prefix {
+  color: var(--vibe-text-muted);
+}
+
+/* Approval Actions */
+.approval-actions {
+  display: flex;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--vibe-bg-secondary);
+  border-top: 1px solid var(--vibe-border);
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+.btn-reject,
+.btn-accept {
+  padding: 6px 14px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+}
+
+.btn-reject {
+  background: var(--vibe-red);
+  color: white;
+}
+
+.btn-reject:hover:not(:disabled) {
+  background: #dc2626;
+}
+
+.btn-accept {
+  background: var(--vibe-green);
+  color: white;
+}
+
+.btn-accept:hover:not(:disabled) {
+  background: #16a34a;
+}
+
+.btn-reject:disabled,
+.btn-accept:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.accepting {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.spinner-small {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top: 2px solid white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Flow Panel (20%) */
+.flow-panel {
+  flex: 0 0 20%;
+  background: var(--vibe-bg-secondary);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.flow-header {
+  padding: 20px;
+  border-bottom: 1px solid var(--vibe-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.flow-header h2 {
+  font-size: 1rem;
+  color: var(--vibe-text-primary);
+  font-weight: 600;
+}
+
+.flow-count {
+  background: var(--vibe-bg-tertiary);
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.75rem;
+  color: var(--vibe-text-secondary);
+  border: 1px solid var(--vibe-border);
+}
+
+.flow-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.flow-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.flow-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.flow-content::-webkit-scrollbar-thumb {
+  background: var(--vibe-border);
+  border-radius: 3px;
+}
+
+.flow-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  background: var(--vibe-bg-primary);
+  border: 1px solid var(--vibe-border);
+  border-radius: 6px;
+  margin-bottom: 8px;
+  transition: all 0.2s;
+}
+
+.flow-item:hover {
+  background: var(--vibe-bg-tertiary);
+}
+
+.flow-icon {
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+.flow-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.flow-tool {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--vibe-text-primary);
+  margin-bottom: 2px;
+}
+
+.flow-file {
+  font-size: 0.75rem;
+  color: var(--vibe-text-secondary);
+  word-break: break-word;
+  margin-bottom: 4px;
+}
+
+.flow-time {
+  font-size: 0.7rem;
+  color: var(--vibe-text-muted);
+}
+
+.flow-status {
+  flex-shrink: 0;
+}
+
+.status-dot {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: bold;
+}
+
+.dot-executing {
+  background: var(--vibe-blue-light);
+  color: var(--vibe-blue);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.dot-completed {
+  background: var(--vibe-green-light);
+  color: var(--vibe-green);
+}
+
+.dot-rejected {
+  background: var(--vibe-red-light);
+  color: var(--vibe-red);
+}
+
+.flow-queued {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--vibe-bg-primary);
+  border: 1px dashed var(--vibe-border);
+  border-radius: 6px;
+  opacity: 0.7;
+}
+
+.queued-icon {
+  font-size: 1rem;
+}
+
+.queued-text {
+  font-size: 0.8rem;
+  color: var(--vibe-text-secondary);
+  font-style: italic;
+}
+
+/* Empty States */
+.empty-state,
+.waiting-state,
+.flow-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+}
+
+.empty-icon,
+.flow-empty-icon {
+  font-size: 3rem;
+  margin-bottom: 16px;
+  opacity: 0.4;
+}
+
+.empty-state p,
+.flow-empty p {
+  font-size: 1rem;
+  color: var(--vibe-text-primary);
+  margin-bottom: 8px;
+}
+
+.empty-state span {
+  font-size: 0.85rem;
+  color: var(--vibe-text-secondary);
+}
+
+.spinner {
+  width: 50px;
+  height: 50px;
+  border: 3px solid var(--vibe-border);
+  border-top: 3px solid var(--vibe-blue);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 20px;
+}
+
+.waiting-state h3 {
+  font-size: 1rem;
+  color: var(--vibe-text-primary);
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.waiting-state p {
+  font-size: 0.85rem;
+  color: var(--vibe-text-secondary);
+}
+
+.dots span {
+  animation: blink 1.4s infinite;
+}
+
+.dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes blink {
+  0%, 20% { opacity: 0.2; }
+  50% { opacity: 1; }
+  100% { opacity: 0.2; }
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .read-panel {
+    flex: 0 0 70%;
+  }
   
-  // Data
-  executionFlow: ExecutionFlowItem[] = [];
-  queuedCount = 0;
-  approvalData: any = null;
-  diffHtml: SafeHtml | null = null;
-  
-  // Cache
-  private flowIdCounter = 0;
-
-  constructor(
-    private parser: ChunkedJsonParserService,
-    private cdr: ChangeDetectorRef,
-    private http: HttpClient,
-    private sanitizer: DomSanitizer
-  ) {}
-
-  ngOnInit(): void {}
-
-  async run(): Promise<void> {
-    // Reset
-    this.reset();
-    this.isProcessing = true;
-    this.cdr.markForCheck();
-    
-    // Setup callbacks
-    this.parser.setCallbacks({
-      onToolDetected: (data: ToolData) => this.onTool(data),
-      onApprovalRequest: (req: ApprovalRequest) => this.onApproval(req),
-      onCompletion: () => this.onComplete(),
-      onError: (err: string) => this.onError(err),
-      onFirstChunk: () => {
-        this.hasFirstChunk = true;
-        this.cdr.markForCheck();
-      }
-    });
-    
-    try {
-      await this.parser.startStreaming();
-    } catch (e) {
-      if (e instanceof Error && e.name !== 'AbortError') {
-        console.error('Stream error:', e);
-      }
-      this.isProcessing = false;
-      this.cdr.markForCheck();
-    }
-  }
-
-  stop(): void {
-    this.parser.stopStreaming();
-    this.isProcessing = false;
-    this.cdr.markForCheck();
-  }
-
-  async accept(): Promise<void> {
-    if (!this.approvalData || this.isApproving) return;
-    
-    this.isApproving = true;
-    this.cdr.markForCheck();
-    
-    try {
-      await this.saveChanges(this.approvalData);
-      this.updateFlowStatus('completed');
-      this.continueFlow();
-    } catch (e) {
-      console.error('Save failed:', e);
-      alert('Failed to save changes');
-      this.isApproving = false;
-      this.cdr.markForCheck();
-    }
-  }
-
-  reject(): void {
-    if (!this.approvalData) return;
-    
-    this.updateFlowStatus('rejected');
-    this.continueFlow();
-  }
-
-  // Private methods
-  private reset(): void {
-    const container = document.getElementById('read-container');
-    if (container) container.innerHTML = '';
-    
-    this.executionFlow = [];
-    this.queuedCount = 0;
-    this.approvalData = null;
-    this.diffHtml = null;
-    this.showApproval = false;
-    this.isCompleted = false;
-    this.hasFirstChunk = false;
-    this.isApproving = false;
-    this.flowIdCounter = 0;
-  }
-
-  private onTool(data: ToolData): void {
-    if (data.tool === 'READ') {
-      this.appendRead(data.content);
-      this.addFlow(data.tool, undefined, 'completed');
-    } else {
-      this.addFlow(data.tool, this.extractFileName(data.content), 'executing');
-    }
-    
-    this.queuedCount = this.parser.getPendingTools().length;
-    this.cdr.markForCheck();
-  }
-
-  private onApproval(req: ApprovalRequest): void {
-    this.approvalData = req.data;
-    this.showApproval = true;
-    this.diffHtml = this.buildDiff(req.data.content);
-    this.cdr.markForCheck();
-  }
-
-  private onComplete(): void {
-    this.isProcessing = false;
-    this.isCompleted = true;
-    this.showApproval = false;
-    this.cdr.markForCheck();
-  }
-
-  private onError(err: string): void {
-    console.error('Error:', err);
-    this.isProcessing = false;
-    this.cdr.markForCheck();
-  }
-
-  private continueFlow(): void {
-    this.approvalData = null;
-    this.showApproval = false;
-    this.diffHtml = null;
-    this.isApproving = false;
-    
-    this.parser.approveAndContinue();
-    this.queuedCount = this.parser.getPendingTools().length;
-    this.cdr.markForCheck();
-  }
-
-  private appendRead(content: any): void {
-    const container = document.getElementById('read-container');
-    if (!container) return;
-    
-    const text = typeof content === 'string' ? content : '';
-    if (!text) return;
-    
-    const div = document.createElement('div');
-    div.className = 'read-item';
-    div.textContent = text;
-    container.appendChild(div);
-    
-    // Auto-scroll
-    setTimeout(() => {
-      container.scrollTop = container.scrollHeight;
-    }, 0);
-  }
-
-  private addFlow(tool: string, fileName: string | undefined, status: ExecutionFlowItem['status']): void {
-    this.executionFlow.push({
-      id: `flow-${this.flowIdCounter++}`,
-      tool,
-      fileName,
-      status,
-      timestamp: Date.now()
-    });
-  }
-
-  private updateFlowStatus(status: 'completed' | 'rejected'): void {
-    const fileName = this.extractFileName(this.approvalData?.content);
-    const item = this.executionFlow.find(
-      f => f.status === 'executing' && f.fileName === fileName
-    );
-    if (item) item.status = status;
-  }
-
-  private extractFileName(content: any): string | undefined {
-    if (!content || typeof content !== 'object') return undefined;
-    const files = content.files;
-    return Array.isArray(files) && files[0]?.file_name ? files[0].file_name : undefined;
-  }
-
-  private buildDiff(content: any): SafeHtml {
-    const files = content?.files;
-    if (!Array.isArray(files) || !files[0]) {
-      return this.sanitizer.bypassSecurityTrustHtml('');
-    }
-    
-    const file = files[0];
-    const orig = (file.original_code || '').split('\n');
-    const mod = (file.modified_code || '').split('\n');
-    const lang = this.getLang(file.file_name);
-    
-    let html = '';
-    let origNum = 1;
-    let modNum = 1;
-    const maxLen = Math.max(orig.length, mod.length);
-    
-    for (let i = 0; i < maxLen; i++) {
-      if (orig[i] === mod[i]) {
-        html += this.diffLine('unchanged', origNum++, modNum++, orig[i] || '', lang);
-      } else {
-        if (i < orig.length) {
-          html += this.diffLine('removed', origNum++, null, orig[i], lang);
-        }
-        if (i < mod.length) {
-          html += this.diffLine('added', null, modNum++, mod[i], lang);
-        }
-      }
-    }
-    
-    return this.sanitizer.bypassSecurityTrustHtml(html);
-  }
-
-  private diffLine(type: string, origNum: number | null, modNum: number | null, code: string, lang: string): string {
-    const prefix = type === 'added' ? '+ ' : type === 'removed' ? '- ' : '  ';
-    const highlighted = this.highlight(code, lang);
-    
-    return `<div class="diff-line diff-${type}">` +
-      `<span class="line-num">${origNum || ''}</span>` +
-      `<span class="line-num">${modNum || ''}</span>` +
-      `<span class="line-prefix">${prefix}</span>` +
-      `<span class="line-code">${highlighted}</span>` +
-      `</div>`;
-  }
-
-  private highlight(code: string, lang: string): string {
-    if (!code) return '';
-    
-    try {
-      if (typeof hljs !== 'undefined' && lang !== 'plaintext' && hljs.getLanguage(lang)) {
-        return hljs.highlight(code, { language: lang, ignoreIllegals: true }).value;
-      }
-    } catch (e) {}
-    
-    return this.escape(code);
-  }
-
-  private escape(text: string): string {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-  }
-
-  private getLang(filename: string): string {
-    if (!filename) return 'plaintext';
-    
-    const ext = filename.split('.').pop()?.toLowerCase() || '';
-    const map: { [key: string]: string } = {
-      js: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript',
-      py: 'python', java: 'java', cpp: 'cpp', c: 'c', cs: 'csharp',
-      php: 'php', rb: 'ruby', go: 'go', rs: 'rust', html: 'html',
-      css: 'css', json: 'json', sql: 'sql', sh: 'bash'
-    };
-    
-    return map[ext] || 'plaintext';
-  }
-
-  private async saveChanges(data: any): Promise<void> {
-    const files = data?.content?.files;
-    if (!Array.isArray(files) || !files[0]) return;
-    
-    const file = files[0];
-    const payload = {
-      tool: data.tool,
-      file_path: file.file_path,
-      file_name: file.file_name,
-      original_code: file.original_code || '',
-      modified_code: file.modified_code || '',
-      reasoning: data.content?.reasoning || '',
-      timestamp: new Date().toISOString()
-    };
-    
-    return new Promise((resolve, reject) => {
-      const headers = new HttpHeaders({ 'Content-Type': 'application/json' });
-      this.http.post('https://your-api-endpoint.com/api/save-code', payload, { headers })
-        .subscribe({
-          next: () => resolve(),
-          error: (e) => reject(e)
-        });
-    });
-  }
-
-  // Template helpers - pure functions
-  getExt(name: string): string {
-    return name ? (name.split('.').pop()?.toUpperCase() || 'FILE') : 'FILE';
-  }
-
-  getIcon(tool: string): string {
-    return tool === 'READ' ? '📖' : tool === 'WRITE' ? '✏️' : '🔧';
-  }
-
-  getTime(ts: number): string {
-    return new Date(ts).toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
-    });
-  }
-
-  getReason(): string {
-    return this.approvalData?.content?.reasoning || '';
-  }
-
-  getFileName(): string {
-    return this.extractFileName(this.approvalData?.content) || '';
-  }
-
-  getFilePath(): string {
-    const files = this.approvalData?.content?.files;
-    return Array.isArray(files) && files[0]?.file_path ? files[0].file_path : '';
-  }
-
-  trackById(index: number, item: ExecutionFlowItem): string {
-    return item.id;
+  .flow-panel {
+    flex: 0 0 30%;
   }
 }
 
+@media (max-width: 768px) {
+  .header {
+    padding: 15px 20px;
+  }
 
+  .header-content {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 15px;
+  }
 
+  .header-right {
+    align-self: flex-end;
+  }
 
+  .header-left h1 {
+    font-size: 1.5rem;
+  }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<div class="container">
-  <!-- Header -->
-  <div class="header">
-    <div class="header-content">
-      <div class="header-left">
-        <h1>AI Execution Tracker</h1>
-        <p>Real-time code generation & execution monitoring</p>
-      </div>
-      
-      <div class="header-right">
-        <button class="btn btn-primary" (click)="run()" [disabled]="isProcessing">RUN</button>
-
-        <span *ngIf="isProcessing && !isCompleted" class="badge badge-processing">
-          <span class="pulse-dot"></span>
-          Processing
-        </span>
-
-        <span *ngIf="isCompleted" class="badge badge-completed">
-          <span class="check-icon">✓</span>
-          Completed
-        </span>
-
-        <button *ngIf="isProcessing && !isCompleted" class="btn-stop" (click)="stop()" title="Stop">
-          <svg viewBox="0 0 24 24" fill="none">
-            <rect x="6" y="6" width="12" height="12" fill="currentColor" rx="2"/>
-          </svg>
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Main Content -->
-  <div class="content">
-    <!-- Left Panel (80%) -->
-    <div class="read-panel">
-      <!-- Empty State -->
-      <div *ngIf="!isProcessing && executionFlow.length === 0 && !showApproval" class="empty-state">
-        <div class="empty-icon">📄</div>
-        <p>No content yet</p>
-        <span>Click RUN to start</span>
-      </div>
-
-      <!-- Waiting State -->
-      <div *ngIf="isProcessing && !hasFirstChunk" class="waiting-state">
-        <div class="spinner"></div>
-        <h3>Connecting to AI Agent<span class="dots"><span>.</span><span>.</span><span>.</span></span></h3>
-        <p>Preparing execution plan</p>
-      </div>
-
-      <!-- READ Content -->
-      <div *ngIf="!showApproval" id="read-container" class="read-content"></div>
-
-      <!-- Approval View -->
-      <div *ngIf="showApproval" class="approval-view" @fadeIn>
-        <div class="approval-header">
-          <div class="approval-title">
-            <span class="approval-icon">{{ getExt(getFileName()) }}</span>
-            <div class="approval-info">
-              <h3>{{ getFileName() }}</h3>
-              <p *ngIf="getFilePath()">{{ getFilePath() }}</p>
-            </div>
-            <span class="approval-badge">{{ approvalData?.tool }}</span>
-          </div>
-        </div>
-
-        <div *ngIf="getReason()" class="reasoning">
-          <h4>Reasoning</h4>
-          <p>{{ getReason() }}</p>
-        </div>
-
-        <div class="diff-container">
-          <div class="diff-header">
-            <span>Changes in {{ getFileName() }}</span>
-          </div>
-          <div class="diff-content">
-            <pre><code [innerHTML]="diffHtml"></code></pre>
-          </div>
-        </div>
-
-        <div class="approval-actions">
-          <button class="btn btn-reject" (click)="reject()" [disabled]="isApproving">✕ Reject</button>
-          <button class="btn btn-accept" (click)="accept()" [disabled]="isApproving">
-            <span *ngIf="!isApproving">✓ Accept & Continue</span>
-            <span *ngIf="isApproving" class="accepting">
-              <span class="spinner-small"></span>
-              Accepting...
-            </span>
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Right Panel (20%) -->
-    <div class="flow-panel">
-      <div class="flow-header">
-        <h2>Execution Flow</h2>
-        <span class="flow-count">{{ executionFlow.length }}</span>
-      </div>
-
-      <div class="flow-content">
-        <div *ngIf="executionFlow.length === 0" class="flow-empty">
-          <div class="flow-empty-icon">⋯</div>
-          <p>No executions yet</p>
-        </div>
-
-        <div *ngFor="let item of executionFlow; trackBy: trackById" class="flow-item" @fadeIn>
-          <div class="flow-icon">{{ getIcon(item.tool) }}</div>
-          <div class="flow-info">
-            <div class="flow-tool">{{ item.tool }}</div>
-            <div *ngIf="item.fileName" class="flow-file">{{ item.fileName }}</div>
-            <div class="flow-time">{{ getTime(item.timestamp) }}</div>
-          </div>
-          <div class="flow-status">
-            <span *ngIf="item.status === 'executing'" class="status-dot dot-executing"></span>
-            <span *ngIf="item.status === 'completed'" class="status-dot dot-completed">✓</span>
-            <span *ngIf="item.status === 'rejected'" class="status-dot dot-rejected">✕</span>
-          </div>
-        </div>
-
-        <div *ngIf="queuedCount > 0" class="flow-queued">
-          <div class="queued-icon">⏳</div>
-          <div class="queued-text">{{ queuedCount }} queued</div>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
+  .content {
+    flex-direction: column;
+  }
+  
+  .read-panel,
+  .flow-panel {
+    flex: 1 1 auto;
+  }
+  
+  .read-panel {
+    border-right: none;
+    border-bottom: 1px solid var(--vibe-border);
+  }
+}
