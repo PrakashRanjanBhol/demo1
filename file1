@@ -3,10 +3,15 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { trigger, state, style, transition, animate } from '@angular/animations';
 import { ChunkedJsonParserService, ToolData, ApprovalRequest } from './chunked-json-parser.service';
-import { marked } from 'marked';
-import hljs from 'highlight.js'; // CORRECT IMPORT
 
-// ... rest of imports and interface ...
+declare var hljs: any;
+
+interface ExecutionFlowItem {
+  tool: string;
+  fileName?: string;
+  status: 'executing' | 'completed' | 'rejected' | 'pending';
+  timestamp: Date;
+}
 
 @Component({
   selector: 'vibe-coding-chunked-json-parser',
@@ -22,64 +27,425 @@ import hljs from 'highlight.js'; // CORRECT IMPORT
   ]
 })
 export class ChunkedJsonParserComponent implements OnInit {
-  // ... existing properties ...
+  // State management
+  public isProcessing = false;
+  public isCompleted = false;
+  public hasReceivedFirstChunk = false;
+  
+  // Current view state
+  public currentView: 'read' | 'approval' = 'read';
+  public hasReadContent = false; // Track if READ content exists
+  
+  // Approval state
+  public currentApprovalRequest: ApprovalRequest | null = null;
+  public isApprovingChanges = false;
+  
+  // Execution flow
+  public executionFlow: ExecutionFlowItem[] = [];
+  public queuedItems: ToolData[] = [];
 
   constructor(
     private parserService: ChunkedJsonParserService,
     private cdr: ChangeDetectorRef,
     private http: HttpClient,
     private sanitizer: DomSanitizer
-  ) {
-    this.configureMarked();
+  ) {}
+
+  ngOnInit(): void {
+    // Setup will happen on RUN click
   }
 
-  // CORRECTED: Configure marked with highlight.js
-  private configureMarked(): void {
-    // Custom renderer for code blocks
-    const renderer = new marked.Renderer();
-    
-    renderer.code = (code: string, language: string | undefined) => {
-      const validLanguage = language && hljs.getLanguage(language) ? language : 'plaintext';
-      const highlighted = hljs.highlight(code, { language: validLanguage }).value;
-      return `<pre><code class="hljs language-${validLanguage}">${highlighted}</code></pre>`;
-    };
-
-    renderer.codespan = (code: string) => {
-      return `<code class="inline-code">${this.escapeHtml(code)}</code>`;
-    };
-
-    marked.setOptions({
-      renderer: renderer,
-      breaks: true,
-      gfm: true
+  private setupCallbacks(): void {
+    this.parserService.setCallbacks({
+      onToolDetected: (toolData: ToolData) => {
+        console.log('🔹 Tool detected:', toolData);
+        
+        if (toolData.tool === 'READ') {
+          this.handleReadTool(toolData);
+        } else {
+          this.addToExecutionFlow(toolData, 'executing');
+        }
+        
+        this.updateQueuedItems();
+      },
+      
+      onApprovalRequest: (approvalRequest: ApprovalRequest) => {
+        console.log('⚠️ APPROVAL REQUESTED:', approvalRequest.data);
+        this.currentApprovalRequest = approvalRequest;
+        this.currentView = 'approval';
+        this.cdr.detectChanges();
+      },
+      
+      onCompletion: () => {
+        console.log('🎉 COMPLETED');
+        this.isProcessing = false;
+        this.isCompleted = true;
+        this.currentView = 'read';
+        this.cdr.detectChanges();
+      },
+      
+      onError: (error: string) => {
+        console.error('❌ Error:', error);
+        this.isProcessing = false;
+        this.cdr.detectChanges();
+      },
+      
+      onFirstChunk: () => {
+        console.log('📦 First chunk received');
+        this.hasReceivedFirstChunk = true;
+        this.cdr.detectChanges();
+      }
     });
   }
 
+  // MODIFIED: Simple DOM append for READ content
   private handleReadTool(toolData: ToolData): void {
     const content = typeof toolData.content === 'string' ? toolData.content : '';
     
     if (content) {
-      try {
-        // Parse markdown with highlight.js support
-        const htmlContent = marked.parse(content) as string;
-        const safeHtml = this.sanitizer.sanitize(SecurityContext.HTML, htmlContent);
-        
-        if (safeHtml) {
-          this.readContents.push(this.sanitizer.bypassSecurityTrustHtml(safeHtml));
-          this.addToExecutionFlow(toolData, 'completed');
-          this.scrollReadToBottom();
-        }
-      } catch (e) {
-        console.error('Markdown parse error:', e);
-      }
+      this.appendReadContent(content);
+      this.hasReadContent = true;
+      this.addToExecutionFlow(toolData, 'completed');
+      this.cdr.detectChanges();
     }
   }
 
-  // ... rest of the methods remain the same ...
+  // NEW: Append READ content to DOM
+  private appendReadContent(content: string): void {
+    const container = document.getElementById('vibe-read-content-container');
+    
+    if (!container) {
+      console.warn('Read content container not found');
+      return;
+    }
+
+    // Create content div
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'vibe-read-item';
+    contentDiv.textContent = content;
+    
+    // Append to container
+    container.appendChild(contentDiv);
+    
+    // Scroll to bottom
+    this.scrollReadToBottom();
+  }
+
+  // NEW: Clear READ content container
+  private clearReadContent(): void {
+    const container = document.getElementById('vibe-read-content-container');
+    if (container) {
+      container.innerHTML = '';
+    }
+  }
+
+  private addToExecutionFlow(toolData: ToolData, status: ExecutionFlowItem['status']): void {
+    const fileName = this.getFileName(toolData);
+    
+    this.executionFlow.push({
+      tool: toolData.tool,
+      fileName,
+      status,
+      timestamp: new Date()
+    });
+  }
+
+  private updateExecutionFlowStatus(tool: string, fileName: string | undefined, status: ExecutionFlowItem['status']): void {
+    const item = this.executionFlow.find(f => f.tool === tool && f.fileName === fileName && f.status === 'executing');
+    if (item) {
+      item.status = status;
+    }
+  }
+
+  private getFileName(toolData: ToolData): string | undefined {
+    if (toolData.content && typeof toolData.content === 'object') {
+      const fileDetails = this.getFileDetails(toolData.content);
+      return fileDetails?.file_name;
+    }
+    return undefined;
+  }
+
+  private updateQueuedItems(): void {
+    this.queuedItems = this.parserService.getPendingTools();
+  }
+
+  private scrollReadToBottom(): void {
+    setTimeout(() => {
+      const container = document.getElementById('vibe-read-content-container');
+      if (container) {
+        container.scrollTop = container.scrollHeight;
+      }
+    }, 100);
+  }
+
+  public async runDemo(): Promise<void> {
+    console.clear();
+    console.log('🚀 Starting streaming process...\n');
+    
+    // Reset state
+    this.clearReadContent(); // Clear DOM content
+    this.hasReadContent = false;
+    this.executionFlow = [];
+    this.queuedItems = [];
+    this.currentApprovalRequest = null;
+    this.currentView = 'read';
+    this.isProcessing = true;
+    this.isCompleted = false;
+    this.hasReceivedFirstChunk = false;
+    this.isApprovingChanges = false;
+    
+    this.setupCallbacks();
+    
+    try {
+      await this.parserService.startStreaming();
+    } catch (error) {
+      if (error instanceof Error && error.name !== 'AbortError') {
+        console.error('Failed to start streaming:', error);
+      }
+      this.isProcessing = false;
+    }
+  }
+
+  public stopStreaming(): void {
+    console.log('🛑 Stopping streaming...');
+    this.parserService.stopStreaming();
+    this.isProcessing = false;
+    this.cdr.detectChanges();
+  }
+
+  public async approveAndContinue(): Promise<void> {
+    if (!this.currentApprovalRequest || this.isApprovingChanges) return;
+    
+    console.log('✅ APPROVED:', this.currentApprovalRequest.data);
+    this.isApprovingChanges = true;
+    this.cdr.detectChanges();
+    
+    try {
+      const fileDetails = this.getFileDetails(this.currentApprovalRequest.data.content);
+      
+      if (fileDetails) {
+        const payload = {
+          tool: this.currentApprovalRequest.data.tool,
+          file_path: fileDetails.file_path,
+          file_name: fileDetails.file_name,
+          original_code: fileDetails.original_code || '',
+          modified_code: fileDetails.modified_code || '',
+          reasoning: this.getReasoning(this.currentApprovalRequest.data.content),
+          timestamp: new Date().toISOString()
+        };
+        
+        await this.saveCodeChanges(payload);
+      }
+      
+      // Update execution flow
+      this.updateExecutionFlowStatus(
+        this.currentApprovalRequest.data.tool,
+        fileDetails?.file_name,
+        'completed'
+      );
+      
+      // Reset and continue
+      this.currentApprovalRequest = null;
+      this.currentView = 'read';
+      this.cdr.detectChanges();
+      
+      requestAnimationFrame(() => {
+        this.parserService.approveAndContinue();
+        this.updateQueuedItems();
+      });
+      
+    } catch (error) {
+      console.error('❌ Failed to save:', error);
+      alert('Failed to save code changes. Please try again.');
+    } finally {
+      setTimeout(() => {
+        this.isApprovingChanges = false;
+        this.cdr.detectChanges();
+      }, 300);
+    }
+  }
+
+  public rejectChanges(): void {
+    if (!this.currentApprovalRequest) return;
+    
+    console.log('❌ REJECTED:', this.currentApprovalRequest.data);
+    
+    const fileDetails = this.getFileDetails(this.currentApprovalRequest.data.content);
+    
+    // Update execution flow
+    this.updateExecutionFlowStatus(
+      this.currentApprovalRequest.data.tool,
+      fileDetails?.file_name,
+      'rejected'
+    );
+    
+    // Reset and continue
+    this.currentApprovalRequest = null;
+    this.currentView = 'read';
+    this.cdr.detectChanges();
+    
+    requestAnimationFrame(() => {
+      this.parserService.approveAndContinue();
+      this.updateQueuedItems();
+    });
+  }
+
+  private async saveCodeChanges(payload: any): Promise<void> {
+    const apiUrl = 'https://your-api-endpoint.com/api/save-code';
+    
+    const headers = new HttpHeaders({
+      'Content-Type': 'application/json'
+    });
+    
+    return new Promise((resolve, reject) => {
+      this.http.post(apiUrl, payload, { headers }).subscribe({
+        next: (response) => {
+          console.log('API Response:', response);
+          resolve();
+        },
+        error: (error) => {
+          console.error('API Error:', error);
+          reject(error);
+        }
+      });
+    });
+  }
+
+  // Helper methods
+  public getFileDetails(content: any): any {
+    if (!content || typeof content !== 'object') return null;
+    
+    if (content.files && Array.isArray(content.files) && content.files.length > 0) {
+      return content.files[0];
+    }
+    
+    return null;
+  }
+
+  public getReasoning(content: any): string {
+    if (content && typeof content === 'object' && content.reasoning) {
+      return content.reasoning;
+    }
+    return '';
+  }
+
+  public getFileExtension(filename: string): string {
+    if (!filename) return 'FILE';
+    return filename.split('.').pop()?.toUpperCase() || 'FILE';
+  }
+
+  public getLanguageFromFilename(filename: string): string {
+    if (!filename) return 'plaintext';
+    
+    const ext = filename.split('.').pop()?.toLowerCase();
+    const langMap: { [key: string]: string } = {
+      'js': 'javascript', 'jsx': 'javascript', 'ts': 'typescript', 'tsx': 'typescript',
+      'py': 'python', 'java': 'java', 'cpp': 'cpp', 'c': 'c', 'cs': 'csharp',
+      'php': 'php', 'rb': 'ruby', 'go': 'go', 'rs': 'rust', 'swift': 'swift',
+      'kt': 'kotlin', 'sql': 'sql', 'html': 'html', 'css': 'css', 'scss': 'scss',
+      'json': 'json', 'xml': 'xml', 'yaml': 'yaml', 'yml': 'yaml', 'md': 'markdown',
+      'sh': 'bash', 'bash': 'bash'
+    };
+    
+    return langMap[ext || ''] || 'plaintext';
+  }
+
+  public getDiffHtml(originalCode: string, modifiedCode: string, filename: string): SafeHtml {
+    const original = (originalCode || '').split('\n');
+    const modified = (modifiedCode || '').split('\n');
+    const language = this.getLanguageFromFilename(filename);
+    
+    if (original.length > 1000 || modified.length > 1000) {
+      return this.sanitizer.bypassSecurityTrustHtml('<div class="vibe-diff-line">File too large to display diff (>1000 lines)</div>');
+    }
+    
+    const diff = this.computeDiff(original, modified);
+    let diffHtml = '';
+    let originalLineNum = 1;
+    let modifiedLineNum = 1;
+    
+    for (const block of diff) {
+      if (block.type === 'unchanged') {
+        for (const line of block.lines || []) {
+          const highlightedCode = this.highlightCode(line, language);
+          diffHtml += `<div class="vibe-diff-line vibe-diff-unchanged">`;
+          diffHtml += `<span class="vibe-line-number">${originalLineNum}</span>`;
+          diffHtml += `<span class="vibe-line-number">${modifiedLineNum}</span>`;
+          diffHtml += `<span class="vibe-line-prefix">  </span>`;
+          diffHtml += `<span class="vibe-line-content">${highlightedCode}</span>`;
+          diffHtml += `</div>`;
+          originalLineNum++;
+          modifiedLineNum++;
+        }
+      } else if (block.type === 'changed') {
+        for (const line of block.removed || []) {
+          const highlightedCode = this.highlightCode(line, language);
+          diffHtml += `<div class="vibe-diff-line vibe-diff-removed">`;
+          diffHtml += `<span class="vibe-line-number">${originalLineNum}</span>`;
+          diffHtml += `<span class="vibe-line-number"></span>`;
+          diffHtml += `<span class="vibe-line-prefix">- </span>`;
+          diffHtml += `<span class="vibe-line-content">${highlightedCode}</span>`;
+          diffHtml += `</div>`;
+          originalLineNum++;
+        }
+        
+        for (const line of block.added || []) {
+          const highlightedCode = this.highlightCode(line, language);
+          diffHtml += `<div class="vibe-diff-line vibe-diff-added">`;
+          diffHtml += `<span class="vibe-line-number"></span>`;
+          diffHtml += `<span class="vibe-line-number">${modifiedLineNum}</span>`;
+          diffHtml += `<span class="vibe-line-prefix">+ </span>`;
+          diffHtml += `<span class="vibe-line-content">${highlightedCode}</span>`;
+          diffHtml += `</div>`;
+          modifiedLineNum++;
+        }
+      }
+    }
+    
+    return this.sanitizer.bypassSecurityTrustHtml(diffHtml);
+  }
+
+  private computeDiff(original: string[], modified: string[]): Array<{type: 'unchanged' | 'changed', lines?: string[], removed?: string[], added?: string[]}> {
+    const diff: Array<{type: 'unchanged' | 'changed', lines?: string[], removed?: string[], added?: string[]}> = [];
+    const maxLen = Math.max(original.length, modified.length);
+    let i = 0;
+    
+    while (i < maxLen) {
+      const origLine = i < original.length ? original[i] : null;
+      const modLine = i < modified.length ? modified[i] : null;
+      
+      if (origLine === modLine && origLine !== null) {
+        const unchangedLines: string[] = [];
+        while (i < maxLen && i < original.length && i < modified.length && original[i] === modified[i]) {
+          unchangedLines.push(original[i]);
+          i++;
+        }
+        diff.push({ type: 'unchanged', lines: unchangedLines });
+      } else {
+        const removedLines: string[] = [];
+        const addedLines: string[] = [];
+        
+        while (i < maxLen && (i >= original.length || i >= modified.length || original[i] !== modified[i])) {
+          if (i < original.length) removedLines.push(original[i]);
+          if (i < modified.length) addedLines.push(modified[i]);
+          i++;
+          
+          if (i >= maxLen) break;
+          if (i < original.length && i < modified.length && original[i] === modified[i]) break;
+        }
+        
+        if (removedLines.length > 0 || addedLines.length > 0) {
+          diff.push({ type: 'changed', removed: removedLines, added: addedLines });
+        }
+      }
+    }
+    
+    return diff;
+  }
 
   private highlightCode(code: string, language: string): string {
-    if (!code) {
-      return this.escapeHtml('');
+    if (!code || typeof hljs === 'undefined') {
+      return this.escapeHtml(code);
     }
     
     try {
@@ -101,9 +467,227 @@ export class ChunkedJsonParserComponent implements OnInit {
     return div.innerHTML;
   }
 
+  public formatTime(date: Date): string {
+    return date.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+  }
+
+  public getExecutionFlowIcon(tool: string): string {
+    const icons: { [key: string]: string } = {
+      'READ': '📖',
+      'WRITE': '✏️',
+      'MODIFY': '🔧'
+    };
+    return icons[tool] || '🔹';
+  }
+
+  public getStatusClass(status: ExecutionFlowItem['status']): string {
+    const classes: { [key: string]: string } = {
+      'executing': 'vibe-status-executing',
+      'completed': 'vibe-status-completed',
+      'rejected': 'vibe-status-rejected',
+      'pending': 'vibe-status-pending'
+    };
+    return classes[status] || '';
+  }
+
   public trackByIndex(index: number): number {
     return index;
   }
-
-  // ... rest of existing methods ...
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="vibe-container">
+  <!-- Header (same as before) -->
+  <div class="vibe-header">
+    <div class="vibe-header-content">
+      <div class="vibe-header-left">
+        <h1>AI Execution Tracker</h1>
+        <p>Real-time code generation & execution monitoring</p>
+      </div>
+      
+      <div class="vibe-header-right">
+        <button 
+          class="vibe-btn vibe-btn-primary" 
+          (click)="runDemo()" 
+          [disabled]="isProcessing">
+          RUN
+        </button>
+
+        <span *ngIf="isProcessing && !isCompleted" class="vibe-badge vibe-badge-processing">
+          <span class="vibe-pulse-dot"></span>
+          Processing
+        </span>
+
+        <span *ngIf="isCompleted" class="vibe-badge vibe-badge-completed">
+          <span class="vibe-check-icon">✓</span>
+          Completed
+        </span>
+
+        <button 
+          *ngIf="isProcessing && !isCompleted"
+          class="vibe-btn-stop" 
+          (click)="stopStreaming()"
+          title="Stop">
+          <svg viewBox="0 0 24 24" fill="none">
+            <rect x="6" y="6" width="12" height="12" fill="currentColor" rx="2"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <div class="vibe-content">
+    <!-- Left Panel: READ Content (80%) -->
+    <div class="vibe-read-panel">
+      <!-- Empty State -->
+      <div *ngIf="!hasReadContent && !isProcessing && currentView === 'read'" class="vibe-empty-state">
+        <div class="vibe-empty-icon">📄</div>
+        <p>No content yet</p>
+        <span>Click RUN to start</span>
+      </div>
+
+      <!-- Waiting State -->
+      <div *ngIf="isProcessing && !hasReceivedFirstChunk" class="vibe-waiting-state">
+        <div class="vibe-spinner"></div>
+        <h3>Connecting to AI Agent<span class="vibe-dots"><span>.</span><span>.</span><span>.</span></span></h3>
+        <p>Preparing execution plan</p>
+      </div>
+
+      <!-- READ Content Display - DOM Container -->
+      <div 
+        *ngIf="currentView === 'read'" 
+        id="vibe-read-content-container"
+        class="vibe-read-content">
+        <!-- Content will be appended via DOM manipulation -->
+      </div>
+
+      <!-- WRITE/MODIFY Approval View (same as before) -->
+      <div 
+        *ngIf="currentView === 'approval' && currentApprovalRequest" 
+        class="vibe-approval-view"
+        [@fadeIn]>
+        <div class="vibe-approval-header">
+          <div class="vibe-approval-title">
+            <span class="vibe-approval-icon">{{ getFileExtension(getFileDetails(currentApprovalRequest.data.content)?.file_name) }}</span>
+            <div class="vibe-approval-info">
+              <h3>{{ getFileDetails(currentApprovalRequest.data.content)?.file_name }}</h3>
+              <p *ngIf="getFileDetails(currentApprovalRequest.data.content)?.file_path">
+                {{ getFileDetails(currentApprovalRequest.data.content)?.file_path }}
+              </p>
+            </div>
+            <span class="vibe-approval-badge">{{ currentApprovalRequest.data.tool }}</span>
+          </div>
+        </div>
+
+        <!-- Reasoning -->
+        <div *ngIf="getReasoning(currentApprovalRequest.data.content)" class="vibe-reasoning">
+          <h4>Reasoning</h4>
+          <p>{{ getReasoning(currentApprovalRequest.data.content) }}</p>
+        </div>
+
+        <!-- Code Diff -->
+        <div class="vibe-diff-container">
+          <div class="vibe-diff-header">
+            <span>Changes in {{ getFileDetails(currentApprovalRequest.data.content)?.file_name }}</span>
+          </div>
+          <div class="vibe-diff-content">
+            <pre><code 
+              [innerHTML]="getDiffHtml(
+                getFileDetails(currentApprovalRequest.data.content)?.original_code || '', 
+                getFileDetails(currentApprovalRequest.data.content)?.modified_code || '',
+                getFileDetails(currentApprovalRequest.data.content)?.file_name || ''
+              )">
+            </code></pre>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="vibe-approval-actions">
+          <button 
+            class="vibe-btn vibe-btn-reject" 
+            (click)="rejectChanges()"
+            [disabled]="isApprovingChanges">
+            ✕ Reject
+          </button>
+          <button 
+            class="vibe-btn vibe-btn-accept" 
+            (click)="approveAndContinue()"
+            [disabled]="isApprovingChanges">
+            <span *ngIf="!isApprovingChanges">✓ Accept & Continue</span>
+            <span *ngIf="isApprovingChanges" class="vibe-accepting">
+              <span class="vibe-spinner-small"></span>
+              Accepting...
+            </span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Panel: Execution Flow (20%) - Same as before -->
+    <div class="vibe-flow-panel">
+      <div class="vibe-flow-header">
+        <h2>Execution Flow</h2>
+        <span class="vibe-flow-count">{{ executionFlow.length }}</span>
+      </div>
+
+      <div class="vibe-flow-content">
+        <!-- Empty State -->
+        <div *ngIf="executionFlow.length === 0" class="vibe-flow-empty">
+          <div class="vibe-flow-empty-icon">⋯</div>
+          <p>No executions yet</p>
+        </div>
+
+        <!-- Flow Items -->
+        <div 
+          *ngFor="let item of executionFlow; trackBy: trackByIndex" 
+          class="vibe-flow-item"
+          [ngClass]="getStatusClass(item.status)"
+          [@fadeIn]>
+          <div class="vibe-flow-icon">{{ getExecutionFlowIcon(item.tool) }}</div>
+          <div class="vibe-flow-info">
+            <div class="vibe-flow-tool">{{ item.tool }}</div>
+            <div *ngIf="item.fileName" class="vibe-flow-file">{{ item.fileName }}</div>
+            <div class="vibe-flow-time">{{ formatTime(item.timestamp) }}</div>
+          </div>
+          <div class="vibe-flow-status">
+            <span *ngIf="item.status === 'executing'" class="vibe-status-dot vibe-dot-executing"></span>
+            <span *ngIf="item.status === 'completed'" class="vibe-status-dot vibe-dot-completed">✓</span>
+            <span *ngIf="item.status === 'rejected'" class="vibe-status-dot vibe-dot-rejected">✕</span>
+          </div>
+        </div>
+
+        <!-- Queued Items -->
+        <div 
+          *ngFor="let item of queuedItems; trackBy: trackByIndex" 
+          class="vibe-flow-item vibe-flow-queued"
+          [@fadeIn]>
+          <div class="vibe-flow-icon">{{ getExecutionFlowIcon(item.tool) }}</div>
+          <div class="vibe-flow-info">
+            <div class="vibe-flow-tool">{{ item.tool }}</div>
+            <div class="vibe-flow-status-text">Queued</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
