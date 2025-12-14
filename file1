@@ -1,147 +1,32 @@
-export class ChunkedJsonParserComponent implements OnInit {
-  // ... existing properties ...
-  private isScrollLocked = false; // ADD THIS
-  private scrollTimeout: any = null; // ADD THIS
-
-  // MODIFIED appendReadContent - add scroll lock
-  private appendReadContent(toolData: ToolData): void {
-    // Get the streaming container (dedicated div for READ items)
-    const streamingContainer = document.getElementById('vibe-coding-streaming-container');
+// MODIFIED rejectChanges method with shorter timing
+public rejectChanges(): void {
+  if (this.currentApprovalRequest && !this.isRejectingChanges) {
+    console.log('❌ REJECTED:', this.currentApprovalRequest.data);
+    console.log('Continuing with next operation...\n');
     
-    if (!streamingContainer) {
-      console.warn('Streaming container not found');
-      return;
-    }
-
-    // Lock scroll temporarily
-    this.lockScroll();
-
-    // Create the READ item element
-    const readItemDiv = document.createElement('div');
-    readItemDiv.className = 'vibe-coding-file-item vibe-coding-read-group vibe-coding-new';
+    // Set loading state
+    this.isRejectingChanges = true;
+    this.cdr.detectChanges();
     
-    // Create file icon
-    const iconDiv = document.createElement('div');
-    iconDiv.className = 'vibe-coding-file-icon';
-    iconDiv.textContent = 'READ';
+    // Mark the current tool as rejected in the data
+    this.currentApprovalRequest.data.rejected = true;
     
-    // Create file info container
-    const infoDiv = document.createElement('div');
-    infoDiv.className = 'vibe-coding-file-info';
+    // Add to executed items with rejected flag BEFORE resetting
+    this.executedItems.push(this.currentApprovalRequest.data);
     
-    // Create file name
-    const nameDiv = document.createElement('div');
-    nameDiv.className = 'vibe-coding-file-name';
-    nameDiv.textContent = this.getReadContent(toolData.content);
-    
-    // Append elements
-    infoDiv.appendChild(nameDiv);
-    readItemDiv.appendChild(iconDiv);
-    readItemDiv.appendChild(infoDiv);
-    
-    // Simply append to the streaming container
-    streamingContainer.appendChild(readItemDiv);
-
-    // Unlock scroll after a short delay
-    this.unlockScroll();
+    // Process immediately with minimal delay
+    setTimeout(() => {
+      // Reset approval state
+      this.isWaitingForApproval = false;
+      this.currentApprovalRequest = null;
+      
+      // Continue to next operation
+      this.parserService.approveAndContinue();
+      this.updateLists();
+      
+      // Reset loading state quickly
+      this.isRejectingChanges = false;
+      this.cdr.detectChanges();
+    }, 300); // CHANGED: from 400ms + 200ms to just 300ms total
   }
-
-  // ADD: Lock scroll during updates
-  private lockScroll(): void {
-    this.isScrollLocked = true;
-    if (this.executedFileListRef && this.executedFileListRef.nativeElement) {
-      this.executedFileListRef.nativeElement.style.overflowY = 'hidden';
-    }
-  }
-
-  // ADD: Unlock scroll
-  private unlockScroll(): void {
-    if (this.scrollTimeout) {
-      clearTimeout(this.scrollTimeout);
-    }
-    
-    this.scrollTimeout = setTimeout(() => {
-      this.isScrollLocked = false;
-      if (this.executedFileListRef && this.executedFileListRef.nativeElement) {
-        this.executedFileListRef.nativeElement.style.overflowY = 'auto';
-      }
-    }, 150); // Short delay to complete DOM rendering
-  }
-
-  // MODIFIED setupCallbacks - remove auto scroll, only unlock
-  private setupCallbacks(): void {
-    this.parserService.setCallbacks({
-      onToolDetected: (toolData: ToolData) => {
-        this.logToolDetected(toolData);
-        this.updateLists();
-        
-        if (toolData.tool === 'READ') {
-          this.appendReadContent(toolData);
-        } else {
-          // For WRITE/MODIFY, just unlock scroll
-          this.cdr.detectChanges();
-          this.unlockScroll();
-        }
-      },
-      onApprovalRequest: (approvalRequest: ApprovalRequest) => {
-        this.isWaitingForApproval = true;
-        this.currentApprovalRequest = approvalRequest;
-        this.isApprovingChanges = false;
-        this.logWaitingForApproval(approvalRequest.data);
-        this.updateLists();
-        this.cdr.detectChanges();
-        this.unlockScroll(); // Unlock after rendering
-      },
-      onCompletion: () => {
-        this.isProcessing = false;
-        this.isApprovingChanges = false;
-        this.hasReceivedFirstChunk = false;
-        this.isCompleted = true;
-        this.logCompleted();
-        this.updateLists();
-        this.cdr.detectChanges();
-        this.unlockScroll(); // Unlock on completion
-      },
-      onError: (error: string) => {
-        this.isProcessing = false;
-        this.isApprovingChanges = false;
-        this.hasReceivedFirstChunk = false;
-        this.logError(error);
-        this.unlockScroll(); // Unlock on error
-      },
-      onFirstChunk: () => {
-        this.hasReceivedFirstChunk = true;
-        this.logFirstChunkReceived();
-        this.cdr.detectChanges();
-      }
-    });
-  }
-
-  // REMOVE scrollToBottom method completely if you don't want auto-scroll
-  // Or keep it but don't call it
-
-  // ... rest of existing methods ...
 }
-
-
-
-
-
-
-
-
-/* MODIFY existing .vibe-coding-file-list */
-.vibe-coding-file-list {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 20px;
-  scroll-behavior: smooth; /* ADD THIS */
-  will-change: scroll-position; /* ADD THIS - optimize scroll performance */
-}
-
-
-
-
-
-
