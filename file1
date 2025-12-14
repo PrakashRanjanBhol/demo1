@@ -1,4 +1,44 @@
-// MODIFIED approveAndContinue
+// MODIFIED runDemo - Clear only on fresh start
+public async runDemo(): Promise<void> {
+  console.clear();
+  console.log('🚀 Starting streaming process...\n');
+  
+  // Reset lists
+  this.executedItems = [];
+  this.queuedItems = [];
+  this.groupedExecutedItems = [];
+  this.hasReceivedFirstChunk = false;
+  this.isCompleted = false;
+  this.showStreamingContainer = true;
+  this.showApprovalCard = false;
+  
+  // Clear the streaming container ONLY when starting fresh
+  this.clearStreamingContainer();
+  
+  // Setup callbacks before starting the stream
+  this.setupCallbacks();
+  
+  this.isProcessing = true;
+  
+  try {
+    await this.parserService.startStreaming();
+  } catch (error) {
+    if (error instanceof Error && error.name !== 'AbortError') {
+      console.error('Failed to start streaming:', error);
+    }
+    this.isProcessing = false;
+  }
+}
+
+
+
+
+
+
+
+
+
+// MODIFIED approveAndContinue - DON'T hide streaming container content
 public async approveAndContinue(): Promise<void> {
   if (this.currentApprovalRequest && !this.isApprovingChanges) {
     console.log('✅ APPROVED:', this.currentApprovalRequest.data);
@@ -25,16 +65,20 @@ public async approveAndContinue(): Promise<void> {
         console.log('✅ Code changes saved successfully');
       }
       
-      // MODIFIED: Animate transition
+      // Hide approval card
       this.showApprovalCard = false;
       this.cdr.detectChanges();
       
-      // Append accepted file to DOM
+      // Wait for approval card to hide, then append and show streaming container
       setTimeout(() => {
-        this.appendAcceptedFile(this.currentApprovalRequest!.data, false); // false = not rejected
+        // Append accepted file BEFORE showing streaming container
+        this.appendAcceptedFile(this.currentApprovalRequest!.data, false);
         
+        // Reset states
         this.isWaitingForApproval = false;
         this.currentApprovalRequest = null;
+        
+        // Show streaming container (this won't clear content, just shows it)
         this.showStreamingContainer = true;
         
         this.parserService.approveAndContinue();
@@ -58,7 +102,7 @@ public async approveAndContinue(): Promise<void> {
   }
 }
 
-// MODIFIED rejectChanges
+// MODIFIED rejectChanges - DON'T hide streaming container content
 public rejectChanges(): void {
   if (this.currentApprovalRequest) {
     console.log('❌ REJECTED:', this.currentApprovalRequest.data);
@@ -67,16 +111,20 @@ public rejectChanges(): void {
     this.currentApprovalRequest.data.rejected = true;
     this.executedItems.push(this.currentApprovalRequest.data);
     
-    // MODIFIED: Animate transition
+    // Hide approval card
     this.showApprovalCard = false;
     this.cdr.detectChanges();
     
-    // Append rejected file to DOM
+    // Wait for approval card to hide, then append and show streaming container
     setTimeout(() => {
-      this.appendAcceptedFile(this.currentApprovalRequest!.data, true); // true = rejected
+      // Append rejected file BEFORE showing streaming container
+      this.appendAcceptedFile(this.currentApprovalRequest!.data, true);
       
+      // Reset states
       this.isWaitingForApproval = false;
       this.currentApprovalRequest = null;
+      
+      // Show streaming container (this won't clear content, just shows it)
       this.showStreamingContainer = true;
       
       this.parserService.approveAndContinue();
@@ -86,141 +134,3 @@ public rejectChanges(): void {
     }, 400);
   }
 }
-
-// NEW METHOD: Append accepted/rejected file as DOM element
-private appendAcceptedFile(toolData: ToolData, isRejected: boolean): void {
-  const streamingContainer = document.getElementById('vibe-coding-streaming-container');
-  
-  if (!streamingContainer) {
-    console.warn('Streaming container not found');
-    return;
-  }
-
-  const fileDetails = this.getFileDetails(toolData.content);
-  if (!fileDetails || !fileDetails.file_name) {
-    console.warn('No file details found');
-    return;
-  }
-
-  // Create the file item element
-  const fileItemDiv = document.createElement('div');
-  fileItemDiv.className = 'vibe-coding-file-item vibe-coding-new';
-  
-  // Create file icon
-  const iconDiv = document.createElement('div');
-  iconDiv.className = 'vibe-coding-file-icon';
-  iconDiv.textContent = this.getFileExtension(fileDetails.file_name);
-  
-  // Create file info container
-  const infoDiv = document.createElement('div');
-  infoDiv.className = 'vibe-coding-file-info';
-  
-  // Create file name
-  const nameDiv = document.createElement('div');
-  nameDiv.className = 'vibe-coding-file-name';
-  nameDiv.textContent = fileDetails.file_name;
-  
-  // Create file path (if exists)
-  if (fileDetails.file_path) {
-    const pathDiv = document.createElement('div');
-    pathDiv.className = 'vibe-coding-file-path';
-    pathDiv.textContent = fileDetails.file_path;
-    infoDiv.appendChild(nameDiv);
-    infoDiv.appendChild(pathDiv);
-  } else {
-    infoDiv.appendChild(nameDiv);
-  }
-  
-  // Create time badge
-  const timeDiv = document.createElement('div');
-  timeDiv.className = 'vibe-coding-file-time';
-  timeDiv.textContent = this.formatTime(new Date());
-  
-  // Create tool badge
-  const toolBadge = document.createElement('div');
-  toolBadge.className = 'vibe-coding-status-badge';
-  toolBadge.textContent = toolData.tool;
-  
-  // Create status badge (ACCEPTED/REJECTED)
-  const statusBadge = document.createElement('div');
-  statusBadge.className = 'vibe-coding-approval-status-badge';
-  if (isRejected) {
-    statusBadge.classList.add('vibe-coding-status-rejected');
-    statusBadge.textContent = 'REJECTED';
-  } else {
-    statusBadge.classList.add('vibe-coding-status-accepted');
-    statusBadge.textContent = 'ACCEPTED';
-  }
-  
-  // Append all elements
-  fileItemDiv.appendChild(iconDiv);
-  fileItemDiv.appendChild(infoDiv);
-  fileItemDiv.appendChild(timeDiv);
-  fileItemDiv.appendChild(toolBadge);
-  fileItemDiv.appendChild(statusBadge);
-  
-  // Append to streaming container
-  streamingContainer.appendChild(fileItemDiv);
-}
-
-// ... rest of existing methods ...
-
-
-
-
-
-
-
-
-
-
-
-
-
-<div class="vibe-coding-file-list" #executedFileList>
-  <!-- Empty State -->
-  <div *ngIf="!isProcessing && executedItems.length === 0 && !currentApprovalRequest" class="vibe-coding-empty-state">
-    <div class="vibe-coding-empty-state-icon">—</div>
-    <p>No items executed yet</p>
-  </div>
-
-  <!-- Streaming Data Container - For READ items AND accepted/rejected files via DOM -->
-  <div 
-    *ngIf="showStreamingContainer" 
-    id="vibe-coding-streaming-container"
-    [@expandCollapse]="showStreamingContainer ? 'expanded' : 'collapsed'">
-  </div>
-  
-  <!-- REMOVED: File Operations (WRITE/MODIFY) Angular-rendered items -->
-  <!-- All accepted/rejected files now appended to streaming container via DOM -->
-
-  <!-- Approval Request (with animation) -->
-  <div 
-    *ngIf="showApprovalCard && currentApprovalRequest && hasFileDetails(currentApprovalRequest.data.content)" 
-    class="vibe-coding-file-item vibe-coding-awaiting-approval"
-    [@fadeSlide]>
-    <!-- ... approval card content remains same ... -->
-  </div>
-</div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// MODIFIED updateLists - no longer needed to group items
-private updateLists(): void {
-  this.executedItems = this.parserService.getCompletedTools();
-  this.queuedItems = this.parserService.getPendingTools();
-  // REMOVED: this.groupExecutedItems(); - no longer needed
-}
-
-// REMOVE groupExecutedItems method completely
