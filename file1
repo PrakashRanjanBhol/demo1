@@ -1,20 +1,79 @@
-<!-- Finished All Tasks State - MODIFIED -->
-<div *ngIf="isCompleted && queuedItems.length === 0" class="vibe-coding-finished-state">
-  <div class="vibe-coding-finished-icon">
-    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
-      <path d="M8 12L11 15L16 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>
-  </div>
-  <h3>All Tasks Completed</h3>
-  <p>Successfully executed all operations</p>
-  
-  <!-- REMOVED: Stats section completely -->
+export class ChunkedJsonParserComponent implements OnInit {
+  // ... existing properties ...
+  public isRejectingChanges = false; // ADD THIS
 
-  <!-- Files Modified Section -->
-  <div class="vibe-coding-files-modified" *ngIf="getModifiedFiles().length > 0">
-    <!-- ... rest of the files section ... -->
-  </div>
+  // MODIFIED rejectChanges method with loading state
+  public rejectChanges(): void {
+    if (this.currentApprovalRequest && !this.isRejectingChanges) {
+      console.log('❌ REJECTED:', this.currentApprovalRequest.data);
+      console.log('Continuing with next operation...\n');
+      
+      // Set loading state
+      this.isRejectingChanges = true;
+      this.cdr.detectChanges();
+      
+      // Mark the current tool as rejected in the data
+      this.currentApprovalRequest.data.rejected = true;
+      
+      // Add to executed items with rejected flag BEFORE resetting
+      this.executedItems.push(this.currentApprovalRequest.data);
+      
+      // Process after showing loading state
+      setTimeout(() => {
+        // Reset approval state
+        this.isWaitingForApproval = false;
+        this.currentApprovalRequest = null;
+        
+        // Continue to next operation
+        this.parserService.approveAndContinue();
+        this.updateLists();
+        
+        // Reset loading state
+        setTimeout(() => {
+          this.isRejectingChanges = false;
+          this.cdr.detectChanges();
+        }, 200);
+      }, 400);
+    }
+  }
+
+  // ... rest of methods ...
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- Approval Actions - MODIFIED -->
+<div class="vibe-coding-approval-actions">
+  <button 
+    class="vibe-coding-approval-btn vibe-coding-reject" 
+    (click)="rejectChanges()"
+    [disabled]="isApprovingChanges || isRejectingChanges">
+    <span *ngIf="!isRejectingChanges">✕ Reject</span>
+    <span *ngIf="isRejectingChanges" class="vibe-coding-rejecting-wrapper">
+      <span class="vibe-coding-inline-spinner vibe-coding-reject-spinner"></span>
+      Rejecting
+    </span>
+  </button>
+  <button 
+    class="vibe-coding-approval-btn vibe-coding-accept" 
+    (click)="approveAndContinue()"
+    [disabled]="isApprovingChanges || isRejectingChanges">
+    <span *ngIf="!isApprovingChanges">✓ Accept & Continue</span>
+    <span *ngIf="isApprovingChanges" class="vibe-coding-accepting-wrapper">
+      <span class="vibe-coding-inline-spinner"></span>
+      Accepting Changes
+    </span>
+  </button>
 </div>
 
 
@@ -22,60 +81,20 @@
 
 
 
-/* REMOVE THESE STYLES: */
 
-/* .vibe-coding-finished-stats {
-  display: flex;
-  justify-content: center;
-  gap: 16px;
-  margin-top: 20px;
-}
 
-.vibe-coding-stat {
-  display: flex;
-  flex-direction: column;
+
+
+
+
+/* Rejecting Changes Inline Spinner */
+.vibe-coding-rejecting-wrapper {
+  display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 12px 20px;
-  background: var(--vibe-finished-stat-bg);
-  border: 1px solid var(--vibe-finished-stat-border);
-  border-radius: 8px;
-  min-width: 80px;
+  gap: 8px;
 }
 
-.vibe-coding-stat-value {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--vibe-finished-text);
-  line-height: 1;
-}
-
-.vibe-coding-stat-label {
-  font-size: 0.75rem;
-  color: var(--vibe-text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-} */
-
-
-
-
-
-
-/* Light Mode Variables (Default) */
-:root {
-  /* ... existing variables ... */
-  
-  /* REMOVE THESE: */
-  /* --vibe-finished-stat-bg: #d1fae5; */
-  /* --vibe-finished-stat-border: #10b981; */
-}
-
-/* Dark Mode Variables */
-[data-theme="dark"] {
-  /* ... existing variables ... */
-  
-  /* REMOVE THESE: */
-  /* --vibe-finished-stat-bg: #064e3b; */
-  /* --vibe-finished-stat-border: #059669; */
+.vibe-coding-reject-spinner {
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top: 2px solid white;
 }
