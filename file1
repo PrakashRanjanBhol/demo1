@@ -1,14 +1,190 @@
-// Add these trackBy methods to the ChunkedJsonParserComponent class
-
-// TrackBy functions for optimal rendering performance
-public trackByFileId(index: number, item: ProcessedFileItem): string {
-  return item.id;
+/* MODIFIED: File item with smooth transitions */
+.vibe-coding-file-item {
+  background: var(--vibe-bg-secondary);
+  padding: 14px;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  transition: all 0.3s ease; /* UPDATED: Added transition */
+  border: 1px solid var(--vibe-border-primary);
+  animation: vibe-coding-slideIn 0.4s ease; /* ADDED: Entrance animation */
 }
 
-public trackByLineIndex(index: number, item: DiffLine): number {
-  return index;
+/* MODIFIED: Awaiting approval card with entrance animation */
+.vibe-coding-file-item.vibe-coding-awaiting-approval {
+  background: var(--vibe-accent-yellow-bg);
+  border: 2px solid var(--vibe-accent-yellow);
+  padding: 0;
+  display: block;
+  overflow: hidden;
+  animation: vibe-coding-slideInScale 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); /* UPDATED: Bouncy entrance */
 }
 
-public trackByFileName(index: number, item: CompletedFileInfo): string {
-  return item.fileName + item.tool;
+/* UPDATED: Slide-in animation */
+@keyframes vibe-coding-slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* NEW: Slide-in with scale animation for approval cards */
+@keyframes vibe-coding-slideInScale {
+  0% {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.95);
+  }
+  60% {
+    transform: translateY(5px) scale(1.02);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* NEW: Fade-out animation for removing items */
+@keyframes vibe-coding-fadeOut {
+  from {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+    max-height: 500px;
+    margin-bottom: 8px;
+  }
+  to {
+    opacity: 0;
+    transform: translateX(20px) scale(0.95);
+    max-height: 0;
+    margin-bottom: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+}
+
+/* NEW: Class to apply when removing */
+.vibe-coding-file-item.vibe-coding-removing {
+  animation: vibe-coding-fadeOut 0.4s ease forwards;
+}
+
+/* NEW: Smooth height transition for container */
+.vibe-coding-file-list {
+  transition: height 0.3s ease;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+// MODIFIED approveAndContinue with smooth removal
+public async approveAndContinue(): Promise<void> {
+  if (this.currentApprovalRequest && !this.isApprovingChanges) {
+    console.log('✅ APPROVED:', this.currentApprovalRequest.data);
+    console.log('Saving code changes via API...\n');
+    
+    // Set loading state immediately
+    this.isApprovingChanges = true;
+    this.cdr.detectChanges();
+    
+    try {
+      // Extract file details from approval request
+      const fileDetails = this.getFileDetails(this.currentApprovalRequest.data.content);
+      
+      if (fileDetails) {
+        const payload = {
+          tool: this.currentApprovalRequest.data.tool,
+          file_path: fileDetails.file_path,
+          file_name: fileDetails.file_name,
+          original_code: fileDetails.original_code || '',
+          modified_code: fileDetails.modified_code || '',
+          reasoning: this.getReasoning(this.currentApprovalRequest.data.content),
+          timestamp: new Date().toISOString()
+        };
+        
+        await this.saveCodeChanges(payload);
+        console.log('✅ Code changes saved successfully');
+      }
+      
+      // ADD: Apply removal animation before removing
+      this.applyRemovalAnimation();
+      
+      // Wait for animation to complete
+      await this.delay(400);
+      
+      // Reset approval UI state
+      this.isWaitingForApproval = false;
+      this.currentApprovalRequest = null;
+      
+      // Approve and continue with next operation
+      this.parserService.approveAndContinue();
+      
+      // Update lists
+      this.updateLists();
+      
+    } catch (error) {
+      console.error('❌ Failed to save code changes:', error);
+      alert('Failed to save code changes. Please try again.');
+      this.isApprovingChanges = false;
+      this.cdr.detectChanges();
+      return;
+    }
+    
+    // Keep spinner for minimum duration for better UX
+    setTimeout(() => {
+      this.isApprovingChanges = false;
+      this.cdr.detectChanges();
+    }, 200);
+  }
+}
+
+// MODIFIED rejectChanges with smooth removal
+public rejectChanges(): void {
+  if (this.currentApprovalRequest) {
+    console.log('❌ REJECTED:', this.currentApprovalRequest.data);
+    console.log('Continuing with next operation...\n');
+    
+    // Mark the current tool as rejected in the data
+    this.currentApprovalRequest.data.rejected = true;
+    
+    // Add to executed items with rejected flag BEFORE resetting
+    this.executedItems.push(this.currentApprovalRequest.data);
+    
+    // ADD: Apply removal animation before removing
+    this.applyRemovalAnimation();
+    
+    // Wait for animation to complete
+    setTimeout(() => {
+      // Reset approval state
+      this.isWaitingForApproval = false;
+      this.currentApprovalRequest = null;
+      
+      // Continue to next operation
+      this.parserService.approveAndContinue();
+      this.updateLists();
+    }, 400);
+  }
+}
+
+// NEW: Method to apply removal animation
+private applyRemovalAnimation(): void {
+  const approvalCard = document.querySelector('.vibe-coding-awaiting-approval');
+  if (approvalCard) {
+    approvalCard.classList.add('vibe-coding-removing');
+  }
+}
+
+// NEW: Helper method for delay (if not already present)
+private delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
