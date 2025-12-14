@@ -1,5 +1,5 @@
-// MODIFIED rejectChanges method with shorter timing
-public rejectChanges(): void {
+// MODIFIED rejectChanges method with consistent timing
+public async rejectChanges(): Promise<void> {
   if (this.currentApprovalRequest && !this.isRejectingChanges) {
     console.log('❌ REJECTED:', this.currentApprovalRequest.data);
     console.log('Continuing with next operation...\n');
@@ -8,25 +8,37 @@ public rejectChanges(): void {
     this.isRejectingChanges = true;
     this.cdr.detectChanges();
     
+    // Minimum display time for spinner (for consistent UX)
+    const minSpinnerTime = 500; // ms
+    const startTime = Date.now();
+    
     // Mark the current tool as rejected in the data
     this.currentApprovalRequest.data.rejected = true;
     
     // Add to executed items with rejected flag BEFORE resetting
     this.executedItems.push(this.currentApprovalRequest.data);
     
-    // Process immediately with minimal delay
-    setTimeout(() => {
-      // Reset approval state
-      this.isWaitingForApproval = false;
-      this.currentApprovalRequest = null;
-      
-      // Continue to next operation
-      this.parserService.approveAndContinue();
-      this.updateLists();
-      
-      // Reset loading state quickly
-      this.isRejectingChanges = false;
-      this.cdr.detectChanges();
-    }, 300); // CHANGED: from 400ms + 200ms to just 300ms total
+    // Reset approval state
+    this.isWaitingForApproval = false;
+    this.currentApprovalRequest = null;
+    
+    // Continue to next operation
+    this.parserService.approveAndContinue();
+    this.updateLists();
+    
+    // Ensure spinner shows for minimum time
+    const elapsed = Date.now() - startTime;
+    const remainingTime = Math.max(0, minSpinnerTime - elapsed);
+    
+    await this.delay(remainingTime);
+    
+    // Reset loading state
+    this.isRejectingChanges = false;
+    this.cdr.detectChanges();
   }
+}
+
+// Helper method for delay (if not already present)
+private delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
