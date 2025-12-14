@@ -1,43 +1,126 @@
 export class ChunkedJsonParserComponent implements OnInit {
   // ... existing properties ...
-  public isRejectingChanges = false; // ADD THIS
+  private isScrollLocked = false; // ADD THIS
+  private scrollTimeout: any = null; // ADD THIS
 
-  // MODIFIED rejectChanges method with loading state
-  public rejectChanges(): void {
-    if (this.currentApprovalRequest && !this.isRejectingChanges) {
-      console.log('❌ REJECTED:', this.currentApprovalRequest.data);
-      console.log('Continuing with next operation...\n');
-      
-      // Set loading state
-      this.isRejectingChanges = true;
-      this.cdr.detectChanges();
-      
-      // Mark the current tool as rejected in the data
-      this.currentApprovalRequest.data.rejected = true;
-      
-      // Add to executed items with rejected flag BEFORE resetting
-      this.executedItems.push(this.currentApprovalRequest.data);
-      
-      // Process after showing loading state
-      setTimeout(() => {
-        // Reset approval state
-        this.isWaitingForApproval = false;
-        this.currentApprovalRequest = null;
-        
-        // Continue to next operation
-        this.parserService.approveAndContinue();
-        this.updateLists();
-        
-        // Reset loading state
-        setTimeout(() => {
-          this.isRejectingChanges = false;
-          this.cdr.detectChanges();
-        }, 200);
-      }, 400);
+  // MODIFIED appendReadContent - add scroll lock
+  private appendReadContent(toolData: ToolData): void {
+    // Get the streaming container (dedicated div for READ items)
+    const streamingContainer = document.getElementById('vibe-coding-streaming-container');
+    
+    if (!streamingContainer) {
+      console.warn('Streaming container not found');
+      return;
+    }
+
+    // Lock scroll temporarily
+    this.lockScroll();
+
+    // Create the READ item element
+    const readItemDiv = document.createElement('div');
+    readItemDiv.className = 'vibe-coding-file-item vibe-coding-read-group vibe-coding-new';
+    
+    // Create file icon
+    const iconDiv = document.createElement('div');
+    iconDiv.className = 'vibe-coding-file-icon';
+    iconDiv.textContent = 'READ';
+    
+    // Create file info container
+    const infoDiv = document.createElement('div');
+    infoDiv.className = 'vibe-coding-file-info';
+    
+    // Create file name
+    const nameDiv = document.createElement('div');
+    nameDiv.className = 'vibe-coding-file-name';
+    nameDiv.textContent = this.getReadContent(toolData.content);
+    
+    // Append elements
+    infoDiv.appendChild(nameDiv);
+    readItemDiv.appendChild(iconDiv);
+    readItemDiv.appendChild(infoDiv);
+    
+    // Simply append to the streaming container
+    streamingContainer.appendChild(readItemDiv);
+
+    // Unlock scroll after a short delay
+    this.unlockScroll();
+  }
+
+  // ADD: Lock scroll during updates
+  private lockScroll(): void {
+    this.isScrollLocked = true;
+    if (this.executedFileListRef && this.executedFileListRef.nativeElement) {
+      this.executedFileListRef.nativeElement.style.overflowY = 'hidden';
     }
   }
 
-  // ... rest of methods ...
+  // ADD: Unlock scroll
+  private unlockScroll(): void {
+    if (this.scrollTimeout) {
+      clearTimeout(this.scrollTimeout);
+    }
+    
+    this.scrollTimeout = setTimeout(() => {
+      this.isScrollLocked = false;
+      if (this.executedFileListRef && this.executedFileListRef.nativeElement) {
+        this.executedFileListRef.nativeElement.style.overflowY = 'auto';
+      }
+    }, 150); // Short delay to complete DOM rendering
+  }
+
+  // MODIFIED setupCallbacks - remove auto scroll, only unlock
+  private setupCallbacks(): void {
+    this.parserService.setCallbacks({
+      onToolDetected: (toolData: ToolData) => {
+        this.logToolDetected(toolData);
+        this.updateLists();
+        
+        if (toolData.tool === 'READ') {
+          this.appendReadContent(toolData);
+        } else {
+          // For WRITE/MODIFY, just unlock scroll
+          this.cdr.detectChanges();
+          this.unlockScroll();
+        }
+      },
+      onApprovalRequest: (approvalRequest: ApprovalRequest) => {
+        this.isWaitingForApproval = true;
+        this.currentApprovalRequest = approvalRequest;
+        this.isApprovingChanges = false;
+        this.logWaitingForApproval(approvalRequest.data);
+        this.updateLists();
+        this.cdr.detectChanges();
+        this.unlockScroll(); // Unlock after rendering
+      },
+      onCompletion: () => {
+        this.isProcessing = false;
+        this.isApprovingChanges = false;
+        this.hasReceivedFirstChunk = false;
+        this.isCompleted = true;
+        this.logCompleted();
+        this.updateLists();
+        this.cdr.detectChanges();
+        this.unlockScroll(); // Unlock on completion
+      },
+      onError: (error: string) => {
+        this.isProcessing = false;
+        this.isApprovingChanges = false;
+        this.hasReceivedFirstChunk = false;
+        this.logError(error);
+        this.unlockScroll(); // Unlock on error
+      },
+      onFirstChunk: () => {
+        this.hasReceivedFirstChunk = true;
+        this.logFirstChunkReceived();
+        this.cdr.detectChanges();
+      }
+    });
+  }
+
+  // REMOVE scrollToBottom method completely if you don't want auto-scroll
+  // Or keep it but don't call it
+
+  // ... rest of existing methods ...
 }
 
 
@@ -47,54 +130,18 @@ export class ChunkedJsonParserComponent implements OnInit {
 
 
 
-
-
-
-
-
-<!-- Approval Actions - MODIFIED -->
-<div class="vibe-coding-approval-actions">
-  <button 
-    class="vibe-coding-approval-btn vibe-coding-reject" 
-    (click)="rejectChanges()"
-    [disabled]="isApprovingChanges || isRejectingChanges">
-    <span *ngIf="!isRejectingChanges">✕ Reject</span>
-    <span *ngIf="isRejectingChanges" class="vibe-coding-rejecting-wrapper">
-      <span class="vibe-coding-inline-spinner vibe-coding-reject-spinner"></span>
-      Rejecting
-    </span>
-  </button>
-  <button 
-    class="vibe-coding-approval-btn vibe-coding-accept" 
-    (click)="approveAndContinue()"
-    [disabled]="isApprovingChanges || isRejectingChanges">
-    <span *ngIf="!isApprovingChanges">✓ Accept & Continue</span>
-    <span *ngIf="isApprovingChanges" class="vibe-coding-accepting-wrapper">
-      <span class="vibe-coding-inline-spinner"></span>
-      Accepting Changes
-    </span>
-  </button>
-</div>
-
-
-
-
-
-
-
-
-
-
-
-
-/* Rejecting Changes Inline Spinner */
-.vibe-coding-rejecting-wrapper {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
+/* MODIFY existing .vibe-coding-file-list */
+.vibe-coding-file-list {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 20px;
+  scroll-behavior: smooth; /* ADD THIS */
+  will-change: scroll-position; /* ADD THIS - optimize scroll performance */
 }
 
-.vibe-coding-reject-spinner {
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top: 2px solid white;
-}
+
+
+
+
+
