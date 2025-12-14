@@ -1,224 +1,169 @@
-import { Component, OnInit, ChangeDetectorRef, ViewChild, ElementRef } from '@angular/core';
-import { HttpClient, HttpHeaders } from '@angular/common/http';
-import { trigger, state, style, transition, animate } from '@angular/animations'; // ADD THIS
-import { ChunkedJsonParserService, ToolData, ApprovalRequest } from './chunked-json-parser.service';
-
-@Component({
-  selector: 'vibe-coding-chunked-json-parser',
-  templateUrl: './chunked-json-parser.component.html',
-  styleUrls: ['./chunked-json-parser.component.css'],
-  // ADD animations
-  animations: [
-    trigger('fadeSlide', [
-      state('void', style({
-        opacity: 0,
-        transform: 'translateY(-10px)'
-      })),
-      state('*', style({
-        opacity: 1,
-        transform: 'translateY(0)'
-      })),
-      transition('void => *', [
-        animate('300ms ease-out')
-      ]),
-      transition('* => void', [
-        animate('300ms ease-in')
-      ])
-    ]),
-    trigger('expandCollapse', [
-      state('collapsed', style({
-        height: '0',
-        opacity: 0,
-        overflow: 'hidden'
-      })),
-      state('expanded', style({
-        height: '*',
-        opacity: 1,
-        overflow: 'visible'
-      })),
-      transition('collapsed <=> expanded', [
-        animate('400ms ease-in-out')
-      ])
-    ])
-  ]
-})
-export class ChunkedJsonParserComponent implements OnInit {
-  // ... existing properties ...
-  
-  public showStreamingContainer = true; // ADD THIS
-  public showApprovalCard = false; // ADD THIS
-
-  // ... existing constructor and methods ...
-
-  // MODIFIED setupCallbacks
-  private setupCallbacks(): void {
-    this.parserService.setCallbacks({
-      onToolDetected: (toolData: ToolData) => {
-        this.logToolDetected(toolData);
-        this.updateLists();
+// MODIFIED approveAndContinue
+public async approveAndContinue(): Promise<void> {
+  if (this.currentApprovalRequest && !this.isApprovingChanges) {
+    console.log('✅ APPROVED:', this.currentApprovalRequest.data);
+    console.log('Saving code changes via API...\n');
+    
+    this.isApprovingChanges = true;
+    this.cdr.detectChanges();
+    
+    try {
+      const fileDetails = this.getFileDetails(this.currentApprovalRequest.data.content);
+      
+      if (fileDetails) {
+        const payload = {
+          tool: this.currentApprovalRequest.data.tool,
+          file_path: fileDetails.file_path,
+          file_name: fileDetails.file_name,
+          original_code: fileDetails.original_code || '',
+          modified_code: fileDetails.modified_code || '',
+          reasoning: this.getReasoning(this.currentApprovalRequest.data.content),
+          timestamp: new Date().toISOString()
+        };
         
-        if (toolData.tool === 'READ') {
-          this.appendReadContent(toolData);
-          this.scrollToBottom();
-        } else {
-          this.cdr.detectChanges();
-          this.scrollToBottom();
-        }
-      },
-      onApprovalRequest: (approvalRequest: ApprovalRequest) => {
-        this.isWaitingForApproval = true;
-        this.currentApprovalRequest = approvalRequest;
-        this.isApprovingChanges = false;
-        this.logWaitingForApproval(approvalRequest.data);
-        this.updateLists();
-        
-        // MODIFIED: Animate transition
-        this.showStreamingContainer = false;
-        this.cdr.detectChanges();
-        
-        // Wait for streaming container to hide, then show approval card
-        setTimeout(() => {
-          this.showApprovalCard = true;
-          this.cdr.detectChanges();
-          this.scrollToBottom();
-        }, 400);
-      },
-      onCompletion: () => {
-        this.isProcessing = false;
-        this.isApprovingChanges = false;
-        this.hasReceivedFirstChunk = false;
-        this.isCompleted = true;
-        this.logCompleted();
-        this.updateLists();
-        this.cdr.detectChanges();
-      },
-      onError: (error: string) => {
-        this.isProcessing = false;
-        this.isApprovingChanges = false;
-        this.hasReceivedFirstChunk = false;
-        this.logError(error);
-      },
-      onFirstChunk: () => {
-        this.hasReceivedFirstChunk = true;
-        this.logFirstChunkReceived();
-        this.cdr.detectChanges();
+        await this.saveCodeChanges(payload);
+        console.log('✅ Code changes saved successfully');
       }
-    });
-  }
-
-  // MODIFIED approveAndContinue
-  public async approveAndContinue(): Promise<void> {
-    if (this.currentApprovalRequest && !this.isApprovingChanges) {
-      console.log('✅ APPROVED:', this.currentApprovalRequest.data);
-      console.log('Saving code changes via API...\n');
-      
-      this.isApprovingChanges = true;
-      this.cdr.detectChanges();
-      
-      try {
-        const fileDetails = this.getFileDetails(this.currentApprovalRequest.data.content);
-        
-        if (fileDetails) {
-          const payload = {
-            tool: this.currentApprovalRequest.data.tool,
-            file_path: fileDetails.file_path,
-            file_name: fileDetails.file_name,
-            original_code: fileDetails.original_code || '',
-            modified_code: fileDetails.modified_code || '',
-            reasoning: this.getReasoning(this.currentApprovalRequest.data.content),
-            timestamp: new Date().toISOString()
-          };
-          
-          await this.saveCodeChanges(payload);
-          console.log('✅ Code changes saved successfully');
-        }
-        
-        // MODIFIED: Animate transition
-        this.showApprovalCard = false;
-        this.cdr.detectChanges();
-        
-        // Reset approval state and show streaming container
-        setTimeout(() => {
-          this.isWaitingForApproval = false;
-          this.currentApprovalRequest = null;
-          this.showStreamingContainer = true;
-          
-          this.parserService.approveAndContinue();
-          this.updateLists();
-          this.cdr.detectChanges();
-        }, 400);
-        
-      } catch (error) {
-        console.error('❌ Failed to save code changes:', error);
-        alert('Failed to save code changes. Please try again.');
-        this.isApprovingChanges = false;
-        this.cdr.detectChanges();
-        return;
-      }
-      
-      setTimeout(() => {
-        this.isApprovingChanges = false;
-        this.cdr.detectChanges();
-      }, 500);
-    }
-  }
-
-  // MODIFIED rejectChanges
-  public rejectChanges(): void {
-    if (this.currentApprovalRequest) {
-      console.log('❌ REJECTED:', this.currentApprovalRequest.data);
-      console.log('Continuing with next operation...\n');
-      
-      this.currentApprovalRequest.data.rejected = true;
-      this.executedItems.push(this.currentApprovalRequest.data);
       
       // MODIFIED: Animate transition
       this.showApprovalCard = false;
       this.cdr.detectChanges();
       
-      // Reset approval state and show streaming container
+      // Append accepted file to DOM
       setTimeout(() => {
+        this.appendAcceptedFile(this.currentApprovalRequest!.data, false); // false = not rejected
+        
         this.isWaitingForApproval = false;
         this.currentApprovalRequest = null;
         this.showStreamingContainer = true;
         
         this.parserService.approveAndContinue();
         this.updateLists();
+        this.scrollToBottom();
         this.cdr.detectChanges();
       }, 400);
-    }
-  }
-
-  // MODIFIED runDemo
-  public async runDemo(): Promise<void> {
-    console.clear();
-    console.log('🚀 Starting streaming process...\n');
-    
-    this.executedItems = [];
-    this.queuedItems = [];
-    this.groupedExecutedItems = [];
-    this.hasReceivedFirstChunk = false;
-    this.isCompleted = false;
-    this.showStreamingContainer = true; // RESET
-    this.showApprovalCard = false; // RESET
-    
-    this.clearStreamingContainer();
-    this.setupCallbacks();
-    
-    this.isProcessing = true;
-    
-    try {
-      await this.parserService.startStreaming();
+      
     } catch (error) {
-      if (error instanceof Error && error.name !== 'AbortError') {
-        console.error('Failed to start streaming:', error);
-      }
-      this.isProcessing = false;
+      console.error('❌ Failed to save code changes:', error);
+      alert('Failed to save code changes. Please try again.');
+      this.isApprovingChanges = false;
+      this.cdr.detectChanges();
+      return;
     }
+    
+    setTimeout(() => {
+      this.isApprovingChanges = false;
+      this.cdr.detectChanges();
+    }, 500);
+  }
+}
+
+// MODIFIED rejectChanges
+public rejectChanges(): void {
+  if (this.currentApprovalRequest) {
+    console.log('❌ REJECTED:', this.currentApprovalRequest.data);
+    console.log('Continuing with next operation...\n');
+    
+    this.currentApprovalRequest.data.rejected = true;
+    this.executedItems.push(this.currentApprovalRequest.data);
+    
+    // MODIFIED: Animate transition
+    this.showApprovalCard = false;
+    this.cdr.detectChanges();
+    
+    // Append rejected file to DOM
+    setTimeout(() => {
+      this.appendAcceptedFile(this.currentApprovalRequest!.data, true); // true = rejected
+      
+      this.isWaitingForApproval = false;
+      this.currentApprovalRequest = null;
+      this.showStreamingContainer = true;
+      
+      this.parserService.approveAndContinue();
+      this.updateLists();
+      this.scrollToBottom();
+      this.cdr.detectChanges();
+    }, 400);
+  }
+}
+
+// NEW METHOD: Append accepted/rejected file as DOM element
+private appendAcceptedFile(toolData: ToolData, isRejected: boolean): void {
+  const streamingContainer = document.getElementById('vibe-coding-streaming-container');
+  
+  if (!streamingContainer) {
+    console.warn('Streaming container not found');
+    return;
   }
 
-  // ... rest of existing methods ...
+  const fileDetails = this.getFileDetails(toolData.content);
+  if (!fileDetails || !fileDetails.file_name) {
+    console.warn('No file details found');
+    return;
+  }
+
+  // Create the file item element
+  const fileItemDiv = document.createElement('div');
+  fileItemDiv.className = 'vibe-coding-file-item vibe-coding-new';
+  
+  // Create file icon
+  const iconDiv = document.createElement('div');
+  iconDiv.className = 'vibe-coding-file-icon';
+  iconDiv.textContent = this.getFileExtension(fileDetails.file_name);
+  
+  // Create file info container
+  const infoDiv = document.createElement('div');
+  infoDiv.className = 'vibe-coding-file-info';
+  
+  // Create file name
+  const nameDiv = document.createElement('div');
+  nameDiv.className = 'vibe-coding-file-name';
+  nameDiv.textContent = fileDetails.file_name;
+  
+  // Create file path (if exists)
+  if (fileDetails.file_path) {
+    const pathDiv = document.createElement('div');
+    pathDiv.className = 'vibe-coding-file-path';
+    pathDiv.textContent = fileDetails.file_path;
+    infoDiv.appendChild(nameDiv);
+    infoDiv.appendChild(pathDiv);
+  } else {
+    infoDiv.appendChild(nameDiv);
+  }
+  
+  // Create time badge
+  const timeDiv = document.createElement('div');
+  timeDiv.className = 'vibe-coding-file-time';
+  timeDiv.textContent = this.formatTime(new Date());
+  
+  // Create tool badge
+  const toolBadge = document.createElement('div');
+  toolBadge.className = 'vibe-coding-status-badge';
+  toolBadge.textContent = toolData.tool;
+  
+  // Create status badge (ACCEPTED/REJECTED)
+  const statusBadge = document.createElement('div');
+  statusBadge.className = 'vibe-coding-approval-status-badge';
+  if (isRejected) {
+    statusBadge.classList.add('vibe-coding-status-rejected');
+    statusBadge.textContent = 'REJECTED';
+  } else {
+    statusBadge.classList.add('vibe-coding-status-accepted');
+    statusBadge.textContent = 'ACCEPTED';
+  }
+  
+  // Append all elements
+  fileItemDiv.appendChild(iconDiv);
+  fileItemDiv.appendChild(infoDiv);
+  fileItemDiv.appendChild(timeDiv);
+  fileItemDiv.appendChild(toolBadge);
+  fileItemDiv.appendChild(statusBadge);
+  
+  // Append to streaming container
+  streamingContainer.appendChild(fileItemDiv);
 }
+
+// ... rest of existing methods ...
 
 
 
@@ -239,89 +184,43 @@ export class ChunkedJsonParserComponent implements OnInit {
     <p>No items executed yet</p>
   </div>
 
-  <!-- Streaming Data Container - For READ items via DOM with animation -->
+  <!-- Streaming Data Container - For READ items AND accepted/rejected files via DOM -->
   <div 
     *ngIf="showStreamingContainer" 
     id="vibe-coding-streaming-container"
     [@expandCollapse]="showStreamingContainer ? 'expanded' : 'collapsed'">
   </div>
   
-  <!-- File Operations (WRITE/MODIFY) - Completed ones -->
-  <ng-container *ngFor="let group of groupedExecutedItems">
-    <div 
-      *ngIf="group.type === 'FILE_OP' && group.item && hasFileDetails(group.item.content)" 
-      class="vibe-coding-file-item"
-      [@fadeSlide]>
-      <div class="vibe-coding-file-icon">{{ getFileExtension(getFileDetails(group.item.content)?.file_name) }}</div>
-      <div class="vibe-coding-file-info">
-        <div class="vibe-coding-file-name">{{ getFileDetails(group.item.content)?.file_name }}</div>
-        <div class="vibe-coding-file-path">{{ getFileDetails(group.item.content)?.file_path }}</div>
-      </div>
-      <div class="vibe-coding-file-time" *ngIf="group.item.executedAt">{{ formatTime(group.item.executedAt) }}</div>
-      
-      <div class="vibe-coding-status-badge">{{ group.item.tool }}</div>
-      <div 
-        class="vibe-coding-approval-status-badge" 
-        [ngClass]="{'vibe-coding-status-rejected': group.item.rejected, 'vibe-coding-status-accepted': !group.item.rejected}">
-        {{ group.item.rejected ? 'REJECTED' : 'ACCEPTED' }}
-      </div>
-    </div>
-  </ng-container>
+  <!-- REMOVED: File Operations (WRITE/MODIFY) Angular-rendered items -->
+  <!-- All accepted/rejected files now appended to streaming container via DOM -->
 
-  <!-- Approval Request (with animation) - MODIFIED -->
+  <!-- Approval Request (with animation) -->
   <div 
     *ngIf="showApprovalCard && currentApprovalRequest && hasFileDetails(currentApprovalRequest.data.content)" 
     class="vibe-coding-file-item vibe-coding-awaiting-approval"
     [@fadeSlide]>
-    <div class="vibe-coding-approval-header">
-      <div class="vibe-coding-file-icon">{{ getFileExtension(getFileDetails(currentApprovalRequest.data.content)?.file_name) }}</div>
-      <div class="vibe-coding-file-info">
-        <div class="vibe-coding-file-name">{{ getFileDetails(currentApprovalRequest.data.content)?.file_name }}</div>
-        <div class="vibe-coding-file-path">{{ getFileDetails(currentApprovalRequest.data.content)?.file_path }}</div>
-      </div>
-      <div class="vibe-coding-approval-badge">{{ currentApprovalRequest.data.tool }}</div>
-    </div>
-    
-    <!-- Reasoning Box -->
-    <div class="vibe-coding-reasoning-box" *ngIf="getReasoning(currentApprovalRequest.data.content)">
-      <h3>Reasoning</h3>
-      <p>{{ getReasoning(currentApprovalRequest.data.content) }}</p>
-    </div>
-    
-    <!-- Code Changes Block with Diff Highlighting -->
-    <div class="vibe-coding-diff-container" *ngIf="getFileDetails(currentApprovalRequest.data.content)">
-      <div class="vibe-coding-diff-header">
-        <span>Changes in {{ getFileDetails(currentApprovalRequest.data.content)?.file_name }}</span>
-      </div>
-      <div class="vibe-coding-code-block">
-        <pre><code 
-          [innerHTML]="getDiffHtml(
-            getFileDetails(currentApprovalRequest.data.content)?.original_code || '', 
-            getFileDetails(currentApprovalRequest.data.content)?.modified_code || '',
-            getFileDetails(currentApprovalRequest.data.content)?.file_name || ''
-          )">
-        </code></pre>
-      </div>
-    </div>
-    
-    <!-- Approval Actions -->
-    <div class="vibe-coding-approval-actions">
-      <button 
-        class="vibe-coding-approval-btn vibe-coding-reject" 
-        (click)="rejectChanges()"
-        [disabled]="isApprovingChanges">
-        ✕ Reject
-      </button>
-      <button 
-        class="vibe-coding-approval-btn vibe-coding-accept" 
-        (click)="approveAndContinue()"
-        [disabled]="isApprovingChanges">
-        <span *ngIf="!isApprovingChanges">✓ Accept & Continue</span>
-        <span *ngIf="isApprovingChanges" class="vibe-coding-accepting-wrapper">
-          <span class="vibe-coding-inline-spinner"></span>
-          Accepting Changes
-        </span>
-      </button>
-    </div>
+    <!-- ... approval card content remains same ... -->
   </div>
 </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// MODIFIED updateLists - no longer needed to group items
+private updateLists(): void {
+  this.executedItems = this.parserService.getCompletedTools();
+  this.queuedItems = this.parserService.getPendingTools();
+  // REMOVED: this.groupExecutedItems(); - no longer needed
+}
+
+// REMOVE groupExecutedItems method completely
