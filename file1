@@ -1,45 +1,70 @@
-animations: [
-  trigger('slideAnimation', [
-    state('closed', style({
-      transform: 'translateX(-100%)'
-    })),
-    state('open-default', style({
-      transform: 'translateX(0)'
-    })),
-    state('open-fullwidth', style({
-      transform: 'translateX(0)'
-    })),
-    transition('closed <=> open-default', [
-      animate('300ms ease-in-out')
-    ]),
-    transition('closed <=> open-fullwidth', [
-      animate('300ms ease-in-out')
-    ]),
-    transition('open-default <=> open-fullwidth', [
-      animate('300ms ease-in-out')
-    ]),
-    transition(':leave', [
-      animate('300ms ease-in-out', style({
-        transform: 'translateX(-100%)'
-      }))
-    ])
-  ]),
-  trigger('overlayAnimation', [
-    state('hidden', style({
-      opacity: 0,
-      visibility: 'hidden'
-    })),
-    state('visible', style({
-      opacity: 1,
-      visibility: 'visible'
-    })),
-    transition('hidden <=> visible', [
-      animate('300ms ease-in-out')
-    ]),
-    transition(':leave', [
-      animate('300ms ease-in-out', style({
-        opacity: 0
-      }))
-    ])
-  ])
-]
+export class ChunkedJsonParserComponent implements OnInit {
+  // ... existing properties ...
+  
+  hasFileModifications = false; // ADD THIS
+
+  // ... existing methods ...
+
+  private onTool(data: ToolData): void {
+    if (data.tool === 'READ') {
+      this.appendRead(data.content);
+      this.updateReadFlow();
+    } else {
+      this.addFlow(data.tool, this.extractFileName(data.content), 'executing');
+      
+      // ADD THIS: Set flag when WRITE/MODIFY detected
+      if (data.tool === 'WRITE' || data.tool === 'MODIFY') {
+        this.hasFileModifications = true;
+      }
+    }
+    
+    this.queuedCount = this.parser.getPendingTools().length;
+    this.cdr.markForCheck();
+  }
+
+  private reset(): void {
+    const container = document.getElementById('vibe-coding-read-container');
+    if (container) container.innerHTML = '';
+    
+    this.executionFlow = [];
+    this.queuedCount = 0;
+    this.approvalData = null;
+    this.diffHtml = null;
+    this.showApproval = false;
+    this.isCompleted = false;
+    this.hasFirstChunk = false;
+    this.isApproving = false;
+    this.isRejecting = false;
+    this.flowIdCounter = 0;
+    this.readFlowItem = null;
+    this.hasFileModifications = false; // ADD THIS
+  }
+
+  // ... rest of the code ...
+}
+
+
+
+
+
+
+
+
+
+
+<!-- Completed State - MODIFIED -->
+<ng-container *ngIf="isCompleted">
+  <div class="vibe-coding-completion-content">
+    <svg class="vibe-coding-refresh-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M21 10C21 10 18.995 7.26822 17.3662 5.63824C15.7373 4.00827 13.4864 3 11 3C6.02944 3 2 7.02944 2 12C2 16.9706 6.02944 21 11 21C15.1031 21 18.5649 18.2543 19.6482 14.5M21 10V4M21 10H15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <div class="vibe-coding-completion-details">
+      <span class="vibe-coding-completion-title">All tasks completed successfully!</span>
+      
+      <!-- MODIFIED: Show only if file modifications exist -->
+      <span *ngIf="hasFileModifications" class="vibe-coding-completion-instruction">
+        Right-click on <strong>root_folder</strong> → Select <strong>Refresh Folder</strong> to view changes
+      </span>
+    </div>
+  </div>
+</ng-container>
