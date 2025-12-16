@@ -1,22 +1,495 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-  <circle cx="12" cy="12" r="10" opacity="0.25"/>
-  <path d="M12 2a10 10 0 0 1 10 10"/>
-</svg>
+<!DOCTYPE html>
+<html lang="en">
 
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Query Component - Dynamic Rendering</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #f8f9fa;
+            padding: 40px 20px;
+            line-height: 1.6;
+        }
 
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
 
+        /* User Query Component */
+        .user-query {
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 20px 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+            position: relative;
+            transition: all 0.3s ease;
+        }
 
-svg {
-  animation: spin 1s linear infinite;
-  transform-origin: center center;
-}
+        .user-query:hover {
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        }
 
-@keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
+        .query-label {
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #6b7280;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .query-label::before {
+            content: '';
+            width: 3px;
+            height: 14px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 2px;
+        }
+
+        .query-content {
+            color: #1f2937;
+            font-size: 15px;
+            line-height: 1.7;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+            position: relative;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+
+        .query-content.collapsed {
+            max-height: 120px;
+            -webkit-mask-image: linear-gradient(180deg, #000 60%, transparent);
+            mask-image: linear-gradient(180deg, #000 60%, transparent);
+        }
+
+        .query-content.expanded {
+            max-height: none;
+            -webkit-mask-image: none;
+            mask-image: none;
+        }
+
+        .expand-button {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 12px;
+            padding: 8px 16px;
+            background: transparent;
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            color: #4b5563;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-family: inherit;
+        }
+
+        .expand-button:hover {
+            background: #f9fafb;
+            border-color: #d1d5db;
+            color: #1f2937;
+        }
+
+        .expand-button:active {
+            transform: scale(0.98);
+        }
+
+        .expand-button .icon {
+            width: 14px;
+            height: 14px;
+            transition: transform 0.3s ease;
+        }
+
+        .expand-button.expanded .icon {
+            transform: rotate(180deg);
+        }
+
+        .query-meta {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #f3f4f6;
+            font-size: 12px;
+            color: #9ca3af;
+        }
+
+        .query-time {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .query-time::before {
+            content: '🕐';
+            font-size: 12px;
+        }
+
+        /* Hidden class for expand button */
+        .hidden {
+            display: none;
+        }
+
+        /* Demo section */
+        .demo-title {
+            font-size: 24px;
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 24px;
+            text-align: center;
+        }
+
+        .demo-note {
+            background: #f0f9ff;
+            border-left: 3px solid #3b82f6;
+            padding: 12px 16px;
+            margin-bottom: 24px;
+            border-radius: 6px;
+            font-size: 14px;
+            color: #1e40af;
+        }
+
+        .demo-controls {
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 24px;
+        }
+
+        .demo-textarea {
+            width: 100%;
+            min-height: 100px;
+            padding: 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-family: inherit;
+            font-size: 14px;
+            resize: vertical;
+            margin-bottom: 12px;
+        }
+
+        .demo-button {
+            padding: 10px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .demo-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1 class="demo-title">User Query Component - Dynamic Rendering</h1>
+
+        <div class="demo-note">
+            <strong>Demo:</strong> All queries are rendered using JavaScript's createElement() method. Try adding your
+            own query below!
+        </div>
+
+        <!-- Demo Controls -->
+        <div class="demo-controls">
+            <textarea class="demo-textarea" id="demoTextarea"
+                placeholder="Type a query to test the component...">What are the best practices for designing a professional chat interface?</textarea>
+            <button class="demo-button" onclick="addDemoQuery()">Add User Query</button>
+        </div>
+
+        <!-- Container where queries will be appended -->
+        <div id="queriesContainer"></div>
+    </div>
+
+    <script>
+        /**
+ * User Query Component - JavaScript Module
+ * All elements are created using document.createElement()
+ */
+
+        // Counter for unique query IDs
+        let queryIdCounter = 0;
+
+        /**
+         * Main function to create and render a user query component
+         * @param {string} queryText - The user's query text
+         * @param {string} timestamp - Time string (e.g., "10:30 AM", "Yesterday")
+         * @returns {HTMLElement} The created query element
+         */
+        function createUserQuery(queryText, timestamp = 'Just now') {
+            // Generate unique ID for this query
+            const queryId = `query-${++queryIdCounter}-${Date.now()}`;
+
+            // Create main container
+            const userQueryDiv = document.createElement('div');
+            userQueryDiv.className = 'user-query';
+            userQueryDiv.setAttribute('data-query-id', queryId);
+
+            // Create label
+            const labelDiv = document.createElement('div');
+            labelDiv.className = 'query-label';
+            labelDiv.textContent = 'You asked';
+
+            // Create content div
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'query-content collapsed';
+            contentDiv.id = queryId;
+            contentDiv.textContent = queryText;
+
+            // Create expand button
+            const expandButton = document.createElement('button');
+            expandButton.className = 'expand-button';
+
+            // Create button text span
+            const buttonText = document.createElement('span');
+            buttonText.className = 'button-text';
+            buttonText.textContent = 'Show more';
+
+            // Create SVG icon
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.setAttribute('class', 'icon');
+            svg.setAttribute('fill', 'none');
+            svg.setAttribute('stroke', 'currentColor');
+            svg.setAttribute('viewBox', '0 0 24 24');
+
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('stroke-linecap', 'round');
+            path.setAttribute('stroke-linejoin', 'round');
+            path.setAttribute('stroke-width', '2');
+            path.setAttribute('d', 'M19 9l-7 7-7-7');
+
+            svg.appendChild(path);
+
+            // Assemble expand button
+            expandButton.appendChild(buttonText);
+            expandButton.appendChild(svg);
+
+            // Add click event to expand button
+            expandButton.addEventListener('click', function () {
+                toggleExpand(queryId, expandButton);
+            });
+
+            // Create meta section
+            const metaDiv = document.createElement('div');
+            metaDiv.className = 'query-meta';
+
+            const timeSpan = document.createElement('span');
+            timeSpan.className = 'query-time';
+            timeSpan.textContent = timestamp;
+
+            metaDiv.appendChild(timeSpan);
+
+            // Assemble all parts
+            userQueryDiv.appendChild(labelDiv);
+            userQueryDiv.appendChild(contentDiv);
+            userQueryDiv.appendChild(expandButton);
+            userQueryDiv.appendChild(metaDiv);
+
+            // Get container and append
+            const container = document.getElementById('queriesContainer');
+            if (container) {
+                container.appendChild(userQueryDiv);
+            }
+
+            // Check if expand button should be shown
+            setTimeout(() => {
+                checkIfNeedsExpandButton(userQueryDiv, contentDiv, expandButton);
+            }, 10);
+
+            return userQueryDiv;
+        }
+
+        /**
+         * Toggle expand/collapse state of a query
+         * @param {string} queryId - The ID of the query content element
+         * @param {HTMLElement} button - The expand button element
+         */
+        function toggleExpand(queryId, button) {
+            const content = document.getElementById(queryId);
+            const buttonText = button.querySelector('.button-text');
+
+            if (!content || !buttonText) return;
+
+            if (content.classList.contains('collapsed')) {
+                // Expand
+                content.classList.remove('collapsed');
+                content.classList.add('expanded');
+                buttonText.textContent = 'Show less';
+                button.classList.add('expanded');
+            } else {
+                // Collapse
+                content.classList.remove('expanded');
+                content.classList.add('collapsed');
+                buttonText.textContent = 'Show more';
+                button.classList.remove('expanded');
+
+                // Smooth scroll to the top of the query
+                const query = content.closest('.user-query');
+                if (query) {
+                    query.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+            }
+        }
+
+        /**
+         * Check if content needs an expand button based on height
+         * @param {HTMLElement} queryDiv - The main query container
+         * @param {HTMLElement} contentDiv - The content div
+         * @param {HTMLElement} expandButton - The expand button
+         */
+        function checkIfNeedsExpandButton(queryDiv, contentDiv, expandButton) {
+            // Temporarily expand to measure full height
+            const wasCollapsed = contentDiv.classList.contains('collapsed');
+            contentDiv.classList.remove('collapsed');
+            contentDiv.classList.add('expanded');
+
+            const fullHeight = contentDiv.scrollHeight;
+
+            // Restore collapsed state if it was collapsed
+            if (wasCollapsed) {
+                contentDiv.classList.remove('expanded');
+                contentDiv.classList.add('collapsed');
+            }
+
+            // Show/hide expand button based on content height (threshold: 140px)
+            if (fullHeight > 140) {
+                expandButton.classList.remove('hidden');
+            } else {
+                expandButton.classList.add('hidden');
+                contentDiv.classList.remove('collapsed');
+                contentDiv.classList.add('expanded');
+            }
+        }
+
+        /**
+         * Create multiple user queries at once
+         * @param {Array} queries - Array of objects with {text, timestamp} properties
+         */
+        function createMultipleQueries(queries) {
+            queries.forEach(query => {
+                createUserQuery(query.text, query.timestamp || 'Just now');
+            });
+        }
+
+        /**
+         * Clear all queries from the container
+         */
+        function clearAllQueries() {
+            const container = document.getElementById('queriesContainer');
+            if (container) {
+                container.innerHTML = '';
+            }
+            queryIdCounter = 0;
+        }
+
+        /**
+         * Get the total number of queries currently displayed
+         * @returns {number} Number of queries
+         */
+        function getQueryCount() {
+            const container = document.getElementById('queriesContainer');
+            if (container) {
+                return container.querySelectorAll('.user-query').length;
+            }
+            return 0;
+        }
+
+        /**
+         * Remove a specific query by its ID
+         * @param {string} queryId - The ID of the query to remove
+         */
+        function removeQuery(queryId) {
+            const query = document.getElementById(queryId);
+            if (query) {
+                const parent = query.closest('.user-query');
+                if (parent) {
+                    parent.remove();
+                }
+            }
+        }
+
+        // Export functions for use in other scripts (if using modules)
+        // export { createUserQuery, createMultipleQueries, clearAllQueries, getQueryCount, removeQuery };
+    </script>
+    <script>
+        // Demo function to add query from textarea
+        function addDemoQuery() {
+            const textarea = document.getElementById('demoTextarea');
+            const text = textarea.value.trim();
+
+            if (text) {
+                createUserQuery(text, getCurrentTime());
+                textarea.value = '';
+            }
+        }
+
+        function getCurrentTime() {
+            const now = new Date();
+            return now.toLocaleTimeString('en-US', {
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true
+            });
+        }
+
+        // Add some example queries on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            // Example 1: Short query
+            createUserQuery(
+                "What are the best practices for designing a professional chat interface?",
+                "10:30 AM"
+            );
+
+            // Example 2: Long query
+            createUserQuery(
+                `I'm working on a complex project that involves multiple components. First, I need to understand the architectural patterns that would work best for a microservices-based application. The application needs to handle real-time data processing, support multiple client types including web and mobile, and integrate with various third-party APIs.
+
+I'm particularly concerned about scalability and maintainability. What would you recommend for the database architecture? Should I go with a polyglot persistence approach or stick with a single database solution? Also, how should I handle authentication and authorization across different services?
+
+Additionally, I'm thinking about implementing event-driven architecture for some parts of the system. Would this be a good fit for my use case? What are the trade-offs I should consider? I'd also appreciate any insights on monitoring and observability practices that would help in production.`,
+                "2:45 PM"
+            );
+
+            // Example 3: Another long query
+            createUserQuery(
+                `Can you help me understand the differences between various machine learning algorithms? I'm specifically interested in supervised learning techniques like decision trees, random forests, support vector machines, and neural networks.
+
+For each algorithm, I'd like to know:
+1. The basic principles and how they work
+2. When to use each one (use cases)
+3. Advantages and disadvantages
+4. Computational complexity and resource requirements
+5. How they handle different types of data (numerical, categorical, text, images)
+
+I'm also curious about ensemble methods and how they can improve model performance. Are there any best practices for feature engineering that apply across different algorithms?`,
+                "Yesterday"
+            );
+        });
+    </script>
+</body>
+
+</html>
