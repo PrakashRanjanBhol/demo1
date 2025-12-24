@@ -1,1 +1,256 @@
-netstat -ano | findstr :5678
+// packages/cli/src/middlewares/custom-workflow-auth.middleware.ts  
+import { Request, Response, NextFunction } from 'express';  
+import { Container } from '@n8n/di';  
+import { AuthService } from '@/auth/auth.service';  
+  
+export async function customWorkflowAuthMiddleware(  
+	req: Request,  
+	res: Response,  
+	next: NextFunction,  
+) {  
+	const workflowId = req.params.workflowId;  
+	  
+	// Check if user is already authenticated  
+	if (req.user) {  
+		return next();  
+	}  
+  
+	// Call your custom authentication API  
+	try {  
+		const authService = Container.get(AuthService);  
+		const authResult = await authenticateUser(req);  
+		  
+		if (authResult.success) {  
+			// Set authentication and proceed  
+			req.user = authResult.user;  
+			return next();  
+		}  
+	} catch (error) {  
+		// Handle authentication failure  
+		return res.redirect(`/login?redirect=/workflow/${workflowId}`);  
+	}  
+	  
+	// Fallback to login page  
+	res.redirect(`/login?redirect=/workflow/${workflowId}`);  
+}  
+  
+async function authenticateUser(req: Request): Promise<{success: boolean, user?: any}> {  
+	// Implement your custom authentication logic here  
+	// This could call an external API, check headers, tokens, etc.  
+	  
+	// Example: Check for custom token in headers  
+	const token = req.headers['x-custom-auth-token'];  
+	if (!token) {  
+		return { success: false };  
+	}  
+	  
+	// Call your authentication service  
+	const response = await fetch('https://your-auth-api.com/authenticate', {  
+		method: 'POST',  
+		headers: {  
+			'Authorization': `Bearer ${token}`,  
+			'Content-Type': 'application/json'  
+		}  
+	});  
+	  
+	if (response.ok) {  
+		const userData = await response.json();  
+		return { success: true, user: userData };  
+	}  
+	  
+	return { success: false };  
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// packages/cli/src/workflows/workflows.controller.ts  
+import { Controller, Get, Param, ProjectScope } from '@n8n/decorators';  
+import { customWorkflowAuthMiddleware } from '@/middlewares/custom-workflow-auth.middleware';  
+  
+@RestController('/workflows')  
+export class WorkflowsController {  
+	@Get('/:workflowId')  
+	@ProjectScope('workflow:read')  
+	async getWorkflow(  
+		@Param('workflowId') workflowId: string,  
+		req: AuthenticatedRequest,  
+	) {  
+		// Your existing workflow logic  
+		// The custom middleware ensures user is authenticated  
+	}  
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// packages/frontend/editor-ui/src/app/router.ts  
+{  
+	path: '/workflow/:id',  
+	name: VIEWS.WORKFLOW,  
+	components: {  
+		default: NodeView,  
+		header: MainHeader,  
+		sidebar: MainSidebar,  
+		footer: LogsPanel,  
+	},  
+	meta: {  
+		nodeView: true,  
+		keepWorkflowAlive: true,  
+		middleware: ['customWorkflowAuth'], // Your custom middleware  
+	},  
+},
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// packages/frontend/editor-ui/src/middleware/customWorkflowAuth.ts  
+import { NavigationGuardNext, RouteLocationNormalized } from 'vue-router';  
+import { useUsersStore } from '@/stores/users.store';  
+  
+export async function customWorkflowAuth(  
+	to: RouteLocationNormalized,  
+	from: RouteLocationNormalized,  
+	next: NavigationGuardNext,  
+) {  
+	const usersStore = useUsersStore();  
+	const workflowId = to.params.id as string;  
+	  
+	// Check if user is already authenticated  
+	if (usersStore.isLoggedIn) {  
+		return next();  
+	}  
+	  
+	// Call your custom authentication API  
+	try {  
+		const response = await fetch('/api/custom-auth', {  
+			method: 'POST',  
+			headers: {  
+				'Content-Type': 'application/json',  
+			},  
+			body: JSON.stringify({ workflowId }),  
+		});  
+		  
+		if (response.ok) {  
+			const { user } = await response.json();  
+			await usersStore.loginWithCookie(user);  
+			return next();  
+		}  
+	} catch (error) {  
+		console.error('Custom authentication failed:', error);  
+	}  
+	  
+	// Redirect to login with workflow return URL  
+	next({  
+		path: '/login',  
+		query: { redirect: to.fullPath },  
+	});  
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// packages/cli/src/controllers/custom-auth.controller.ts  
+import { Controller, Post, Body, Res } from '@n8n/decorators';  
+import { Response } from 'express';  
+  
+@RestController('/api/custom-auth')  
+export class CustomAuthController {  
+	@Post('/')  
+	async authenticate(  
+		@Body() body: { workflowId: string },  
+		@Res() res: Response,  
+	) {  
+		// Implement your authentication logic  
+		// This could integrate with your external auth system  
+		  
+		try {  
+			// Example: Validate custom token or headers  
+			const authHeader = res.req.headers['authorization'];  
+			if (!authHeader) {  
+				return res.status(401).json({ error: 'No authentication provided' });  
+			}  
+			  
+			// Call your external authentication service  
+			const user = await validateExternalAuth(authHeader);  
+			  
+			if (user) {  
+				// Set session/cookie  
+				res.cookie('n8n-auth', user.sessionToken, {  
+					httpOnly: true,  
+					secure: process.env.NODE_ENV === 'production',  
+				});  
+				  
+				return res.json({ user });  
+			}  
+			  
+			res.status(401).json({ error: 'Authentication failed' });  
+		} catch (error) {  
+			res.status(500).json({ error: 'Authentication error' });  
+		}  
+	}  
+}  
+  
+async function validateExternalAuth(authHeader: string): Promise<any> {  
+	// Implement your external authentication validation  
+	// This could call your company's SSO, LDAP, or custom auth system  
+	  
+	const token = authHeader.replace('Bearer ', '');  
+	const response = await fetch('https://your-auth-system.com/validate', {  
+		method: 'POST',  
+		headers: {  
+			'Authorization': `Bearer ${token}`,  
+		},  
+	});  
+	  
+	if (response.ok) {  
+		return await response.json();  
+	}  
+	  
+	return null;  
+}
