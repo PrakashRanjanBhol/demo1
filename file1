@@ -1,16 +1,46 @@
-export async function customWorkflowAuthMiddleware(  
-	req: AuthenticatedRequest,  
-	res: Response,  
-	next: NextFunction,  
-) {  
-	// Use 'name' instead of 'workflowId' based on route definition  
-	const workflowId = req.params.name; // or req.params.id depending on route  
-	  
-	if (!workflowId) {  
-		return res.status(400).json({ error: 'Workflow ID missing' });  
-	}  
-	  
-	// Check if user is already authenticated  
-	if (req.user) {  
-		return next();  
-	}  
+const isRedirectSafe = () => {
+	const redirect = getRedirectQueryParameter();
+
+	// Allow local redirects
+	if (redirect.startsWith('/')) {
+		return true;
+	}
+
+	try {
+		// Only allow origin domain redirects
+		const url = new URL(redirect);
+		return url.origin === window.location.origin;
+	} catch {
+		return false;
+	}
+};
+
+const getRedirectQueryParameter = () => {
+	let redirect = '';
+	if (typeof route.query?.redirect === 'string') {
+		redirect = decodeURIComponent(route.query?.redirect);
+	}
+	return redirect;
+};
+
+const login = async (form: LoginRequestDto) => {
+	try {
+
+
+			result: showMfaView.value ? 'mfa_success' : 'success',
+		});
+		if (isRedirectSafe()) {
+			const redirect = getRedirectQueryParameter();
+			if (redirect.startsWith('http')) {
+				window.location.href = redirect;
+				return;
+			}
+
+			void router.push(redirect);
+			return;
+		}
+
+		await router.push({ name: VIEWS.HOMEPAGE });
+	} catch (error) {
+		if (error.errorCode === MFA_AUTHENTICATION_REQUIRED_ERROR_CODE) {
+			showMfaView.value = true;
