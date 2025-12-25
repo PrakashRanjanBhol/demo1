@@ -1,22 +1,37 @@
 catch (error) {  
   if (error.response?.status === 401 && endpoint !== '/login') {  
     try {  
-      // Fetch credentials from external API  
-      const credentialResponse = await fetch('https://your-external-api.com/get-credentials', {  
-        method: 'GET',  
-        headers: {  
-          'Content-Type': 'application/json',  
-          // Add any auth headers needed for your external API  
-        }  
+      // Create WebSocket connection to fetch credentials  
+      const credentials = await new Promise((resolve, reject) => {  
+        const ws = new WebSocket('wss://your-external-api.com/get-credentials');  
+          
+        const timeout = setTimeout(() => {  
+          ws.close();  
+          reject(new Error('WebSocket timeout'));  
+        }, 5000);  
+          
+        ws.onmessage = (event) => {  
+          clearTimeout(timeout);  
+          try {  
+            const data = JSON.parse(event.data);  
+            resolve(data);  
+          } catch (e) {  
+            reject(e);  
+          }  
+          ws.close();  
+        };  
+          
+        ws.onerror = (error) => {  
+          clearTimeout(timeout);  
+          reject(error);  
+        };  
+          
+        ws.onclose = () => {  
+          clearTimeout(timeout);  
+        };  
       });  
         
-      if (!credentialResponse.ok) {  
-        throw new Error('Failed to fetch credentials from external API');  
-      }  
-        
-      const credentials = await credentialResponse.json();  
-        
-      // Login with fetched credentials  
+      // Login with fetched credentials from WebSocket  
       await request({  
         method: 'POST',  
         baseURL,  
@@ -32,6 +47,6 @@ catch (error) {
       return response.data;  
     } catch (credentialError) {  
       console.error('Auto-login failed:', credentialError);  
-      // Continue with original 401 error if credential fetch fails  
+      // Continue with original 401 error if WebSocket fails  
     }  
   }  
