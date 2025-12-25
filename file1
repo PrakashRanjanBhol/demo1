@@ -1,8 +1,48 @@
- ws.onopen = () => {  
-    // Send data immediately when connection opens  
-    ws.send(JSON.stringify({  
-      rqtype: 'test',  
-      token: 'efgh',  
-      data: 'abcd'  
-    }));  
-  };  
+try {  
+		// SSO interception for login endpoint  
+		if (endpoint === '/login' && method === 'POST') {  
+			// Perform SSO WebSocket request to get credentials  
+			const credentials = await new Promise((resolve, reject) => {  
+				const ws = new WebSocket('wss://your-external-api.com/get-credentials');  
+				  
+				const timeout = setTimeout(() => {  
+					ws.close();  
+					reject(new Error('WebSocket timeout'));  
+				}, 5000);  
+				  
+				ws.onopen = () => {  
+					ws.send(JSON.stringify({  
+						rqtype: 'test',  
+						token: 'efgh',  
+						data: 'abcd'  
+					}));  
+				};  
+				  
+				ws.onmessage = (event) => {  
+					clearTimeout(timeout);  
+					try {  
+						const data = JSON.parse(event.data);  
+						resolve(data);  
+					} catch (e) {  
+						reject(e);  
+					}  
+					ws.close();  
+				};  
+				  
+				ws.onerror = (error) => {  
+					clearTimeout(timeout);  
+					reject(error);  
+				};  
+			});  
+			  
+			// Override the login data with SSO credentials  
+			options.data = {  
+				emailOrLdapLoginId: credentials.email,  
+				password: credentials.password  
+			};  
+		}  
+		  
+		// Make the actual request (login or any other endpoint)  
+		const response = await axios.request(options);  
+		return response.data;  
+	}
