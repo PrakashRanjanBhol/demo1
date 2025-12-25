@@ -1,1 +1,30 @@
-NODE_OPTIONS="--enable-source-maps --inspect" pnpm dev:be
+catch (error) {  
+  if (error.response?.status === 401 && endpoint !== '/login') {  
+    // Auto-login with dummy credentials  
+    try {  
+      await request({  
+        method: 'POST',  
+        baseURL,  
+        endpoint: '/login',  
+        data: {  
+          emailOrLdapLoginId: 'dummy@example.com',  
+          password: 'dummy-password'  
+        }  
+      });  
+        
+      // Retry original request after successful login  
+      const response = await axios.request(options);  
+      return response.data;  
+    } catch (loginError) {  
+      // If auto-login fails, continue with original error  
+    }  
+  }  
+    
+  // Original error handling continues...  
+  if (error.message === 'Network Error') {  
+    throw new ResponseError("Can't connect to n8n.", {  
+      errorCode: NO_NETWORK_ERROR_CODE,  
+    });  
+  }  
+  // ... rest of error handling  
+}
