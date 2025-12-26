@@ -1,54 +1,25 @@
- // SSO interception for login endpoint - exclude auth routes  
-  if (endpoint === '/login') {  
-    // Check if coming from signin, signup, or setup routes  
-    const referrer = document.referrer;  
-    const skipSsoRoutes = ['/signin', '/signup', '/setup'];  
-    const shouldSkipSso = skipSsoRoutes.some(route => referrer.includes(route));  
+ws.onmessage = async (event) => {  
+  clearTimeout(timeout);  
+  try {  
+    const data = JSON.parse(event.data);  
       
-    if (!shouldSkipSso) {  
-      // Perform SSO WebSocket request to get credentials  
-      const credentials = await new Promise((resolve, reject) => {  
-        const ws = new WebSocket('wss://your-external-api.com/get-credentials');  
-          
-        const timeout = setTimeout(() => {  
-          ws.close();  
-          reject(new Error('WebSocket timeout'));  
-        }, 5000);  
-          
-        ws.onopen = () => {  
-          ws.send(JSON.stringify({  
-            rqtype: 'test',  
-            token: 'efgh',  
-            data: 'abcd'  
-          }));  
-        };  
-          
-        ws.onmessage = (event) => {  
-          clearTimeout(timeout);  
-          try {  
-            const data = JSON.parse(event.data);  
-            resolve(data);  
-          } catch (e) {  
-            reject(e);  
-          }  
-          ws.close();  
-        };  
-          
-        ws.onerror = (error) => {  
-          clearTimeout(timeout);  
-          reject(error);  
-        };  
-      });  
-        
-      // Override the login data with SSO credentials  
-      options.data = {  
-        emailOrLdapLoginId: credentials.email,  
-        password: credentials.password  
-      };  
-    }  
+    // Make additional POST API call based on WebSocket data  
+    const apiResponse = await request({  
+      method: 'POST',  
+      baseURL: 'https://your-api-endpoint.com', // Your API base URL  
+      endpoint: '/process-credentials', // Your endpoint  
+      data: {  
+        // Use data from WebSocket to build request  
+        userId: data.userId,  
+        token: data.token,  
+        // any other fields needed  
+      }  
+    });  
+      
+    // Resolve with the API response instead of original WebSocket data  
+    resolve(apiResponse);  
+  } catch (e) {  
+    reject(e);  
   }  
-    
-  // Force POST method for login endpoint  
-  if (endpoint === '/login') {  
-    options.method = 'POST';  
-  }  
+  ws.close();  
+};
