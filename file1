@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 
@@ -6,8 +6,13 @@ interface Workflow {
   id: string;
   name: string;
   description: string;
-  icon: string;
-  active?: boolean;
+  active: boolean;
+  isArchived: boolean;
+  createdAt: string;
+  updatedAt: string;
+  triggerCount: number;
+  nodeCount: number;
+  nodes: any[];
 }
 
 @Component({
@@ -17,48 +22,138 @@ interface Workflow {
   templateUrl: './workflow-sidebar.component.html',
   styleUrls: ['./workflow-sidebar.component.css']
 })
-export class WorkflowSidebarComponent {
-  searchTerm: string = '';
-  selectedWorkflowId: string = 'data-sync';
-
-  workflows: Workflow[] = [
+export class WorkflowSidebarComponent implements OnInit {
+  workflowsData: Workflow[] = [
     {
-      id: 'data-sync',
+      id: 'workflow-1',
       name: 'Data Sync Workflow',
-      description: 'Sync data across platforms',
-      icon: 'sync',
-      active: true
+      description: "Sync data across platforms",
+      active: false,
+      isArchived: false,
+      createdAt: "2024-11-15T09:30:00.000Z",
+      updatedAt: "2025-12-28T14:20:15.089Z",
+      triggerCount: 0,
+      nodeCount: 5,
+      nodes: []
     },
     {
-      id: 'email-automation',
+      id: 'workflow-2',
       name: 'Email Automation',
-      description: 'Automated email responses',
-      icon: 'email'
+      description: "Automated email responses",
+      active: true,
+      isArchived: false,
+      createdAt: "2024-10-20T16:45:30.000Z",
+      updatedAt: "2025-12-27T10:15:45.089Z",
+      triggerCount: 12,
+      nodeCount: 8,
+      nodes: []
     },
     {
-      id: 'report-generator',
+      id: 'workflow-3',
       name: 'Report Generator',
-      description: 'Generate weekly reports',
-      icon: 'document'
+      description: "Generate weekly reports",
+      active: true,
+      isArchived: false,
+      createdAt: "2024-09-05T08:00:00.000Z",
+      updatedAt: "2025-12-29T11:15:24.089Z",
+      triggerCount: 45,
+      nodeCount: 12,
+      nodes: []
     },
     {
-      id: 'slack-notifier',
+      id: 'workflow-4',
       name: 'Slack Notifier',
-      description: 'Send notifications to Slack',
-      icon: 'notification'
+      description: "Send notifications to Slack",
+      active: false,
+      isArchived: false,
+      createdAt: "2024-12-01T13:20:00.000Z",
+      updatedAt: "2025-12-26T18:45:30.089Z",
+      triggerCount: 3,
+      nodeCount: 4,
+      nodes: []
     }
   ];
 
-  get filteredWorkflows(): Workflow[] {
+  searchTerm: string = '';
+  activeWorkflowId: string = '';
+  workflowsCollapsed: boolean = false;
+  activeCollapsed: boolean = true;
+
+  ngOnInit(): void {
+    // Set first workflow as active by default if workflows exist
+    const workflows = this.getWorkflows();
+    if (workflows.length > 0) {
+      this.activeWorkflowId = workflows[0].id;
+    }
+  }
+
+  get allWorkflows(): Workflow[] {
+    return this.workflowsData.filter(w => !w.isArchived);
+  }
+
+  get hasWorkflows(): boolean {
+    return this.allWorkflows.length > 0;
+  }
+
+  getWorkflows(): Workflow[] {
+    return this.workflowsData.filter(w => !w.active && !w.isArchived);
+  }
+
+  getActiveWorkflows(): Workflow[] {
+    return this.workflowsData.filter(w => w.active && !w.isArchived);
+  }
+
+  getFilteredWorkflows(): Workflow[] {
+    const workflows = this.getWorkflows();
     if (!this.searchTerm) {
-      return this.workflows;
+      return workflows;
+    }
+    const term = this.searchTerm.toLowerCase();
+    return workflows.filter(w => w.name.toLowerCase().includes(term));
+  }
+
+  formatDate(isoString: string): string {
+    const date = new Date(isoString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    // If less than 1 minute ago
+    if (diffMins < 1) {
+      return 'Just now';
+    }
+    // If less than 1 hour ago
+    if (diffMins < 60) {
+      return `${diffMins} min${diffMins > 1 ? 's' : ''} ago`;
+    }
+    // If less than 24 hours ago
+    if (diffHours < 24) {
+      return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+    }
+    // If less than 7 days ago
+    if (diffDays < 7) {
+      return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
     }
 
-    const term = this.searchTerm.toLowerCase();
-    return this.workflows.filter(workflow =>
-      workflow.name.toLowerCase().includes(term) ||
-      workflow.description.toLowerCase().includes(term)
-    );
+    // Otherwise show full date
+    const options: Intl.DateTimeFormatOptions = {
+      month: 'short',
+      day: 'numeric',
+      year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
+      hour: '2-digit',
+      minute: '2-digit'
+    };
+    return date.toLocaleDateString('en-US', options);
+  }
+
+  toggleSection(section: 'workflows' | 'active'): void {
+    if (section === 'workflows') {
+      this.workflowsCollapsed = !this.workflowsCollapsed;
+    } else {
+      this.activeCollapsed = !this.activeCollapsed;
+    }
   }
 
   createWorkflow(): void {
@@ -73,31 +168,28 @@ export class WorkflowSidebarComponent {
 
   refreshWorkflows(): void {
     alert('Refreshing Workflows\n\nThis will reload the workflow list from n8n.');
-    // In production: this.workflowService.refreshWorkflows().subscribe();
+    // In production: fetch updated workflow list from API
   }
 
-  selectWorkflow(workflowId: string): void {
-    this.selectedWorkflowId = workflowId;
-    console.log(`Selected workflow: ${workflowId}`);
-    alert(`Executing workflow: ${workflowId}\n\nIn production, this will redirect to n8n workflow execution.`);
-    // In production: window.open(`https://your-n8n-instance.com/workflow/${workflowId}`, '_blank');
-  }
-
-  runWorkflow(event: Event, workflowId: string): void {
+  runWorkflow(workflowId: string, event: Event): void {
     event.stopPropagation();
     console.log(`Running workflow: ${workflowId}`);
     alert(`Executing workflow: ${workflowId}\n\nRedirecting to n8n...`);
     // In production: window.open(`https://your-n8n-instance.com/workflow/${workflowId}/execute`, '_blank');
   }
 
-  getIconPath(iconType: string): string {
-    const icons: { [key: string]: string } = {
-      sync: 'M23 4 23 10 17 10 M1 20 1 14 7 14 M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15',
-      email: 'M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z M22,6 12,13 2,6',
-      document: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2 14 8 20 8 M16 13 8 13 M16 17 8 17 M10 9 9 9 8 9',
-      notification: 'M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9 M13.73 21a2 2 0 0 1-3.46 0'
-    };
-    return icons[iconType] || icons.sync;
+  shareWorkflow(workflowId: string, event: Event): void {
+    event.stopPropagation();
+    console.log(`Sharing workflow: ${workflowId}`);
+    alert(`Share Workflow: ${workflowId}\n\nThis will open the share dialog or copy share link.`);
+    // In production: open share modal or copy link to clipboard
+  }
+
+  executeWorkflow(workflowId: string): void {
+    this.activeWorkflowId = workflowId;
+    console.log(`Executing workflow: ${workflowId}`);
+    alert(`Executing workflow: ${workflowId}\n\nIn production, this will redirect to n8n workflow execution.`);
+    // In production: window.open(`https://your-n8n-instance.com/workflow/${workflowId}`, '_blank');
   }
 }
 
@@ -112,76 +204,163 @@ export class WorkflowSidebarComponent {
 
 
 
-<div class="app-container">
-  <div class="sidebar">
-    <div class="sidebar-header">
-      <div class="header-content">
-        <div class="header-text">
-          <h2>Workflow Agents</h2>
-          <p>Select and execute workflows</p>
-        </div>
-        <div class="header-actions">
-          <button class="action-btn" (click)="createWorkflow()" title="Create Workflow">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-              stroke-linejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-            </svg>
-          </button>
-          <button class="action-btn" (click)="importWorkflow()" title="Import Workflow">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-              stroke-linejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-              <polyline points="7 10 12 15 17 10"></polyline>
-              <line x1="12" y1="15" x2="12" y2="3"></line>
-            </svg>
-          </button>
-          <button class="action-btn" (click)="refreshWorkflows()" title="Refresh Workflows">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-              stroke-linejoin="round">
-              <polyline points="23 4 23 10 17 10"></polyline>
-              <polyline points="1 20 1 14 7 14"></polyline>
-              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-            </svg>
-          </button>
-        </div>
+
+
+
+<div class="sidebar">
+  <div class="sidebar-header">
+    <div class="header-content">
+      <div class="header-text">
+        <h2><span style="margin-right: 8px;">⚡</span>Workflow Agents</h2>
       </div>
-    </div>
-
-    <div class="search-container">
-      <input type="text" class="search-input" placeholder="Search workflows..." [(ngModel)]="searchTerm">
-    </div>
-
-    <div class="workflows-container">
-      <div class="workflow-section">
-        <div class="section-title">Workflows</div>
-
-        <div *ngFor="let workflow of filteredWorkflows" class="workflow-item"
-          [class.active]="selectedWorkflowId === workflow.id" (click)="selectWorkflow(workflow.id)">
-          <div class="workflow-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-              stroke-linejoin="round">
-              <path [attr.d]="getIconPath(workflow.icon)"></path>
-            </svg>
-          </div>
-          <div class="workflow-info">
-            <div class="workflow-name">{{ workflow.name }}</div>
-            <div class="workflow-description">{{ workflow.description }}</div>
-          </div>
-          <div class="run-btn" (click)="runWorkflow($event, workflow.id)">
-            <svg viewBox="0 0 24 24" fill="currentColor">
-              <polygon points="5 3 19 12 5 21 5 3"></polygon>
-            </svg>
-            <span>Run</span>
-          </div>
-        </div>
+      <div class="header-actions">
+        <button class="action-btn" (click)="createWorkflow()" title="Create Workflow">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+        </button>
+        <button class="action-btn" (click)="importWorkflow()" title="Import Workflow">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+        </button>
+        <button class="action-btn" (click)="refreshWorkflows()" title="Refresh Workflows">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round">
+            <polyline points="23 4 23 10 17 10"></polyline>
+            <polyline points="1 20 1 14 7 14"></polyline>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+          </svg>
+        </button>
       </div>
     </div>
   </div>
 
-  <div class="main-content">
-    <h1>Workflow Execution Dashboard</h1>
-    <p>Select a workflow from the sidebar to execute or manage it.</p>
+  <div class="workflows-container">
+    <!-- Empty State -->
+    <div *ngIf="!hasWorkflows" class="empty-state">
+      <div class="empty-state-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+          stroke-linejoin="round">
+          <path
+            d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z">
+          </path>
+          <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+          <line x1="12" y1="22.08" x2="12" y2="12"></line>
+        </svg>
+      </div>
+      <div class="empty-state-title">No workflows yet</div>
+      <div class="empty-state-description">Please create a new workflow to get started</div>
+      <button class="empty-state-btn" (click)="createWorkflow()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+          stroke-linejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19"></line>
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+        </svg>
+        Create Workflow
+      </button>
+    </div>
+
+    <!-- Workflows Sections -->
+    <ng-container *ngIf="hasWorkflows">
+      <!-- Workflows Tab -->
+      <div class="workflow-section">
+        <div class="section-header" (click)="toggleSection('workflows')">
+          <div class="section-header-left">
+            <div class="section-toggle" [class.collapsed]="workflowsCollapsed">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+            <div class="section-title">Workflows</div>
+            <div class="section-count">{{ getWorkflows().length }}</div>
+          </div>
+        </div>
+        <div class="section-content" [class.collapsed]="workflowsCollapsed">
+          <div class="search-container">
+            <input type="text" class="search-input" placeholder="Search workflows..." [(ngModel)]="searchTerm">
+          </div>
+
+          <div>
+            <div *ngFor="let workflow of getFilteredWorkflows(); let i = index" class="workflow-item"
+              [class.active]="workflow.id === activeWorkflowId" (click)="executeWorkflow(workflow.id)">
+              <div class="workflow-info">
+                <div class="workflow-name">{{ workflow.name }}</div>
+                <div class="workflow-dates">
+                  <div class="workflow-date">
+                    <span class="workflow-date-label">Created:</span>
+                    <span class="date-value">{{ formatDate(workflow.createdAt) }}</span>
+                  </div>
+                  <div class="workflow-date">
+                    <span class="workflow-date-label">Updated:</span>
+                    <span class="date-value">{{ formatDate(workflow.updatedAt) }}</span>
+                  </div>
+                </div>
+              </div>
+              <div class="workflow-actions">
+                <button class="run-btn" (click)="runWorkflow(workflow.id, $event)" title="Run Workflow">
+                  <svg viewBox="0 0 24 24" fill="currentColor">
+                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                  </svg>
+                </button>
+                <button class="share-btn" (click)="shareWorkflow(workflow.id, $event)" title="Share Workflow">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <circle cx="18" cy="5" r="3"></circle>
+                    <circle cx="6" cy="12" r="3"></circle>
+                    <circle cx="18" cy="19" r="3"></circle>
+                    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+                    <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Active Workflows Tab -->
+      <div class="workflow-section">
+        <div class="section-header" (click)="toggleSection('active')">
+          <div class="section-header-left">
+            <div class="section-toggle" [class.collapsed]="activeCollapsed">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+            <div class="section-title">Active Workflows</div>
+            <div class="section-count">{{ getActiveWorkflows().length }}</div>
+          </div>
+        </div>
+        <div class="section-content" [class.collapsed]="activeCollapsed">
+          <div>
+            <div *ngFor="let workflow of getActiveWorkflows()" class="workflow-item-readonly">
+              <div class="workflow-info">
+                <div class="workflow-name">{{ workflow.name }}</div>
+                <div class="workflow-dates">
+                  <div class="workflow-date">
+                    <span class="workflow-date-label">Created:</span>
+                    <span class="date-value">{{ formatDate(workflow.createdAt) }}</span>
+                  </div>
+                  <div class="workflow-date">
+                    <span class="workflow-date-label">Updated:</span>
+                    <span class="date-value">{{ formatDate(workflow.updatedAt) }}</span>
+                  </div>
+                </div>
+              </div>
+              <div class="workflow-status-badge">Active</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </ng-container>
   </div>
 </div>
 
@@ -197,275 +376,483 @@ export class WorkflowSidebarComponent {
 
 
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+
+/* Light Mode CSS Variables */
+:root {
+    --agentic-ai-workflow-bg-primary: #ffffff;
+    --agentic-ai-workflow-bg-secondary: #f5f5f5;
+    --agentic-ai-workflow-bg-tertiary: #fafafa;
+    --agentic-ai-workflow-bg-hover: #f8f8f8;
+    --agentic-ai-workflow-bg-active: #f0f0f0;
+    --agentic-ai-workflow-bg-button: #f5f5f5;
+    --agentic-ai-workflow-bg-button-hover: #e8e8e8;
+    --agentic-ai-workflow-bg-icon: #f5f5f5;
+    --agentic-ai-workflow-bg-badge: #dcfce7;
+    --agentic-ai-workflow-bg-badge-count: #f0f0f0;
+    --agentic-ai-workflow-bg-run-btn: #22c55e;
+    --agentic-ai-workflow-bg-run-btn-hover: #16a34a;
+    --agentic-ai-workflow-bg-create-btn: #1a1a1a;
+    --agentic-ai-workflow-bg-create-btn-hover: #2a2a2a;
+
+    --agentic-ai-workflow-border-primary: #e0e0e0;
+    --agentic-ai-workflow-border-secondary: #d0d0d0;
+    --agentic-ai-workflow-border-hover: #d0d0d0;
+    --agentic-ai-workflow-border-active: #1a1a1a;
+    --agentic-ai-workflow-border-hover-accent: #4a4a4a;
+
+    --agentic-ai-workflow-text-primary: #1a1a1a;
+    --agentic-ai-workflow-text-secondary: #4a4a4a;
+    --agentic-ai-workflow-text-tertiary: #666666;
+    --agentic-ai-workflow-text-muted: #888888;
+    --agentic-ai-workflow-text-badge: #15803d;
+    --agentic-ai-workflow-text-white: #ffffff;
+
+    --agentic-ai-workflow-scrollbar-thumb: #d0d0d0;
+    --agentic-ai-workflow-scrollbar-thumb-hover: #b0b0b0;
+
+    --agentic-ai-workflow-shadow-run-btn: rgba(34, 197, 94, 0.3);
 }
 
-.app-container {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-  background: #111113;
-  display: flex;
-  height: 100vh;
-  color: #e0e0e0;
+/* Dark Mode CSS Variables */
+[data-theme="dark"] {
+    --agentic-ai-workflow-bg-primary: #1a1a1c;
+    --agentic-ai-workflow-bg-secondary: #111113;
+    --agentic-ai-workflow-bg-tertiary: #202022;
+    --agentic-ai-workflow-bg-hover: #252527;
+    --agentic-ai-workflow-bg-active: #2a2a2c;
+    --agentic-ai-workflow-bg-button: #252527;
+    --agentic-ai-workflow-bg-button-hover: #2f2f31;
+    --agentic-ai-workflow-bg-icon: #252527;
+    --agentic-ai-workflow-bg-badge: #1e3a2e;
+    --agentic-ai-workflow-bg-badge-count: #2a2a2c;
+    --agentic-ai-workflow-bg-run-btn: #22c55e;
+    --agentic-ai-workflow-bg-run-btn-hover: #16a34a;
+    --agentic-ai-workflow-bg-create-btn: #3a3a3c;
+    --agentic-ai-workflow-bg-create-btn-hover: #4a4a4c;
+
+    --agentic-ai-workflow-border-primary: #2f2f31;
+    --agentic-ai-workflow-border-secondary: #3a3a3c;
+    --agentic-ai-workflow-border-hover: #4a4a4c;
+    --agentic-ai-workflow-border-active: #e0e0e0;
+    --agentic-ai-workflow-border-hover-accent: #b0b0b0;
+
+    --agentic-ai-workflow-text-primary: #e0e0e0;
+    --agentic-ai-workflow-text-secondary: #b0b0b0;
+    --agentic-ai-workflow-text-tertiary: #999999;
+    --agentic-ai-workflow-text-muted: #777777;
+    --agentic-ai-workflow-text-badge: #4ade80;
+    --agentic-ai-workflow-text-white: #ffffff;
+
+    --agentic-ai-workflow-scrollbar-thumb: #3a3a3c;
+    --agentic-ai-workflow-scrollbar-thumb-hover: #4a4a4c;
+
+    --agentic-ai-workflow-shadow-run-btn: rgba(34, 197, 94, 0.3);
+}
+
+/* Component Styles */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    background: var(--agentic-ai-workflow-bg-secondary);
+    margin: 0;
+    padding: 0;
 }
 
 .sidebar {
-  width: 320px;
-  background: #1a1a1d;
-  border-right: 1px solid #2a2a2d;
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
+    width: 320px;
+    background: var(--agentic-ai-workflow-bg-primary);
+    border-right: 1px solid var(--agentic-ai-workflow-border-primary);
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
 }
 
 .sidebar-header {
-  padding: 20px;
-  border-bottom: 1px solid #2a2a2d;
+    padding: 20px;
+    border-bottom: 1px solid var(--agentic-ai-workflow-border-primary);
 }
 
 .header-content {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 }
 
 .header-text {
-  flex: 1;
+    flex: 1;
 }
 
 .sidebar-header h2 {
-  font-size: 18px;
-  font-weight: 600;
-  color: #f0f0f0;
-  margin-bottom: 4px;
-}
-
-.sidebar-header p {
-  font-size: 13px;
-  color: #9a9a9d;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--agentic-ai-workflow-text-primary);
+    display: flex;
+    align-items: center;
 }
 
 .header-actions {
-  display: flex;
-  gap: 8px;
-  margin-left: 12px;
+    display: flex;
+    gap: 8px;
+    margin-left: 12px;
 }
 
 .action-btn {
-  width: 32px;
-  height: 32px;
-  background: #252528;
-  border: 1px solid #3a3a3d;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s;
+    width: 32px;
+    height: 32px;
+    background: var(--agentic-ai-workflow-bg-button);
+    border: 1px solid var(--agentic-ai-workflow-border-primary);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
 }
 
 .action-btn:hover {
-  background: #303033;
-  border-color: #4a4a4d;
+    background: var(--agentic-ai-workflow-bg-button-hover);
+    border-color: var(--agentic-ai-workflow-border-hover);
 }
 
 .action-btn svg {
-  width: 16px;
-  height: 16px;
-  stroke: #b0b0b3;
+    width: 16px;
+    height: 16px;
+    stroke: var(--agentic-ai-workflow-text-secondary);
 }
 
 .search-container {
-  padding: 16px 20px;
-  border-bottom: 1px solid #2a2a2d;
+    padding: 12px 20px 12px 20px;
 }
 
 .search-input {
-  width: 100%;
-  padding: 10px 12px 10px 36px;
-  border: 1px solid #3a3a3d;
-  border-radius: 6px;
-  font-size: 14px;
-  outline: none;
-  transition: border-color 0.2s;
-  background-color: #252528;
-  color: #e0e0e0;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239a9a9d' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'%3E%3C/circle%3E%3Cpath d='m21 21-4.35-4.35'%3E%3C/path%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: 12px center;
-  background-size: 16px;
+    width: 100%;
+    padding: 10px 12px 10px 36px;
+    border: 1px solid var(--agentic-ai-workflow-border-secondary);
+    border-radius: 6px;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+    background-color: var(--agentic-ai-workflow-bg-primary);
+    color: var(--agentic-ai-workflow-text-primary);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'%3E%3C/circle%3E%3Cpath d='m21 21-4.35-4.35'%3E%3C/path%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: 12px center;
+    background-size: 16px;
 }
 
 .search-input:focus {
-  border-color: #5a5a5d;
-  background-color: #2a2a2d;
-}
-
-.search-input::placeholder {
-  color: #6a6a6d;
+    border-color: var(--agentic-ai-workflow-text-secondary);
 }
 
 .workflows-container {
-  flex: 1;
-  overflow-y: auto;
-  padding: 12px 0;
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 0;
 }
 
 .workflow-section {
-  margin-bottom: 20px;
+    margin-bottom: 8px;
+}
+
+.section-header {
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    background: var(--agentic-ai-workflow-bg-tertiary);
+    border-top: 1px solid var(--agentic-ai-workflow-border-primary);
+    border-bottom: 1px solid var(--agentic-ai-workflow-border-primary);
+    transition: background-color 0.2s;
+}
+
+.section-header:hover {
+    background: var(--agentic-ai-workflow-bg-button);
+}
+
+.section-header-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
 .section-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: #7a7a7d;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: 8px 20px;
-  margin-bottom: 4px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--agentic-ai-workflow-text-primary);
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+.section-count {
+    font-size: 11px;
+    color: var(--agentic-ai-workflow-text-muted);
+    background: var(--agentic-ai-workflow-bg-badge-count);
+    padding: 2px 6px;
+    border-radius: 10px;
+}
+
+.section-toggle {
+    transition: transform 0.2s;
+}
+
+.section-toggle.collapsed {
+    transform: rotate(-90deg);
+}
+
+.section-toggle svg {
+    width: 16px;
+    height: 16px;
+    stroke: var(--agentic-ai-workflow-text-tertiary);
+}
+
+.section-content {
+    max-height: 2000px;
+    overflow: hidden;
+    transition: max-height 0.3s ease-out;
+}
+
+.section-content.collapsed {
+    max-height: 0;
 }
 
 .workflow-item {
-  padding: 12px 20px;
-  cursor: pointer;
-  transition: background-color 0.15s;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  border-left: 3px solid transparent;
+    padding: 12px 20px;
+    cursor: pointer;
+    transition: background-color 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-left: 3px solid transparent;
 }
 
 .workflow-item:hover {
-  background-color: #252528;
-  border-left-color: #6a6a6d;
+    background-color: var(--agentic-ai-workflow-bg-hover);
+    border-left-color: var(--agentic-ai-workflow-border-hover-accent);
 }
 
 .workflow-item.active {
-  background-color: #2a2a2d;
-  border-left-color: #e0e0e0;
+    background-color: var(--agentic-ai-workflow-bg-active);
+    border-left-color: var(--agentic-ai-workflow-border-active);
 }
 
-.workflow-icon {
-  width: 36px;
-  height: 36px;
-  background: #252528;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  border: 1px solid #3a3a3d;
+.workflow-item-readonly {
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-left: 3px solid transparent;
+    cursor: default;
 }
 
-.workflow-icon svg {
-  width: 18px;
-  height: 18px;
-  stroke: #b0b0b3;
+.workflow-item-readonly:hover {
+    background-color: var(--agentic-ai-workflow-bg-hover);
 }
 
 .workflow-info {
-  flex: 1;
-  min-width: 0;
+    flex: 1;
+    min-width: 0;
 }
 
 .workflow-name {
-  font-size: 14px;
-  font-weight: 500;
-  color: #f0f0f0;
-  margin-bottom: 2px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--agentic-ai-workflow-text-primary);
+    margin-bottom: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.workflow-description {
-  font-size: 12px;
-  color: #9a9a9d;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.workflow-dates {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.workflow-date {
+    font-size: 11px;
+    color: var(--agentic-ai-workflow-text-muted);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.workflow-date-label {
+    font-weight: 500;
+    color: var(--agentic-ai-workflow-text-tertiary);
 }
 
 .workflow-status {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
 }
 
 .workflow-status.active {
-  background-color: #4caf50;
+    background-color: #4caf50;
+}
+
+.workflow-actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
 }
 
 .run-btn {
-  padding: 4px 8px;
-  background: #22c55e;
-  border: none;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  cursor: pointer;
-  transition: all 0.2s;
-  flex-shrink: 0;
-  font-size: 11px;
-  font-weight: 500;
-  color: #ffffff;
+    padding: 4px 6px;
+    background: var(--agentic-ai-workflow-bg-run-btn);
+    border: none;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    flex-shrink: 0;
 }
 
 .run-btn:hover {
-  background: #16a34a;
-  transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(34, 197, 94, 0.3);
+    background: var(--agentic-ai-workflow-bg-run-btn-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px var(--agentic-ai-workflow-shadow-run-btn);
 }
 
 .run-btn:active {
-  transform: translateY(0);
+    transform: translateY(0);
 }
 
 .run-btn svg {
-  width: 12px;
-  height: 12px;
-  fill: #ffffff;
-  stroke: none;
+    width: 14px;
+    height: 14px;
+    fill: var(--agentic-ai-workflow-text-white);
+    stroke: none;
 }
 
-/* Main content area */
-.main-content {
-  flex: 1;
-  padding: 40px;
-  background: #111113;
+.share-btn {
+    padding: 4px 6px;
+    background: var(--agentic-ai-workflow-bg-button);
+    border: 1px solid var(--agentic-ai-workflow-border-primary);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    flex-shrink: 0;
 }
 
-.main-content h1 {
-  font-size: 24px;
-  color: #f0f0f0;
-  margin-bottom: 12px;
+.share-btn:hover {
+    background: var(--agentic-ai-workflow-bg-button-hover);
+    border-color: var(--agentic-ai-workflow-border-hover);
+    transform: translateY(-1px);
 }
 
-.main-content p {
-  font-size: 14px;
-  color: #9a9a9d;
+.share-btn:active {
+    transform: translateY(0);
+}
+
+.share-btn svg {
+    width: 14px;
+    height: 14px;
+    stroke: var(--agentic-ai-workflow-text-secondary);
+}
+
+.workflow-status-badge {
+    padding: 3px 8px;
+    background: var(--agentic-ai-workflow-bg-badge);
+    color: var(--agentic-ai-workflow-text-badge);
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    text-align: center;
+}
+
+.empty-state-icon {
+    width: 48px;
+    height: 48px;
+    background: var(--agentic-ai-workflow-bg-icon);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 16px;
+}
+
+.empty-state-icon svg {
+    width: 24px;
+    height: 24px;
+    stroke: var(--agentic-ai-workflow-text-muted);
+}
+
+.empty-state-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--agentic-ai-workflow-text-primary);
+    margin-bottom: 6px;
+}
+
+.empty-state-description {
+    font-size: 13px;
+    color: var(--agentic-ai-workflow-text-muted);
+    margin-bottom: 20px;
+}
+
+.empty-state-btn {
+    padding: 8px 16px;
+    background: var(--agentic-ai-workflow-bg-create-btn);
+    color: var(--agentic-ai-workflow-text-white);
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.empty-state-btn:hover {
+    background: var(--agentic-ai-workflow-bg-create-btn-hover);
+}
+
+.empty-state-btn svg {
+    width: 16px;
+    height: 16px;
+    stroke: var(--agentic-ai-workflow-text-white);
 }
 
 /* Scrollbar styling */
 .workflows-container::-webkit-scrollbar {
-  width: 6px;
+    width: 6px;
 }
 
 .workflows-container::-webkit-scrollbar-track {
-  background: transparent;
+    background: transparent;
 }
 
 .workflows-container::-webkit-scrollbar-thumb {
-  background: #3a3a3d;
-  border-radius: 3px;
+    background: var(--agentic-ai-workflow-scrollbar-thumb);
+    border-radius: 3px;
 }
 
 .workflows-container::-webkit-scrollbar-thumb:hover {
-  background: #4a4a4d;
+    background: var(--agentic-ai-workflow-scrollbar-thumb-hover);
 }
