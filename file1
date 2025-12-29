@@ -1,68 +1,128 @@
-import { Component } from '@angular/core';
+import { Injectable } from '@angular/core';
+import { Observable, Subject } from 'rxjs';
+import { HttpClient } from '@angular/common/http';
+
+@Injectable({
+  providedIn: 'root'
+})
+export class SsoAuthService {
+  private websocket: WebSocket | null = null;
+  private messageSubject = new Subject<any>();
+
+  constructor(private http: HttpClient) {}
+
+  initiateSSO(websocketUrl: string, initialData: any): Observable<any> {
+    return new Observable(observer => {
+      this.websocket = new WebSocket(websocketUrl);
+
+      this.websocket.onopen = () => {
+        console.log('WebSocket connected');
+        // Send initial data on connection open
+        if (this.websocket) {
+          this.websocket.send(JSON.stringify(initialData));
+        }
+      };
+
+      this.websocket.onmessage = (event) => {
+        console.log('WebSocket message received:', event.data);
+        const data = JSON.parse(event.data);
+        observer.next(data);
+      };
+
+      this.websocket.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        observer.error(error);
+      };
+
+      this.websocket.onclose = () => {
+        console.log('WebSocket closed');
+        observer.complete();
+      };
+    });
+  }
+
+  makeApiCall(apiUrl: string, payload: any): Observable<any> {
+    return this.http.post(apiUrl, payload);
+  }
+
+  closeWebSocket(): void {
+    if (this.websocket) {
+      this.websocket.close();
+      this.websocket = null;
+    }
+  }
+}
+
+
+
+
+
+
+
+
+
+
+import { Component, OnDestroy } from '@angular/core';
+import { SsoAuthService } from './sso-auth.service'; // Adjust path as needed
 
 @Component({
   selector: 'app-sso-login',
   templateUrl: './sso-login.component.html',
   styleUrls: ['./sso-login.component.css']
 })
-export class SsoLoginComponent {
+export class SsoLoginComponent implements OnDestroy {
   
   isLoading = false;
+
+  constructor(private ssoAuthService: SsoAuthService) {}
 
   onSsoLogin(): void {
     this.isLoading = true;
     
-    // Implement your SSO login logic here
-    console.log('SSO login initiated');
-    
-    // Example: Reset loading state after SSO completes or fails
-    // this.isLoading = false;
+    const websocketUrl = 'wss://your-websocket-url.com'; // Replace with your WebSocket URL
+    const initialData = {
+      // Add your initial data here
+      action: 'authenticate',
+      timestamp: new Date().toISOString()
+    };
+
+    this.ssoAuthService.initiateSSO(websocketUrl, initialData).subscribe({
+      next: (wsData) => {
+        // When message is received from WebSocket, make API call
+        const apiUrl = 'https://your-api-url.com/endpoint'; // Replace with your API URL
+        const apiPayload = {
+          // Construct your API payload using wsData
+          token: wsData.token,
+          ...wsData
+        };
+
+        this.ssoAuthService.makeApiCall(apiUrl, apiPayload).subscribe({
+          next: (apiResponse) => {
+            console.log('API call successful:', apiResponse);
+            this.isLoading = false;
+            // Handle successful authentication
+          },
+          error: (apiError) => {
+            console.error('API call failed:', apiError);
+            this.isLoading = false;
+            // Handle API error
+          }
+        });
+      },
+      error: (wsError) => {
+        console.error('WebSocket error:', wsError);
+        this.isLoading = false;
+        // Handle WebSocket error
+      }
+    });
   }
 
   onContactSupport(): void {
-    // Implement contact support logic here
     console.log('Contact support clicked');
   }
-}
 
-
-
-
-
-
-
-
-<button class="sso-button" (click)="onSsoLogin()" [disabled]="isLoading">
-  <span class="spinner" *ngIf="isLoading"></span>
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" *ngIf="!isLoading">
-    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/>
-  </svg>
-  {{ isLoading ? 'Connecting with SSO' : 'Continue with SSO' }}
-</button>
-
-
-
-
-
-
-
-
-.sso-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.8;
-}
-
-.spinner {
-  width: 16px;
-  height: 16px;
-  border: 2px solid var(--agentic-ai-auth-button-text);
-  border-top-color: transparent;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
+  ngOnDestroy(): void {
+    // Clean up WebSocket connection when component is destroyed
+    this.ssoAuthService.closeWebSocket();
   }
 }
