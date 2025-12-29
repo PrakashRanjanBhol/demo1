@@ -1,128 +1,17 @@
-import { Injectable } from '@angular/core';
-import { Observable, Subject } from 'rxjs';
-import { HttpClient } from '@angular/common/http';
-
-@Injectable({
-  providedIn: 'root'
-})
-export class SsoAuthService {
-  private websocket: WebSocket | null = null;
-  private messageSubject = new Subject<any>();
-
-  constructor(private http: HttpClient) {}
-
-  initiateSSO(websocketUrl: string, initialData: any): Observable<any> {
-    return new Observable(observer => {
-      this.websocket = new WebSocket(websocketUrl);
-
-      this.websocket.onopen = () => {
-        console.log('WebSocket connected');
-        // Send initial data on connection open
-        if (this.websocket) {
-          this.websocket.send(JSON.stringify(initialData));
-        }
-      };
-
-      this.websocket.onmessage = (event) => {
-        console.log('WebSocket message received:', event.data);
-        const data = JSON.parse(event.data);
-        observer.next(data);
-      };
-
-      this.websocket.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        observer.error(error);
-      };
-
-      this.websocket.onclose = () => {
-        console.log('WebSocket closed');
-        observer.complete();
-      };
-    });
-  }
-
-  makeApiCall(apiUrl: string, payload: any): Observable<any> {
-    return this.http.post(apiUrl, payload);
-  }
-
-  closeWebSocket(): void {
-    if (this.websocket) {
-      this.websocket.close();
-      this.websocket = null;
-    }
-  }
-}
-
-
-
-
-
-
-
-
-
-
-import { Component, OnDestroy } from '@angular/core';
-import { SsoAuthService } from './sso-auth.service'; // Adjust path as needed
-
-@Component({
-  selector: 'app-sso-login',
-  templateUrl: './sso-login.component.html',
-  styleUrls: ['./sso-login.component.css']
-})
-export class SsoLoginComponent implements OnDestroy {
-  
-  isLoading = false;
-
-  constructor(private ssoAuthService: SsoAuthService) {}
-
-  onSsoLogin(): void {
-    this.isLoading = true;
-    
-    const websocketUrl = 'wss://your-websocket-url.com'; // Replace with your WebSocket URL
-    const initialData = {
-      // Add your initial data here
-      action: 'authenticate',
-      timestamp: new Date().toISOString()
-    };
-
-    this.ssoAuthService.initiateSSO(websocketUrl, initialData).subscribe({
-      next: (wsData) => {
-        // When message is received from WebSocket, make API call
-        const apiUrl = 'https://your-api-url.com/endpoint'; // Replace with your API URL
-        const apiPayload = {
-          // Construct your API payload using wsData
-          token: wsData.token,
-          ...wsData
-        };
-
-        this.ssoAuthService.makeApiCall(apiUrl, apiPayload).subscribe({
-          next: (apiResponse) => {
-            console.log('API call successful:', apiResponse);
-            this.isLoading = false;
-            // Handle successful authentication
-          },
-          error: (apiError) => {
-            console.error('API call failed:', apiError);
-            this.isLoading = false;
-            // Handle API error
-          }
-        });
-      },
-      error: (wsError) => {
-        console.error('WebSocket error:', wsError);
-        this.isLoading = false;
-        // Handle WebSocket error
-      }
-    });
-  }
-
-  onContactSupport(): void {
-    console.log('Contact support clicked');
-  }
-
-  ngOnDestroy(): void {
-    // Clean up WebSocket connection when component is destroyed
-    this.ssoAuthService.closeWebSocket();
-  }
+.sso-button {
+  width: auto;
+  padding: 12px 24px;
+  background-color: var(--agentic-ai-auth-button-bg);
+  color: var(--agentic-ai-auth-button-text);
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 0 auto;
 }
