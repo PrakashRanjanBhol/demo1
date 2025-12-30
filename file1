@@ -1,14 +1,301 @@
-<!-- Employee List Section -->
-  <div class="employee-list">
-    <div class="employee-item" *ngFor="let employee of filteredEmployees">
-      <label class="checkbox-item">
-        <input 
-          type="checkbox" 
-          class="employee-checkbox"
-          [(ngModel)]="employee.selected"
-          (change)="onEmployeeChange()"
-        >
-        <span class="employee-name">{{ employee.email }}</span>
-      </label>
+import { Component, Input, Output, EventEmitter, OnInit } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+
+export interface Employee {
+  id: number;
+  email: string;
+  selected: boolean;
+}
+
+@Component({
+  selector: 'app-sidebar',
+  templateUrl: './sidebar.component.html',
+  styleUrls: ['./sidebar.component.css']
+})
+export class SidebarComponent implements OnInit {
+  @Input() isSidebarOpen = false;
+  @Output() onShare = new EventEmitter<string[]>();
+
+  searchTerm = '';
+  selectAll = false;
+  employees: Employee[] = [];
+  isLoading = false;
+
+  constructor(private http: HttpClient) {}
+
+  ngOnInit() {
+    this.loadEmployees();
+  }
+
+  loadEmployees() {
+    this.isLoading = true;
+    
+    // Replace with your actual API endpoint
+    this.http.get<string[]>('YOUR_API_ENDPOINT_HERE').subscribe({
+      next: (employeeEmails) => {
+        this.employees = employeeEmails.map((email, index) => ({
+          id: index + 1,
+          email: email,
+          selected: false
+        }));
+        this.isLoading = false;
+      },
+      error: (error) => {
+        console.error('Error loading employees:', error);
+        this.isLoading = false;
+        // Optionally show error message to user
+      }
+    });
+  }
+
+  get filteredEmployees(): Employee[] {
+    if (!this.searchTerm) {
+      return this.employees;
+    }
+    return this.employees.filter(emp => 
+      emp.email.toLowerCase().includes(this.searchTerm.toLowerCase())
+    );
+  }
+
+  get selectedCount(): number {
+    return this.filteredEmployees.filter(emp => emp.selected).length;
+  }
+
+  get totalVisible(): number {
+    return this.filteredEmployees.length;
+  }
+
+  get isIndeterminate(): boolean {
+    const selected = this.selectedCount;
+    return selected > 0 && selected < this.totalVisible;
+  }
+
+  toggleSidebar(): void {
+    this.isSidebarOpen = false;
+  }
+
+  onSearchChange(value: string): void {
+    this.searchTerm = value;
+    this.updateSelectAllState();
+  }
+
+  clearSearch(): void {
+    this.searchTerm = '';
+    this.updateSelectAllState();
+  }
+
+  toggleSelectAll(): void {
+    const newState = !this.selectAll;
+    this.filteredEmployees.forEach(emp => emp.selected = newState);
+    this.selectAll = newState;
+  }
+
+  onEmployeeChange(): void {
+    this.updateSelectAllState();
+  }
+
+  updateSelectAllState(): void {
+    const selected = this.selectedCount;
+    const total = this.totalVisible;
+    
+    if (selected === 0) {
+      this.selectAll = false;
+    } else if (selected === total) {
+      this.selectAll = true;
+    } else {
+      this.selectAll = false;
+    }
+  }
+
+  shareWorkflow(): void {
+    const selectedEmails = this.employees
+      .filter(emp => emp.selected)
+      .map(emp => emp.email);
+    
+    if (selectedEmails.length > 0) {
+      this.onShare.emit(selectedEmails);
+    }
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- Sidebar -->
+<div class="sidebar" *ngIf="isSidebarOpen">
+  <!-- Header Section -->
+  <div class="sidebar-header">
+    <h2>
+      <svg class="share-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="18" cy="5" r="3"></circle>
+        <circle cx="6" cy="12" r="3"></circle>
+        <circle cx="18" cy="19" r="3"></circle>
+        <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+        <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+      </svg>
+      Share
+    </h2>
+    <button class="close-btn" (click)="toggleSidebar()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="18" y1="6" x2="6" y2="18"></line>
+        <line x1="6" y1="6" x2="18" y2="18"></line>
+      </svg>
+    </button>
+  </div>
+
+  <!-- Search Section -->
+  <div class="search-section">
+    <div class="search-container">
+      <span class="search-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+      </span>
+      <input 
+        type="text" 
+        class="search-input"
+        [(ngModel)]="searchTerm"
+        (input)="onSearchChange($any($event.target).value)"
+        placeholder="Search employees..."
+        [disabled]="isLoading"
+      >
+      <span 
+        class="search-clear" 
+        [class.active]="searchTerm.length > 0"
+        (click)="clearSearch()"
+      >✕</span>
     </div>
   </div>
+
+  <!-- Select All Section -->
+  <div class="select-all-container">
+    <label class="checkbox-item">
+      <input 
+        type="checkbox" 
+        [checked]="selectAll"
+        [indeterminate]="isIndeterminate"
+        (change)="toggleSelectAll()"
+        [disabled]="isLoading"
+      >
+      <span class="checkbox-label">Select All</span>
+    </label>
+    <div class="selected-count">{{ selectedCount }} of {{ totalVisible }} selected</div>
+  </div>
+
+  <!-- Employee List Section with Skeleton Loader -->
+  <div class="employee-list">
+    <!-- Skeleton Loader -->
+    <ng-container *ngIf="isLoading">
+      <div class="skeleton-item" *ngFor="let item of [1,2,3,4,5,6,7,8]">
+        <div class="skeleton-checkbox"></div>
+        <div class="skeleton-text"></div>
+      </div>
+    </ng-container>
+
+    <!-- Actual Employee List -->
+    <ng-container *ngIf="!isLoading">
+      <div class="employee-item" *ngFor="let employee of filteredEmployees">
+        <label class="checkbox-item">
+          <input 
+            type="checkbox" 
+            class="employee-checkbox"
+            [(ngModel)]="employee.selected"
+            (change)="onEmployeeChange()"
+          >
+          <span class="employee-name">{{ employee.email }}</span>
+        </label>
+      </div>
+    </ng-container>
+  </div>
+
+  <!-- Footer Section -->
+  <div class="sidebar-footer">
+    <button 
+      class="share-button" 
+      [disabled]="selectedCount === 0 || isLoading"
+      (click)="shareWorkflow()"
+    >
+      Share Workflow
+    </button>
+  </div>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+/* Skeleton Loader Styles */
+.skeleton-item {
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.skeleton-checkbox {
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  background: linear-gradient(
+    90deg,
+    var(--agentic-ai-share-sidebar-item-hover-bg) 25%,
+    var(--agentic-ai-share-sidebar-select-all-bg) 50%,
+    var(--agentic-ai-share-sidebar-item-hover-bg) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s infinite;
+  flex-shrink: 0;
+}
+
+.skeleton-text {
+  height: 14px;
+  flex: 1;
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    var(--agentic-ai-share-sidebar-item-hover-bg) 25%,
+    var(--agentic-ai-share-sidebar-select-all-bg) 50%,
+    var(--agentic-ai-share-sidebar-item-hover-bg) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s infinite;
+  max-width: 70%;
+}
+
+@keyframes skeleton-loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Disable interactions while loading */
+.search-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+input[type="checkbox"]:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
