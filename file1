@@ -1,282 +1,3 @@
-import { Component, Input, Output, EventEmitter } from '@angular/core';
-
-export interface Employee {
-  id: number;
-  name: string;
-  selected: boolean;
-}
-
-@Component({
-  selector: 'app-sidebar',
-  templateUrl: './sidebar.component.html',
-  styleUrls: ['./sidebar.component.css']
-})
-export class SidebarComponent {
-  @Input() isSidebarOpen = false;
-  @Output() onShare = new EventEmitter<Employee[]>();
-
-  searchTerm = '';
-  selectAll = false;
-  
-  employees: Employee[] = [
-    { id: 1, name: 'John Smith', selected: false },
-    { id: 2, name: 'Sarah Johnson', selected: false },
-    { id: 3, name: 'Michael Chen', selected: false },
-    { id: 4, name: 'Emily Davis', selected: false },
-    { id: 5, name: 'David Wilson', selected: false },
-    { id: 6, name: 'Jessica Martinez', selected: false },
-    { id: 7, name: 'Robert Taylor', selected: false },
-    { id: 8, name: 'Amanda Brown', selected: false },
-    { id: 9, name: 'James Anderson', selected: false },
-    { id: 10, name: 'Linda Garcia', selected: false },
-    { id: 11, name: 'Christopher Lee', selected: false },
-    { id: 12, name: 'Michelle White', selected: false }
-  ];
-
-  get filteredEmployees(): Employee[] {
-    if (!this.searchTerm) {
-      return this.employees;
-    }
-    return this.employees.filter(emp => 
-      emp.name.toLowerCase().includes(this.searchTerm.toLowerCase())
-    );
-  }
-
-  get selectedCount(): number {
-    return this.filteredEmployees.filter(emp => emp.selected).length;
-  }
-
-  get totalVisible(): number {
-    return this.filteredEmployees.length;
-  }
-
-  get isIndeterminate(): boolean {
-    const selected = this.selectedCount;
-    return selected > 0 && selected < this.totalVisible;
-  }
-
-  toggleSidebar(): void {
-    this.isSidebarOpen = false;
-  }
-
-  onSearchChange(value: string): void {
-    this.searchTerm = value;
-    this.updateSelectAllState();
-  }
-
-  clearSearch(): void {
-    this.searchTerm = '';
-    this.updateSelectAllState();
-  }
-
-  toggleSelectAll(): void {
-    const newState = !this.selectAll;
-    this.filteredEmployees.forEach(emp => emp.selected = newState);
-    this.selectAll = newState;
-  }
-
-  onEmployeeChange(): void {
-    this.updateSelectAllState();
-  }
-
-  updateSelectAllState(): void {
-    const selected = this.selectedCount;
-    const total = this.totalVisible;
-    
-    if (selected === 0) {
-      this.selectAll = false;
-    } else if (selected === total) {
-      this.selectAll = true;
-    } else {
-      this.selectAll = false;
-    }
-  }
-
-  shareWorkflow(): void {
-    const selected = this.employees.filter(emp => emp.selected);
-    if (selected.length > 0) {
-      this.onShare.emit(selected);
-    }
-  }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<!-- Sidebar -->
-<div class="sidebar" *ngIf="isSidebarOpen">
-  <!-- Header Section -->
-  <div class="sidebar-header">
-    <h2>
-      <svg class="share-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="18" cy="5" r="3"></circle>
-        <circle cx="6" cy="12" r="3"></circle>
-        <circle cx="18" cy="19" r="3"></circle>
-        <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
-        <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
-      </svg>
-      Share
-    </h2>
-    <button class="close-btn" (click)="toggleSidebar()">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="18" y1="6" x2="6" y2="18"></line>
-        <line x1="6" y1="6" x2="18" y2="18"></line>
-      </svg>
-    </button>
-  </div>
-
-  <!-- Search Section -->
-  <div class="search-section">
-    <div class="search-container">
-      <span class="search-icon">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-        </svg>
-      </span>
-      <input 
-        type="text" 
-        class="search-input"
-        [(ngModel)]="searchTerm"
-        (input)="onSearchChange($any($event.target).value)"
-        placeholder="Search employees..."
-      >
-      <span 
-        class="search-clear" 
-        [class.active]="searchTerm.length > 0"
-        (click)="clearSearch()"
-      >✕</span>
-    </div>
-  </div>
-
-  <!-- Select All Section -->
-  <div class="select-all-container">
-    <label class="checkbox-item">
-      <input 
-        type="checkbox" 
-        [checked]="selectAll"
-        [indeterminate]="isIndeterminate"
-        (change)="toggleSelectAll()"
-      >
-      <span class="checkbox-label">Select All</span>
-    </label>
-    <div class="selected-count">{{ selectedCount }} of {{ totalVisible }} selected</div>
-  </div>
-
-  <!-- Employee List Section -->
-  <div class="employee-list">
-    <div class="employee-item" *ngFor="let employee of filteredEmployees">
-      <label class="checkbox-item">
-        <input 
-          type="checkbox" 
-          class="employee-checkbox"
-          [(ngModel)]="employee.selected"
-          (change)="onEmployeeChange()"
-        >
-        <span class="employee-name">{{ employee.name }}</span>
-      </label>
-    </div>
-  </div>
-
-  <!-- Footer Section -->
-  <div class="sidebar-footer">
-    <button 
-      class="share-button" 
-      [disabled]="selectedCount === 0"
-      (click)="shareWorkflow()"
-    >
-      Share Workflow
-    </button>
-  </div>
-</div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-:root {
-  /* Light Mode Variables */
-  --agentic-ai-share-sidebar-bg: #ffffff;
-  --agentic-ai-share-sidebar-border: #bfbfbf;
-  --agentic-ai-share-sidebar-header-bg: #f8f9fa;
-  --agentic-ai-share-sidebar-header-border: #dee2e6;
-  --agentic-ai-share-sidebar-header-text: #333;
-  --agentic-ai-share-sidebar-close-btn-bg: #f0f0f0;
-  --agentic-ai-share-sidebar-close-btn-border: #bfbfbf;
-  --agentic-ai-share-sidebar-close-btn-color: #666;
-  --agentic-ai-share-sidebar-close-btn-hover-bg: #e0e0e0;
-  --agentic-ai-share-sidebar-close-btn-hover-color: #333;
-  --agentic-ai-share-sidebar-search-bg: #fafafa;
-  --agentic-ai-share-sidebar-search-border: #e0e0e0;
-  --agentic-ai-share-sidebar-search-focus-border: #4a90e2;
-  --agentic-ai-share-sidebar-search-icon-color: #999;
-  --agentic-ai-share-sidebar-select-all-bg: #fafafa;
-  --agentic-ai-share-sidebar-item-hover-bg: #f8f8f8;
-  --agentic-ai-share-sidebar-text-color: #1a1a1a;
-  --agentic-ai-share-sidebar-text-secondary: #666;
-  --agentic-ai-share-sidebar-button-bg: #4a90e2;
-  --agentic-ai-share-sidebar-button-hover-bg: #3a7bc8;
-  --agentic-ai-share-sidebar-button-disabled-bg: #d1d1d1;
-  --agentic-ai-share-sidebar-scrollbar-track: #f1f1f1;
-  --agentic-ai-share-sidebar-scrollbar-thumb: #c1c1c1;
-}
-
-[data-theme="dark"] {
-  /* Dark Mode Variables */
-  --agentic-ai-share-sidebar-bg: #111113;
-  --agentic-ai-share-sidebar-border: #3a3a3a;
-  --agentic-ai-share-sidebar-header-bg: #1a1a1c;
-  --agentic-ai-share-sidebar-header-border: #2a2a2c;
-  --agentic-ai-share-sidebar-header-text: #e0e0e0;
-  --agentic-ai-share-sidebar-close-btn-bg: #2a2a2c;
-  --agentic-ai-share-sidebar-close-btn-border: #3a3a3a;
-  --agentic-ai-share-sidebar-close-btn-color: #b0b0b0;
-  --agentic-ai-share-sidebar-close-btn-hover-bg: #3a3a3c;
-  --agentic-ai-share-sidebar-close-btn-hover-color: #e0e0e0;
-  --agentic-ai-share-sidebar-search-bg: #1a1a1c;
-  --agentic-ai-share-sidebar-search-border: #3a3a3a;
-  --agentic-ai-share-sidebar-search-focus-border: #4a90e2;
-  --agentic-ai-share-sidebar-search-icon-color: #666;
-  --agentic-ai-share-sidebar-select-all-bg: #1a1a1c;
-  --agentic-ai-share-sidebar-item-hover-bg: #1f1f21;
-  --agentic-ai-share-sidebar-text-color: #e0e0e0;
-  --agentic-ai-share-sidebar-text-secondary: #999;
-  --agentic-ai-share-sidebar-button-bg: #4a90e2;
-  --agentic-ai-share-sidebar-button-hover-bg: #3a7bc8;
-  --agentic-ai-share-sidebar-button-disabled-bg: #3a3a3a;
-  --agentic-ai-share-sidebar-scrollbar-track: #1a1a1c;
-  --agentic-ai-share-sidebar-scrollbar-thumb: #3a3a3a;
-}
-
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
 /* Sidebar */
 .sidebar {
   position: fixed;
@@ -284,11 +5,9 @@ export class SidebarComponent {
   bottom: 34px;
   right: 0;
   width: 320px;
-  height: auto;
   background-color: var(--agentic-ai-share-sidebar-bg);
   border: 1px solid var(--agentic-ai-share-sidebar-border);
   z-index: 1000;
-  overflow: hidden;
   display: flex;
   flex-direction: column;
   transform: translateX(-320px);
@@ -301,7 +20,7 @@ export class SidebarComponent {
   }
 }
 
-/* Header Section */
+/* Header Section - Fixed */
 .sidebar-header {
   padding: 20px;
   background-color: var(--agentic-ai-share-sidebar-header-bg);
@@ -310,217 +29,48 @@ export class SidebarComponent {
   justify-content: space-between;
   align-items: center;
   flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
-.sidebar-header h2 {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--agentic-ai-share-sidebar-header-text);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.share-icon {
-  width: 18px;
-  height: 18px;
-}
-
-.close-btn {
-  background-color: var(--agentic-ai-share-sidebar-close-btn-bg);
-  border: 1px solid var(--agentic-ai-share-sidebar-close-btn-border);
-  border-radius: 4px;
-  font-size: 24px;
-  cursor: pointer;
-  color: var(--agentic-ai-share-sidebar-close-btn-color);
-  padding: 6px;
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background-color 0.2s ease, color 0.2s ease;
-  flex-shrink: 0;
-}
-
-.close-btn:hover {
-  background-color: var(--agentic-ai-share-sidebar-close-btn-hover-bg);
-  color: var(--agentic-ai-share-sidebar-close-btn-hover-color);
-}
-
-.close-btn svg {
-  width: 18px;
-  height: 18px;
-}
-
-/* Search Section */
+/* Search Section - Fixed */
 .search-section {
   padding: 16px 20px;
   border-bottom: 1px solid var(--agentic-ai-share-sidebar-header-border);
   flex-shrink: 0;
+  background-color: var(--agentic-ai-share-sidebar-bg);
+  position: sticky;
+  top: 0;
+  z-index: 9;
 }
 
-.search-container {
-  position: relative;
-}
-
-.search-input {
-  width: 100%;
-  padding: 11px 40px 11px 40px;
-  border: 1px solid var(--agentic-ai-share-sidebar-search-border);
-  border-radius: 8px;
-  font-size: 14px;
-  outline: none;
-  transition: all 0.2s ease;
-  background-color: var(--agentic-ai-share-sidebar-search-bg);
-  color: var(--agentic-ai-share-sidebar-text-color);
-}
-
-.search-input:focus {
-  border-color: var(--agentic-ai-share-sidebar-search-focus-border);
-  box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.1);
-}
-
-.search-input::placeholder {
-  color: var(--agentic-ai-share-sidebar-search-icon-color);
-}
-
-.search-icon {
-  position: absolute;
-  left: 14px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--agentic-ai-share-sidebar-search-icon-color);
-  pointer-events: none;
-}
-
-.search-icon svg {
-  width: 16px;
-  height: 16px;
-  display: block;
-}
-
-.search-clear {
-  position: absolute;
-  right: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--agentic-ai-share-sidebar-search-icon-color);
-  cursor: pointer;
-  padding: 4px;
-  display: none;
-  transition: color 0.2s;
-}
-
-.search-clear:hover {
-  color: var(--agentic-ai-share-sidebar-text-color);
-}
-
-.search-clear.active {
-  display: block;
-}
-
-/* Select All Section */
+/* Select All Section - Fixed */
 .select-all-container {
   padding: 16px 20px;
   border-bottom: 1px solid var(--agentic-ai-share-sidebar-header-border);
   background-color: var(--agentic-ai-share-sidebar-select-all-bg);
   flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 8;
 }
 
-.checkbox-item {
-  display: flex;
-  align-items: center;
-  cursor: pointer;
-}
-
-.checkbox-item input[type="checkbox"] {
-  width: 18px;
-  height: 18px;
-  cursor: pointer;
-  margin-right: 12px;
-  accent-color: #4a90e2;
-}
-
-.checkbox-label {
-  font-size: 14px;
-  color: var(--agentic-ai-share-sidebar-text-color);
-  font-weight: 500;
-  cursor: pointer;
-  user-select: none;
-}
-
-.selected-count {
-  font-size: 12px;
-  color: var(--agentic-ai-share-sidebar-text-secondary);
-  margin-top: 8px;
-}
-
-/* Employee List Section */
+/* Employee List Section - Scrollable */
 .employee-list {
   flex: 1;
   overflow-y: auto;
   padding: 12px 0;
+  min-height: 0;
 }
 
-.employee-item {
-  padding: 12px 20px;
-  transition: background-color 0.15s;
-}
-
-.employee-item:hover {
-  background-color: var(--agentic-ai-share-sidebar-item-hover-bg);
-}
-
-.employee-name {
-  font-size: 14px;
-  color: var(--agentic-ai-share-sidebar-text-color);
-}
-
-/* Footer Section */
+/* Footer Section - Fixed */
 .sidebar-footer {
   padding: 16px 20px;
   border-top: 1px solid var(--agentic-ai-share-sidebar-header-border);
   background-color: var(--agentic-ai-share-sidebar-bg);
   flex-shrink: 0;
-}
-
-.share-button {
-  width: 100%;
-  padding: 12px;
-  background-color: var(--agentic-ai-share-sidebar-button-bg);
-  color: #ffffff;
-  border: none;
-  border-radius: 6px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.share-button:hover:not(:disabled) {
-  background-color: var(--agentic-ai-share-sidebar-button-hover-bg);
-}
-
-.share-button:disabled {
-  background-color: var(--agentic-ai-share-sidebar-button-disabled-bg);
-  cursor: not-allowed;
-}
-
-/* Scrollbar Styling */
-.employee-list::-webkit-scrollbar {
-  width: 6px;
-}
-
-.employee-list::-webkit-scrollbar-track {
-  background: var(--agentic-ai-share-sidebar-scrollbar-track);
-}
-
-.employee-list::-webkit-scrollbar-thumb {
-  background: var(--agentic-ai-share-sidebar-scrollbar-thumb);
-  border-radius: 3px;
-}
-
-.employee-list::-webkit-scrollbar-thumb:hover {
-  background: #a1a1a1;
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
 }
