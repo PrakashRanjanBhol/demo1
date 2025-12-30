@@ -1,6 +1,4 @@
-import { Component, OnInit } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
+import { Component, Input, Output, EventEmitter } from '@angular/core';
 
 export interface Employee {
   id: number;
@@ -9,15 +7,17 @@ export interface Employee {
 }
 
 @Component({
-  selector: 'app-share-workflow-sidebar',
-  standalone: true,
-  imports: [CommonModule, FormsModule],
-  templateUrl: './share-workflow-sidebar.component.html',
-  styleUrls: ['./share-workflow-sidebar.component.css']
+  selector: 'app-sidebar',
+  templateUrl: './sidebar.component.html',
+  styleUrls: ['./sidebar.component.css']
 })
-export class ShareWorkflowSidebarComponent implements OnInit {
-  searchTerm: string = '';
-  selectAll: boolean = false;
+export class SidebarComponent {
+  @Input() isSidebarOpen = false;
+  @Output() onShare = new EventEmitter<Employee[]>();
+
+  searchTerm = '';
+  selectAll = false;
+  
   employees: Employee[] = [
     { id: 1, name: 'John Smith', selected: false },
     { id: 2, name: 'Sarah Johnson', selected: false },
@@ -33,16 +33,12 @@ export class ShareWorkflowSidebarComponent implements OnInit {
     { id: 12, name: 'Michelle White', selected: false }
   ];
 
-  ngOnInit(): void {
-    this.updateSelectAllState();
-  }
-
   get filteredEmployees(): Employee[] {
     if (!this.searchTerm) {
       return this.employees;
     }
-    return this.employees.filter(employee =>
-      employee.name.toLowerCase().includes(this.searchTerm.toLowerCase())
+    return this.employees.filter(emp => 
+      emp.name.toLowerCase().includes(this.searchTerm.toLowerCase())
     );
   }
 
@@ -54,11 +50,17 @@ export class ShareWorkflowSidebarComponent implements OnInit {
     return this.filteredEmployees.length;
   }
 
-  get showClearButton(): boolean {
-    return this.searchTerm.length > 0;
+  get isIndeterminate(): boolean {
+    const selected = this.selectedCount;
+    return selected > 0 && selected < this.totalVisible;
   }
 
-  onSearchChange(): void {
+  toggleSidebar(): void {
+    this.isSidebarOpen = false;
+  }
+
+  onSearchChange(value: string): void {
+    this.searchTerm = value;
     this.updateSelectAllState();
   }
 
@@ -68,42 +70,32 @@ export class ShareWorkflowSidebarComponent implements OnInit {
   }
 
   toggleSelectAll(): void {
-    const filtered = this.filteredEmployees;
-    const allSelected = filtered.every(emp => emp.selected);
-    
-    filtered.forEach(employee => {
-      employee.selected = !allSelected;
-    });
-    
-    this.updateSelectAllState();
+    const newState = !this.selectAll;
+    this.filteredEmployees.forEach(emp => emp.selected = newState);
+    this.selectAll = newState;
   }
 
-  onEmployeeToggle(): void {
+  onEmployeeChange(): void {
     this.updateSelectAllState();
   }
 
   updateSelectAllState(): void {
-    const filtered = this.filteredEmployees;
-    if (filtered.length === 0) {
+    const selected = this.selectedCount;
+    const total = this.totalVisible;
+    
+    if (selected === 0) {
       this.selectAll = false;
-      return;
+    } else if (selected === total) {
+      this.selectAll = true;
+    } else {
+      this.selectAll = false;
     }
-
-    const selectedCount = filtered.filter(emp => emp.selected).length;
-    this.selectAll = selectedCount === filtered.length;
   }
 
   shareWorkflow(): void {
-    const selectedEmployees = this.employees
-      .filter(emp => emp.selected)
-      .map(emp => emp.name);
-
-    if (selectedEmployees.length > 0) {
-      alert(`Sharing workflow with:\n${selectedEmployees.join('\n')}`);
-      // Replace with your actual share logic
-      console.log('Selected employees:', selectedEmployees);
-    } else {
-      alert('Please select at least one employee to share the workflow.');
+    const selected = this.employees.filter(emp => emp.selected);
+    if (selected.length > 0) {
+      this.onShare.emit(selected);
     }
   }
 }
@@ -117,10 +109,38 @@ export class ShareWorkflowSidebarComponent implements OnInit {
 
 
 
-<div class="sidebar">
-  <!-- Header with Search -->
+
+
+
+
+
+
+
+
+<!-- Sidebar -->
+<div class="sidebar" *ngIf="isSidebarOpen">
+  <!-- Header Section -->
   <div class="sidebar-header">
-    <h2 class="sidebar-title">Share Workflow</h2>
+    <h2>
+      <svg class="share-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="18" cy="5" r="3"></circle>
+        <circle cx="6" cy="12" r="3"></circle>
+        <circle cx="18" cy="19" r="3"></circle>
+        <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+        <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+      </svg>
+      Share
+    </h2>
+    <button class="close-btn" (click)="toggleSidebar()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="18" y1="6" x2="6" y2="18"></line>
+        <line x1="6" y1="6" x2="18" y2="18"></line>
+      </svg>
+    </button>
+  </div>
+
+  <!-- Search Section -->
+  <div class="search-section">
     <div class="search-container">
       <span class="search-icon">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -129,25 +149,26 @@ export class ShareWorkflowSidebarComponent implements OnInit {
       </span>
       <input 
         type="text" 
-        class="search-input" 
+        class="search-input"
         [(ngModel)]="searchTerm"
-        (ngModelChange)="onSearchChange()"
+        (input)="onSearchChange($any($event.target).value)"
         placeholder="Search employees..."
       >
       <span 
         class="search-clear" 
-        [class.active]="showClearButton"
+        [class.active]="searchTerm.length > 0"
         (click)="clearSearch()"
       >✕</span>
     </div>
   </div>
 
-  <!-- Select All -->
+  <!-- Select All Section -->
   <div class="select-all-container">
     <label class="checkbox-item">
       <input 
         type="checkbox" 
-        [(ngModel)]="selectAll"
+        [checked]="selectAll"
+        [indeterminate]="isIndeterminate"
         (change)="toggleSelectAll()"
       >
       <span class="checkbox-label">Select All</span>
@@ -155,28 +176,26 @@ export class ShareWorkflowSidebarComponent implements OnInit {
     <div class="selected-count">{{ selectedCount }} of {{ totalVisible }} selected</div>
   </div>
 
-  <!-- Employee List -->
+  <!-- Employee List Section -->
   <div class="employee-list">
-    <div 
-      class="employee-item" 
-      *ngFor="let employee of filteredEmployees"
-    >
+    <div class="employee-item" *ngFor="let employee of filteredEmployees">
       <label class="checkbox-item">
         <input 
           type="checkbox" 
           class="employee-checkbox"
           [(ngModel)]="employee.selected"
-          (change)="onEmployeeToggle()"
+          (change)="onEmployeeChange()"
         >
         <span class="employee-name">{{ employee.name }}</span>
       </label>
     </div>
   </div>
 
-  <!-- Footer with Share Button -->
+  <!-- Footer Section -->
   <div class="sidebar-footer">
     <button 
       class="share-button" 
+      [disabled]="selectedCount === 0"
       (click)="shareWorkflow()"
     >
       Share Workflow
@@ -192,48 +211,64 @@ export class ShareWorkflowSidebarComponent implements OnInit {
 
 
 
-/* CSS Variables for Light Mode */
+
+
+
+
+
+
 :root {
-  --agentic-ai-share-workflow-bg-primary: #ffffff;
-  --agentic-ai-share-workflow-bg-secondary: #fafafa;
-  --agentic-ai-share-workflow-bg-hover: #f8f8f8;
-  --agentic-ai-share-workflow-text-primary: #1a1a1a;
-  --agentic-ai-share-workflow-text-secondary: #333333;
-  --agentic-ai-share-workflow-text-muted: #666666;
-  --agentic-ai-share-workflow-text-placeholder: #999999;
-  --agentic-ai-share-workflow-border-primary: #e5e5e5;
-  --agentic-ai-share-workflow-border-secondary: #e0e0e0;
-  --agentic-ai-share-workflow-accent-color: #4a90e2;
-  --agentic-ai-share-workflow-accent-hover: #3a7bc8;
-  --agentic-ai-share-workflow-accent-active: #2a6bb8;
-  --agentic-ai-share-workflow-shadow: rgba(0, 0, 0, 0.1);
-  --agentic-ai-share-workflow-focus-ring: rgba(74, 144, 226, 0.1);
-  --agentic-ai-share-workflow-scrollbar-track: #f1f1f1;
-  --agentic-ai-share-workflow-scrollbar-thumb: #c1c1c1;
-  --agentic-ai-share-workflow-scrollbar-thumb-hover: #a1a1a1;
-  --agentic-ai-share-workflow-disabled-bg: #d1d1d1;
+  /* Light Mode Variables */
+  --agentic-ai-share-sidebar-bg: #ffffff;
+  --agentic-ai-share-sidebar-border: #bfbfbf;
+  --agentic-ai-share-sidebar-header-bg: #f8f9fa;
+  --agentic-ai-share-sidebar-header-border: #dee2e6;
+  --agentic-ai-share-sidebar-header-text: #333;
+  --agentic-ai-share-sidebar-close-btn-bg: #f0f0f0;
+  --agentic-ai-share-sidebar-close-btn-border: #bfbfbf;
+  --agentic-ai-share-sidebar-close-btn-color: #666;
+  --agentic-ai-share-sidebar-close-btn-hover-bg: #e0e0e0;
+  --agentic-ai-share-sidebar-close-btn-hover-color: #333;
+  --agentic-ai-share-sidebar-search-bg: #fafafa;
+  --agentic-ai-share-sidebar-search-border: #e0e0e0;
+  --agentic-ai-share-sidebar-search-focus-border: #4a90e2;
+  --agentic-ai-share-sidebar-search-icon-color: #999;
+  --agentic-ai-share-sidebar-select-all-bg: #fafafa;
+  --agentic-ai-share-sidebar-item-hover-bg: #f8f8f8;
+  --agentic-ai-share-sidebar-text-color: #1a1a1a;
+  --agentic-ai-share-sidebar-text-secondary: #666;
+  --agentic-ai-share-sidebar-button-bg: #4a90e2;
+  --agentic-ai-share-sidebar-button-hover-bg: #3a7bc8;
+  --agentic-ai-share-sidebar-button-disabled-bg: #d1d1d1;
+  --agentic-ai-share-sidebar-scrollbar-track: #f1f1f1;
+  --agentic-ai-share-sidebar-scrollbar-thumb: #c1c1c1;
 }
 
-/* CSS Variables for Dark Mode */
 [data-theme="dark"] {
-  --agentic-ai-share-workflow-bg-primary: #111113;
-  --agentic-ai-share-workflow-bg-secondary: #1a1a1d;
-  --agentic-ai-share-workflow-bg-hover: #252528;
-  --agentic-ai-share-workflow-text-primary: #e5e5e5;
-  --agentic-ai-share-workflow-text-secondary: #d1d1d1;
-  --agentic-ai-share-workflow-text-muted: #999999;
-  --agentic-ai-share-workflow-text-placeholder: #666666;
-  --agentic-ai-share-workflow-border-primary: #2a2a2d;
-  --agentic-ai-share-workflow-border-secondary: #333336;
-  --agentic-ai-share-workflow-accent-color: #4a90e2;
-  --agentic-ai-share-workflow-accent-hover: #3a7bc8;
-  --agentic-ai-share-workflow-accent-active: #2a6bb8;
-  --agentic-ai-share-workflow-shadow: rgba(0, 0, 0, 0.3);
-  --agentic-ai-share-workflow-focus-ring: rgba(74, 144, 226, 0.2);
-  --agentic-ai-share-workflow-scrollbar-track: #1a1a1d;
-  --agentic-ai-share-workflow-scrollbar-thumb: #3a3a3d;
-  --agentic-ai-share-workflow-scrollbar-thumb-hover: #4a4a4d;
-  --agentic-ai-share-workflow-disabled-bg: #3a3a3d;
+  /* Dark Mode Variables */
+  --agentic-ai-share-sidebar-bg: #111113;
+  --agentic-ai-share-sidebar-border: #3a3a3a;
+  --agentic-ai-share-sidebar-header-bg: #1a1a1c;
+  --agentic-ai-share-sidebar-header-border: #2a2a2c;
+  --agentic-ai-share-sidebar-header-text: #e0e0e0;
+  --agentic-ai-share-sidebar-close-btn-bg: #2a2a2c;
+  --agentic-ai-share-sidebar-close-btn-border: #3a3a3a;
+  --agentic-ai-share-sidebar-close-btn-color: #b0b0b0;
+  --agentic-ai-share-sidebar-close-btn-hover-bg: #3a3a3c;
+  --agentic-ai-share-sidebar-close-btn-hover-color: #e0e0e0;
+  --agentic-ai-share-sidebar-search-bg: #1a1a1c;
+  --agentic-ai-share-sidebar-search-border: #3a3a3a;
+  --agentic-ai-share-sidebar-search-focus-border: #4a90e2;
+  --agentic-ai-share-sidebar-search-icon-color: #666;
+  --agentic-ai-share-sidebar-select-all-bg: #1a1a1c;
+  --agentic-ai-share-sidebar-item-hover-bg: #1f1f21;
+  --agentic-ai-share-sidebar-text-color: #e0e0e0;
+  --agentic-ai-share-sidebar-text-secondary: #999;
+  --agentic-ai-share-sidebar-button-bg: #4a90e2;
+  --agentic-ai-share-sidebar-button-hover-bg: #3a7bc8;
+  --agentic-ai-share-sidebar-button-disabled-bg: #3a3a3a;
+  --agentic-ai-share-sidebar-scrollbar-track: #1a1a1c;
+  --agentic-ai-share-sidebar-scrollbar-thumb: #3a3a3a;
 }
 
 * {
@@ -242,28 +277,87 @@ export class ShareWorkflowSidebarComponent implements OnInit {
   box-sizing: border-box;
 }
 
+/* Sidebar */
 .sidebar {
+  position: fixed;
+  top: 60px;
+  bottom: 34px;
+  right: 0;
   width: 320px;
-  background-color: var(--agentic-ai-share-workflow-bg-primary);
-  border-radius: 8px;
-  box-shadow: 0 2px 8px var(--agentic-ai-share-workflow-shadow);
+  height: auto;
+  background-color: var(--agentic-ai-share-sidebar-bg);
+  border: 1px solid var(--agentic-ai-share-sidebar-border);
+  z-index: 1000;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  height: 600px;
-  overflow: hidden;
+  transform: translateX(-320px);
+  transition: transform 300ms ease-out;
+}
+
+@media (min-width: 1801px) {
+  .sidebar {
+    transform: translateX(-400px);
+  }
 }
 
 /* Header Section */
 .sidebar-header {
   padding: 20px;
-  border-bottom: 1px solid var(--agentic-ai-share-workflow-border-primary);
+  background-color: var(--agentic-ai-share-sidebar-header-bg);
+  border-bottom: 1px solid var(--agentic-ai-share-sidebar-header-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
 }
 
-.sidebar-title {
-  font-size: 16px;
+.sidebar-header h2 {
+  font-size: 18px;
   font-weight: 600;
-  color: var(--agentic-ai-share-workflow-text-primary);
-  margin-bottom: 16px;
+  color: var(--agentic-ai-share-sidebar-header-text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.share-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.close-btn {
+  background-color: var(--agentic-ai-share-sidebar-close-btn-bg);
+  border: 1px solid var(--agentic-ai-share-sidebar-close-btn-border);
+  border-radius: 4px;
+  font-size: 24px;
+  cursor: pointer;
+  color: var(--agentic-ai-share-sidebar-close-btn-color);
+  padding: 6px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease, color 0.2s ease;
+  flex-shrink: 0;
+}
+
+.close-btn:hover {
+  background-color: var(--agentic-ai-share-sidebar-close-btn-hover-bg);
+  color: var(--agentic-ai-share-sidebar-close-btn-hover-color);
+}
+
+.close-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Search Section */
+.search-section {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--agentic-ai-share-sidebar-header-border);
+  flex-shrink: 0;
 }
 
 .search-container {
@@ -273,23 +367,22 @@ export class ShareWorkflowSidebarComponent implements OnInit {
 .search-input {
   width: 100%;
   padding: 11px 40px 11px 40px;
-  border: 1px solid var(--agentic-ai-share-workflow-border-secondary);
+  border: 1px solid var(--agentic-ai-share-sidebar-search-border);
   border-radius: 8px;
   font-size: 14px;
   outline: none;
   transition: all 0.2s ease;
-  background-color: var(--agentic-ai-share-workflow-bg-secondary);
-  color: var(--agentic-ai-share-workflow-text-primary);
+  background-color: var(--agentic-ai-share-sidebar-search-bg);
+  color: var(--agentic-ai-share-sidebar-text-color);
 }
 
 .search-input:focus {
-  border-color: var(--agentic-ai-share-workflow-accent-color);
-  background-color: var(--agentic-ai-share-workflow-bg-primary);
-  box-shadow: 0 0 0 3px var(--agentic-ai-share-workflow-focus-ring);
+  border-color: var(--agentic-ai-share-sidebar-search-focus-border);
+  box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.1);
 }
 
 .search-input::placeholder {
-  color: var(--agentic-ai-share-workflow-text-placeholder);
+  color: var(--agentic-ai-share-sidebar-search-icon-color);
 }
 
 .search-icon {
@@ -297,7 +390,7 @@ export class ShareWorkflowSidebarComponent implements OnInit {
   left: 14px;
   top: 50%;
   transform: translateY(-50%);
-  color: var(--agentic-ai-share-workflow-text-placeholder);
+  color: var(--agentic-ai-share-sidebar-search-icon-color);
   pointer-events: none;
 }
 
@@ -312,7 +405,7 @@ export class ShareWorkflowSidebarComponent implements OnInit {
   right: 12px;
   top: 50%;
   transform: translateY(-50%);
-  color: var(--agentic-ai-share-workflow-text-placeholder);
+  color: var(--agentic-ai-share-sidebar-search-icon-color);
   cursor: pointer;
   padding: 4px;
   display: none;
@@ -320,7 +413,7 @@ export class ShareWorkflowSidebarComponent implements OnInit {
 }
 
 .search-clear:hover {
-  color: var(--agentic-ai-share-workflow-text-muted);
+  color: var(--agentic-ai-share-sidebar-text-color);
 }
 
 .search-clear.active {
@@ -330,8 +423,9 @@ export class ShareWorkflowSidebarComponent implements OnInit {
 /* Select All Section */
 .select-all-container {
   padding: 16px 20px;
-  border-bottom: 1px solid var(--agentic-ai-share-workflow-border-primary);
-  background-color: var(--agentic-ai-share-workflow-bg-secondary);
+  border-bottom: 1px solid var(--agentic-ai-share-sidebar-header-border);
+  background-color: var(--agentic-ai-share-sidebar-select-all-bg);
+  flex-shrink: 0;
 }
 
 .checkbox-item {
@@ -345,15 +439,21 @@ export class ShareWorkflowSidebarComponent implements OnInit {
   height: 18px;
   cursor: pointer;
   margin-right: 12px;
-  accent-color: var(--agentic-ai-share-workflow-accent-color);
+  accent-color: #4a90e2;
 }
 
 .checkbox-label {
   font-size: 14px;
-  color: var(--agentic-ai-share-workflow-text-primary);
+  color: var(--agentic-ai-share-sidebar-text-color);
   font-weight: 500;
   cursor: pointer;
   user-select: none;
+}
+
+.selected-count {
+  font-size: 12px;
+  color: var(--agentic-ai-share-sidebar-text-secondary);
+  margin-top: 8px;
 }
 
 /* Employee List Section */
@@ -369,25 +469,26 @@ export class ShareWorkflowSidebarComponent implements OnInit {
 }
 
 .employee-item:hover {
-  background-color: var(--agentic-ai-share-workflow-bg-hover);
+  background-color: var(--agentic-ai-share-sidebar-item-hover-bg);
 }
 
 .employee-name {
   font-size: 14px;
-  color: var(--agentic-ai-share-workflow-text-secondary);
+  color: var(--agentic-ai-share-sidebar-text-color);
 }
 
 /* Footer Section */
 .sidebar-footer {
   padding: 16px 20px;
-  border-top: 1px solid var(--agentic-ai-share-workflow-border-primary);
-  background-color: var(--agentic-ai-share-workflow-bg-primary);
+  border-top: 1px solid var(--agentic-ai-share-sidebar-header-border);
+  background-color: var(--agentic-ai-share-sidebar-bg);
+  flex-shrink: 0;
 }
 
 .share-button {
   width: 100%;
   padding: 12px;
-  background-color: var(--agentic-ai-share-workflow-accent-color);
+  background-color: var(--agentic-ai-share-sidebar-button-bg);
   color: #ffffff;
   border: none;
   border-radius: 6px;
@@ -397,16 +498,12 @@ export class ShareWorkflowSidebarComponent implements OnInit {
   transition: background-color 0.2s;
 }
 
-.share-button:hover {
-  background-color: var(--agentic-ai-share-workflow-accent-hover);
-}
-
-.share-button:active {
-  background-color: var(--agentic-ai-share-workflow-accent-active);
+.share-button:hover:not(:disabled) {
+  background-color: var(--agentic-ai-share-sidebar-button-hover-bg);
 }
 
 .share-button:disabled {
-  background-color: var(--agentic-ai-share-workflow-disabled-bg);
+  background-color: var(--agentic-ai-share-sidebar-button-disabled-bg);
   cursor: not-allowed;
 }
 
@@ -416,21 +513,14 @@ export class ShareWorkflowSidebarComponent implements OnInit {
 }
 
 .employee-list::-webkit-scrollbar-track {
-  background: var(--agentic-ai-share-workflow-scrollbar-track);
+  background: var(--agentic-ai-share-sidebar-scrollbar-track);
 }
 
 .employee-list::-webkit-scrollbar-thumb {
-  background: var(--agentic-ai-share-workflow-scrollbar-thumb);
+  background: var(--agentic-ai-share-sidebar-scrollbar-thumb);
   border-radius: 3px;
 }
 
 .employee-list::-webkit-scrollbar-thumb:hover {
-  background: var(--agentic-ai-share-workflow-scrollbar-thumb-hover);
-}
-
-/* Selected count */
-.selected-count {
-  font-size: 12px;
-  color: var(--agentic-ai-share-workflow-text-muted);
-  margin-top: 8px;
+  background: #a1a1a1;
 }
