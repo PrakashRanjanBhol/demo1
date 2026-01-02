@@ -1,78 +1,412 @@
-/* Error State */
-.error-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 60px 20px;
-    text-align: center;
+export class WorkflowSidebarComponent implements OnInit {
+  // ... existing properties ...
+  
+  myWorkflows: Workflow[] = [
+    {
+      id: 'workflow-1',
+      name: 'Data Sync Workflow',
+      description: "Sync data across platforms",
+      active: false,
+      isArchived: false,
+      createdAt: "2024-11-15T09:30:00.000Z",
+      updatedAt: "2025-12-28T14:20:15.089Z",
+      triggerCount: 0,
+      nodeCount: 5,
+      nodes: []
+    },
+    {
+      id: 'workflow-4',
+      name: 'Slack Notifier',
+      description: "Send notifications to Slack",
+      active: false,
+      isArchived: false,
+      createdAt: "2024-12-01T13:20:00.000Z",
+      updatedAt: "2025-12-26T18:45:30.089Z",
+      triggerCount: 3,
+      nodeCount: 4,
+      nodes: []
+    }
+  ];
+
+  // Add Active Workflows list
+  activeWorkflows: Workflow[] = [
+    {
+      id: 'workflow-1', // Same ID as in myWorkflows to test disabled state
+      name: 'Data Sync Workflow',
+      description: "Sync data across platforms",
+      active: true,
+      isArchived: false,
+      createdAt: "2024-11-15T09:30:00.000Z",
+      updatedAt: "2025-12-28T14:20:15.089Z",
+      triggerCount: 0,
+      nodeCount: 5,
+      nodes: []
+    }
+  ];
+
+  // Add Functions list
+  functions: Workflow[] = [
+    {
+      id: 'function-1',
+      name: 'Calculate Tax',
+      description: "Tax calculation function",
+      active: false,
+      isArchived: false,
+      createdAt: "2024-10-10T10:00:00.000Z",
+      updatedAt: "2025-12-20T15:30:00.089Z",
+      triggerCount: 0,
+      nodeCount: 3,
+      nodes: []
+    },
+    {
+      id: 'function-2',
+      name: 'Format Date',
+      description: "Date formatting utility",
+      active: false,
+      isArchived: false,
+      createdAt: "2024-11-05T14:20:00.000Z",
+      updatedAt: "2025-12-25T09:10:00.089Z",
+      triggerCount: 0,
+      nodeCount: 2,
+      nodes: []
+    }
+  ];
+
+  // Rename: activeWorkflows -> sharedWorkflows
+  sharedWorkflows: Workflow[] = [
+    {
+      id: 'workflow-2',
+      name: 'Email Automation',
+      description: "Automated email responses",
+      active: true,
+      isArchived: false,
+      createdAt: "2024-10-20T16:45:30.000Z",
+      updatedAt: "2025-12-27T10:15:45.089Z",
+      triggerCount: 12,
+      nodeCount: 8,
+      nodes: []
+    },
+    {
+      id: 'workflow-3',
+      name: 'Report Generator',
+      description: "Generate weekly reports",
+      active: true,
+      isArchived: false,
+      createdAt: "2024-09-05T08:00:00.000Z",
+      updatedAt: "2025-12-29T11:15:24.089Z",
+      triggerCount: 45,
+      nodeCount: 12,
+      nodes: []
+    }
+  ];
+
+  searchTerm: string = '';
+  activeWorkflowId: string = '';
+  myWorkflowsCollapsed: boolean = false;
+  activeWorkflowsCollapsed: boolean = true; // Add this
+  functionsCollapsed: boolean = true; // Add this
+  sharedWorkflowsCollapsed: boolean = true;
+  isRefreshing: boolean = false;
+  hasError: boolean = false;
+
+  // ... existing ngOnInit and other methods ...
+
+  get hasWorkflows(): boolean {
+    return !this.hasError && (this.myWorkflows.length > 0 || this.activeWorkflows.length > 0 || this.functions.length > 0 || this.sharedWorkflows.length > 0);
+  }
+
+  getFilteredMyWorkflows(): Workflow[] {
+    if (!this.searchTerm) {
+      return this.myWorkflows;
+    }
+    const term = this.searchTerm.toLowerCase();
+    return this.myWorkflows.filter(w => w.name.toLowerCase().includes(term));
+  }
+
+  getFilteredFunctions(): Workflow[] {
+    if (!this.searchTerm) {
+      return this.functions;
+    }
+    const term = this.searchTerm.toLowerCase();
+    return this.functions.filter(w => w.name.toLowerCase().includes(term));
+  }
+
+  // Update toggle method
+  toggleSection(section: 'myWorkflows' | 'activeWorkflows' | 'functions' | 'sharedWorkflows'): void {
+    if (section === 'myWorkflows') {
+      this.myWorkflowsCollapsed = !this.myWorkflowsCollapsed;
+    } else if (section === 'activeWorkflows') {
+      this.activeWorkflowsCollapsed = !this.activeWorkflowsCollapsed;
+    } else if (section === 'functions') {
+      this.functionsCollapsed = !this.functionsCollapsed;
+    } else {
+      this.sharedWorkflowsCollapsed = !this.sharedWorkflowsCollapsed;
+    }
+  }
+
+  // Add method to check if workflow is running
+  isWorkflowRunning(workflowId: string): boolean {
+    return this.activeWorkflows.some(w => w.id === workflowId);
+  }
+
+  // ... rest of existing methods ...
 }
 
-.error-icon {
-    width: 48px;
-    height: 48px;
-    background: #fee2e2;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-bottom: 16px;
-}
 
-[data-theme="dark"] .error-icon {
-    background: #3a1a1a;
-}
 
-.error-icon svg {
-    width: 24px;
-    height: 24px;
-    stroke: #dc2626;
-}
 
-[data-theme="dark"] .error-icon svg {
-    stroke: #ef4444;
-}
 
-.error-title {
-    font-size: 16px;
+
+<!-- Workflows Sections -->
+<ng-container *ngIf="hasWorkflows && !isRefreshing">
+  <!-- My Workflows Tab -->
+  <div class="workflow-section">
+    <div class="section-header" (click)="toggleSection('myWorkflows')">
+      <div class="section-header-left">
+        <div class="section-toggle" [class.collapsed]="myWorkflowsCollapsed">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </div>
+        <div class="section-title">My Workflows</div>
+        <div class="section-count">{{ myWorkflows.length }}</div>
+      </div>
+    </div>
+    <div class="section-content" [class.collapsed]="myWorkflowsCollapsed">
+      <div class="search-container">
+        <input type="text" class="search-input" placeholder="Search workflows..." [(ngModel)]="searchTerm">
+      </div>
+
+      <div>
+        <div *ngFor="let workflow of getFilteredMyWorkflows(); let i = index" class="workflow-item"
+          [class.active]="workflow.id === activeWorkflowId" (click)="executeWorkflow(workflow.id)">
+          <div class="workflow-info">
+            <div class="workflow-name">{{ workflow.name }}</div>
+            <div class="workflow-dates">
+              <div class="workflow-date">
+                <span class="workflow-date-label">Created:</span>
+                <span class="date-value">{{ formatDate(workflow.createdAt) }}</span>
+              </div>
+              <div class="workflow-date">
+                <span class="workflow-date-label">Updated:</span>
+                <span class="date-value">{{ formatDate(workflow.updatedAt) }}</span>
+              </div>
+            </div>
+          </div>
+          <div class="workflow-actions">
+            <button class="run-btn" (click)="runWorkflow(workflow.id, $event)" title="Run Workflow"
+              [disabled]="isWorkflowRunning(workflow.id)">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+              </svg>
+            </button>
+            <button class="share-btn" (click)="shareWorkflow(workflow.id, $event)" title="Share Workflow">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round">
+                <circle cx="18" cy="5" r="3"></circle>
+                <circle cx="6" cy="12" r="3"></circle>
+                <circle cx="18" cy="19" r="3"></circle>
+                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Active Workflows Tab -->
+  <div class="workflow-section">
+    <div class="section-header" (click)="toggleSection('activeWorkflows')">
+      <div class="section-header-left">
+        <div class="section-toggle" [class.collapsed]="activeWorkflowsCollapsed">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </div>
+        <div class="section-title">Active Workflows</div>
+        <div class="section-count">{{ activeWorkflows.length }}</div>
+      </div>
+    </div>
+    <div class="section-content" [class.collapsed]="activeWorkflowsCollapsed">
+      <div>
+        <div *ngFor="let workflow of activeWorkflows" class="workflow-item-readonly">
+          <div class="workflow-info">
+            <div class="workflow-name">{{ workflow.name }}</div>
+            <div class="workflow-dates">
+              <div class="workflow-date">
+                <span class="workflow-date-label">Created:</span>
+                <span class="date-value">{{ formatDate(workflow.createdAt) }}</span>
+              </div>
+              <div class="workflow-date">
+                <span class="workflow-date-label">Updated:</span>
+                <span class="date-value">{{ formatDate(workflow.updatedAt) }}</span>
+              </div>
+            </div>
+          </div>
+          <div class="workflow-status-badge running">Running</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Functions Tab -->
+  <div class="workflow-section">
+    <div class="section-header" (click)="toggleSection('functions')">
+      <div class="section-header-left">
+        <div class="section-toggle" [class.collapsed]="functionsCollapsed">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </div>
+        <div class="section-title">Functions</div>
+        <div class="section-count">{{ functions.length }}</div>
+      </div>
+    </div>
+    <div class="section-content" [class.collapsed]="functionsCollapsed">
+      <div class="search-container">
+        <input type="text" class="search-input" placeholder="Search functions..." [(ngModel)]="searchTerm">
+      </div>
+
+      <div>
+        <div *ngFor="let workflow of getFilteredFunctions(); let i = index" class="workflow-item"
+          [class.active]="workflow.id === activeWorkflowId" (click)="executeWorkflow(workflow.id)">
+          <div class="workflow-info">
+            <div class="workflow-name">{{ workflow.name }}</div>
+            <div class="workflow-dates">
+              <div class="workflow-date">
+                <span class="workflow-date-label">Created:</span>
+                <span class="date-value">{{ formatDate(workflow.createdAt) }}</span>
+              </div>
+              <div class="workflow-date">
+                <span class="workflow-date-label">Updated:</span>
+                <span class="date-value">{{ formatDate(workflow.updatedAt) }}</span>
+              </div>
+            </div>
+          </div>
+          <div class="workflow-actions">
+            <button class="run-btn" (click)="runWorkflow(workflow.id, $event)" title="Run Function">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+              </svg>
+            </button>
+            <button class="share-btn" (click)="shareWorkflow(workflow.id, $event)" title="Share Function">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round">
+                <circle cx="18" cy="5" r="3"></circle>
+                <circle cx="6" cy="12" r="3"></circle>
+                <circle cx="18" cy="19" r="3"></circle>
+                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Shared Workflows Tab -->
+  <div class="workflow-section">
+    <div class="section-header" (click)="toggleSection('sharedWorkflows')">
+      <div class="section-header-left">
+        <div class="section-toggle" [class.collapsed]="sharedWorkflowsCollapsed">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </div>
+        <div class="section-title">Shared Workflows</div>
+        <div class="section-count">{{ sharedWorkflows.length }}</div>
+      </div>
+    </div>
+    <div class="section-content" [class.collapsed]="sharedWorkflowsCollapsed">
+      <div>
+        <div *ngFor="let workflow of sharedWorkflows" class="workflow-item-readonly">
+          <div class="workflow-info">
+            <div class="workflow-name">{{ workflow.name }}</div>
+            <div class="workflow-dates">
+              <div class="workflow-date">
+                <span class="workflow-date-label">Created:</span>
+                <span class="date-value">{{ formatDate(workflow.createdAt) }}</span>
+              </div>
+              <div class="workflow-date">
+                <span class="workflow-date-label">Updated:</span>
+                <span class="date-value">{{ formatDate(workflow.updatedAt) }}</span>
+              </div>
+            </div>
+          </div>
+          <div class="workflow-actions">
+            <button class="accept-btn" (click)="acceptSharedWorkflow(workflow.id, $event)" title="Accept Workflow">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+            </button>
+            <button class="reject-btn" (click)="rejectSharedWorkflow(workflow.id, $event)" title="Reject Workflow">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</ng-container>
+
+
+
+
+
+
+
+
+
+
+
+
+/* Update workflow-status-badge for running state */
+.workflow-status-badge {
+    padding: 3px 8px;
+    background: #dcfce7;
+    color: #15803d;
+    border-radius: 4px;
+    font-size: 10px;
     font-weight: 600;
-    color: var(--agentic-ai-workflow-text-primary);
-    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
-.error-message {
-    font-size: 14px;
-    color: var(--agentic-ai-workflow-text-secondary);
-    margin-bottom: 24px;
-    max-width: 280px;
+.workflow-status-badge.running {
+    background: #dbeafe;
+    color: #1e40af;
+    animation: pulse 2s ease-in-out infinite;
 }
 
-.retry-btn {
-    padding: 8px 16px;
-    background: var(--agentic-ai-workflow-bg-create-btn);
-    color: var(--agentic-ai-workflow-text-white);
-    border: none;
-    border-radius: 6px;
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s;
-    display: flex;
-    align-items: center;
-    gap: 6px;
+[data-theme="dark"] .workflow-status-badge.running {
+    background: #1e3a5f;
+    color: #60a5fa;
 }
 
-.retry-btn:hover {
-    background: var(--agentic-ai-workflow-bg-create-btn-hover);
-    transform: translateY(-1px);
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.7;
+    }
 }
 
-.retry-btn:active {
-    transform: translateY(0);
-}
-
-.retry-btn svg {
-    width: 14px;
-    height: 14px;
-    stroke: var(--agentic-ai-workflow-text-white);
+/* Disabled run button */
+.run-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    pointer-events: none;
 }
