@@ -1,4 +1,270 @@
-# .env file  
-VUE_APP_YOUR_CUSTOM_VAR=https://your-url.com
-// In utils.ts  
-const customUrl = import.meta.env.VUE_APP_YOUR_CUSTOM_VAR;
+export class WorkflowSidebarComponent implements OnInit {
+  // ... existing properties ...
+  
+  isRefreshing: boolean = false;
+  isLoadingInitial: boolean = true; // Add this
+  hasError: boolean = false; // Add this
+  errorMessage: string = ''; // Add this
+
+  ngOnInit(): void {
+    this.loadWorkflows();
+  }
+
+  // Add new method to load workflows
+  loadWorkflows(): void {
+    this.isLoadingInitial = true;
+    this.hasError = false;
+    this.errorMessage = '';
+
+    // Simulate API call with potential failure
+    // In production: replace with actual API calls
+    setTimeout(() => {
+      // Simulate random success/failure for demo
+      const isSuccess = Math.random() > 0.3; // 70% success rate for demo
+      
+      if (isSuccess) {
+        // Success - data is already in myWorkflows and sharedWorkflows
+        this.isLoadingInitial = false;
+        
+        if (this.myWorkflows.length > 0) {
+          this.activeWorkflowId = this.myWorkflows[0].id;
+        }
+        
+        console.log('Workflows loaded successfully');
+      } else {
+        // Failure - show error
+        this.isLoadingInitial = false;
+        this.hasError = true;
+        this.errorMessage = 'Failed to load workflows. Please try again.';
+        
+        // Clear the workflows on error
+        this.myWorkflows = [];
+        this.sharedWorkflows = [];
+        
+        console.error('Failed to load workflows');
+      }
+    }, 2000); // 2 second delay to simulate API call
+  }
+
+  // Update refresh method
+  refreshWorkflows(): void {
+    this.isRefreshing = true;
+    this.hasError = false;
+    
+    // Simulate API call with 10 second delay
+    setTimeout(() => {
+      // Simulate random success/failure
+      const isSuccess = Math.random() > 0.3; // 70% success rate for demo
+      
+      if (isSuccess) {
+        // Success
+        this.isRefreshing = false;
+        console.log('Workflows refreshed successfully');
+        
+        // In production: 
+        // this.loadMyWorkflows();
+        // this.loadSharedWorkflows();
+      } else {
+        // Failure
+        this.isRefreshing = false;
+        this.hasError = true;
+        this.errorMessage = 'Failed to refresh workflows. Please try again.';
+        
+        console.error('Failed to refresh workflows');
+      }
+    }, 10000);
+  }
+
+  // Add retry method
+  retryLoadWorkflows(): void {
+    this.loadWorkflows();
+  }
+
+  get hasWorkflows(): boolean {
+    return !this.hasError && (this.myWorkflows.length > 0 || this.sharedWorkflows.length > 0);
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="workflows-container" [class.loading]="isRefreshing">
+  <!-- Loading State for Refresh -->
+  <div *ngIf="isRefreshing" class="loading-overlay">
+    <div class="spinner-container">
+      <div class="spinner"></div>
+      <div class="loading-text">Refreshing workflows...</div>
+    </div>
+  </div>
+
+  <!-- Initial Loading State -->
+  <div *ngIf="isLoadingInitial && !hasError" class="loading-overlay">
+    <div class="spinner-container">
+      <div class="spinner"></div>
+      <div class="loading-text">Loading workflows...</div>
+    </div>
+  </div>
+
+  <!-- Error State -->
+  <div *ngIf="hasError && !isLoadingInitial" class="error-state">
+    <div class="error-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+        stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="8" x2="12" y2="12"></line>
+        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+      </svg>
+    </div>
+    <div class="error-title">Oops! Something went wrong</div>
+    <div class="error-message">{{ errorMessage }}</div>
+    <button class="retry-btn" (click)="retryLoadWorkflows()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+        stroke-linejoin="round">
+        <polyline points="23 4 23 10 17 10"></polyline>
+        <polyline points="1 20 1 14 7 14"></polyline>
+        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+      </svg>
+      Retry
+    </button>
+  </div>
+
+  <!-- Empty State -->
+  <div *ngIf="!hasWorkflows && !isLoadingInitial && !hasError && !isRefreshing" class="empty-state">
+    <div class="empty-state-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+        stroke-linejoin="round">
+        <path
+          d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z">
+        </path>
+        <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+        <line x1="12" y1="22.08" x2="12" y2="12"></line>
+      </svg>
+    </div>
+    <div class="empty-state-title">No workflows yet</div>
+    <div class="empty-state-description">Please create a new workflow to get started</div>
+    <button class="empty-state-btn" (click)="createWorkflow()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+        stroke-linejoin="round">
+        <line x1="12" y1="5" x2="12" y2="19"></line>
+        <line x1="5" y1="12" x2="19" y2="12"></line>
+      </svg>
+      Create Workflow
+    </button>
+  </div>
+
+  <!-- Workflows Sections -->
+  <ng-container *ngIf="hasWorkflows && !isLoadingInitial && !isRefreshing">
+    <!-- My Workflows Tab -->
+    <!-- ... existing My Workflows section ... -->
+    
+    <!-- Shared Workflows Tab -->
+    <!-- ... existing Shared Workflows section ... -->
+  </ng-container>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* Error State */
+.error-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    text-align: center;
+}
+
+.error-icon {
+    width: 56px;
+    height: 56px;
+    background: #fee2e2;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 16px;
+}
+
+[data-theme="dark"] .error-icon {
+    background: #3a1a1a;
+}
+
+.error-icon svg {
+    width: 28px;
+    height: 28px;
+    stroke: #dc2626;
+}
+
+[data-theme="dark"] .error-icon svg {
+    stroke: #ef4444;
+}
+
+.error-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--agentic-ai-workflow-text-primary);
+    margin-bottom: 8px;
+}
+
+.error-message {
+    font-size: 14px;
+    color: var(--agentic-ai-workflow-text-secondary);
+    margin-bottom: 24px;
+    max-width: 280px;
+}
+
+.retry-btn {
+    padding: 10px 20px;
+    background: var(--agentic-ai-workflow-bg-create-btn);
+    color: var(--agentic-ai-workflow-text-white);
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.retry-btn:hover {
+    background: var(--agentic-ai-workflow-bg-create-btn-hover);
+    transform: translateY(-1px);
+}
+
+.retry-btn:active {
+    transform: translateY(0);
+}
+
+.retry-btn svg {
+    width: 16px;
+    height: 16px;
+    stroke: var(--agentic-ai-workflow-text-white);
+}
+
+
+
+
+
