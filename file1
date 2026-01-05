@@ -1,56 +1,39 @@
-export class SsoLoginComponent implements OnDestroy {
-  
-  isLoading = false;
-  errorMessage: string | null = null;
+export class WorkflowSidebarComponent implements OnInit {
+  // ... existing properties ...
 
-  constructor(private ssoAuthService: SsoAuthService) {}
+  selectedFunctionName: string | null = null;
+  deletingFunctionName: string | null = null;
+  isDeletingInProgress: boolean = false; // Add this property
 
-  onSsoLogin(): void {
-    this.isLoading = true;
-    this.errorMessage = null; // Clear previous error
+  // ... existing methods ...
+
+  // Update confirm delete method
+  confirmDeleteFunction(functionName: string, event: Event): void {
+    event.stopPropagation();
     
-    const websocketUrl = 'wss://your-websocket-url.com';
-    const initialData = {
-      action: 'authenticate',
-      timestamp: new Date().toISOString()
-    };
-
-    this.ssoAuthService.initiateSSO(websocketUrl, initialData).subscribe({
-      next: (wsData) => {
-        const apiUrl = 'https://your-api-url.com/endpoint';
-        const apiPayload = {
-          token: wsData.token,
-          ...wsData
-        };
-
-        this.ssoAuthService.makeApiCall(apiUrl, apiPayload).subscribe({
-          next: (apiResponse) => {
-            console.log('API call successful:', apiResponse);
-            this.isLoading = false;
-            // Handle successful authentication
-          },
-          error: (apiError) => {
-            console.error('API call failed:', apiError);
-            this.isLoading = false;
-            this.errorMessage = 'Access restricted. Only authorized users can access this feature.';
-          }
-        });
-      },
-      error: (wsError) => {
-        console.error('WebSocket error:', wsError);
-        this.isLoading = false;
-        this.errorMessage = 'Access restricted. Only authorized users can access this feature.';
+    // Set deleting in progress
+    this.isDeletingInProgress = true;
+    
+    // Simulate API call with delay
+    setTimeout(() => {
+      // Remove function from array
+      this.functions = this.functions.filter(f => f.function_name !== functionName);
+      
+      // Clear deleting state
+      this.deletingFunctionName = null;
+      this.isDeletingInProgress = false;
+      
+      // Clear selection if this function was selected
+      if (this.selectedFunctionName === functionName) {
+        this.selectedFunctionName = null;
       }
-    });
+      
+      console.log('Function deleted:', functionName);
+      // In production: make API call to delete function
+    }, 2000); // 2 second delay to simulate API call
   }
 
-  onContactSupport(): void {
-    console.log('Contact support clicked');
-  }
-
-  ngOnDestroy(): void {
-    this.ssoAuthService.closeWebSocket();
-  }
+  // ... rest of existing methods ...
 }
 
 
@@ -59,15 +42,26 @@ export class SsoLoginComponent implements OnDestroy {
 
 
 
-
-
-
-
-<div class="error-message" *ngIf="errorMessage">
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="error-icon">
-    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" fill="currentColor"/>
-  </svg>
-  <p>{{ errorMessage }}</p>
+<!-- Delete confirmation mode: Confirm and Cancel buttons -->
+<div class="function-delete-actions" *ngIf="isFunctionDeleting(func.function_name)">
+  <button class="confirm-delete-btn" (click)="confirmDeleteFunction(func.function_name, $event)"
+    title="Confirm Delete" [disabled]="isDeletingInProgress">
+    <!-- Show spinner when deleting -->
+    <div class="delete-spinner" *ngIf="isDeletingInProgress"></div>
+    <!-- Show checkmark when not deleting -->
+    <svg *ngIf="!isDeletingInProgress" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" 
+      stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="20 6 9 17 4 12"></polyline>
+    </svg>
+  </button>
+  <button class="cancel-delete-btn" (click)="cancelDeleteFunction($event)" title="Cancel Delete"
+    [disabled]="isDeletingInProgress">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+      stroke-linejoin="round">
+      <line x1="18" y1="6" x2="6" y2="18"></line>
+      <line x1="6" y1="6" x2="18" y2="18"></line>
+    </svg>
+  </button>
 </div>
 
 
@@ -77,65 +71,96 @@ export class SsoLoginComponent implements OnDestroy {
 
 
 
-/* Light Mode Variables */
-:root {
-  /* ... existing variables ... */
-  --agentic-ai-auth-error-bg: rgba(239, 68, 68, 0.1);
-  --agentic-ai-auth-error-border: #ef4444;
-  --agentic-ai-auth-error-icon: #ef4444;
-  --agentic-ai-auth-error-text: #dc2626;
+
+
+
+
+
+
+/* Delete confirmation actions */
+.function-delete-actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
 }
 
-/* Dark Mode Variables */
-[data-theme="dark"] {
-  /* ... existing variables ... */
-  --agentic-ai-auth-error-bg: rgba(239, 68, 68, 0.15);
-  --agentic-ai-auth-error-border: #ef4444;
-  --agentic-ai-auth-error-icon: #f87171;
-  --agentic-ai-auth-error-text: #fca5a5;
+.confirm-delete-btn,
+.cancel-delete-btn {
+    padding: 4px 6px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
 }
 
-
-
-
-
-
-
-
-.error-message {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  margin-top: 16px;
-  padding: 12px 14px;
-  background-color: var(--agentic-ai-auth-error-bg);
-  border-left: 3px solid var(--agentic-ai-auth-error-border);
-  border-radius: 6px;
-  animation: slideIn 0.3s ease-out;
+.confirm-delete-btn {
+    background: var(--agentic-ai-workflow-bg-confirm-delete);
+    border: none;
 }
 
-.error-icon {
-  width: 18px;
-  height: 18px;
-  color: var(--agentic-ai-auth-error-icon);
-  flex-shrink: 0;
-  margin-top: 1px;
+.confirm-delete-btn:hover:not(:disabled) {
+    background: var(--agentic-ai-workflow-bg-confirm-delete-hover);
+    transform: translateY(-1px);
 }
 
-.error-message p {
-  margin: 0;
-  font-size: 13px;
-  color: var(--agentic-ai-auth-error-text);
-  line-height: 1.5;
-}
-
-@keyframes slideIn {
-  from {
-    opacity: 0;
-    transform: translateY(-10px);
-  }
-  to {
-    opacity: 1;
+.confirm-delete-btn:active:not(:disabled) {
     transform: translateY(0);
-  }
+}
+
+.confirm-delete-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.8;
+}
+
+.confirm-delete-btn svg {
+    width: 14px;
+    height: 14px;
+    stroke: var(--agentic-ai-workflow-text-white);
+}
+
+.cancel-delete-btn {
+    background: var(--agentic-ai-workflow-bg-button);
+    border: 1px solid var(--agentic-ai-workflow-border-primary);
+}
+
+.cancel-delete-btn:hover:not(:disabled) {
+    background: var(--agentic-ai-workflow-bg-button-hover);
+    transform: translateY(-1px);
+}
+
+.cancel-delete-btn:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.cancel-delete-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.cancel-delete-btn svg {
+    width: 14px;
+    height: 14px;
+    stroke: var(--agentic-ai-workflow-text-secondary);
+}
+
+/* Delete spinner */
+.delete-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top: 2px solid var(--agentic-ai-workflow-text-white);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
 }
