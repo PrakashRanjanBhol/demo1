@@ -1,1 +1,141 @@
-filter: invert(1) brightness(1.2);
+export class SsoLoginComponent implements OnDestroy {
+  
+  isLoading = false;
+  errorMessage: string | null = null;
+
+  constructor(private ssoAuthService: SsoAuthService) {}
+
+  onSsoLogin(): void {
+    this.isLoading = true;
+    this.errorMessage = null; // Clear previous error
+    
+    const websocketUrl = 'wss://your-websocket-url.com';
+    const initialData = {
+      action: 'authenticate',
+      timestamp: new Date().toISOString()
+    };
+
+    this.ssoAuthService.initiateSSO(websocketUrl, initialData).subscribe({
+      next: (wsData) => {
+        const apiUrl = 'https://your-api-url.com/endpoint';
+        const apiPayload = {
+          token: wsData.token,
+          ...wsData
+        };
+
+        this.ssoAuthService.makeApiCall(apiUrl, apiPayload).subscribe({
+          next: (apiResponse) => {
+            console.log('API call successful:', apiResponse);
+            this.isLoading = false;
+            // Handle successful authentication
+          },
+          error: (apiError) => {
+            console.error('API call failed:', apiError);
+            this.isLoading = false;
+            this.errorMessage = 'Access restricted. Only authorized users can access this feature.';
+          }
+        });
+      },
+      error: (wsError) => {
+        console.error('WebSocket error:', wsError);
+        this.isLoading = false;
+        this.errorMessage = 'Access restricted. Only authorized users can access this feature.';
+      }
+    });
+  }
+
+  onContactSupport(): void {
+    console.log('Contact support clicked');
+  }
+
+  ngOnDestroy(): void {
+    this.ssoAuthService.closeWebSocket();
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+<div class="error-message" *ngIf="errorMessage">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="error-icon">
+    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" fill="currentColor"/>
+  </svg>
+  <p>{{ errorMessage }}</p>
+</div>
+
+
+
+
+
+
+
+
+/* Light Mode Variables */
+:root {
+  /* ... existing variables ... */
+  --agentic-ai-auth-error-bg: rgba(239, 68, 68, 0.1);
+  --agentic-ai-auth-error-border: #ef4444;
+  --agentic-ai-auth-error-icon: #ef4444;
+  --agentic-ai-auth-error-text: #dc2626;
+}
+
+/* Dark Mode Variables */
+[data-theme="dark"] {
+  /* ... existing variables ... */
+  --agentic-ai-auth-error-bg: rgba(239, 68, 68, 0.15);
+  --agentic-ai-auth-error-border: #ef4444;
+  --agentic-ai-auth-error-icon: #f87171;
+  --agentic-ai-auth-error-text: #fca5a5;
+}
+
+
+
+
+
+
+
+
+.error-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 12px 14px;
+  background-color: var(--agentic-ai-auth-error-bg);
+  border-left: 3px solid var(--agentic-ai-auth-error-border);
+  border-radius: 6px;
+  animation: slideIn 0.3s ease-out;
+}
+
+.error-icon {
+  width: 18px;
+  height: 18px;
+  color: var(--agentic-ai-auth-error-icon);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.error-message p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--agentic-ai-auth-error-text);
+  line-height: 1.5;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
