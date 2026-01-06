@@ -1,15 +1,90 @@
-/* Content Styles */
-.content {
-  flex: 1;
-  overflow-y: auto;
-  padding: 30px;
-  display: flex;
-  justify-content: center;
+// Add new interface for Shared Workflow
+interface SharedWorkflow {
+  id: number;
+  workflow_id: string;
+  source_user_email: string;
+  target_user_email: string;
+  status: string;
+  shared_at: string;
+  responded_at: string | null;
+  workflow_name: string;
 }
 
-.content-inner {
-  width: 100%;
-  max-width: 800px;
+// Update component class
+export class WorkflowSidebarComponent implements OnInit {
+  // ... existing properties ...
+
+  // Update sharedWorkflows with new structure
+  sharedWorkflows: SharedWorkflow[] = [
+    {
+      id: 1,
+      workflow_id: "abcde",
+      source_user_email: "abc@test.com",
+      target_user_email: "efg@test.com",
+      status: "pending",
+      shared_at: "2026-01-06T06:15:16",
+      responded_at: null,
+      workflow_name: "Sample Test Workflow"
+    },
+    {
+      id: 2,
+      workflow_id: "fghij",
+      source_user_email: "john@test.com",
+      target_user_email: "efg@test.com",
+      status: "pending",
+      shared_at: "2026-01-05T10:30:00",
+      responded_at: null,
+      workflow_name: "Email Automation Flow"
+    }
+  ];
+
+  // ... existing properties and methods ...
+
+  // Update accept method to use new structure
+  acceptSharedWorkflow(workflowId: number, event: Event): void {
+    event.stopPropagation();
+    
+    // Find the workflow in shared list
+    const sharedWorkflow = this.sharedWorkflows.find(w => w.id === workflowId);
+    
+    if (sharedWorkflow) {
+      // Remove from shared workflows
+      this.sharedWorkflows = this.sharedWorkflows.filter(w => w.id !== workflowId);
+      
+      // Create a new workflow object for myWorkflows
+      const newWorkflow: Workflow = {
+        id: sharedWorkflow.workflow_id,
+        name: sharedWorkflow.workflow_name,
+        description: `Shared by ${sharedWorkflow.source_user_email}`,
+        active: false,
+        isArchived: false,
+        createdAt: sharedWorkflow.shared_at,
+        updatedAt: sharedWorkflow.shared_at,
+        triggerCount: 0,
+        nodeCount: 0,
+        nodes: []
+      };
+      
+      // Add to my workflows
+      this.myWorkflows.push(newWorkflow);
+      
+      console.log(`Shared workflow ${workflowId} accepted and moved to My Workflows`);
+      // In production: make API call to accept workflow
+    }
+  }
+
+  // Update reject method to use new structure
+  rejectSharedWorkflow(workflowId: number, event: Event): void {
+    event.stopPropagation();
+    
+    // Remove from shared workflows
+    this.sharedWorkflows = this.sharedWorkflows.filter(w => w.id !== workflowId);
+    
+    console.log(`Shared workflow ${workflowId} rejected and removed`);
+    // In production: make API call to reject workflow
+  }
+
+  // ... rest of existing methods ...
 }
 
 
@@ -17,29 +92,135 @@
 
 
 
-<!-- Scrollable Content -->
-<main class="content">
-  <div class="content-inner">
-    <div class="form-group">
-      <label class="form-label" for="functionName">Function Name</label>
-      <input 
-        type="text" 
-        id="functionName" 
-        class="form-input" 
-        placeholder="Enter function name"
-        [(ngModel)]="functionName"
-        [disabled]="isEditMode"
-      >
-    </div>
 
-    <div class="form-group">
-      <label class="form-label" for="functionCode">Function Code</label>
-      <textarea 
-        id="functionCode" 
-        class="form-input form-textarea" 
-        placeholder="// Write your function code here&#10;function example() {&#10;    return 'Hello World';&#10;}"
-        [(ngModel)]="functionCode"
-      ></textarea>
+
+
+
+
+<!-- Shared Workflows Tab -->
+<div class="workflow-section">
+  <div class="section-header" (click)="toggleSection('sharedWorkflows')">
+    <div class="section-header-left">
+      <div class="section-toggle" [class.collapsed]="sharedWorkflowsCollapsed">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+          stroke-linejoin="round">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </div>
+      <div class="section-title">Shared Workflows</div>
+      <div class="section-count">{{ sharedWorkflows.length }}</div>
     </div>
   </div>
-</main>
+  <div class="section-content" [class.collapsed]="sharedWorkflowsCollapsed">
+    <!-- Show this when shared workflows exist -->
+    <div *ngIf="sharedWorkflows.length > 0">
+      <div *ngFor="let workflow of sharedWorkflows" class="shared-workflow-item">
+        <div class="shared-workflow-header">
+          <div class="workflow-name">{{ workflow.workflow_name }}</div>
+          <div class="workflow-actions">
+            <button class="accept-btn" (click)="acceptSharedWorkflow(workflow.id, $event)" title="Accept Workflow">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+            </button>
+            <button class="reject-btn" (click)="rejectSharedWorkflow(workflow.id, $event)" title="Reject Workflow">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div class="shared-workflow-details">
+          <div class="shared-detail-item">
+            <svg class="detail-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" 
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+              <circle cx="12" cy="7" r="4"></circle>
+            </svg>
+            <span class="detail-label">From:</span>
+            <span class="detail-value">{{ workflow.source_user_email }}</span>
+          </div>
+          <div class="shared-detail-item">
+            <svg class="detail-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" 
+              stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            <span class="detail-label">Shared:</span>
+            <span class="detail-value">{{ formatDate(workflow.shared_at) }}</span>
+          </div>
+          <div class="shared-detail-item">
+            <svg class="detail-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" 
+              stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            <span class="detail-label">Status:</span>
+            <span class="status-badge" [class]="workflow.status">{{ workflow.status }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Show this when no shared workflows exist -->
+    <div *ngIf="sharedWorkflows.length === 0" class="empty-shared-workflows-state">
+      <div class="empty-shared-workflows-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+          stroke-linejoin="round">
+          <circle cx="18" cy="5" r="3"></circle>
+          <circle cx="6" cy="12" r="3"></circle>
+          <circle cx="18" cy="19" r="3"></circle>
+          <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+          <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+        </svg>
+      </div>
+      <div class="empty-shared-workflows-title">No Shared Workflows</div>
+      <div class="empty-shared-workflows-description">Workflows shared with you will appear here</div>
+    </div>
+  </div>
+</div>
+
+
+
+
+
+/* Light Mode CSS Variables */
+:root {
+    /* ... existing variables ... */
+    
+    --agentic-ai-workflow-bg-status-pending: #fef3c7;
+    --agentic-ai-workflow-text-status-pending: #92400e;
+}
+
+/* Dark Mode CSS Variables */
+[data-theme="dark"] {
+    /* ... existing variables ... */
+    
+    --agentic-ai-workflow-bg-status-pending: #3a2e1a;
+    --agentic-ai-workflow-text-status-pending: #fbbf24;
+}
+
+
+
+
+
+
+
+
+.status-badge {
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: capitalize;
+}
+
+.status-badge.pending {
+    background: var(--agentic-ai-workflow-bg-status-pending);
+    color: var(--agentic-ai-workflow-text-status-pending);
+}
