@@ -1,67 +1,218 @@
-/* Shared Workflow Item */
-.shared-workflow-item {
-    padding: 12px 20px;
-    border-left: 3px solid transparent;
-    transition: background-color 0.15s;
+export class WorkflowSidebarComponent implements OnInit {
+  // ... existing properties ...
+
+  selectedFunctionName: string | null = null;
+  deletingFunctionName: string | null = null;
+  isDeletingInProgress: boolean = false;
+  acceptingWorkflowId: number | null = null; // Add this
+  rejectingWorkflowId: number | null = null; // Add this
+
+  // ... existing methods ...
+
+  // Update accept method
+  acceptSharedWorkflow(workflowId: number, event: Event): void {
+    event.stopPropagation();
+    
+    // Set accepting in progress
+    this.acceptingWorkflowId = workflowId;
+    
+    // Simulate API call with delay
+    setTimeout(() => {
+      // Find the workflow in shared list
+      const sharedWorkflow = this.sharedWorkflows.find(w => w.id === workflowId);
+      
+      if (sharedWorkflow) {
+        // Remove from shared workflows
+        this.sharedWorkflows = this.sharedWorkflows.filter(w => w.id !== workflowId);
+        
+        // Create a new workflow object for myWorkflows
+        const newWorkflow: Workflow = {
+          id: sharedWorkflow.workflow_id,
+          name: sharedWorkflow.workflow_name,
+          description: `Shared by ${sharedWorkflow.source_user_email}`,
+          active: false,
+          isArchived: false,
+          createdAt: sharedWorkflow.shared_at,
+          updatedAt: sharedWorkflow.shared_at,
+          triggerCount: 0,
+          nodeCount: 0,
+          nodes: []
+        };
+        
+        // Add to my workflows
+        this.myWorkflows.push(newWorkflow);
+      }
+      
+      // Clear accepting state
+      this.acceptingWorkflowId = null;
+      
+      console.log(`Shared workflow ${workflowId} accepted and moved to My Workflows`);
+      // In production: make API call to accept workflow
+    }, 2000); // 2 second delay to simulate API call
+  }
+
+  // Update reject method
+  rejectSharedWorkflow(workflowId: number, event: Event): void {
+    event.stopPropagation();
+    
+    // Set rejecting in progress
+    this.rejectingWorkflowId = workflowId;
+    
+    // Simulate API call with delay
+    setTimeout(() => {
+      // Remove from shared workflows
+      this.sharedWorkflows = this.sharedWorkflows.filter(w => w.id !== workflowId);
+      
+      // Clear rejecting state
+      this.rejectingWorkflowId = null;
+      
+      console.log(`Shared workflow ${workflowId} rejected and removed`);
+      // In production: make API call to reject workflow
+    }, 2000); // 2 second delay to simulate API call
+  }
+
+  // Add helper methods
+  isWorkflowAccepting(workflowId: number): boolean {
+    return this.acceptingWorkflowId === workflowId;
+  }
+
+  isWorkflowRejecting(workflowId: number): boolean {
+    return this.rejectingWorkflowId === workflowId;
+  }
+
+  isWorkflowProcessing(workflowId: number): boolean {
+    return this.acceptingWorkflowId === workflowId || this.rejectingWorkflowId === workflowId;
+  }
+
+  // ... rest of existing methods ...
 }
 
-.shared-workflow-item:hover {
-    background-color: var(--agentic-ai-workflow-bg-hover);
-    border-left-color: var(--agentic-ai-workflow-border-hover-accent);
-}
 
-.shared-workflow-header {
+
+
+
+
+<div class="workflow-actions">
+  <button class="accept-btn" (click)="acceptSharedWorkflow(workflow.id, $event)" 
+    title="Accept Workflow" [disabled]="isWorkflowProcessing(workflow.id)">
+    <!-- Show spinner when accepting -->
+    <div class="accept-spinner" *ngIf="isWorkflowAccepting(workflow.id)"></div>
+    <!-- Show checkmark when not accepting -->
+    <svg *ngIf="!isWorkflowAccepting(workflow.id)" viewBox="0 0 24 24" fill="none" stroke="currentColor" 
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="20 6 9 17 4 12"></polyline>
+    </svg>
+  </button>
+  <button class="reject-btn" (click)="rejectSharedWorkflow(workflow.id, $event)" 
+    title="Reject Workflow" [disabled]="isWorkflowProcessing(workflow.id)">
+    <!-- Show spinner when rejecting -->
+    <div class="reject-spinner" *ngIf="isWorkflowRejecting(workflow.id)"></div>
+    <!-- Show X icon when not rejecting -->
+    <svg *ngIf="!isWorkflowRejecting(workflow.id)" viewBox="0 0 24 24" fill="none" stroke="currentColor" 
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="18" y1="6" x2="6" y2="18"></line>
+      <line x1="6" y1="6" x2="18" y2="18"></line>
+    </svg>
+  </button>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+/* Accept button */
+.accept-btn {
+    padding: 4px 6px;
+    background: #22c55e;
+    border: none;
+    border-radius: 4px;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    margin-bottom: 8px;
-}
-
-.shared-workflow-details {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-.shared-detail-item {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 12px;
-}
-
-.detail-icon {
-    width: 14px;
-    height: 14px;
-    stroke: var(--agentic-ai-workflow-text-tertiary);
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
     flex-shrink: 0;
 }
 
-.detail-label {
-    color: var(--agentic-ai-workflow-text-tertiary);
-    font-weight: 500;
+.accept-btn:hover:not(:disabled) {
+    background: #16a34a;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(34, 197, 94, 0.3);
 }
 
-.detail-value {
-    color: var(--agentic-ai-workflow-text-secondary);
-    font-weight: 400;
+.accept-btn:active:not(:disabled) {
+    transform: translateY(0);
 }
 
-.status-badge {
-    padding: 2px 6px;
-    border-radius: 3px;
-    font-size: 10px;
-    font-weight: 600;
-    text-transform: capitalize;
+.accept-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
-.status-badge.pending {
-    background: #fef3c7;
-    color: #92400e;
+.accept-btn svg {
+    width: 14px;
+    height: 14px;
+    stroke: var(--agentic-ai-workflow-text-white);
 }
 
-/* Dark mode status badge */
-[data-theme="dark"] .status-badge.pending {
-    background: #3a2e1a;
-    color: #fbbf24;
+/* Reject button */
+.reject-btn {
+    padding: 4px 6px;
+    background: #ef4444;
+    border: none;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    flex-shrink: 0;
+}
+
+.reject-btn:hover:not(:disabled) {
+    background: #dc2626;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(239, 68, 68, 0.3);
+}
+
+.reject-btn:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.reject-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.reject-btn svg {
+    width: 14px;
+    height: 14px;
+    stroke: var(--agentic-ai-workflow-text-white);
+}
+
+/* Accept spinner */
+.accept-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top: 2px solid var(--agentic-ai-workflow-text-white);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+}
+
+/* Reject spinner */
+.reject-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top: 2px solid var(--agentic-ai-workflow-text-white);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
 }
