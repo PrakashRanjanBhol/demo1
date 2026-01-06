@@ -1,87 +1,31 @@
 export class WorkflowSidebarComponent implements OnInit {
-  // ... existing properties ...
+  // ... existing properties and methods ...
 
-  selectedFunctionName: string | null = null;
-  deletingFunctionName: string | null = null;
-  isDeletingInProgress: boolean = false;
-  acceptingWorkflowId: number | null = null; // Add this
-  rejectingWorkflowId: number | null = null; // Add this
+  // Update executeWorkflow method name to redirectToWorkflow
+  redirectToWorkflow(workflowId: string): void {
+    this.activeWorkflowId = workflowId;
+    console.log(`Redirecting to workflow: ${workflowId}`);
+    
+    // In production: navigate to workflow URL
+    // window.open(`https://your-n8n-instance.com/workflow/${workflowId}`, '_blank');
+    // OR
+    // this.router.navigate(['/workflow', workflowId]);
+    
+    alert(`Redirecting to workflow: ${workflowId}\n\nIn production, this will open the workflow editor.`);
+  }
 
-  // ... existing methods ...
-
-  // Update accept method
-  acceptSharedWorkflow(workflowId: number, event: Event): void {
+  runWorkflow(workflowId: string, event: Event): void {
     event.stopPropagation();
-    
-    // Set accepting in progress
-    this.acceptingWorkflowId = workflowId;
-    
-    // Simulate API call with delay
-    setTimeout(() => {
-      // Find the workflow in shared list
-      const sharedWorkflow = this.sharedWorkflows.find(w => w.id === workflowId);
-      
-      if (sharedWorkflow) {
-        // Remove from shared workflows
-        this.sharedWorkflows = this.sharedWorkflows.filter(w => w.id !== workflowId);
-        
-        // Create a new workflow object for myWorkflows
-        const newWorkflow: Workflow = {
-          id: sharedWorkflow.workflow_id,
-          name: sharedWorkflow.workflow_name,
-          description: `Shared by ${sharedWorkflow.source_user_email}`,
-          active: false,
-          isArchived: false,
-          createdAt: sharedWorkflow.shared_at,
-          updatedAt: sharedWorkflow.shared_at,
-          triggerCount: 0,
-          nodeCount: 0,
-          nodes: []
-        };
-        
-        // Add to my workflows
-        this.myWorkflows.push(newWorkflow);
-      }
-      
-      // Clear accepting state
-      this.acceptingWorkflowId = null;
-      
-      console.log(`Shared workflow ${workflowId} accepted and moved to My Workflows`);
-      // In production: make API call to accept workflow
-    }, 2000); // 2 second delay to simulate API call
+    console.log(`Running workflow: ${workflowId}`);
+    alert(`Executing workflow: ${workflowId}\n\nWorkflow execution started.`);
+    // In production: make API call to run workflow
   }
 
-  // Update reject method
-  rejectSharedWorkflow(workflowId: number, event: Event): void {
+  shareWorkflow(workflowId: string, event: Event): void {
     event.stopPropagation();
-    
-    // Set rejecting in progress
-    this.rejectingWorkflowId = workflowId;
-    
-    // Simulate API call with delay
-    setTimeout(() => {
-      // Remove from shared workflows
-      this.sharedWorkflows = this.sharedWorkflows.filter(w => w.id !== workflowId);
-      
-      // Clear rejecting state
-      this.rejectingWorkflowId = null;
-      
-      console.log(`Shared workflow ${workflowId} rejected and removed`);
-      // In production: make API call to reject workflow
-    }, 2000); // 2 second delay to simulate API call
-  }
-
-  // Add helper methods
-  isWorkflowAccepting(workflowId: number): boolean {
-    return this.acceptingWorkflowId === workflowId;
-  }
-
-  isWorkflowRejecting(workflowId: number): boolean {
-    return this.rejectingWorkflowId === workflowId;
-  }
-
-  isWorkflowProcessing(workflowId: number): boolean {
-    return this.acceptingWorkflowId === workflowId || this.rejectingWorkflowId === workflowId;
+    console.log(`Sharing workflow: ${workflowId}`);
+    alert(`Share Workflow: ${workflowId}\n\nThis will open the share dialog or copy share link.`);
+    // In production: open share modal or copy link to clipboard
   }
 
   // ... rest of existing methods ...
@@ -92,28 +36,59 @@ export class WorkflowSidebarComponent implements OnInit {
 
 
 
-<div class="workflow-actions">
-  <button class="accept-btn" (click)="acceptSharedWorkflow(workflow.id, $event)" 
-    title="Accept Workflow" [disabled]="isWorkflowProcessing(workflow.id)">
-    <!-- Show spinner when accepting -->
-    <div class="accept-spinner" *ngIf="isWorkflowAccepting(workflow.id)"></div>
-    <!-- Show checkmark when not accepting -->
-    <svg *ngIf="!isWorkflowAccepting(workflow.id)" viewBox="0 0 24 24" fill="none" stroke="currentColor" 
-      stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <polyline points="20 6 9 17 4 12"></polyline>
-    </svg>
-  </button>
-  <button class="reject-btn" (click)="rejectSharedWorkflow(workflow.id, $event)" 
-    title="Reject Workflow" [disabled]="isWorkflowProcessing(workflow.id)">
-    <!-- Show spinner when rejecting -->
-    <div class="reject-spinner" *ngIf="isWorkflowRejecting(workflow.id)"></div>
-    <!-- Show X icon when not rejecting -->
-    <svg *ngIf="!isWorkflowRejecting(workflow.id)" viewBox="0 0 24 24" fill="none" stroke="currentColor" 
-      stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <line x1="18" y1="6" x2="6" y2="18"></line>
-      <line x1="6" y1="6" x2="18" y2="18"></line>
-    </svg>
-  </button>
+
+
+
+
+
+
+<div>
+  <div *ngFor="let workflow of getFilteredMyWorkflows(); let i = index" class="workflow-item"
+    [class.active]="workflow.id === activeWorkflowId" (click)="redirectToWorkflow(workflow.id)">
+    <div class="workflow-info">
+      <div class="workflow-name">{{ workflow.name }}</div>
+      <div class="workflow-dates">
+        <div class="workflow-date">
+          <span class="workflow-date-label">Created:</span>
+          <span class="date-value">{{ formatDate(workflow.createdAt) }}</span>
+        </div>
+        <div class="workflow-date">
+          <span class="workflow-date-label">Updated:</span>
+          <span class="date-value">{{ formatDate(workflow.updatedAt) }}</span>
+        </div>
+      </div>
+    </div>
+    <div class="workflow-actions">
+      <button class="run-workflow-btn" (click)="runWorkflow(workflow.id, $event)" title="Run Workflow"
+        [disabled]="isWorkflowRunning(workflow.id)">
+        <svg viewBox="0 0 24 24" fill="currentColor">
+          <polygon points="5 3 19 12 5 21 5 3"></polygon>
+        </svg>
+        <span class="btn-text">Run</span>
+      </button>
+      <button class="redirect-workflow-btn" (click)="redirectToWorkflow(workflow.id); $event.stopPropagation()" 
+        title="Go to Workflow">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+          stroke-linejoin="round">
+          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+          <polyline points="15 3 21 3 21 9"></polyline>
+          <line x1="10" y1="14" x2="21" y2="3"></line>
+        </svg>
+        <span class="btn-text">Direct</span>
+      </button>
+      <button class="share-workflow-btn" (click)="shareWorkflow(workflow.id, $event)" title="Share Workflow">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+          stroke-linejoin="round">
+          <circle cx="18" cy="5" r="3"></circle>
+          <circle cx="6" cy="12" r="3"></circle>
+          <circle cx="18" cy="19" r="3"></circle>
+          <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+          <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+        </svg>
+        <span class="btn-text">Share</span>
+      </button>
+    </div>
+  </div>
 </div>
 
 
@@ -123,96 +98,123 @@ export class WorkflowSidebarComponent implements OnInit {
 
 
 
+.workflow-actions {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
 
-
-
-
-/* Accept button */
-.accept-btn {
-    padding: 4px 6px;
-    background: #22c55e;
+/* Run Workflow Button */
+.run-workflow-btn {
+    padding: 4px 8px;
+    background: var(--agentic-ai-workflow-bg-run-btn);
     border: none;
     border-radius: 4px;
     display: flex;
     align-items: center;
-    justify-content: center;
+    gap: 4px;
     cursor: pointer;
     transition: all 0.2s;
     flex-shrink: 0;
 }
 
-.accept-btn:hover:not(:disabled) {
-    background: #16a34a;
+.run-workflow-btn:hover:not(:disabled) {
+    background: var(--agentic-ai-workflow-bg-run-btn-hover);
     transform: translateY(-1px);
-    box-shadow: 0 2px 4px rgba(34, 197, 94, 0.3);
+    box-shadow: 0 2px 4px var(--agentic-ai-workflow-shadow-run-btn);
 }
 
-.accept-btn:active:not(:disabled) {
+.run-workflow-btn:active:not(:disabled) {
     transform: translateY(0);
 }
 
-.accept-btn:disabled {
-    opacity: 0.5;
+.run-workflow-btn:disabled {
+    opacity: 0.4;
     cursor: not-allowed;
+    pointer-events: none;
 }
 
-.accept-btn svg {
-    width: 14px;
-    height: 14px;
-    stroke: var(--agentic-ai-workflow-text-white);
+.run-workflow-btn svg {
+    width: 12px;
+    height: 12px;
+    fill: var(--agentic-ai-workflow-text-white);
+    stroke: none;
 }
 
-/* Reject button */
-.reject-btn {
-    padding: 4px 6px;
-    background: #ef4444;
-    border: none;
+.run-workflow-btn .btn-text {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--agentic-ai-workflow-text-white);
+}
+
+/* Redirect Workflow Button */
+.redirect-workflow-btn {
+    padding: 4px 8px;
+    background: var(--agentic-ai-workflow-bg-button);
+    border: 1px solid var(--agentic-ai-workflow-border-primary);
     border-radius: 4px;
     display: flex;
     align-items: center;
-    justify-content: center;
+    gap: 4px;
     cursor: pointer;
     transition: all 0.2s;
     flex-shrink: 0;
 }
 
-.reject-btn:hover:not(:disabled) {
-    background: #dc2626;
+.redirect-workflow-btn:hover {
+    background: var(--agentic-ai-workflow-bg-button-hover);
+    border-color: var(--agentic-ai-workflow-border-hover);
     transform: translateY(-1px);
-    box-shadow: 0 2px 4px rgba(239, 68, 68, 0.3);
 }
 
-.reject-btn:active:not(:disabled) {
+.redirect-workflow-btn:active {
     transform: translateY(0);
 }
 
-.reject-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+.redirect-workflow-btn svg {
+    width: 12px;
+    height: 12px;
+    stroke: var(--agentic-ai-workflow-text-secondary);
 }
 
-.reject-btn svg {
-    width: 14px;
-    height: 14px;
-    stroke: var(--agentic-ai-workflow-text-white);
+.redirect-workflow-btn .btn-text {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--agentic-ai-workflow-text-secondary);
 }
 
-/* Accept spinner */
-.accept-spinner {
-    width: 14px;
-    height: 14px;
-    border: 2px solid rgba(255, 255, 255, 0.3);
-    border-top: 2px solid var(--agentic-ai-workflow-text-white);
-    border-radius: 50%;
-    animation: spin 0.6s linear infinite;
+/* Share Workflow Button */
+.share-workflow-btn {
+    padding: 4px 8px;
+    background: var(--agentic-ai-workflow-bg-button);
+    border: 1px solid var(--agentic-ai-workflow-border-primary);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+    flex-shrink: 0;
 }
 
-/* Reject spinner */
-.reject-spinner {
-    width: 14px;
-    height: 14px;
-    border: 2px solid rgba(255, 255, 255, 0.3);
-    border-top: 2px solid var(--agentic-ai-workflow-text-white);
-    border-radius: 50%;
-    animation: spin 0.6s linear infinite;
+.share-workflow-btn:hover {
+    background: var(--agentic-ai-workflow-bg-button-hover);
+    border-color: var(--agentic-ai-workflow-border-hover);
+    transform: translateY(-1px);
+}
+
+.share-workflow-btn:active {
+    transform: translateY(0);
+}
+
+.share-workflow-btn svg {
+    width: 12px;
+    height: 12px;
+    stroke: var(--agentic-ai-workflow-text-secondary);
+}
+
+.share-workflow-btn .btn-text {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--agentic-ai-workflow-text-secondary);
 }
