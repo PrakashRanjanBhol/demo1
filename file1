@@ -1,25 +1,25 @@
-export class WorkflowSidebarComponent implements OnInit, OnDestroy {
-  // ... existing properties and methods ...
-
-  // Add method to select workflow (just for highlighting)
-  selectWorkflow(workflowId: string): void {
-    this.activeWorkflowId = workflowId;
-    console.log(`Selected workflow: ${workflowId}`);
-  }
-
-  // Update redirectToWorkflow to not change selection
-  redirectToWorkflow(workflowId: string): void {
-    console.log(`Redirecting to workflow: ${workflowId}`);
+/* Light Mode CSS Variables */
+:root {
+    /* ... existing variables ... */
     
-    // In production: navigate to workflow URL
-    // window.open(`https://your-n8n-instance.com/workflow/${workflowId}`, '_blank');
-    // OR
-    // this.router.navigate(['/workflow', workflowId]);
-    
-    alert(`Redirecting to workflow: ${workflowId}\n\nIn production, this will open the workflow editor.`);
-  }
+    --agentic-ai-workflow-bg-count-my-workflows: #dbeafe;
+    --agentic-ai-workflow-text-count-my-workflows: #1e40af;
+    --agentic-ai-workflow-bg-count-active-workflows: #dcfce7;
+    --agentic-ai-workflow-text-count-active-workflows: #15803d;
+    --agentic-ai-workflow-bg-count-shared-workflows: #fef3c7;
+    --agentic-ai-workflow-text-count-shared-workflows: #92400e;
+}
 
-  // ... rest of existing methods ...
+/* Dark Mode CSS Variables */
+[data-theme="dark"] {
+    /* ... existing variables ... */
+    
+    --agentic-ai-workflow-bg-count-my-workflows: #1e3a5f;
+    --agentic-ai-workflow-text-count-my-workflows: #60a5fa;
+    --agentic-ai-workflow-bg-count-active-workflows: #1a2e23;
+    --agentic-ai-workflow-text-count-active-workflows: #4ade80;
+    --agentic-ai-workflow-bg-count-shared-workflows: #3a2e1a;
+    --agentic-ai-workflow-text-count-shared-workflows: #fbbf24;
 }
 
 
@@ -27,51 +27,79 @@ export class WorkflowSidebarComponent implements OnInit, OnDestroy {
 
 
 
-<div>
-  <div *ngFor="let workflow of getFilteredMyWorkflows(); trackBy: trackByWorkflowId; let i = index" class="workflow-item"
-    [class.active]="workflow.id === activeWorkflowId" (click)="selectWorkflow(workflow.id)">
-    <div class="workflow-info">
-      <div class="workflow-name">{{ workflow.name }}</div>
-      <div class="workflow-dates">
-        <div class="workflow-date">
-          <span class="workflow-date-label">Created:</span>
-          <span class="date-value">{{ formatDate(workflow.createdAt) }}</span>
-        </div>
-        <div class="workflow-date">
-          <span class="workflow-date-label">Updated:</span>
-          <span class="date-value">{{ formatDate(workflow.updatedAt) }}</span>
-        </div>
-      </div>
+<!-- My Workflows Tab -->
+<div class="section-header" (click)="toggleSection('myWorkflows')">
+  <div class="section-header-left">
+    <div class="section-toggle" [class.collapsed]="myWorkflowsCollapsed">
+      <!-- ... svg ... -->
     </div>
-    <div class="workflow-actions">
-      <button class="run-workflow-btn" (click)="runWorkflow(workflow.id, $event)" title="Run Workflow"
-        [disabled]="isWorkflowRunning(workflow.id) || isWorkflowStarting(workflow.id)">
-        <!-- Show spinner when starting -->
-        <div class="run-spinner" *ngIf="isWorkflowStarting(workflow.id)"></div>
-        <!-- Show play icon when not starting -->
-        <svg *ngIf="!isWorkflowStarting(workflow.id)" viewBox="0 0 24 24" fill="currentColor">
-          <polygon points="5 3 19 12 5 21 5 3"></polygon>
-        </svg>
-      </button>
-      <button class="redirect-workflow-btn" (click)="redirectToWorkflow(workflow.id); $event.stopPropagation()" 
-        title="Go to Workflow">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-          stroke-linejoin="round">
-          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-          <polyline points="15 3 21 3 21 9"></polyline>
-          <line x1="10" y1="14" x2="21" y2="3"></line>
-        </svg>
-      </button>
-      <button class="share-workflow-btn" (click)="shareWorkflow(workflow.id, $event)" title="Share Workflow">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-          stroke-linejoin="round">
-          <circle cx="18" cy="5" r="3"></circle>
-          <circle cx="6" cy="12" r="3"></circle>
-          <circle cx="18" cy="19" r="3"></circle>
-          <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
-          <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
-        </svg>
-      </button>
-    </div>
+    <div class="section-title">My Workflows</div>
+    <div class="section-count my-workflows-count">{{ myWorkflows.length }}</div>
   </div>
 </div>
+
+<!-- Active Workflows Tab -->
+<div class="section-header" (click)="toggleSection('activeWorkflows')">
+  <div class="section-header-left">
+    <div class="section-toggle" [class.collapsed]="activeWorkflowsCollapsed">
+      <!-- ... svg ... -->
+    </div>
+    <div class="section-title">Active Workflows</div>
+    <div class="section-count active-workflows-count">{{ activeWorkflows.length }}</div>
+  </div>
+</div>
+
+<!-- Functions Tab - keep default styling -->
+<div class="section-header" (click)="toggleSection('functions')">
+  <div class="section-header-left">
+    <div class="section-toggle" [class.collapsed]="functionsCollapsed">
+      <!-- ... svg ... -->
+    </div>
+    <div class="section-title">Functions</div>
+    <div class="section-count">{{ functions.length }}</div>
+  </div>
+</div>
+
+<!-- Shared Workflows Tab -->
+<div class="section-header" (click)="toggleSection('sharedWorkflows')">
+  <div class="section-header-left">
+    <div class="section-toggle" [class.collapsed]="sharedWorkflowsCollapsed">
+      <!-- ... svg ... -->
+    </div>
+    <div class="section-title">Shared Workflows</div>
+    <div class="section-count shared-workflows-count">{{ sharedWorkflows.length }}</div>
+  </div>
+</div>
+
+
+
+
+
+
+
+.section-count {
+    font-size: 11px;
+    color: var(--agentic-ai-workflow-text-muted);
+    background: var(--agentic-ai-workflow-bg-badge-count);
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-weight: 600;
+}
+
+/* My Workflows Count - Blue */
+.section-count.my-workflows-count {
+    background: var(--agentic-ai-workflow-bg-count-my-workflows);
+    color: var(--agentic-ai-workflow-text-count-my-workflows);
+}
+
+/* Active Workflows Count - Green */
+.section-count.active-workflows-count {
+    background: var(--agentic-ai-workflow-bg-count-active-workflows);
+    color: var(--agentic-ai-workflow-text-count-active-workflows);
+}
+
+/* Shared Workflows Count - Yellow/Amber */
+.section-count.shared-workflows-count {
+    background: var(--agentic-ai-workflow-bg-count-shared-workflows);
+    color: var(--agentic-ai-workflow-text-count-shared-workflows);
+}
