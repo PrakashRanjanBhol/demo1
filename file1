@@ -1,38 +1,118 @@
-stopWorkflow(workflowId: string, event: Event): void {
-  event.stopPropagation();
-  
-  // Add workflow ID to stopping array
-  this.stoppingWorkflowIds.push(workflowId);
-  
-  console.log(`Stopping workflow: ${workflowId}`);
-  
-  // Simulate API call with delay
-  setTimeout(() => {
-    // Find the workflow in active workflows
-    const stoppedWorkflow = this.activeWorkflows.find(w => w.id === workflowId);
-    
-    // Remove from active workflows
-    this.activeWorkflows = this.activeWorkflows.filter(w => w.id !== workflowId);
-    
-    // Update status in myWorkflows if it exists there
-    if (stoppedWorkflow) {
-      const myWorkflow = this.myWorkflows.find(w => w.id === workflowId);
-      if (myWorkflow) {
-        myWorkflow.active = false;
-      }
+export class WorkflowSidebarComponent implements OnInit, OnDestroy {
+  // ... existing properties ...
+
+  selectedFunctionName: string | null = null;
+  selectedActiveWorkflowId: string | null = null;
+  selectedMyWorkflowId: string | null = null; // Add this property
+  deletingFunctionName: string | null = null;
+
+  // ... existing methods ...
+
+  // Add method to select my workflow
+  selectMyWorkflow(workflowId: string): void {
+    if (this.selectedMyWorkflowId === workflowId) {
+      this.selectedMyWorkflowId = null; // Deselect if already selected
+    } else {
+      this.selectedMyWorkflowId = workflowId; // Select new workflow (auto-deselects previous)
     }
+    console.log('Selected my workflow:', this.selectedMyWorkflowId);
+  }
+
+  // Add method to check if my workflow is selected
+  isMyWorkflowSelected(workflowId: string): boolean {
+    return this.selectedMyWorkflowId === workflowId;
+  }
+
+  // Keep redirectToWorkflow for the redirect button only
+  redirectToWorkflow(workflowId: string): void {
+    console.log(`Redirecting to workflow: ${workflowId}`);
     
-    // Clear selection if this workflow was selected
-    if (this.selectedActiveWorkflowId === workflowId) {
-      this.selectedActiveWorkflowId = null;
-      console.log('Selected active workflow cleared');
-    }
+    // In production: navigate to workflow URL
+    // window.open(`https://your-n8n-instance.com/workflow/${workflowId}`, '_blank');
+    // OR
+    // this.router.navigate(['/workflow', workflowId]);
     
-    // Remove from stopping array
-    this.stoppingWorkflowIds = this.stoppingWorkflowIds.filter(id => id !== workflowId);
-    
-    console.log(`Workflow ${workflowId} stopped and removed from Active Workflows`);
-    
-    // In production: make API call to stop workflow
-  }, 2000); // 2 second delay to simulate API call
+    alert(`Redirecting to workflow: ${workflowId}\n\nIn production, this will open the workflow editor.`);
+  }
+
+  // ... rest of existing methods ...
+}
+
+
+
+
+
+
+
+
+
+
+<div>
+  <div *ngFor="let workflow of getFilteredMyWorkflows(); trackBy: trackByWorkflowId; let i = index" 
+    class="workflow-item" [class.active]="isMyWorkflowSelected(workflow.id)" 
+    (click)="selectMyWorkflow(workflow.id)">
+    <div class="my-workflow-checkbox">
+      <input type="checkbox" [checked]="isMyWorkflowSelected(workflow.id)"
+        (click)="$event.stopPropagation()" (change)="selectMyWorkflow(workflow.id)">
+    </div>
+    <div class="workflow-info">
+      <div class="workflow-name">{{ workflow.name }}</div>
+      <div class="workflow-dates">
+        <div class="workflow-date">
+          <span class="workflow-date-label">Created:</span>
+          <span class="date-value">{{ formatDate(workflow.createdAt) }}</span>
+        </div>
+        <div class="workflow-date">
+          <span class="workflow-date-label">Updated:</span>
+          <span class="date-value">{{ formatDate(workflow.updatedAt) }}</span>
+        </div>
+      </div>
+    </div>
+    <div class="workflow-actions">
+      <button class="run-workflow-btn" (click)="runWorkflow(workflow.id, $event)" title="Run Workflow"
+        [disabled]="isWorkflowRunning(workflow.id) || isWorkflowStarting(workflow.id)">
+        <!-- Show spinner when starting -->
+        <div class="run-spinner" *ngIf="isWorkflowStarting(workflow.id)"></div>
+        <!-- Show play icon when not starting -->
+        <svg *ngIf="!isWorkflowStarting(workflow.id)" viewBox="0 0 24 24" fill="currentColor">
+          <polygon points="5 3 19 12 5 21 5 3"></polygon>
+        </svg>
+      </button>
+      <button class="redirect-workflow-btn" (click)="redirectToWorkflow(workflow.id); $event.stopPropagation()" 
+        title="Go to Workflow">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+          stroke-linejoin="round">
+          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+          <polyline points="15 3 21 3 21 9"></polyline>
+          <line x1="10" y1="14" x2="21" y2="3"></line>
+        </svg>
+      </button>
+      <button class="share-workflow-btn" (click)="shareWorkflow(workflow.id, $event)" title="Share Workflow">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+          stroke-linejoin="round">
+          <circle cx="18" cy="5" r="3"></circle>
+          <circle cx="6" cy="12" r="3"></circle>
+          <circle cx="18" cy="19" r="3"></circle>
+          <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+          <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+        </svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+
+/* My workflow checkbox */
+.my-workflow-checkbox {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    margin-right: 12px;
+}
+
+.my-workflow-checkbox input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: var(--agentic-ai-workflow-bg-run-btn);
 }
