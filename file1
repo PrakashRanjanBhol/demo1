@@ -1,6 +1,7 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Subscription } from 'rxjs';
 
 // ... existing interfaces ...
 
@@ -14,21 +15,26 @@ import { FormsModule } from '@angular/forms';
 export class WorkflowSidebarComponent implements OnInit, OnDestroy {
   // ... existing properties ...
 
-  private pollingInterval: any; // Add this property
+  private pollingInterval: any;
   private readonly POLLING_INTERVAL_MS = 120000; // 2 minutes in milliseconds
+  
+  // Add subscriptions for tracking pending requests
+  private myWorkflowsSubscription?: Subscription;
+  private activeWorkflowsSubscription?: Subscription;
+  private sharedWorkflowsSubscription?: Subscription;
+  private isPollingInProgress = false; // Add flag to track if polling is in progress
 
   ngOnInit(): void {
     this.loadWorkflows();
-    this.startPolling(); // Start polling on init
+    this.startPolling();
   }
 
   ngOnDestroy(): void {
-    this.stopPolling(); // Clean up polling on destroy
+    this.stopPolling();
+    this.cancelAllPendingRequests(); // Cancel any pending requests on destroy
   }
 
-  // Add polling methods
   startPolling(): void {
-    // Poll every 2 minutes
     this.pollingInterval = setInterval(() => {
       console.log('Polling workflows...', new Date().toISOString());
       this.pollWorkflows();
@@ -44,14 +50,19 @@ export class WorkflowSidebarComponent implements OnInit, OnDestroy {
   }
 
   pollWorkflows(): void {
-    // Don't poll if there's an error or initial refresh in progress
-    if (this.hasError || this.isRefreshing) {
-      console.log('Skipping poll - error or refresh in progress');
+    // Don't poll if there's an error, refresh in progress, or previous poll still running
+    if (this.hasError || this.isRefreshing || this.isPollingInProgress) {
+      console.log('Skipping poll - error, refresh, or previous poll in progress');
       return;
     }
 
-    // Simulate API calls to fetch updated data
-    // In production, replace with actual API calls
+    // Cancel any pending requests before starting new poll
+    this.cancelAllPendingRequests();
+    
+    // Set polling in progress flag
+    this.isPollingInProgress = true;
+
+    // Fetch all workflows
     console.log('Fetching My Workflows...');
     this.fetchMyWorkflows();
 
@@ -62,89 +73,120 @@ export class WorkflowSidebarComponent implements OnInit, OnDestroy {
     this.fetchSharedWorkflows();
   }
 
-  // Add individual fetch methods
+  // Add method to cancel all pending requests
+  cancelAllPendingRequests(): void {
+    if (this.myWorkflowsSubscription && !this.myWorkflowsSubscription.closed) {
+      console.log('Cancelling pending My Workflows request');
+      this.myWorkflowsSubscription.unsubscribe();
+    }
+    
+    if (this.activeWorkflowsSubscription && !this.activeWorkflowsSubscription.closed) {
+      console.log('Cancelling pending Active Workflows request');
+      this.activeWorkflowsSubscription.unsubscribe();
+    }
+    
+    if (this.sharedWorkflowsSubscription && !this.sharedWorkflowsSubscription.closed) {
+      console.log('Cancelling pending Shared Workflows request');
+      this.sharedWorkflowsSubscription.unsubscribe();
+    }
+  }
+
   fetchMyWorkflows(): void {
-    // In production: make API call to fetch my workflows
-    // Example:
-    // this.http.get<Workflow[]>('your-api/my-workflows').subscribe(
-    //   data => {
+    // Cancel previous request if still pending
+    if (this.myWorkflowsSubscription && !this.myWorkflowsSubscription.closed) {
+      this.myWorkflowsSubscription.unsubscribe();
+    }
+
+    // In production: make API call
+    // this.myWorkflowsSubscription = this.http.get<Workflow[]>('your-api/my-workflows').subscribe({
+    //   next: (data) => {
     //     this.myWorkflows = data;
     //     console.log('My Workflows updated:', data.length);
+    //     this.checkPollingComplete();
     //   },
-    //   error => {
+    //   error: (error) => {
     //     console.error('Error fetching My Workflows:', error);
+    //     this.checkPollingComplete();
     //   }
-    // );
+    // });
 
-    // For demo: just log
-    console.log('My Workflows fetched successfully');
+    // For demo: simulate with setTimeout
+    const timeoutId = setTimeout(() => {
+      console.log('My Workflows fetched successfully');
+      this.checkPollingComplete();
+    }, 1000);
+
+    // Store as subscription (for demo, we'd clear the timeout on unsubscribe)
+    this.myWorkflowsSubscription = new Subscription(() => clearTimeout(timeoutId));
   }
 
   fetchActiveWorkflows(): void {
-    // In production: make API call to fetch active workflows
-    // Example:
-    // this.http.get<Workflow[]>('your-api/active-workflows').subscribe(
-    //   data => {
+    // Cancel previous request if still pending
+    if (this.activeWorkflowsSubscription && !this.activeWorkflowsSubscription.closed) {
+      this.activeWorkflowsSubscription.unsubscribe();
+    }
+
+    // In production: make API call
+    // this.activeWorkflowsSubscription = this.http.get<Workflow[]>('your-api/active-workflows').subscribe({
+    //   next: (data) => {
     //     this.activeWorkflows = data;
     //     console.log('Active Workflows updated:', data.length);
+    //     this.checkPollingComplete();
     //   },
-    //   error => {
+    //   error: (error) => {
     //     console.error('Error fetching Active Workflows:', error);
+    //     this.checkPollingComplete();
     //   }
-    // );
+    // });
 
-    // For demo: just log
-    console.log('Active Workflows fetched successfully');
+    // For demo: simulate with setTimeout
+    const timeoutId = setTimeout(() => {
+      console.log('Active Workflows fetched successfully');
+      this.checkPollingComplete();
+    }, 1000);
+
+    this.activeWorkflowsSubscription = new Subscription(() => clearTimeout(timeoutId));
   }
 
   fetchSharedWorkflows(): void {
-    // In production: make API call to fetch shared workflows
-    // Example:
-    // this.http.get<SharedWorkflow[]>('your-api/shared-workflows').subscribe(
-    //   data => {
+    // Cancel previous request if still pending
+    if (this.sharedWorkflowsSubscription && !this.sharedWorkflowsSubscription.closed) {
+      this.sharedWorkflowsSubscription.unsubscribe();
+    }
+
+    // In production: make API call
+    // this.sharedWorkflowsSubscription = this.http.get<SharedWorkflow[]>('your-api/shared-workflows').subscribe({
+    //   next: (data) => {
     //     this.sharedWorkflows = data;
     //     console.log('Shared Workflows updated:', data.length);
+    //     this.checkPollingComplete();
     //   },
-    //   error => {
+    //   error: (error) => {
     //     console.error('Error fetching Shared Workflows:', error);
+    //     this.checkPollingComplete();
     //   }
-    // );
+    // });
 
-    // For demo: just log
-    console.log('Shared Workflows fetched successfully');
+    // For demo: simulate with setTimeout
+    const timeoutId = setTimeout(() => {
+      console.log('Shared Workflows fetched successfully');
+      this.checkPollingComplete();
+    }, 1000);
+
+    this.sharedWorkflowsSubscription = new Subscription(() => clearTimeout(timeoutId));
   }
 
-  // Update loadWorkflows to also fetch all workflows
-  loadWorkflows(): void {
-    this.isRefreshing = true;
-    this.hasError = false;
+  // Add method to check if all polling requests are complete
+  checkPollingComplete(): void {
+    const allComplete = 
+      (!this.myWorkflowsSubscription || this.myWorkflowsSubscription.closed) &&
+      (!this.activeWorkflowsSubscription || this.activeWorkflowsSubscription.closed) &&
+      (!this.sharedWorkflowsSubscription || this.sharedWorkflowsSubscription.closed);
 
-    // Simulate API call with potential failure
-    setTimeout(() => {
-      const isSuccess = Math.random() > 0.3;
-      
-      if (isSuccess) {
-        // Fetch all workflows on initial load
-        this.fetchMyWorkflows();
-        this.fetchActiveWorkflows();
-        this.fetchSharedWorkflows();
-        
-        this.isRefreshing = false;
-        
-        if (this.myWorkflows.length > 0) {
-          this.activeWorkflowId = this.myWorkflows[0].id;
-        }
-        
-        console.log('Workflows loaded successfully');
-      } else {
-        this.isRefreshing = false;
-        this.hasError = true;
-        this.myWorkflows = [];
-        this.activeWorkflows = [];
-        this.sharedWorkflows = [];
-        console.error('Failed to load workflows');
-      }
-    }, 2000);
+    if (allComplete) {
+      this.isPollingInProgress = false;
+      console.log('Polling cycle complete');
+    }
   }
 
   // ... rest of existing methods ...
