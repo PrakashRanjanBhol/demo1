@@ -1,38 +1,132 @@
 export class WorkflowSidebarComponent implements OnInit {
   // ... existing properties ...
 
-  selectedFunctionName: string | null = null;
-  deletingFunctionName: string | null = null;
-  isDeletingInProgress: boolean = false;
-  acceptingWorkflowId: number | null = null;
-  rejectingWorkflowId: number | null = null;
-  runningWorkflowIds: string[] = []; // Change from single ID to array
+  stoppingWorkflowIds: string[] = []; // Add this property
 
   // ... existing methods ...
 
-  runWorkflow(workflowId: string, event: Event): void {
+  // Add stop workflow method
+  stopWorkflow(workflowId: string, event: Event): void {
     event.stopPropagation();
     
-    // Add workflow ID to running array
-    this.runningWorkflowIds.push(workflowId);
+    // Add workflow ID to stopping array
+    this.stoppingWorkflowIds.push(workflowId);
     
-    console.log(`Running workflow: ${workflowId}`);
+    console.log(`Stopping workflow: ${workflowId}`);
     
     // Simulate API call with delay
     setTimeout(() => {
-      // Remove workflow ID from running array
-      this.runningWorkflowIds = this.runningWorkflowIds.filter(id => id !== workflowId);
+      // Remove from active workflows
+      this.activeWorkflows = this.activeWorkflows.filter(w => w.id !== workflowId);
       
-      console.log(`Workflow ${workflowId} execution completed`);
+      // Remove from stopping array
+      this.stoppingWorkflowIds = this.stoppingWorkflowIds.filter(id => id !== workflowId);
       
-      // In production: make API call to run workflow
+      console.log(`Workflow ${workflowId} stopped successfully`);
+      
+      // In production: make API call to stop workflow
     }, 2000); // 2 second delay to simulate API call
   }
 
-  // Update helper method
-  isWorkflowStarting(workflowId: string): boolean {
-    return this.runningWorkflowIds.includes(workflowId);
+  // Add helper method
+  isWorkflowStopping(workflowId: string): boolean {
+    return this.stoppingWorkflowIds.includes(workflowId);
   }
 
   // ... rest of existing methods ...
+}
+
+
+
+
+<!-- Show this when active workflows exist -->
+<div *ngIf="activeWorkflows.length > 0">
+  <div *ngFor="let workflow of activeWorkflows" class="workflow-item-readonly">
+    <div class="workflow-info">
+      <div class="workflow-name">{{ workflow.name }}</div>
+      <div class="workflow-dates">
+        <div class="workflow-date">
+          <span class="workflow-date-label">Created:</span>
+          <span class="date-value">{{ formatDate(workflow.createdAt) }}</span>
+        </div>
+        <div class="workflow-date">
+          <span class="workflow-date-label">Updated:</span>
+          <span class="date-value">{{ formatDate(workflow.updatedAt) }}</span>
+        </div>
+      </div>
+    </div>
+    <div class="active-workflow-actions">
+      <div class="workflow-status-badge running">Running</div>
+      <button class="stop-workflow-btn" (click)="stopWorkflow(workflow.id, $event)" 
+        title="Stop Workflow" [disabled]="isWorkflowStopping(workflow.id)">
+        <!-- Show spinner when stopping -->
+        <div class="stop-spinner" *ngIf="isWorkflowStopping(workflow.id)"></div>
+        <!-- Show stop icon when not stopping -->
+        <svg *ngIf="!isWorkflowStopping(workflow.id)" viewBox="0 0 24 24" fill="currentColor">
+          <rect x="6" y="6" width="12" height="12"></rect>
+        </svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+
+
+
+
+
+
+
+
+
+/* Active workflow actions */
+.active-workflow-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+/* Stop Workflow Button */
+.stop-workflow-btn {
+    padding: 4px 6px;
+    background: #ef4444;
+    border: none;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    flex-shrink: 0;
+}
+
+.stop-workflow-btn:hover:not(:disabled) {
+    background: #dc2626;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(239, 68, 68, 0.3);
+}
+
+.stop-workflow-btn:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.stop-workflow-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.stop-workflow-btn svg {
+    width: 14px;
+    height: 14px;
+    fill: var(--agentic-ai-workflow-text-white);
+}
+
+/* Stop spinner */
+.stop-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top: 2px solid var(--agentic-ai-workflow-text-white);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
 }
