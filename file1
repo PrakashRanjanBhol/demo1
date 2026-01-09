@@ -1,367 +1,430 @@
+import { Injectable } from '@angular/core';
+import { BehaviorSubject } from 'rxjs';
+
+export type ThemeMode = 'light' | 'dark' | 'system';
+export type AccentColor = 'blue' | 'purple' | 'emerald' | 'orange' | 'pink';
+
+@Injectable({
+  providedIn: 'root'
+})
+export class ThemeService {
+  private readonly THEME_KEY = 'app-theme-mode';
+  private readonly ACCENT_KEY = 'app-accent-color';
+  
+  private themeModeSubject = new BehaviorSubject<ThemeMode>(this.getStoredTheme());
+  private accentColorSubject = new BehaviorSubject<AccentColor>(this.getStoredAccent());
+  private effectiveThemeSubject = new BehaviorSubject<'light' | 'dark'>('light');
+  
+  themeMode$ = this.themeModeSubject.asObservable();
+  accentColor$ = this.accentColorSubject.asObservable();
+  effectiveTheme$ = this.effectiveThemeSubject.asObservable();
+  
+  private mediaQuery: MediaQueryList;
+
+  constructor() {
+    this.mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    this.initializeTheme();
+    this.listenToSystemThemeChanges();
+  }
+
+  private initializeTheme(): void {
+    const mode = this.themeModeSubject.value;
+    const accent = this.accentColorSubject.value;
+    this.applyTheme(mode);
+    this.applyAccent(accent);
+  }
+
+  private listenToSystemThemeChanges(): void {
+    this.mediaQuery.addEventListener('change', (e) => {
+      if (this.themeModeSubject.value === 'system') {
+        const effectiveTheme = e.matches ? 'dark' : 'light';
+        this.effectiveThemeSubject.next(effectiveTheme);
+        this.updateDocumentTheme(effectiveTheme);
+      }
+    });
+  }
+
+  private getStoredTheme(): ThemeMode {
+    const stored = localStorage.getItem(this.THEME_KEY);
+    return (stored as ThemeMode) || 'system';
+  }
+
+  private getStoredAccent(): AccentColor {
+    const stored = localStorage.getItem(this.ACCENT_KEY);
+    return (stored as AccentColor) || 'blue';
+  }
+
+  setThemeMode(mode: ThemeMode): void {
+    localStorage.setItem(this.THEME_KEY, mode);
+    this.themeModeSubject.next(mode);
+    this.applyTheme(mode);
+  }
+
+  setAccentColor(color: AccentColor): void {
+    localStorage.setItem(this.ACCENT_KEY, color);
+    this.accentColorSubject.next(color);
+    this.applyAccent(color);
+  }
+
+  private applyTheme(mode: ThemeMode): void {
+    let effectiveTheme: 'light' | 'dark';
+    
+    if (mode === 'system') {
+      effectiveTheme = this.mediaQuery.matches ? 'dark' : 'light';
+    } else {
+      effectiveTheme = mode;
+    }
+    
+    this.effectiveThemeSubject.next(effectiveTheme);
+    this.updateDocumentTheme(effectiveTheme);
+  }
+
+  private updateDocumentTheme(theme: 'light' | 'dark'): void {
+    const root = document.documentElement;
+    
+    if (theme === 'dark') {
+      root.classList.add('dark-theme');
+      root.classList.remove('light-theme');
+    } else {
+      root.classList.add('light-theme');
+      root.classList.remove('dark-theme');
+    }
+  }
+
+  private applyAccent(color: AccentColor): void {
+    const root = document.documentElement;
+    
+    // Remove all accent classes
+    root.classList.remove('accent-blue', 'accent-purple', 'accent-emerald', 'accent-orange', 'accent-pink');
+    
+    // Add the selected accent class
+    root.classList.add(`accent-${color}`);
+  }
+
+  getCurrentThemeMode(): ThemeMode {
+    return this.themeModeSubject.value;
+  }
+
+  getCurrentAccentColor(): AccentColor {
+    return this.accentColorSubject.value;
+  }
+
+  getCurrentEffectiveTheme(): 'light' | 'dark' {
+    return this.effectiveThemeSubject.value;
+  }
+}
+
+
+
+
+
+
+
+
+
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-
-interface ChatSession {
-  session_id: string;
-  created_date: string;
-  count: number;
-  first_prompt: string;
-  ps_session_id: number;
-}
-
-interface DayGroup {
-  label: string;
-  date: Date;
-  chats: ChatSession[];
-}
+import { ThemeService, ThemeMode, AccentColor } from './theme.service';
 
 @Component({
-  selector: 'app-chat-history-sidebar',
+  selector: 'app-theme-settings',
   standalone: true,
   imports: [CommonModule],
-  templateUrl: './chat-history-sidebar.component.html',
-  styleUrls: ['./chat-history-sidebar.component.css']
-})
-export class ChatHistorySidebarComponent implements OnInit {
-  chatData: ChatSession[] = [
-    { session_id: 'abc1', created_date: '2025-01-10 14:30:00', count: 5, first_prompt: 'Write a Java code for sorting an array', ps_session_id: 1 },
-    { session_id: 'abc2', created_date: '2025-01-10 09:15:00', count: 12, first_prompt: 'How to implement binary search in Python?', ps_session_id: 2 },
-    { session_id: 'abc3', created_date: '2025-01-09 16:45:00', count: 3, first_prompt: 'Explain React hooks', ps_session_id: 3 },
-    { session_id: 'abc4', created_date: '2025-01-09 11:20:00', count: 8, first_prompt: 'Create a REST API with Node.js', ps_session_id: 4 },
-    { session_id: 'abc5', created_date: '2025-01-08 13:10:00', count: 15, first_prompt: 'Database optimization techniques', ps_session_id: 5 },
-    { session_id: 'abc6', created_date: '2025-01-08 10:30:00', count: 6, first_prompt: 'CSS Grid layout tutorial', ps_session_id: 6 },
-    { session_id: 'abc7', created_date: '2025-01-07 15:20:00', count: 9, first_prompt: 'Machine learning basics', ps_session_id: 7 },
-    { session_id: 'abc8', created_date: '2025-01-06 08:45:00', count: 4, first_prompt: 'Docker container setup', ps_session_id: 8 },
-  ];
-
-  selectedChats = new Set<string>();
-  isSelectionMode = false;
-  groupedChats: DayGroup[] = [];
-  activeChatId: string | null = null;
-
-  ngOnInit(): void {
-    this.updateGroupedChats();
-  }
-
-  updateGroupedChats(): void {
-    const sortedChats = [...this.chatData].sort((a, b) => {
-      return new Date(b.created_date).getTime() - new Date(a.created_date).getTime();
-    });
-
-    this.groupedChats = this.groupChatsByDay(sortedChats);
-  }
-
-  groupChatsByDay(chats: ChatSession[]): DayGroup[] {
-    const groups: { [key: string]: DayGroup } = {};
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    chats.forEach(chat => {
-      const chatDate = new Date(chat.created_date);
-      chatDate.setHours(0, 0, 0, 0);
-
-      let label: string;
-      const timeDiff = today.getTime() - chatDate.getTime();
-      const daysDiff = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
-
-      if (daysDiff === 0) {
-        label = 'Today';
-      } else if (daysDiff === 1) {
-        label = 'Yesterday';
-      } else {
-        label = chatDate.toLocaleDateString('en-US', {
-          month: 'long',
-          day: '2-digit',
-          year: 'numeric'
-        });
-      }
-
-      if (!groups[label]) {
-        groups[label] = {
-          label,
-          date: chatDate,
-          chats: []
-        };
-      }
-      groups[label].chats.push(chat);
-    });
-
-    return Object.values(groups).sort((a, b) => {
-      return b.date.getTime() - a.date.getTime();
-    });
-  }
-
-  formatTime(dateString: string): string {
-    const date = new Date(dateString);
-    return date.toLocaleTimeString('en-US', {
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true
-    });
-  }
-
-  toggleSelectionMode(): void {
-    this.isSelectionMode = !this.isSelectionMode;
-    
-    if (!this.isSelectionMode) {
-      this.selectedChats.clear();
-    }
-    
-    console.log('Selection mode:', this.isSelectionMode ? 'ON' : 'OFF');
-  }
-
-  onChatClick(sessionId: string): void {
-    if (this.isSelectionMode) {
-      this.toggleChatSelection(sessionId);
-    } else {
-      this.activeChatId = sessionId;
-      const chat = this.chatData.find(c => c.session_id === sessionId);
-      console.log('Chat selected:', {
-        session_id: sessionId,
-        chat_name: chat?.first_prompt,
-        ps_session_id: chat?.ps_session_id
-      });
-    }
-  }
-
-  toggleChatSelection(sessionId: string): void {
-    if (this.selectedChats.has(sessionId)) {
-      this.selectedChats.delete(sessionId);
-    } else {
-      this.selectedChats.add(sessionId);
-    }
-  }
-
-  isChatSelected(sessionId: string): boolean {
-    return this.selectedChats.has(sessionId);
-  }
-
-  isChatActive(sessionId: string): boolean {
-    return this.activeChatId === sessionId && !this.isSelectionMode;
-  }
-
-  toggleSelectAll(): void {
-    const allChatIds = this.chatData.map(chat => chat.session_id);
-    const allSelected = allChatIds.every(id => this.selectedChats.has(id));
-
-    if (allSelected) {
-      this.selectedChats.clear();
-      console.log('Deselected all chats');
-    } else {
-      allChatIds.forEach(id => this.selectedChats.add(id));
-      console.log('Selected all chats:', Array.from(this.selectedChats));
-    }
-  }
-
-  get isAllSelected(): boolean {
-    return this.chatData.length > 0 && 
-           this.chatData.every(chat => this.selectedChats.has(chat.session_id));
-  }
-
-  get selectAllLinkText(): string {
-    return this.isAllSelected ? 'Deselect all' : 'Select all';
-  }
-
-  get selectedCount(): number {
-    return this.selectedChats.size;
-  }
-
-  get showBulkActions(): boolean {
-    return this.selectedChats.size > 0;
-  }
-
-  handleEdit(sessionId: string, event: Event): void {
-    event.stopPropagation();
-    const chat = this.chatData.find(c => c.session_id === sessionId);
-    console.log('Edit clicked for:', {
-      session_id: sessionId,
-      chat_name: chat?.first_prompt,
-      ps_session_id: chat?.ps_session_id
-    });
-  }
-
-  handleShare(sessionId: string, event: Event): void {
-    event.stopPropagation();
-    const chat = this.chatData.find(c => c.session_id === sessionId);
-    console.log('Share clicked for:', {
-      session_id: sessionId,
-      chat_name: chat?.first_prompt,
-      ps_session_id: chat?.ps_session_id
-    });
-  }
-
-  handleDelete(sessionId: string, event: Event): void {
-    event.stopPropagation();
-    const chat = this.chatData.find(c => c.session_id === sessionId);
-    console.log('Delete clicked for:', {
-      session_id: sessionId,
-      chat_name: chat?.first_prompt,
-      ps_session_id: chat?.ps_session_id
-    });
-  }
-
-  handleBulkDelete(): void {
-    const selectedIds = Array.from(this.selectedChats);
-    const selectedChatsData = this.chatData.filter(chat => this.selectedChats.has(chat.session_id));
-
-    console.log('Bulk delete clicked:', {
-      count: selectedIds.length,
-      session_ids: selectedIds,
-      chats: selectedChatsData.map(c => ({
-        session_id: c.session_id,
-        chat_name: c.first_prompt,
-        ps_session_id: c.ps_session_id
-      }))
-    });
-  }
-
-  get isEmpty(): boolean {
-    return !this.chatData || this.chatData.length === 0;
-  }
-}
-
-
-
-
-
-
-
-
-
-<div class="sidebar" [class.selection-mode]="isSelectionMode">
-  <div class="sidebar-header">
-    <div class="header-content">
-      <div class="sidebar-title">Chat Sessions</div>
-      <button 
-        class="select-mode-btn" 
-        [class.active]="isSelectionMode"
-        (click)="toggleSelectionMode()">
-        <svg 
-          *ngIf="!isSelectionMode"
-          fill="none" 
-          stroke="currentColor" 
-          viewBox="0 0 24 24" 
-          width="14" 
-          height="14">
-          <path 
-            stroke-linecap="round" 
-            stroke-linejoin="round" 
-            stroke-width="2"
-            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-        </svg>
-        <svg 
-          *ngIf="isSelectionMode"
-          fill="none" 
-          stroke="currentColor" 
-          viewBox="0 0 24 24" 
-          width="14" 
-          height="14">
-          <path 
-            stroke-linecap="round" 
-            stroke-linejoin="round" 
-            stroke-width="2" 
-            d="M6 18L18 6M6 6l12 12" />
-        </svg>
-        {{ isSelectionMode ? 'Cancel' : 'Select' }}
-      </button>
-    </div>
-  </div>
-
-  <div class="bulk-actions" [class.visible]="showBulkActions">
-    <div class="bulk-actions-left">
-      <span class="selected-count">{{ selectedCount }} selected</span>
-      <span class="select-all-link" (click)="toggleSelectAll()">
-        {{ selectAllLinkText }}
-      </span>
-    </div>
-    <button class="bulk-delete-btn" (click)="handleBulkDelete()">
-      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16">
-        <path 
-          stroke-linecap="round" 
-          stroke-linejoin="round" 
-          stroke-width="2"
-          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-      </svg>
-      Delete
-    </button>
-  </div>
-
-  <div class="chat-history">
-    <div *ngIf="isEmpty" class="empty-state">
-      <div class="empty-icon">💬</div>
-      <div class="empty-title">No conversations yet</div>
-      <div class="empty-text">Start a new chat to see your history here</div>
-    </div>
-
-    <div *ngFor="let group of groupedChats" class="day-group">
-      <div class="day-header">{{ group.label }}</div>
-
-      <div 
-        *ngFor="let chat of group.chats"
-        class="chat-item"
-        [class.selected]="isChatSelected(chat.session_id)"
-        [class.active]="isChatActive(chat.session_id)"
-        (click)="onChatClick(chat.session_id)">
-        
-        <div class="chat-select-indicator">
-          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path 
-              stroke-linecap="round" 
-              stroke-linejoin="round" 
-              stroke-width="3" 
-              d="M5 13l4 4L19 7" />
-          </svg>
-        </div>
-
-        <div class="chat-content">
-          <div class="chat-item-header">
-            <span class="chat-time">{{ formatTime(chat.created_date) }}</span>
-          </div>
-          <div class="chat-prompt">{{ chat.first_prompt }}</div>
-        </div>
-
-        <div class="chat-actions">
+  template: `
+    <div class="theme-settings">
+      <h2>Theme Settings</h2>
+      
+      <!-- Theme Mode Selection -->
+      <div class="settings-section">
+        <h3>Theme Mode</h3>
+        <div class="theme-options">
           <button 
-            class="action-btn edit" 
-            title="Edit"
-            (click)="handleEdit(chat.session_id, $event)">
-            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path 
-                stroke-linecap="round" 
-                stroke-linejoin="round" 
-                stroke-width="2" 
-                d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            class="theme-option"
+            [class.active]="currentTheme === 'light'"
+            (click)="setTheme('light')">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="5"/>
+              <line x1="12" y1="1" x2="12" y2="3"/>
+              <line x1="12" y1="21" x2="12" y2="23"/>
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+              <line x1="1" y1="12" x2="3" y2="12"/>
+              <line x1="21" y1="12" x2="23" y2="12"/>
+              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
             </svg>
+            <span>Light</span>
           </button>
+          
           <button 
-            class="action-btn share" 
-            title="Share"
-            (click)="handleShare(chat.session_id, $event)">
-            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path 
-                stroke-linecap="round" 
-                stroke-linejoin="round" 
-                stroke-width="2" 
-                d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+            class="theme-option"
+            [class.active]="currentTheme === 'dark'"
+            (click)="setTheme('dark')">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
             </svg>
+            <span>Dark</span>
           </button>
+          
           <button 
-            class="action-btn delete" 
-            title="Delete"
-            (click)="handleDelete(chat.session_id, $event)">
-            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path 
-                stroke-linecap="round" 
-                stroke-linejoin="round" 
-                stroke-width="2" 
-                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            class="theme-option"
+            [class.active]="currentTheme === 'system'"
+            (click)="setTheme('system')">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+              <line x1="8" y1="21" x2="16" y2="21"/>
+              <line x1="12" y1="17" x2="12" y2="21"/>
             </svg>
+            <span>System</span>
+          </button>
+        </div>
+        <p class="helper-text" *ngIf="currentTheme === 'system'">
+          Currently using: {{ effectiveTheme === 'dark' ? 'Dark' : 'Light' }} (from system)
+        </p>
+      </div>
+      
+      <!-- Accent Color Selection -->
+      <div class="settings-section">
+        <h3>Accent Color</h3>
+        <div class="accent-options">
+          <button 
+            class="accent-option accent-blue-btn"
+            [class.active]="currentAccent === 'blue'"
+            (click)="setAccent('blue')"
+            aria-label="Blue accent">
+            <span class="color-preview"></span>
+            <span class="color-name">Blue</span>
+          </button>
+          
+          <button 
+            class="accent-option accent-purple-btn"
+            [class.active]="currentAccent === 'purple'"
+            (click)="setAccent('purple')"
+            aria-label="Purple accent">
+            <span class="color-preview"></span>
+            <span class="color-name">Purple</span>
+          </button>
+          
+          <button 
+            class="accent-option accent-emerald-btn"
+            [class.active]="currentAccent === 'emerald'"
+            (click)="setAccent('emerald')"
+            aria-label="Emerald accent">
+            <span class="color-preview"></span>
+            <span class="color-name">Emerald</span>
+          </button>
+          
+          <button 
+            class="accent-option accent-orange-btn"
+            [class.active]="currentAccent === 'orange'"
+            (click)="setAccent('orange')"
+            aria-label="Orange accent">
+            <span class="color-preview"></span>
+            <span class="color-name">Orange</span>
+          </button>
+          
+          <button 
+            class="accent-option accent-pink-btn"
+            [class.active]="currentAccent === 'pink'"
+            (click)="setAccent('pink')"
+            aria-label="Pink accent">
+            <span class="color-preview"></span>
+            <span class="color-name">Pink</span>
           </button>
         </div>
       </div>
+      
+      <!-- Preview Section -->
+      <div class="settings-section">
+        <h3>Preview</h3>
+        <div class="preview-card card">
+          <h4>Sample Card</h4>
+          <p>This is how your theme looks with the selected settings.</p>
+          <button class="button-primary">Primary Button</button>
+          <button class="button-secondary">Secondary Button</button>
+        </div>
+      </div>
     </div>
-  </div>
-</div>
+  `,
+  styles: [`
+    .theme-settings {
+      max-width: 600px;
+      margin: 2rem auto;
+      padding: 2rem;
+    }
+    
+    h2 {
+      color: var(--text-primary);
+      margin-bottom: 2rem;
+      font-size: 1.75rem;
+    }
+    
+    .settings-section {
+      margin-bottom: 2.5rem;
+    }
+    
+    h3 {
+      color: var(--text-primary);
+      font-size: 1.25rem;
+      margin-bottom: 1rem;
+    }
+    
+    .theme-options {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    
+    .theme-option {
+      flex: 1;
+      min-width: 120px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 1rem;
+      background-color: var(--bg-secondary);
+      border: 2px solid var(--border-color);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      color: var(--text-secondary);
+    }
+    
+    .theme-option:hover {
+      background-color: var(--bg-tertiary);
+      border-color: var(--accent-primary);
+    }
+    
+    .theme-option.active {
+      border-color: var(--accent-primary);
+      background-color: var(--accent-light);
+      color: var(--accent-primary);
+    }
+    
+    .theme-option svg {
+      width: 32px;
+      height: 32px;
+    }
+    
+    .helper-text {
+      margin-top: 0.75rem;
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+    }
+    
+    .accent-options {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+      gap: 1rem;
+    }
+    
+    .accent-option {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 1rem;
+      background-color: var(--bg-secondary);
+      border: 2px solid var(--border-color);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      color: var(--text-secondary);
+    }
+    
+    .accent-option:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 6px var(--shadow);
+    }
+    
+    .accent-option.active {
+      border-color: currentColor;
+      border-width: 3px;
+    }
+    
+    .color-preview {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      display: block;
+    }
+    
+    .color-name {
+      font-size: 0.875rem;
+      font-weight: 500;
+    }
+    
+    /* Accent color preview circles */
+    .accent-blue-btn { color: #3B82F6; }
+    .accent-blue-btn .color-preview { background-color: #3B82F6; }
+    
+    .accent-purple-btn { color: #8B5CF6; }
+    .accent-purple-btn .color-preview { background-color: #8B5CF6; }
+    
+    .accent-emerald-btn { color: #10B981; }
+    .accent-emerald-btn .color-preview { background-color: #10B981; }
+    
+    .accent-orange-btn { color: #F59E0B; }
+    .accent-orange-btn .color-preview { background-color: #F59E0B; }
+    
+    .accent-pink-btn { color: #EC4899; }
+    .accent-pink-btn .color-preview { background-color: #EC4899; }
+    
+    .preview-card {
+      margin-top: 1rem;
+    }
+    
+    .preview-card h4 {
+      color: var(--text-primary);
+      margin-bottom: 0.75rem;
+    }
+    
+    .preview-card p {
+      color: var(--text-secondary);
+      margin-bottom: 1rem;
+    }
+    
+    .preview-card button {
+      margin-right: 0.75rem;
+      margin-top: 0.5rem;
+    }
+  `]
+})
+export class ThemeSettingsComponent implements OnInit {
+  currentTheme: ThemeMode = 'system';
+  currentAccent: AccentColor = 'blue';
+  effectiveTheme: 'light' | 'dark' = 'light';
+
+  constructor(private themeService: ThemeService) {}
+
+  ngOnInit(): void {
+    this.currentTheme = this.themeService.getCurrentThemeMode();
+    this.currentAccent = this.themeService.getCurrentAccentColor();
+    this.effectiveTheme = this.themeService.getCurrentEffectiveTheme();
+
+    // Subscribe to theme changes
+    this.themeService.themeMode$.subscribe(mode => {
+      this.currentTheme = mode;
+    });
+
+    this.themeService.accentColor$.subscribe(color => {
+      this.currentAccent = color;
+    });
+
+    this.themeService.effectiveTheme$.subscribe(theme => {
+      this.effectiveTheme = theme;
+    });
+  }
+
+  setTheme(mode: ThemeMode): void {
+    this.themeService.setThemeMode(mode);
+  }
+
+  setAccent(color: AccentColor): void {
+    this.themeService.setAccentColor(color);
+  }
+}
 
 
 
@@ -372,334 +435,446 @@ export class ChatHistorySidebarComponent implements OnInit {
 
 
 
+
+
+import { Component } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { ThemeSettingsComponent } from './theme-settings.component';
+import { ThemeService } from './theme.service';
+
+@Component({
+  selector: 'app-root',
+  standalone: true,
+  imports: [CommonModule, ThemeSettingsComponent],
+  template: `
+    <div class="app-container">
+      <header class="header">
+        <div class="header-content">
+          <h1>LLM Application</h1>
+          <button class="button-secondary" (click)="toggleSettings()">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M12 1v6m0 6v6m5.196-13.196l-4.243 4.243m0 5.656l4.243 4.243M1 12h6m6 0h6m-13.196 5.196l4.243-4.243m5.656 0l4.243 4.243"/>
+            </svg>
+            Theme Settings
+          </button>
+        </div>
+      </header>
+
+      <main class="main-content">
+        <div *ngIf="showSettings" class="settings-overlay" (click)="toggleSettings()">
+          <div class="settings-panel" (click)="$event.stopPropagation()">
+            <div class="settings-header">
+              <h2>Settings</h2>
+              <button class="close-button" (click)="toggleSettings()">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="6" x2="6" y2="18"/>
+                  <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+            <app-theme-settings></app-theme-settings>
+          </div>
+        </div>
+
+        <!-- Your LLM chat interface would go here -->
+        <div class="chat-container">
+          <div class="card message-card">
+            <div class="message user-message">
+              <strong>You:</strong>
+              <p>Hello! How are you today?</p>
+            </div>
+          </div>
+
+          <div class="card message-card">
+            <div class="message assistant-message">
+              <strong>Assistant:</strong>
+              <p>I'm doing well, thank you! How can I help you today?</p>
+            </div>
+          </div>
+
+          <div class="input-area card">
+            <input 
+              type="text" 
+              placeholder="Type your message..." 
+              class="message-input"
+            />
+            <button class="button-primary send-button">Send</button>
+          </div>
+        </div>
+      </main>
+    </div>
+  `,
+  styles: [`
+    .app-container {
+      min-height: 100vh;
+      background-color: var(--bg-primary);
+    }
+
+    .header {
+      background-color: var(--bg-secondary);
+      border-bottom: 1px solid var(--border-color);
+      padding: 1rem 2rem;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .header-content {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .header h1 {
+      color: var(--text-primary);
+      font-size: 1.5rem;
+      margin: 0;
+    }
+
+    .header button {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .main-content {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+
+    .settings-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: rgba(0, 0, 0, 0.5);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 100;
+      animation: fadeIn 0.2s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    .settings-panel {
+      background-color: var(--bg-primary);
+      border-radius: 12px;
+      max-width: 700px;
+      width: 90%;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
+      animation: slideUp 0.3s ease;
+    }
+
+    @keyframes slideUp {
+      from {
+        transform: translateY(20px);
+        opacity: 0;
+      }
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    .settings-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1.5rem 2rem;
+      border-bottom: 1px solid var(--border-color);
+      position: sticky;
+      top: 0;
+      background-color: var(--bg-primary);
+      z-index: 10;
+    }
+
+    .settings-header h2 {
+      margin: 0;
+      color: var(--text-primary);
+    }
+
+    .close-button {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--text-secondary);
+      padding: 0.5rem;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
+    }
+
+    .close-button:hover {
+      background-color: var(--bg-secondary);
+      color: var(--text-primary);
+    }
+
+    .chat-container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .message-card {
+      margin-bottom: 1rem;
+    }
+
+    .message {
+      line-height: 1.6;
+    }
+
+    .message strong {
+      color: var(--accent-primary);
+      display: block;
+      margin-bottom: 0.5rem;
+    }
+
+    .message p {
+      color: var(--text-primary);
+      margin: 0;
+    }
+
+    .user-message {
+      text-align: left;
+    }
+
+    .assistant-message {
+      text-align: left;
+    }
+
+    .input-area {
+      display: flex;
+      gap: 1rem;
+      margin-top: 2rem;
+      position: sticky;
+      bottom: 1rem;
+    }
+
+    .message-input {
+      flex: 1;
+    }
+
+    .send-button {
+      white-space: nowrap;
+    }
+  `]
+})
+export class AppComponent {
+  showSettings = false;
+
+  constructor(private themeService: ThemeService) {}
+
+  toggleSettings(): void {
+    this.showSettings = !this.showSettings;
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* styles.scss or styles.css */
+
+:root {
+  /* Light Theme Colors */
+  --bg-primary: #FFFFFF;
+  --bg-secondary: #F8FAFC;
+  --bg-tertiary: #F1F5F9;
+  --text-primary: #0F172A;
+  --text-secondary: #64748B;
+  --text-tertiary: #94A3B8;
+  --border-color: #E2E8F0;
+  --shadow: rgba(0, 0, 0, 0.1);
+  
+  /* Accent Colors - Default Blue */
+  --accent-primary: #3B82F6;
+  --accent-hover: #2563EB;
+  --accent-light: #DBEAFE;
+  --accent-dark: #1E40AF;
+}
+
+/* Dark Theme */
+.dark-theme {
+  --bg-primary: #0F172A;
+  --bg-secondary: #1E293B;
+  --bg-tertiary: #334155;
+  --text-primary: #F1F5F9;
+  --text-secondary: #94A3B8;
+  --text-tertiary: #64748B;
+  --border-color: #334155;
+  --shadow: rgba(0, 0, 0, 0.3);
+}
+
+/* Accent Color Variations */
+
+/* Blue Accent */
+.accent-blue {
+  --accent-primary: #3B82F6;
+  --accent-hover: #2563EB;
+  --accent-light: #DBEAFE;
+  --accent-dark: #1E40AF;
+}
+
+.dark-theme.accent-blue {
+  --accent-light: #1E3A8A;
+}
+
+/* Purple Accent */
+.accent-purple {
+  --accent-primary: #8B5CF6;
+  --accent-hover: #7C3AED;
+  --accent-light: #EDE9FE;
+  --accent-dark: #6D28D9;
+}
+
+.dark-theme.accent-purple {
+  --accent-light: #4C1D95;
+}
+
+/* Emerald Accent */
+.accent-emerald {
+  --accent-primary: #10B981;
+  --accent-hover: #059669;
+  --accent-light: #D1FAE5;
+  --accent-dark: #047857;
+}
+
+.dark-theme.accent-emerald {
+  --accent-light: #064E3B;
+}
+
+/* Orange Accent */
+.accent-orange {
+  --accent-primary: #F59E0B;
+  --accent-hover: #D97706;
+  --accent-light: #FEF3C7;
+  --accent-dark: #B45309;
+}
+
+.dark-theme.accent-orange {
+  --accent-light: #78350F;
+}
+
+/* Pink Accent */
+.accent-pink {
+  --accent-primary: #EC4899;
+  --accent-hover: #DB2777;
+  --accent-light: #FCE7F3;
+  --accent-dark: #BE185D;
+}
+
+.dark-theme.accent-pink {
+  --accent-light: #831843;
+}
+
+/* Base Styles */
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
-.sidebar {
-  width: 320px;
-  height: 100vh;
-  background: #111113;
-  border-radius: 12px;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-.sidebar-header {
-  padding: 16px 20px;
-  border-bottom: 1px solid #1f1f21;
-  flex-shrink: 0;
+/* Smooth transitions for theme changes */
+* {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
 }
 
-.header-content {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+/* Common Component Styles */
+.card {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 0 1px 3px var(--shadow);
 }
 
-.sidebar-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: #f5f5f5;
-}
-
-.select-mode-btn {
-  background: transparent;
-  border: 1px solid #2a2a2c;
-  color: #8a8a8e;
-  padding: 6px 12px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.select-mode-btn:hover {
-  border-color: #8b5cf6;
-  color: #8b5cf6;
-}
-
-.select-mode-btn.active {
-  background: #8b5cf6;
-  border-color: #8b5cf6;
-  color: white;
-}
-
-.bulk-actions {
-  padding: 12px 20px;
-  background: #1a1a1c;
-  border-bottom: 1px solid #1f1f21;
-  display: none;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.bulk-actions.visible {
-  display: flex;
-}
-
-.bulk-actions-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex: 1;
-}
-
-.selected-count {
-  font-size: 13px;
-  color: #e5e5e5;
-  font-weight: 500;
-}
-
-.select-all-link {
-  font-size: 12px;
-  color: #8b5cf6;
-  cursor: pointer;
-  text-decoration: underline;
-  transition: color 0.2s ease;
-}
-
-.select-all-link:hover {
-  color: #a78bfa;
-}
-
-.bulk-delete-btn {
-  background: #dc2626;
+.button-primary {
+  background-color: var(--accent-primary);
   color: white;
   border: none;
-  padding: 6px 12px;
+  padding: 0.75rem 1.5rem;
   border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.bulk-delete-btn:hover {
-  background: #b91c1c;
-}
-
-.chat-history {
-  flex: 1;
-  overflow-y: auto;
-  padding: 12px 0;
-}
-
-.chat-history::-webkit-scrollbar {
-  width: 6px;
-}
-
-.chat-history::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.chat-history::-webkit-scrollbar-thumb {
-  background: #2a2a2c;
-  border-radius: 3px;
-}
-
-.chat-history::-webkit-scrollbar-thumb:hover {
-  background: #3a3a3c;
-}
-
-.day-group {
-  margin-bottom: 24px;
-}
-
-.day-header {
-  padding: 8px 20px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #8a8a8e;
-  letter-spacing: 0.5px;
-  position: sticky;
-  top: 0;
-  background: #111113;
-  z-index: 10;
-  margin-bottom: 4px;
-}
-
-.chat-item {
-  padding: 12px 20px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  position: relative;
-  border-left: 3px solid transparent;
-  margin: 2px 0;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.chat-item:hover {
-  background: #1a1a1c;
-  border-left-color: #8b5cf6;
-}
-
-.chat-item.active {
-  background: #1f1f21;
-  border-left-color: #8b5cf6;
-}
-
-/* Selection mode styles */
-.sidebar.selection-mode .chat-item {
-  padding-left: 16px;
-}
-
-.sidebar.selection-mode .chat-actions {
-  display: none !important;
-}
-
-.chat-select-indicator {
-  width: 20px;
-  height: 20px;
-  border: 2px solid #3a3a3c;
-  border-radius: 50%;
-  flex-shrink: 0;
-  display: none;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-}
-
-.sidebar.selection-mode .chat-select-indicator {
-  display: flex;
-}
-
-.chat-item.selected .chat-select-indicator {
-  border-color: #8b5cf6;
-  background: #8b5cf6;
-}
-
-.chat-select-indicator svg {
-  width: 12px;
-  height: 12px;
-  color: white;
-  display: none;
-}
-
-.chat-item.selected .chat-select-indicator svg {
-  display: block;
-}
-
-.chat-content {
-  flex: 1;
-  min-width: 0;
-}
-
-.chat-item-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 6px;
-}
-
-.chat-time {
-  font-size: 11px;
-  color: #8a8a8e;
+  font-size: 1rem;
   font-weight: 500;
-}
-
-.chat-prompt {
-  font-size: 13px;
-  color: #e5e5e5;
-  font-weight: 500;
-  line-height: 1.4;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-}
-
-.chat-actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  opacity: 0;
-  transition: opacity 0.2s ease;
-  flex-shrink: 0;
-}
-
-.chat-item:hover .chat-actions {
-  opacity: 1;
-}
-
-.action-btn {
-  background: transparent;
-  border: none;
-  color: #8a8a8e;
   cursor: pointer;
-  padding: 6px;
-  border-radius: 4px;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
+  transition: background-color 0.2s ease;
 }
 
-.action-btn:hover {
-  background: #2a2a2c;
-  color: #e5e5e5;
+.button-primary:hover {
+  background-color: var(--accent-hover);
 }
 
-.action-btn.edit:hover {
-  color: #8b5cf6;
+.button-secondary {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  padding: 0.75rem 1.5rem;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
 }
 
-.action-btn.share:hover {
-  color: #10b981;
+.button-secondary:hover {
+  background-color: var(--bg-tertiary);
 }
 
-.action-btn.delete:hover {
-  color: #dc2626;
-  background: rgba(220, 38, 38, 0.1);
+input, textarea, select {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  padding: 0.75rem;
+  border-radius: 6px;
+  font-size: 1rem;
 }
 
-.action-btn svg {
-  width: 16px;
-  height: 16px;
+input:focus, textarea:focus, select:focus {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
 }
 
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  padding: 40px 20px;
-  text-align: center;
+.text-accent {
+  color: var(--accent-primary);
 }
 
-.empty-icon {
-  font-size: 48px;
-  margin-bottom: 16px;
-  opacity: 0.3;
+.bg-accent {
+  background-color: var(--accent-primary);
 }
 
-.empty-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: #8a8a8e;
-  margin-bottom: 8px;
-}
-
-.empty-text {
-  font-size: 13px;
-  color: #6a6a6e;
-  line-height: 1.5;
+.border-accent {
+  border-color: var(--accent-primary);
 }
