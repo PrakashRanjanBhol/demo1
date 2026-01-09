@@ -1,1 +1,663 @@
-https://docs.n8n.io/sustainable-use-license/
+import { Component, OnInit } from '@angular/core';
+import { CommonModule } from '@angular/common';
+
+interface ChatSession {
+  session_id: string;
+  created_date: string;
+  count: number;
+  first_prompt: string;
+  ps_session_id: number;
+}
+
+interface DayGroup {
+  label: string;
+  date: Date;
+  chats: ChatSession[];
+}
+
+@Component({
+  selector: 'app-chat-sessions',
+  standalone: true,
+  imports: [CommonModule],
+  templateUrl: './chat-sessions.component.html',
+  styleUrls: ['./chat-sessions.component.css']
+})
+export class ChatSessionsComponent implements OnInit {
+  chatData: ChatSession[] = [
+    { session_id: 'abc1', created_date: '2025-01-10 14:30:00', count: 5, first_prompt: 'Write a Java code for sorting an array', ps_session_id: 1 },
+    { session_id: 'abc2', created_date: '2025-01-10 09:15:00', count: 12, first_prompt: 'How to implement binary search in Python?', ps_session_id: 2 },
+    { session_id: 'abc3', created_date: '2025-01-09 16:45:00', count: 3, first_prompt: 'Explain React hooks', ps_session_id: 3 },
+    { session_id: 'abc4', created_date: '2025-01-09 11:20:00', count: 8, first_prompt: 'Create a REST API with Node.js', ps_session_id: 4 },
+    { session_id: 'abc5', created_date: '2025-01-08 13:10:00', count: 15, first_prompt: 'Database optimization techniques', ps_session_id: 5 },
+    { session_id: 'abc6', created_date: '2025-01-08 10:30:00', count: 6, first_prompt: 'CSS Grid layout tutorial', ps_session_id: 6 },
+    { session_id: 'abc7', created_date: '2025-01-07 15:20:00', count: 9, first_prompt: 'Machine learning basics', ps_session_id: 7 },
+    { session_id: 'abc8', created_date: '2025-01-06 08:45:00', count: 4, first_prompt: 'Docker container setup', ps_session_id: 8 },
+  ];
+
+  groupedChats: DayGroup[] = [];
+  selectedChats = new Set<string>();
+  isSelectionMode = false;
+  activeChatId: string | null = null;
+
+  ngOnInit(): void {
+    this.renderChatHistory();
+  }
+
+  renderChatHistory(): void {
+    if (!this.chatData || this.chatData.length === 0) {
+      this.groupedChats = [];
+      return;
+    }
+
+    const sortedChats = [...this.chatData].sort((a, b) => {
+      return new Date(b.created_date).getTime() - new Date(a.created_date).getTime();
+    });
+
+    this.groupedChats = this.groupChatsByDay(sortedChats);
+  }
+
+  groupChatsByDay(chats: ChatSession[]): DayGroup[] {
+    const groups: { [key: string]: DayGroup } = {};
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    chats.forEach(chat => {
+      const chatDate = new Date(chat.created_date);
+      chatDate.setHours(0, 0, 0, 0);
+
+      let label: string;
+      const timeDiff = today.getTime() - chatDate.getTime();
+      const daysDiff = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
+
+      if (daysDiff === 0) {
+        label = 'Today';
+      } else if (daysDiff === 1) {
+        label = 'Yesterday';
+      } else {
+        label = chatDate.toLocaleDateString('en-US', {
+          month: 'long',
+          day: '2-digit',
+          year: 'numeric'
+        });
+      }
+
+      if (!groups[label]) {
+        groups[label] = {
+          label,
+          date: chatDate,
+          chats: []
+        };
+      }
+      groups[label].chats.push(chat);
+    });
+
+    return Object.values(groups).sort((a, b) => {
+      return b.date.getTime() - a.date.getTime();
+    });
+  }
+
+  formatTime(dateString: string): string {
+    const date = new Date(dateString);
+    return date.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
+  }
+
+  toggleSelectionMode(): void {
+    this.isSelectionMode = !this.isSelectionMode;
+    if (!this.isSelectionMode) {
+      this.selectedChats.clear();
+    }
+    console.log('Selection mode:', this.isSelectionMode ? 'ON' : 'OFF');
+  }
+
+  onChatClick(sessionId: string, event: Event): void {
+    if (this.isSelectionMode) {
+      this.toggleChatSelection(sessionId);
+    } else {
+      this.activeChatId = sessionId;
+      const chat = this.chatData.find(c => c.session_id === sessionId);
+      console.log('Chat selected:', {
+        session_id: sessionId,
+        chat_name: chat?.first_prompt,
+        ps_session_id: chat?.ps_session_id
+      });
+    }
+  }
+
+  toggleChatSelection(sessionId: string): void {
+    if (this.selectedChats.has(sessionId)) {
+      this.selectedChats.delete(sessionId);
+    } else {
+      this.selectedChats.add(sessionId);
+    }
+  }
+
+  isSelected(sessionId: string): boolean {
+    return this.selectedChats.has(sessionId);
+  }
+
+  isActive(sessionId: string): boolean {
+    return this.activeChatId === sessionId;
+  }
+
+  toggleSelectAll(): void {
+    const allChatIds = this.chatData.map(chat => chat.session_id);
+    const allSelected = allChatIds.every(id => this.selectedChats.has(id));
+
+    if (allSelected) {
+      this.selectedChats.clear();
+      console.log('Deselected all chats');
+    } else {
+      allChatIds.forEach(id => this.selectedChats.add(id));
+      console.log('Selected all chats:', Array.from(this.selectedChats));
+    }
+  }
+
+  get selectedCount(): number {
+    return this.selectedChats.size;
+  }
+
+  get selectAllLinkText(): string {
+    const allChatIds = this.chatData.map(chat => chat.session_id);
+    const allSelected = allChatIds.every(id => this.selectedChats.has(id));
+    return allSelected ? 'Deselect all' : 'Select all';
+  }
+
+  handleEdit(sessionId: string, event: Event): void {
+    event.stopPropagation();
+    const chat = this.chatData.find(c => c.session_id === sessionId);
+    console.log('Edit clicked for:', {
+      session_id: sessionId,
+      chat_name: chat?.first_prompt,
+      ps_session_id: chat?.ps_session_id
+    });
+  }
+
+  handleShare(sessionId: string, event: Event): void {
+    event.stopPropagation();
+    const chat = this.chatData.find(c => c.session_id === sessionId);
+    console.log('Share clicked for:', {
+      session_id: sessionId,
+      chat_name: chat?.first_prompt,
+      ps_session_id: chat?.ps_session_id
+    });
+  }
+
+  handleDelete(sessionId: string, event: Event): void {
+    event.stopPropagation();
+    const chat = this.chatData.find(c => c.session_id === sessionId);
+    console.log('Delete clicked for:', {
+      session_id: sessionId,
+      chat_name: chat?.first_prompt,
+      ps_session_id: chat?.ps_session_id
+    });
+  }
+
+  bulkDelete(): void {
+    const selectedIds = Array.from(this.selectedChats);
+    const selectedChatsData = this.chatData.filter(chat => this.selectedChats.has(chat.session_id));
+
+    console.log('Bulk delete clicked:', {
+      count: selectedIds.length,
+      session_ids: selectedIds,
+      chats: selectedChatsData.map(c => ({
+        session_id: c.session_id,
+        chat_name: c.first_prompt,
+        ps_session_id: c.ps_session_id
+      }))
+    });
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="sidebar">
+  <div class="sidebar-header">
+    <div class="header-content">
+      <div class="sidebar-title">Chat Sessions</div>
+      <button class="select-mode-btn" 
+              [class.active]="isSelectionMode"
+              (click)="toggleSelectionMode()">
+        <svg *ngIf="!isSelectionMode" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+        </svg>
+        <svg *ngIf="isSelectionMode" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+        {{ isSelectionMode ? 'Cancel' : 'Select' }}
+      </button>
+    </div>
+  </div>
+
+  <div class="bulk-actions" [class.visible]="selectedCount > 0">
+    <div class="bulk-actions-left">
+      <span class="selected-count">{{ selectedCount }} selected</span>
+      <span class="select-all-link" (click)="toggleSelectAll()">{{ selectAllLinkText }}</span>
+    </div>
+    <button class="bulk-delete-btn" (click)="bulkDelete()">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+      </svg>
+      Delete
+    </button>
+  </div>
+
+  <div class="chat-history">
+    <div *ngIf="groupedChats.length === 0" class="empty-state">
+      <div class="empty-icon">💬</div>
+      <div class="empty-title">No conversations yet</div>
+      <div class="empty-text">Start a new chat to see your history here</div>
+    </div>
+
+    <div *ngFor="let group of groupedChats" class="day-group">
+      <div class="day-header">{{ group.label }}</div>
+      
+      <div *ngFor="let chat of group.chats"
+           class="chat-item"
+           [class.selected]="isSelected(chat.session_id)"
+           [class.active]="isActive(chat.session_id)"
+           (click)="onChatClick(chat.session_id, $event)">
+        
+        <div class="chat-select-indicator">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+          </svg>
+        </div>
+
+        <div class="chat-content">
+          <div class="chat-item-header">
+            <span class="chat-time">{{ formatTime(chat.created_date) }}</span>
+          </div>
+          <div class="chat-prompt">{{ chat.first_prompt }}</div>
+        </div>
+
+        <div class="chat-actions">
+          <button class="action-btn edit" 
+                  title="Edit"
+                  (click)="handleEdit(chat.session_id, $event)">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+          </button>
+          <button class="action-btn share" 
+                  title="Share"
+                  (click)="handleShare(chat.session_id, $event)">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+            </svg>
+          </button>
+          <button class="action-btn delete" 
+                  title="Delete"
+                  (click)="handleDelete(chat.session_id, $event)">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+.sidebar {
+  width: 320px;
+  height: 100vh;
+  background: #111113;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+}
+
+.sidebar-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid #1f1f21;
+  flex-shrink: 0;
+}
+
+.header-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sidebar-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #f5f5f5;
+}
+
+.select-mode-btn {
+  background: transparent;
+  border: 1px solid #2a2a2c;
+  color: #8a8a8e;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.select-mode-btn:hover {
+  border-color: #8b5cf6;
+  color: #8b5cf6;
+}
+
+.select-mode-btn.active {
+  background: #8b5cf6;
+  border-color: #8b5cf6;
+  color: white;
+}
+
+.bulk-actions {
+  padding: 12px 20px;
+  background: #1a1a1c;
+  border-bottom: 1px solid #1f1f21;
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.bulk-actions.visible {
+  display: flex;
+}
+
+.bulk-actions-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.selected-count {
+  font-size: 13px;
+  color: #e5e5e5;
+  font-weight: 500;
+}
+
+.select-all-link {
+  font-size: 12px;
+  color: #8b5cf6;
+  cursor: pointer;
+  text-decoration: underline;
+  transition: color 0.2s ease;
+}
+
+.select-all-link:hover {
+  color: #a78bfa;
+}
+
+.bulk-delete-btn {
+  background: #dc2626;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bulk-delete-btn:hover {
+  background: #b91c1c;
+}
+
+.chat-history {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 0;
+}
+
+.chat-history::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chat-history::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.chat-history::-webkit-scrollbar-thumb {
+  background: #2a2a2c;
+  border-radius: 3px;
+}
+
+.chat-history::-webkit-scrollbar-thumb:hover {
+  background: #3a3a3c;
+}
+
+.day-group {
+  margin-bottom: 24px;
+}
+
+.day-header {
+  padding: 8px 20px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #8a8a8e;
+  letter-spacing: 0.5px;
+  position: sticky;
+  top: 0;
+  background: #111113;
+  z-index: 10;
+  margin-bottom: 4px;
+}
+
+.chat-item {
+  padding: 12px 20px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  position: relative;
+  border-left: 3px solid transparent;
+  margin: 2px 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.chat-item:hover {
+  background: #1a1a1c;
+  border-left-color: #8b5cf6;
+}
+
+.chat-item.active {
+  background: #1f1f21;
+  border-left-color: #8b5cf6;
+}
+
+.chat-select-indicator {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #3a3a3c;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+:host-context(body.selection-mode) .chat-select-indicator {
+  display: flex;
+}
+
+.chat-item.selected .chat-select-indicator {
+  border-color: #8b5cf6;
+  background: #8b5cf6;
+}
+
+.chat-select-indicator svg {
+  width: 12px;
+  height: 12px;
+  color: white;
+  display: none;
+}
+
+.chat-item.selected .chat-select-indicator svg {
+  display: block;
+}
+
+:host-context(body.selection-mode) .chat-item {
+  padding-left: 16px;
+}
+
+:host-context(body.selection-mode) .chat-actions {
+  display: none !important;
+}
+
+.chat-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.chat-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.chat-time {
+  font-size: 11px;
+  color: #8a8a8e;
+  font-weight: 500;
+}
+
+.chat-prompt {
+  font-size: 13px;
+  color: #e5e5e5;
+  font-weight: 500;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.chat-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  flex-shrink: 0;
+}
+
+.chat-item:hover .chat-actions {
+  opacity: 1;
+}
+
+.action-btn {
+  background: transparent;
+  border: none;
+  color: #8a8a8e;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+}
+
+.action-btn:hover {
+  background: #2a2a2c;
+  color: #e5e5e5;
+}
+
+.action-btn.edit:hover {
+  color: #8b5cf6;
+}
+
+.action-btn.share:hover {
+  color: #10b981;
+}
+
+.action-btn.delete:hover {
+  color: #dc2626;
+  background: rgba(220, 38, 38, 0.1);
+}
+
+.action-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 40px 20px;
+  text-align: center;
+}
+
+.empty-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.3;
+}
+
+.empty-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #8a8a8e;
+  margin-bottom: 8px;
+}
+
+.empty-text {
+  font-size: 13px;
+  color: #6a6a6e;
+  line-height: 1.5;
+}
