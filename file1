@@ -1,175 +1,14 @@
-import { Injectable } from '@angular/core';
-import { BehaviorSubject } from 'rxjs';
-
-export type NotificationType = 'success' | 'error' | 'warning' | 'info';
-
-export interface Notification {
-  message: string;
-  type: NotificationType;
-  duration: number;
-}
-
-@Injectable({
-  providedIn: 'root'
-})
-export class NotificationService {
-  private notificationSubject = new BehaviorSubject<Notification | null>(null);
-  notification$ = this.notificationSubject.asObservable();
-  private currentTimeout: any;
-
-  show(
-    message: string,
-    type: NotificationType = 'info',
-    duration: number = 3000
-  ) {
-    // Clear any existing timeout to prevent conflicts
-    if (this.currentTimeout) {
-      clearTimeout(this.currentTimeout);
-    }
-
-    // Show the notification
-    this.notificationSubject.next({ message, type, duration });
-
-    // Set new timeout to hide the notification
-    this.currentTimeout = setTimeout(() => {
-      this.notificationSubject.next(null);
-      this.currentTimeout = null;
-    }, duration);
-  }
-
-  // Method to manually hide the notification
-  hide() {
-    if (this.currentTimeout) {
-      clearTimeout(this.currentTimeout);
-      this.currentTimeout = null;
-    }
-    this.notificationSubject.next(null);
-  }
-}
-
-
-
-
-
-
-
-
-
-
-
-import { Component, OnDestroy } from '@angular/core';
-import { Subscription } from 'rxjs';
-import { NotificationService, Notification } from '../notification.service';
-
-@Component({
-  selector: 'app-notification-banner',
-  templateUrl: './notification-banner.component.html',
-  styleUrls: ['./notification-banner.component.css']
-})
-export class NotificationBannerComponent implements OnDestroy {
-  show = false;
-  message = '';
-  type: 'success' | 'error' | 'warning' | 'info' = 'info';
-  isExiting = false;
-  duration = 3000;
-  private sub: Subscription;
-  private closeTimeout: any;
-
-  constructor(private notificationService: NotificationService) {
-    this.sub = this.notificationService.notification$.subscribe(
-      (data: Notification | null) => {
-        if (data) {
-          // Clear any existing timeout to prevent premature closing
-          if (this.closeTimeout) {
-            clearTimeout(this.closeTimeout);
-          }
-          
-          this.isExiting = false;
-          this.message = data.message;
-          this.type = data.type;
-          this.duration = data.duration;
-          this.show = true;
-        } else {
-          this.closeWithAnimation();
-        }
-      }
-    );
-  }
-
-  close() {
-    if (this.closeTimeout) {
-      clearTimeout(this.closeTimeout);
-    }
-    this.closeWithAnimation();
-  }
-
-  private closeWithAnimation() {
-    if (this.isExiting || !this.show) {
-      return; // Prevent multiple close attempts
-    }
-    
-    this.isExiting = true;
-    this.closeTimeout = setTimeout(() => {
-      this.show = false;
-      this.isExiting = false;
-    }, 300);
-  }
-
-  getIcon(): string {
-    switch (this.type) {
-      case 'success':
-        return 'pi pi-check-circle';
-      case 'error':
-        return 'pi pi-times-circle';
-      case 'warning':
-        return 'pi pi-exclamation-triangle';
-      case 'info':
-      default:
-        return 'pi pi-info-circle';
-    }
-  }
-
-  ngOnDestroy(): void {
-    if (this.closeTimeout) {
-      clearTimeout(this.closeTimeout);
-    }
-    this.sub.unsubscribe();
-  }
-}
-
-
-
-
-
-
-
-
-
-
-
-<div *ngIf="show" 
-     class="notification-container" 
-     [ngClass]="{'exiting': isExiting}">
-  <div class="notification" [ngClass]="type">
-    <div class="notification-icon">
-      <i [class]="getIcon()"></i>
+<div *ngIf="show" class="notification-container" [ngClass]="type">
+  <div class="notification-content">
+    <div class="icon-wrapper">
+      <i class="icon" [class]="getIcon()"></i>
     </div>
-    
-    <div class="notification-content">
-      <span class="message">{{ message }}</span>
-    </div>
-    
-    <button class="close-btn" 
-            (click)="close()" 
-            aria-label="Close notification"
-            type="button">
+    <span class="message">{{ message }}</span>
+    <button class="close-btn" (click)="close()" aria-label="Close notification">
       <i class="pi pi-times"></i>
     </button>
-    
-    <div class="progress-bar" 
-         [ngClass]="type" 
-         [style.animation-duration]="duration + 'ms'"></div>
   </div>
+  <div class="progress-bar"></div>
 </div>
 
 
@@ -178,60 +17,31 @@ export class NotificationBannerComponent implements OnDestroy {
 
 
 
-
-
-
-
-
-
-
-
-
-/* Container with animations */
 .notification-container {
   position: fixed;
   bottom: 24px;
   right: 24px;
+  min-width: 320px;
+  max-width: 450px;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), 
+              0 2px 8px rgba(0, 0, 0, 0.08);
+  animation: slideInBounce 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
   z-index: 9999;
-  animation: slideInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  backdrop-filter: blur(10px);
 }
 
-.notification-container.exiting {
-  animation: slideOutDown 0.3s cubic-bezier(0.4, 0, 1, 1);
-}
-
-/* Main notification card */
-.notification {
-  position: relative;
+.notification-content {
   display: flex;
   align-items: center;
   gap: 14px;
-  min-width: 320px;
-  max-width: 480px;
   padding: 16px 20px;
-  border-radius: 12px;
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 1.5;
-  box-shadow: 
-    0 4px 12px rgba(0, 0, 0, 0.1),
-    0 8px 24px rgba(0, 0, 0, 0.12),
-    0 0 0 1px rgba(0, 0, 0, 0.05);
-  backdrop-filter: blur(10px);
-  overflow: hidden;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  position: relative;
 }
 
-.notification:hover {
-  transform: translateY(-2px);
-  box-shadow: 
-    0 6px 16px rgba(0, 0, 0, 0.12),
-    0 12px 32px rgba(0, 0, 0, 0.14),
-    0 0 0 1px rgba(0, 0, 0, 0.05);
-}
-
-/* Icon container */
-.notification-icon {
+/* Icon Wrapper with Circle Background */
+.icon-wrapper {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -240,46 +50,42 @@ export class NotificationBannerComponent implements OnDestroy {
   border-radius: 50%;
   flex-shrink: 0;
   background: rgba(255, 255, 255, 0.2);
-  backdrop-filter: blur(4px);
-  animation: iconPop 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  backdrop-filter: blur(8px);
 }
 
-.notification-icon i {
+.icon {
   font-size: 20px;
+  color: #ffffff;
 }
 
-/* Content area */
-.notification-content {
-  flex: 1;
-  min-width: 0;
-}
-
+/* Message Text */
 .message {
-  display: block;
-  word-wrap: break-word;
-  color: inherit;
+  flex: 1;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: #ffffff;
   letter-spacing: 0.01em;
 }
 
-/* Close button */
+/* Close Button */
 .close-btn {
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  cursor: pointer;
+  padding: 6px;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  background: rgba(255, 255, 255, 0.15);
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  flex-shrink: 0;
   transition: all 0.2s ease;
-  opacity: 0.85;
+  flex-shrink: 0;
 }
 
 .close-btn:hover {
   background: rgba(255, 255, 255, 0.25);
-  opacity: 1;
   transform: scale(1.05);
 }
 
@@ -289,56 +95,109 @@ export class NotificationBannerComponent implements OnDestroy {
 
 .close-btn i {
   font-size: 14px;
-  color: inherit;
+  color: #ffffff;
 }
 
-/* Progress bar */
+/* Progress Bar */
 .progress-bar {
-  position: absolute;
-  bottom: 0;
-  left: 0;
   height: 3px;
-  width: 100%;
   background: rgba(255, 255, 255, 0.3);
-  transform-origin: left;
-  animation: progressShrink linear;
-  animation-fill-mode: forwards;
+  width: 100%;
+  position: relative;
+  overflow: hidden;
 }
 
-/* Type-specific colors */
-.notification.success {
-  background: linear-gradient(135deg, #2e7d32 0%, #388e3c 100%);
+.progress-bar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.9);
+  animation: progressShrink 3s linear forwards;
+}
+
+/* Notification Types with Modern Gradients */
+.success {
+  background: linear-gradient(135deg, #43a047 0%, #2e7d32 100%);
+}
+
+.success .icon-wrapper {
+  box-shadow: 0 0 20px rgba(67, 160, 71, 0.4);
+}
+
+.error {
+  background: linear-gradient(135deg, #e53935 0%, #c62828 100%);
+}
+
+.error .icon-wrapper {
+  box-shadow: 0 0 20px rgba(229, 57, 53, 0.4);
+}
+
+.info {
+  background: linear-gradient(135deg, #1e88e5 0%, #1565c0 100%);
+}
+
+.info .icon-wrapper {
+  box-shadow: 0 0 20px rgba(30, 136, 229, 0.4);
+}
+
+.warning {
+  background: linear-gradient(135deg, #ffa726 0%, #f57c00 100%);
+}
+
+.warning .message,
+.warning .close-btn i,
+.warning .icon {
   color: #ffffff;
 }
 
-.notification.error {
-  background: linear-gradient(135deg, #c62828 0%, #d32f2f 100%);
-  color: #ffffff;
-}
-
-.notification.warning {
-  background: linear-gradient(135deg, #f57c00 0%, #fb8c00 100%);
-  color: #ffffff;
-}
-
-.notification.info {
-  background: linear-gradient(135deg, #1565c0 0%, #1976d2 100%);
-  color: #ffffff;
+.warning .icon-wrapper {
+  box-shadow: 0 0 20px rgba(255, 167, 38, 0.4);
 }
 
 /* Animations */
-@keyframes slideInUp {
-  from {
+@keyframes slideInBounce {
+  0% {
     opacity: 0;
-    transform: translateY(40px) scale(0.95);
+    transform: translateY(30px) scale(0.95);
   }
-  to {
+  50% {
+    transform: translateY(-5px) scale(1.01);
+  }
+  100% {
     opacity: 1;
     transform: translateY(0) scale(1);
   }
 }
 
-@keyframes slideOutDown {
+@keyframes progressShrink {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+/* Responsive Design */
+@media (max-width: 600px) {
+  .notification-container {
+    bottom: 16px;
+    right: 16px;
+    left: 16px;
+    min-width: auto;
+    max-width: none;
+  }
+}
+
+/* Add exit animation support */
+.notification-container.hiding {
+  animation: slideOut 0.3s ease-in forwards;
+}
+
+@keyframes slideOut {
   from {
     opacity: 1;
     transform: translateY(0) scale(1);
@@ -346,61 +205,5 @@ export class NotificationBannerComponent implements OnDestroy {
   to {
     opacity: 0;
     transform: translateY(20px) scale(0.95);
-  }
-}
-
-@keyframes iconPop {
-  0% {
-    transform: scale(0);
-    opacity: 0;
-  }
-  50% {
-    transform: scale(1.1);
-  }
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
-}
-
-@keyframes progressShrink {
-  from {
-    transform: scaleX(1);
-  }
-  to {
-    transform: scaleX(0);
-  }
-}
-
-/* Responsive adjustments */
-@media (max-width: 640px) {
-  .notification-container {
-    bottom: 16px;
-    right: 16px;
-    left: 16px;
-  }
-
-  .notification {
-    min-width: unset;
-    max-width: unset;
-    width: 100%;
-    padding: 14px 16px;
-  }
-}
-
-/* Dark mode support (optional) */
-@media (prefers-color-scheme: dark) {
-  .notification {
-    box-shadow: 
-      0 4px 12px rgba(0, 0, 0, 0.3),
-      0 8px 24px rgba(0, 0, 0, 0.35),
-      0 0 0 1px rgba(255, 255, 255, 0.1);
-  }
-
-  .notification:hover {
-    box-shadow: 
-      0 6px 16px rgba(0, 0, 0, 0.35),
-      0 12px 32px rgba(0, 0, 0, 0.4),
-      0 0 0 1px rgba(255, 255, 255, 0.1);
   }
 }
