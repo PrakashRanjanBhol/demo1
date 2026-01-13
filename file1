@@ -1,68 +1,49 @@
-<!-- For General feature -->
-<label for="feature-general" class="feature-label">
-    <span class="feature-checkbox">
-        <svg class="checkmark" viewBox="0 0 12 12">
-            <polyline points="2,6 5,9 10,3" />
-        </svg>
-    </span>
-    <span class="feature-name">General</span>
-    <span class="feature-badge">1</span>
-</label>
+import { Injectable } from '@angular/core';
 
-<!-- For other features -->
-<label [for]="'feature-' + feature.id" class="feature-label" (click)="toggleFeature(feature.id); $event.preventDefault()">
-    <span class="feature-checkbox">
-        <svg class="checkmark" viewBox="0 0 12 12">
-            <polyline points="2,6 5,9 10,3" />
-        </svg>
-    </span>
-    <span class="feature-name">{{ feature.name }}</span>
-    <span class="feature-badge" *ngIf="isFeatureEnabled(feature.id)">{{ getFeatureSequence(feature.id) }}</span>
-</label>
+@Injectable({
+  providedIn: 'root'
+})
+export class JsonToMarkdownService {
 
+  constructor() { }
 
+  jsonToMarkdown(jsonString: string): string {
+    try {
+      const data = JSON.parse(jsonString);
+      return this.objectToMarkdown(data);
+    } catch (error) {
+      return `Error parsing JSON: ${(error as Error).message}`;
+    }
+  }
 
+  private objectToMarkdown(obj: any, level: number = 1): string {
+    let markdown = '';
 
+    if (Array.isArray(obj)) {
+      obj.forEach((item) => {
+        if (typeof item === 'object' && item !== null) {
+          markdown += this.objectToMarkdown(item, level);
+        } else {
+          markdown += `- ${item}\n`;
+        }
+      });
+    } else if (typeof obj === 'object' && obj !== null) {
+      for (const [key, value] of Object.entries(obj)) {
+        const heading = '#'.repeat(Math.min(level, 6));
+        markdown += `${heading} ${key}\n\n`;
 
+        if (Array.isArray(value)) {
+          markdown += this.objectToMarkdown(value, level + 1);
+        } else if (typeof value === 'object' && value !== null) {
+          markdown += this.objectToMarkdown(value, level + 1);
+        } else {
+          markdown += `${value}\n\n`;
+        }
+      }
+    } else {
+      markdown += `${obj}\n\n`;
+    }
 
-
-
-getFeatureSequence(featureId: string): number {
-  const index = this.selectedFeatures.indexOf(featureId);
-  return index + 2; // +2 because General is 1, and array is 0-indexed
-}
-
-
-
-
-
-
-.feature-label {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 12px;
-    border-radius: 6px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    border: 1.5px solid var(--app-settings-theme-border);
-    background: var(--app-settings-bg);
-    min-height: 42px;
-    position: relative;
-}
-
-.feature-badge {
-    position: absolute;
-    top: 6px;
-    right: 6px;
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    background: var(--app-settings-selected-border);
-    color: white;
-    font-size: 10px;
-    font-weight: 600;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    return markdown;
+  }
 }
