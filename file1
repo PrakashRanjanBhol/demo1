@@ -1,3 +1,192 @@
+import { Injectable } from '@angular/core';
+import { BehaviorSubject } from 'rxjs';
+
+export type NotificationType = 'success' | 'error' | 'warning' | 'info';
+
+export interface Notification {
+  message: string;
+  type: NotificationType;
+  duration: number;
+}
+
+@Injectable({
+  providedIn: 'root'
+})
+export class NotificationService {
+  private notificationSubject = new BehaviorSubject<Notification | null>(null);
+  notification$ = this.notificationSubject.asObservable();
+  private currentTimeout: any;
+
+  show(
+    message: string,
+    type: NotificationType = 'info',
+    duration: number = 3000
+  ) {
+    // Clear any existing timeout to prevent conflicts
+    if (this.currentTimeout) {
+      clearTimeout(this.currentTimeout);
+    }
+
+    // Show the notification
+    this.notificationSubject.next({ message, type, duration });
+
+    // Set new timeout to hide the notification
+    this.currentTimeout = setTimeout(() => {
+      this.notificationSubject.next(null);
+      this.currentTimeout = null;
+    }, duration);
+  }
+
+  // Method to manually hide the notification
+  hide() {
+    if (this.currentTimeout) {
+      clearTimeout(this.currentTimeout);
+      this.currentTimeout = null;
+    }
+    this.notificationSubject.next(null);
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+import { Component, OnDestroy } from '@angular/core';
+import { Subscription } from 'rxjs';
+import { NotificationService, Notification } from '../notification.service';
+
+@Component({
+  selector: 'app-notification-banner',
+  templateUrl: './notification-banner.component.html',
+  styleUrls: ['./notification-banner.component.css']
+})
+export class NotificationBannerComponent implements OnDestroy {
+  show = false;
+  message = '';
+  type: 'success' | 'error' | 'warning' | 'info' = 'info';
+  isExiting = false;
+  duration = 3000;
+  private sub: Subscription;
+  private closeTimeout: any;
+
+  constructor(private notificationService: NotificationService) {
+    this.sub = this.notificationService.notification$.subscribe(
+      (data: Notification | null) => {
+        if (data) {
+          // Clear any existing timeout to prevent premature closing
+          if (this.closeTimeout) {
+            clearTimeout(this.closeTimeout);
+          }
+          
+          this.isExiting = false;
+          this.message = data.message;
+          this.type = data.type;
+          this.duration = data.duration;
+          this.show = true;
+        } else {
+          this.closeWithAnimation();
+        }
+      }
+    );
+  }
+
+  close() {
+    if (this.closeTimeout) {
+      clearTimeout(this.closeTimeout);
+    }
+    this.closeWithAnimation();
+  }
+
+  private closeWithAnimation() {
+    if (this.isExiting || !this.show) {
+      return; // Prevent multiple close attempts
+    }
+    
+    this.isExiting = true;
+    this.closeTimeout = setTimeout(() => {
+      this.show = false;
+      this.isExiting = false;
+    }, 300);
+  }
+
+  getIcon(): string {
+    switch (this.type) {
+      case 'success':
+        return 'pi pi-check-circle';
+      case 'error':
+        return 'pi pi-times-circle';
+      case 'warning':
+        return 'pi pi-exclamation-triangle';
+      case 'info':
+      default:
+        return 'pi pi-info-circle';
+    }
+  }
+
+  ngOnDestroy(): void {
+    if (this.closeTimeout) {
+      clearTimeout(this.closeTimeout);
+    }
+    this.sub.unsubscribe();
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+<div *ngIf="show" 
+     class="notification-container" 
+     [ngClass]="{'exiting': isExiting}">
+  <div class="notification" [ngClass]="type">
+    <div class="notification-icon">
+      <i [class]="getIcon()"></i>
+    </div>
+    
+    <div class="notification-content">
+      <span class="message">{{ message }}</span>
+    </div>
+    
+    <button class="close-btn" 
+            (click)="close()" 
+            aria-label="Close notification"
+            type="button">
+      <i class="pi pi-times"></i>
+    </button>
+    
+    <div class="progress-bar" 
+         [ngClass]="type" 
+         [style.animation-duration]="duration + 'ms'"></div>
+  </div>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* Container with animations */
 .notification-container {
   position: fixed;
@@ -112,7 +301,8 @@
   width: 100%;
   background: rgba(255, 255, 255, 0.3);
   transform-origin: left;
-  animation: progressShrink 3s linear;
+  animation: progressShrink linear;
+  animation-fill-mode: forwards;
 }
 
 /* Type-specific colors */
@@ -212,104 +402,5 @@
       0 6px 16px rgba(0, 0, 0, 0.35),
       0 12px 32px rgba(0, 0, 0, 0.4),
       0 0 0 1px rgba(255, 255, 255, 0.1);
-  }
-}
-
-
-
-
-
-
-
-
-<div *ngIf="show" 
-     class="notification-container" 
-     [ngClass]="{'exiting': isExiting}">
-  <div class="notification" [ngClass]="type">
-    <div class="notification-icon">
-      <i [class]="getIcon()"></i>
-    </div>
-    
-    <div class="notification-content">
-      <span class="message">{{ message }}</span>
-    </div>
-    
-    <button class="close-btn" 
-            (click)="close()" 
-            aria-label="Close notification"
-            type="button">
-      <i class="pi pi-times"></i>
-    </button>
-    
-    <div class="progress-bar" [ngClass]="type"></div>
-  </div>
-</div>
-
-
-
-
-
-
-
-
-import { Component, OnDestroy } from '@angular/core';
-import { Subscription } from 'rxjs';
-import { NotificationService, Notification } from '../notification.service';
-
-@Component({
-  selector: 'app-notification-banner',
-  templateUrl: './notification-banner.component.html',
-  styleUrls: ['./notification-banner.component.css']
-})
-export class NotificationBannerComponent implements OnDestroy {
-  show = false;
-  message = '';
-  type: 'success' | 'error' | 'warning' | 'info' = 'info';
-  isExiting = false;
-  private sub: Subscription;
-
-  constructor(private notificationService: NotificationService) {
-    this.sub = this.notificationService.notification$.subscribe(
-      (data: Notification | null) => {
-        if (data) {
-          this.isExiting = false;
-          this.message = data.message;
-          this.type = data.type;
-          this.show = true;
-        } else {
-          this.closeWithAnimation();
-        }
-      }
-    );
-  }
-
-  close() {
-    this.closeWithAnimation();
-  }
-
-  private closeWithAnimation() {
-    this.isExiting = true;
-    setTimeout(() => {
-      this.show = false;
-      this.isExiting = false;
-    }, 300);
-  }
-
-  getIcon(): string {
-    switch (this.type) {
-      case 'success':
-        return 'pi pi-check-circle';
-      case 'error':
-        return 'pi pi-times-circle';
-      case 'warning':
-        return 'pi pi-exclamation-triangle';
-      case 'info':
-      default:
-        return 'pi pi-info-circle';
-    }
-  }
-
-  ngOnDestroy(): void {
-    this.sub.unsubscribe();
   }
 }
