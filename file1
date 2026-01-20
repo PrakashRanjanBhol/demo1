@@ -1,5 +1,5 @@
 // file-upload.component.ts
-import { Component } from '@angular/core';
+import { Component, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 @Component({
@@ -18,22 +18,17 @@ import { CommonModule } from '@angular/common';
         multiple
       />
       
-      <!-- Visible button that triggers file input -->
-      <button 
-        class="upload-btn"
-        (click)="fileInput.click()"
-      >
-        Choose Files
-      </button>
-
-      <!-- Display selected files -->
-      <div *ngIf="selectedFiles.length > 0" class="selected-files">
-        <h3>Selected Files:</h3>
-        <ul>
-          <li *ngFor="let file of selectedFiles">
-            {{ file.name }} ({{ formatFileSize(file.size) }})
-          </li>
-        </ul>
+      <!-- Textarea with files display -->
+      <div class="textarea-wrapper">
+        <div #fileContainer class="file-textarea" (click)="fileInput.click()">
+          <span *ngFor="let file of visibleFiles; let i = index" class="file-chip">
+            {{ file.name }}
+            <span class="remove-btn" (click)="removeFile(i, $event)">×</span>
+          </span>
+          <span *ngIf="showShowAll" class="show-all" (click)="toggleShowAll($event)">
+            {{ showingAll ? 'Show Less' : 'Show All (' + hiddenFilesCount + ')' }}
+          </span>
+        </div>
       </div>
     </div>
   `,
@@ -43,65 +38,138 @@ import { CommonModule } from '@angular/common';
       font-family: Arial, sans-serif;
     }
 
-    .upload-btn {
-      background-color: #007bff;
-      color: white;
-      padding: 12px 24px;
-      border: none;
+    .textarea-wrapper {
+      width: 100%;
+    }
+
+    .file-textarea {
+      min-height: 48px;
+      max-height: 48px;
+      overflow: hidden;
+      border: 1px solid #ccc;
       border-radius: 4px;
-      cursor: pointer;
-      font-size: 16px;
-      transition: background-color 0.3s;
-    }
-
-    .upload-btn:hover {
-      background-color: #0056b3;
-    }
-
-    .upload-btn:active {
-      transform: scale(0.98);
-    }
-
-    .selected-files {
-      margin-top: 20px;
-    }
-
-    .selected-files h3 {
-      font-size: 18px;
-      margin-bottom: 10px;
-    }
-
-    .selected-files ul {
-      list-style: none;
-      padding: 0;
-    }
-
-    .selected-files li {
       padding: 8px;
-      background-color: #f0f0f0;
-      margin-bottom: 5px;
-      border-radius: 4px;
+      cursor: pointer;
+      background-color: #fff;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: flex-start;
+      transition: max-height 0.3s ease;
+    }
+
+    .file-textarea.expanded {
+      max-height: none;
+    }
+
+    .file-chip {
+      display: inline-flex;
+      align-items: center;
+      background-color: #e3f2fd;
+      padding: 4px 8px;
+      border-radius: 16px;
+      font-size: 13px;
+      white-space: nowrap;
+      max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .remove-btn {
+      margin-left: 6px;
+      cursor: pointer;
+      font-weight: bold;
+      color: #666;
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    .remove-btn:hover {
+      color: #333;
+    }
+
+    .show-all {
+      display: inline-flex;
+      align-items: center;
+      background-color: #f5f5f5;
+      padding: 4px 12px;
+      border-radius: 16px;
+      font-size: 13px;
+      color: #007bff;
+      cursor: pointer;
+      font-weight: 500;
+    }
+
+    .show-all:hover {
+      background-color: #e0e0e0;
     }
   `]
 })
-export class FileUploadComponent {
+export class FileUploadComponent implements AfterViewInit {
+  @ViewChild('fileContainer') fileContainer!: ElementRef;
+  
   selectedFiles: File[] = [];
+  visibleFiles: File[] = [];
+  showShowAll = false;
+  showingAll = false;
+  hiddenFilesCount = 0;
+
+  ngAfterViewInit() {
+    this.updateVisibleFiles();
+  }
 
   onFileSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
     
     if (input.files && input.files.length > 0) {
-      this.selectedFiles = Array.from(input.files);
+      this.selectedFiles = [...this.selectedFiles, ...Array.from(input.files)];
       console.log('Selected files:', this.selectedFiles);
       
-      // You can process the files here
-      // For example, upload them to a server
-      this.selectedFiles.forEach(file => {
-        console.log('File name:', file.name);
-        console.log('File type:', file.type);
-        console.log('File size:', file.size);
-      });
+      setTimeout(() => this.updateVisibleFiles(), 0);
     }
+  }
+
+  updateVisibleFiles(): void {
+    if (this.showingAll) {
+      this.visibleFiles = this.selectedFiles;
+      const container = this.fileContainer.nativeElement;
+      container.classList.add('expanded');
+      return;
+    }
+
+    const container = this.fileContainer.nativeElement;
+    container.classList.remove('expanded');
+    
+    // Show files one by one until height exceeds 48px
+    this.visibleFiles = [];
+    const maxHeight = 48;
+    
+    for (let i = 0; i < this.selectedFiles.length; i++) {
+      this.visibleFiles = this.selectedFiles.slice(0, i + 1);
+      
+      setTimeout(() => {
+        if (container.scrollHeight > maxHeight) {
+          this.visibleFiles = this.selectedFiles.slice(0, i);
+          this.hiddenFilesCount = this.selectedFiles.length - i;
+          this.showShowAll = this.hiddenFilesCount > 0;
+        } else if (i === this.selectedFiles.length - 1) {
+          this.showShowAll = false;
+        }
+      }, 0);
+    }
+  }
+
+  removeFile(index: number, event: Event): void {
+    event.stopPropagation();
+    const actualIndex = this.selectedFiles.indexOf(this.visibleFiles[index]);
+    this.selectedFiles.splice(actualIndex, 1);
+    setTimeout(() => this.updateVisibleFiles(), 0);
+  }
+
+  toggleShowAll(event: Event): void {
+    event.stopPropagation();
+    this.showingAll = !this.showingAll;
+    this.updateVisibleFiles();
   }
 
   formatFileSize(bytes: number): string {
