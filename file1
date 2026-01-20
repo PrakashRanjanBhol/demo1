@@ -20,13 +20,10 @@ import { CommonModule } from '@angular/common';
       
       <!-- Input area with attachments display -->
       <div class="input-wrapper">
-        <div #attachmentContainer class="ai-input-area" (click)="attachmentInput.click()">
-          <span *ngFor="let attachment of displayedAttachments; let i = index" class="attachment-chip">
+        <div class="ai-input-area" (click)="attachmentInput.click()">
+          <span *ngFor="let attachment of uploadedAttachments; let i = index" class="attachment-chip">
             {{ attachment.name }}
             <span class="remove-btn" (click)="removeAttachment(i, $event)">×</span>
-          </span>
-          <span *ngIf="hasOverflowAttachments" class="show-all" (click)="toggleExpandAttachments($event)">
-            {{ isExpanded ? 'Show Less' : 'Show All (' + overflowCount + ')' }}
           </span>
         </div>
       </div>
@@ -43,24 +40,37 @@ import { CommonModule } from '@angular/common';
     }
 
     .ai-input-area {
-      min-height: 48px;
-      max-height: 48px;
-      overflow: hidden;
+      height: 48px;
+      overflow-x: auto;
+      overflow-y: hidden;
       border: 1px solid #ccc;
       border-radius: 4px;
       padding: 8px;
       cursor: pointer;
       background-color: #fff;
       display: flex;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
       gap: 6px;
-      align-items: flex-start;
-      transition: max-height 0.3s ease;
+      align-items: center;
+      white-space: nowrap;
     }
 
-    .ai-input-area.expanded {
-      max-height: 200px;
-      overflow-y: auto;
+    .ai-input-area::-webkit-scrollbar {
+      height: 6px;
+    }
+
+    .ai-input-area::-webkit-scrollbar-track {
+      background: #f1f1f1;
+      border-radius: 3px;
+    }
+
+    .ai-input-area::-webkit-scrollbar-thumb {
+      background: #888;
+      border-radius: 3px;
+    }
+
+    .ai-input-area::-webkit-scrollbar-thumb:hover {
+      background: #555;
     }
 
     .attachment-chip {
@@ -71,6 +81,7 @@ import { CommonModule } from '@angular/common';
       border-radius: 16px;
       font-size: 13px;
       white-space: nowrap;
+      flex-shrink: 0;
       max-width: 200px;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -108,11 +119,6 @@ import { CommonModule } from '@angular/common';
 })
 export class AgenticAiUploadComponent {
   uploadedAttachments: File[] = [];
-  displayedAttachments: File[] = [];
-  hasOverflowAttachments = false;
-  isExpanded = false;
-  overflowCount = 0;
-  private maxVisibleCount = 5; // Adjust this number based on your needs
 
   onAttachmentSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
@@ -120,38 +126,12 @@ export class AgenticAiUploadComponent {
     if (input.files && input.files.length > 0) {
       this.uploadedAttachments = [...this.uploadedAttachments, ...Array.from(input.files)];
       console.log('Uploaded attachments:', this.uploadedAttachments);
-      
-      this.updateDisplayedAttachments();
-    }
-  }
-
-  updateDisplayedAttachments(): void {
-    if (this.isExpanded) {
-      this.displayedAttachments = this.uploadedAttachments;
-      this.hasOverflowAttachments = false;
-    } else {
-      if (this.uploadedAttachments.length > this.maxVisibleCount) {
-        this.displayedAttachments = this.uploadedAttachments.slice(0, this.maxVisibleCount);
-        this.overflowCount = this.uploadedAttachments.length - this.maxVisibleCount;
-        this.hasOverflowAttachments = true;
-      } else {
-        this.displayedAttachments = this.uploadedAttachments;
-        this.hasOverflowAttachments = false;
-      }
     }
   }
 
   removeAttachment(index: number, event: Event): void {
     event.stopPropagation();
-    const actualIndex = this.uploadedAttachments.indexOf(this.displayedAttachments[index]);
-    this.uploadedAttachments.splice(actualIndex, 1);
-    this.updateDisplayedAttachments();
-  }
-
-  toggleExpandAttachments(event: Event): void {
-    event.stopPropagation();
-    this.isExpanded = !this.isExpanded;
-    this.updateDisplayedAttachments();
+    this.uploadedAttachments.splice(index, 1);
   }
 
   formatAttachmentSize(bytes: number): string {
