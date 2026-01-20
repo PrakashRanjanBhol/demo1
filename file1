@@ -1,5 +1,5 @@
 // agentic-ai-upload.component.ts
-import { Component, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
+import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 @Component({
@@ -21,7 +21,7 @@ import { CommonModule } from '@angular/common';
       <!-- Input area with attachments display -->
       <div class="input-wrapper">
         <div #attachmentContainer class="ai-input-area" (click)="attachmentInput.click()">
-          <span *ngFor="let attachment of visibleAttachments; let i = index" class="attachment-chip">
+          <span *ngFor="let attachment of displayedAttachments; let i = index" class="attachment-chip">
             {{ attachment.name }}
             <span class="remove-btn" (click)="removeAttachment(i, $event)">×</span>
           </span>
@@ -59,7 +59,8 @@ import { CommonModule } from '@angular/common';
     }
 
     .ai-input-area.expanded {
-      max-height: none;
+      max-height: 200px;
+      overflow-y: auto;
     }
 
     .attachment-chip {
@@ -105,18 +106,13 @@ import { CommonModule } from '@angular/common';
     }
   `]
 })
-export class AgenticAiUploadComponent implements AfterViewInit {
-  @ViewChild('attachmentContainer') attachmentContainer!: ElementRef;
-  
+export class AgenticAiUploadComponent {
   uploadedAttachments: File[] = [];
-  visibleAttachments: File[] = [];
+  displayedAttachments: File[] = [];
   hasOverflowAttachments = false;
   isExpanded = false;
   overflowCount = 0;
-
-  ngAfterViewInit() {
-    this.updateVisibleAttachments();
-  }
+  private maxVisibleCount = 5; // Adjust this number based on your needs
 
   onAttachmentSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
@@ -125,51 +121,37 @@ export class AgenticAiUploadComponent implements AfterViewInit {
       this.uploadedAttachments = [...this.uploadedAttachments, ...Array.from(input.files)];
       console.log('Uploaded attachments:', this.uploadedAttachments);
       
-      setTimeout(() => this.updateVisibleAttachments(), 0);
+      this.updateDisplayedAttachments();
     }
   }
 
-  updateVisibleAttachments(): void {
+  updateDisplayedAttachments(): void {
     if (this.isExpanded) {
-      this.visibleAttachments = this.uploadedAttachments;
-      const container = this.attachmentContainer.nativeElement;
-      container.classList.add('expanded');
-      return;
-    }
-
-    const container = this.attachmentContainer.nativeElement;
-    container.classList.remove('expanded');
-    
-    // Show attachments one by one until height exceeds 48px
-    this.visibleAttachments = [];
-    const maxHeight = 48;
-    
-    for (let i = 0; i < this.uploadedAttachments.length; i++) {
-      this.visibleAttachments = this.uploadedAttachments.slice(0, i + 1);
-      
-      setTimeout(() => {
-        if (container.scrollHeight > maxHeight) {
-          this.visibleAttachments = this.uploadedAttachments.slice(0, i);
-          this.overflowCount = this.uploadedAttachments.length - i;
-          this.hasOverflowAttachments = this.overflowCount > 0;
-        } else if (i === this.uploadedAttachments.length - 1) {
-          this.hasOverflowAttachments = false;
-        }
-      }, 0);
+      this.displayedAttachments = this.uploadedAttachments;
+      this.hasOverflowAttachments = false;
+    } else {
+      if (this.uploadedAttachments.length > this.maxVisibleCount) {
+        this.displayedAttachments = this.uploadedAttachments.slice(0, this.maxVisibleCount);
+        this.overflowCount = this.uploadedAttachments.length - this.maxVisibleCount;
+        this.hasOverflowAttachments = true;
+      } else {
+        this.displayedAttachments = this.uploadedAttachments;
+        this.hasOverflowAttachments = false;
+      }
     }
   }
 
   removeAttachment(index: number, event: Event): void {
     event.stopPropagation();
-    const actualIndex = this.uploadedAttachments.indexOf(this.visibleAttachments[index]);
+    const actualIndex = this.uploadedAttachments.indexOf(this.displayedAttachments[index]);
     this.uploadedAttachments.splice(actualIndex, 1);
-    setTimeout(() => this.updateVisibleAttachments(), 0);
+    this.updateDisplayedAttachments();
   }
 
   toggleExpandAttachments(event: Event): void {
     event.stopPropagation();
     this.isExpanded = !this.isExpanded;
-    this.updateVisibleAttachments();
+    this.updateDisplayedAttachments();
   }
 
   formatAttachmentSize(bytes: number): string {
