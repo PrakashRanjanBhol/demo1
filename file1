@@ -1,3 +1,291 @@
-  const base64String = e.target?.result as string;
-        // Remove the data:image/...,base64, prefix
-        const base64Data = base64String.split(',')[1];
+import { Component } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import { HttpClient } from '@angular/common/http'; // Add this
+
+interface ArtifactVersion {
+  id: number;
+  version: string;
+  createdAt: string;
+  downloadUrl: string;
+}
+
+@Component({
+  selector: 'app-agents-sidebar',
+  standalone: true,
+  imports: [CommonModule, FormsModule],
+  templateUrl: './agents-sidebar.component.html',
+  styleUrls: ['./agents-sidebar.component.css']
+})
+export class AgentsSidebarComponent {
+  searchTerm: string = '';
+  selectedAgent: string | null = null;
+  showSearch: boolean = false;
+  isAdkExpanded: boolean = true;
+  isArtifactsExpanded: boolean = true;
+  selectedArtifact: string | null = null; // Add this
+  artifactVersions: ArtifactVersion[] = []; // Add this
+  loadingVersions: boolean = false; // Add this
+
+  agents: string[] = [
+    'Customer Support',
+    'Data Analyst',
+    'Content Writer',
+    'Code Reviewer',
+    'Sales Assistant',
+    'Research Agent'
+  ];
+
+  artifacts: string[] = [
+    'Artifact 1',
+    'Artifact 2',
+    'Artifact 3'
+  ];
+
+  constructor(private http: HttpClient) {} // Add this
+
+  get filteredAgents(): string[] {
+    if (!this.searchTerm) {
+      return this.agents;
+    }
+    const term = this.searchTerm.toLowerCase();
+    return this.agents.filter(agent =>
+      agent.toLowerCase().includes(term)
+    );
+  }
+
+  selectAgent(agent: string): void {
+    this.selectedAgent = this.selectedAgent === agent ? null : agent;
+    if (!this.selectedAgent) {
+      this.selectedArtifact = null;
+      this.artifactVersions = [];
+    }
+  }
+
+  toggleSearch(): void {
+    this.showSearch = !this.showSearch;
+    if (!this.showSearch) {
+      this.searchTerm = '';
+    }
+  }
+
+  toggleAdkTab(): void {
+    this.isAdkExpanded = !this.isAdkExpanded;
+  }
+
+  toggleArtifactsTab(): void {
+    this.isArtifactsExpanded = !this.isArtifactsExpanded;
+  }
+
+  selectArtifact(artifact: string): void {
+    if (this.selectedArtifact === artifact) {
+      this.selectedArtifact = null;
+      this.artifactVersions = [];
+    } else {
+      this.selectedArtifact = artifact;
+      this.loadArtifactVersions(artifact);
+    }
+  }
+
+  loadArtifactVersions(artifact: string): void {
+    this.loadingVersions = true;
+    // Replace with your actual API endpoint
+    const apiUrl = `https://your-api.com/artifacts/${artifact}/versions`;
+    
+    this.http.get<ArtifactVersion[]>(apiUrl).subscribe({
+      next: (versions) => {
+        this.artifactVersions = versions;
+        this.loadingVersions = false;
+      },
+      error: (error) => {
+        console.error('Error loading artifact versions:', error);
+        this.loadingVersions = false;
+        // Mock data for demonstration
+        this.artifactVersions = [
+          { id: 1, version: 'v1.0.0', createdAt: '2024-01-15', downloadUrl: '#' },
+          { id: 2, version: 'v1.1.0', createdAt: '2024-01-20', downloadUrl: '#' },
+          { id: 3, version: 'v2.0.0', createdAt: '2024-01-25', downloadUrl: '#' }
+        ];
+      }
+    });
+  }
+
+  downloadArtifact(version: ArtifactVersion): void {
+    // Implement download logic
+    window.open(version.downloadUrl, '_blank');
+  }
+}
+
+
+<!-- Replace the Artifacts Accordion content with: -->
+<div class="accordion-content" [class.expanded]="isArtifactsExpanded">
+  <div class="agents-list">
+    <div *ngIf="!selectedAgent" class="no-results">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+      </svg>
+      <p>Select an agent to view artifacts</p>
+    </div>
+
+    <ng-container *ngIf="selectedAgent">
+      <div 
+        class="agent-card artifact-item"
+        [class.active]="selectedArtifact === artifact"
+        *ngFor="let artifact of artifacts"
+        (click)="selectArtifact(artifact)"
+      >
+        <div class="agent-header">
+          <div class="agent-name">{{ artifact }}</div>
+          <svg class="chevron-icon artifact-chevron" [class.expanded]="selectedArtifact === artifact" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+          </svg>
+        </div>
+
+        <!-- Versions List -->
+        <div class="versions-container" *ngIf="selectedArtifact === artifact">
+          <div *ngIf="loadingVersions" class="loading-state">
+            <div class="spinner"></div>
+            <span>Loading versions...</span>
+          </div>
+
+          <div *ngIf="!loadingVersions && artifactVersions.length > 0" class="versions-list">
+            <div class="version-item" *ngFor="let version of artifactVersions">
+              <div class="version-info">
+                <span class="version-name">{{ version.version }}</span>
+                <span class="version-date">{{ version.createdAt }}</span>
+              </div>
+              <button class="download-btn" (click)="downloadArtifact(version); $event.stopPropagation()">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <div *ngIf="!loadingVersions && artifactVersions.length === 0" class="no-versions">
+            No versions available
+          </div>
+        </div>
+      </div>
+    </ng-container>
+  </div>
+</div>
+
+
+
+
+
+/* Add new styles: */
+.artifact-item {
+    cursor: pointer;
+}
+
+.artifact-chevron {
+    width: 16px;
+    height: 16px;
+    color: var(--adk-agents-text-secondary);
+    transition: transform 0.3s ease;
+    transform: rotate(-90deg);
+}
+
+.artifact-chevron.expanded {
+    transform: rotate(0deg);
+}
+
+.versions-container {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--adk-agents-border);
+}
+
+.loading-state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 16px;
+    color: var(--adk-agents-text-secondary);
+    font-size: 13px;
+}
+
+.spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--adk-agents-border);
+    border-top-color: #667eea;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.versions-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.version-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px;
+    background: var(--adk-agents-card-hover-bg);
+    border: 1px solid var(--adk-agents-border);
+    border-radius: 6px;
+    transition: all 0.2s;
+}
+
+.version-item:hover {
+    border-color: #667eea;
+}
+
+.version-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.version-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--adk-agents-text-primary);
+}
+
+.version-date {
+    font-size: 11px;
+    color: var(--adk-agents-text-secondary);
+}
+
+.download-btn {
+    background: transparent;
+    border: 1px solid var(--adk-agents-border);
+    border-radius: 6px;
+    padding: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--adk-agents-text-primary);
+    transition: all 0.2s;
+}
+
+.download-btn:hover {
+    background: #667eea;
+    border-color: #667eea;
+    color: white;
+}
+
+.download-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+.no-versions {
+    text-align: center;
+    padding: 16px;
+    color: var(--adk-agents-text-secondary);
+    font-size: 13px;
+}
