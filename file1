@@ -1,31 +1,14 @@
-import { Component } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
-import { HttpClient } from '@angular/common/http'; // Add this
-
-interface ArtifactVersion {
-  id: number;
-  version: string;
-  createdAt: string;
-  downloadUrl: string;
-}
-
-@Component({
-  selector: 'app-agents-sidebar',
-  standalone: true,
-  imports: [CommonModule, FormsModule],
-  templateUrl: './agents-sidebar.component.html',
-  styleUrls: ['./agents-sidebar.component.css']
-})
+// Update the component:
 export class AgentsSidebarComponent {
   searchTerm: string = '';
   selectedAgent: string | null = null;
   showSearch: boolean = false;
   isAdkExpanded: boolean = true;
   isArtifactsExpanded: boolean = true;
-  selectedArtifact: string | null = null; // Add this
-  artifactVersions: ArtifactVersion[] = []; // Add this
-  loadingVersions: boolean = false; // Add this
+  selectedArtifact: string | null = null;
+  artifactVersions: ArtifactVersion[] = [];
+  loadingVersions: boolean = false;
+  loadingArtifacts: boolean = false; // Add this
 
   agents: string[] = [
     'Customer Support',
@@ -36,13 +19,9 @@ export class AgentsSidebarComponent {
     'Research Agent'
   ];
 
-  artifacts: string[] = [
-    'Artifact 1',
-    'Artifact 2',
-    'Artifact 3'
-  ];
+  artifacts: string[] = []; // Change to empty array
 
-  constructor(private http: HttpClient) {} // Add this
+  constructor(private http: HttpClient) {}
 
   get filteredAgents(): string[] {
     if (!this.searchTerm) {
@@ -55,66 +34,47 @@ export class AgentsSidebarComponent {
   }
 
   selectAgent(agent: string): void {
-    this.selectedAgent = this.selectedAgent === agent ? null : agent;
-    if (!this.selectedAgent) {
-      this.selectedArtifact = null;
-      this.artifactVersions = [];
-    }
-  }
-
-  toggleSearch(): void {
-    this.showSearch = !this.showSearch;
-    if (!this.showSearch) {
-      this.searchTerm = '';
-    }
-  }
-
-  toggleAdkTab(): void {
-    this.isAdkExpanded = !this.isAdkExpanded;
-  }
-
-  toggleArtifactsTab(): void {
-    this.isArtifactsExpanded = !this.isArtifactsExpanded;
-  }
-
-  selectArtifact(artifact: string): void {
-    if (this.selectedArtifact === artifact) {
+    if (this.selectedAgent === agent) {
+      this.selectedAgent = null;
+      this.artifacts = [];
       this.selectedArtifact = null;
       this.artifactVersions = [];
     } else {
-      this.selectedArtifact = artifact;
-      this.loadArtifactVersions(artifact);
+      this.selectedAgent = agent;
+      this.selectedArtifact = null;
+      this.artifactVersions = [];
+      this.loadArtifacts(agent);
     }
   }
 
-  loadArtifactVersions(artifact: string): void {
-    this.loadingVersions = true;
+  loadArtifacts(agent: string): void {
+    this.loadingArtifacts = true;
     // Replace with your actual API endpoint
-    const apiUrl = `https://your-api.com/artifacts/${artifact}/versions`;
+    const apiUrl = `https://your-api.com/agents/${agent}/artifacts`;
     
-    this.http.get<ArtifactVersion[]>(apiUrl).subscribe({
-      next: (versions) => {
-        this.artifactVersions = versions;
-        this.loadingVersions = false;
+    this.http.get<string[]>(apiUrl).subscribe({
+      next: (artifacts) => {
+        this.artifacts = artifacts;
+        this.loadingArtifacts = false;
       },
       error: (error) => {
-        console.error('Error loading artifact versions:', error);
-        this.loadingVersions = false;
+        console.error('Error loading artifacts:', error);
+        this.loadingArtifacts = false;
         // Mock data for demonstration
-        this.artifactVersions = [
-          { id: 1, version: 'v1.0.0', createdAt: '2024-01-15', downloadUrl: '#' },
-          { id: 2, version: 'v1.1.0', createdAt: '2024-01-20', downloadUrl: '#' },
-          { id: 3, version: 'v2.0.0', createdAt: '2024-01-25', downloadUrl: '#' }
+        this.artifacts = [
+          'Artifact 1',
+          'Artifact 2',
+          'Artifact 3'
         ];
       }
     });
   }
 
-  downloadArtifact(version: ArtifactVersion): void {
-    // Implement download logic
-    window.open(version.downloadUrl, '_blank');
-  }
+  // ... rest of the methods remain the same ...
 }
+
+
+
 
 
 <!-- Replace the Artifacts Accordion content with: -->
@@ -127,7 +87,19 @@ export class AgentsSidebarComponent {
       <p>Select an agent to view artifacts</p>
     </div>
 
-    <ng-container *ngIf="selectedAgent">
+    <div *ngIf="selectedAgent && loadingArtifacts" class="loading-state">
+      <div class="spinner"></div>
+      <span>Loading artifacts...</span>
+    </div>
+
+    <ng-container *ngIf="selectedAgent && !loadingArtifacts">
+      <div *ngIf="artifacts.length === 0" class="no-results">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path>
+        </svg>
+        <p>No artifacts available for this agent</p>
+      </div>
+
       <div 
         class="agent-card artifact-item"
         [class.active]="selectedArtifact === artifact"
@@ -170,122 +142,3 @@ export class AgentsSidebarComponent {
     </ng-container>
   </div>
 </div>
-
-
-
-
-
-/* Add new styles: */
-.artifact-item {
-    cursor: pointer;
-}
-
-.artifact-chevron {
-    width: 16px;
-    height: 16px;
-    color: var(--adk-agents-text-secondary);
-    transition: transform 0.3s ease;
-    transform: rotate(-90deg);
-}
-
-.artifact-chevron.expanded {
-    transform: rotate(0deg);
-}
-
-.versions-container {
-    margin-top: 12px;
-    padding-top: 12px;
-    border-top: 1px solid var(--adk-agents-border);
-}
-
-.loading-state {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 16px;
-    color: var(--adk-agents-text-secondary);
-    font-size: 13px;
-}
-
-.spinner {
-    width: 16px;
-    height: 16px;
-    border: 2px solid var(--adk-agents-border);
-    border-top-color: #667eea;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-    to { transform: rotate(360deg); }
-}
-
-.versions-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.version-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px;
-    background: var(--adk-agents-card-hover-bg);
-    border: 1px solid var(--adk-agents-border);
-    border-radius: 6px;
-    transition: all 0.2s;
-}
-
-.version-item:hover {
-    border-color: #667eea;
-}
-
-.version-info {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.version-name {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--adk-agents-text-primary);
-}
-
-.version-date {
-    font-size: 11px;
-    color: var(--adk-agents-text-secondary);
-}
-
-.download-btn {
-    background: transparent;
-    border: 1px solid var(--adk-agents-border);
-    border-radius: 6px;
-    padding: 6px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--adk-agents-text-primary);
-    transition: all 0.2s;
-}
-
-.download-btn:hover {
-    background: #667eea;
-    border-color: #667eea;
-    color: white;
-}
-
-.download-btn svg {
-    width: 16px;
-    height: 16px;
-}
-
-.no-versions {
-    text-align: center;
-    padding: 16px;
-    color: var(--adk-agents-text-secondary);
-    font-size: 13px;
-}
