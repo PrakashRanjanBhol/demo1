@@ -1,171 +1,37 @@
-<div class="preview-header">
-  <div class="file-info">
-    <span class="file-name">{{ artifactVersion?.name || 'Untitled' }}</span>
-    <span class="file-version">v{{ artifactVersion?.version || 1 }}</span>
-  </div>
-  
-  <!-- Zoom controls (only show for images) -->
-  <div class="zoom-controls" *ngIf="artifactVersion?.type === 'image'">
-    <button class="zoom-btn" (click)="zoomOut()" [disabled]="zoomLevel <= 0.25" title="Zoom Out">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <circle cx="11" cy="11" r="8"></circle>
-        <path d="M21 21l-4.35-4.35"></path>
-        <line x1="8" y1="11" x2="14" y2="11"></line>
-      </svg>
-    </button>
-    <span class="zoom-level">{{ (zoomLevel * 100).toFixed(0) }}%</span>
-    <button class="zoom-btn" (click)="zoomIn()" [disabled]="zoomLevel >= 3" title="Zoom In">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <circle cx="11" cy="11" r="8"></circle>
-        <path d="M21 21l-4.35-4.35"></path>
-        <line x1="11" y1="8" x2="11" y2="14"></line>
-        <line x1="8" y1="11" x2="14" y2="11"></line>
-      </svg>
-    </button>
-    <button class="zoom-btn" (click)="resetZoom()" title="Reset Zoom">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M1 4v6h6"></path>
-        <path d="M23 20v-6h-6"></path>
-        <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"></path>
-      </svg>
-    </button>
-  </div>
-</div>
-
-<div class="preview-container">
-  <iframe #previewFrame class="preview-iframe" sandbox="allow-scripts allow-same-origin"></iframe>
-</div>
-
-
-
-
-
-
-
-export class YourComponent {
-  @ViewChild('previewFrame') previewFrame?: ElementRef<HTMLIFrameElement>;
-  artifactVersion?: ArtifactVersion;
-  zoomLevel: number = 1;
-
-  // ... existing methods ...
-
-  zoomIn() {
-    this.zoomLevel = Math.min(this.zoomLevel + 0.25, 3);
-    this.applyZoom();
-  }
-
-  zoomOut() {
-    this.zoomLevel = Math.max(this.zoomLevel - 0.25, 0.25);
-    this.applyZoom();
-  }
-
-  resetZoom() {
-    this.zoomLevel = 1;
-    this.applyZoom();
-  }
-
-  private applyZoom() {
-    const imgContainer = document.getElementById('image-preview-container');
-    if (imgContainer) {
-      const img = imgContainer.querySelector('.preview-image') as HTMLImageElement;
-      if (img) {
-        img.style.transform = `scale(${this.zoomLevel})`;
-        img.style.transition = 'transform 0.2s ease';
-      }
-    }
-  }
-
-  private renderImage() {
-    if (!this.previewFrame?.nativeElement) return;
-    
-    const iframe = this.previewFrame.nativeElement;
-    
-    // Hide iframe
-    iframe.style.display = 'none';
-    
-    // Reset zoom level when rendering new image
-    this.zoomLevel = 1;
-    
-    // Get or create image container
-    let imgContainer = document.getElementById('image-preview-container');
-    if (!imgContainer) {
-      imgContainer = document.createElement('div');
-      imgContainer.id = 'image-preview-container';
-      imgContainer.className = 'image-preview-container';
-      iframe.parentElement?.appendChild(imgContainer);
-    }
-    
-    // Show container
-    imgContainer.style.display = 'flex';
-    
-    // Show loader
-    imgContainer.innerHTML = `
-      <div class="loading-overlay">
-        <div class="spinner"></div>
-        <p style="margin-top: 20px; color: #666;">Loading image...</p>
-      </div>
-    `;
-    
-    try {
-      const base64Content = this.convertUrlSafeBase64ToStandard(this.artifactVersion!.content);
-      const dataUrl = this.createDataUrl(base64Content);
-      
-      const img = document.createElement('img');
-      img.className = 'preview-image';
-      img.alt = 'Artifact Image';
-      
-      img.onload = () => {
-        const loader = imgContainer!.querySelector('.loading-overlay');
-        if (loader) {
-          loader.remove();
-        }
-        console.log('Image loaded successfully');
-      };
-      
-      img.onerror = () => {
-        imgContainer!.innerHTML = `
-          <div class="error-message">
-            <h3>⚠️ Image Loading Failed</h3>
-            <p>Failed to load the image.</p>
-            <p style="font-size: 12px; color: #999;">The image data may be corrupted or in an invalid format.</p>
-          </div>
-        `;
-        console.error('Image failed to load');
-      };
-      
-      const timeout = setTimeout(() => {
-        if (imgContainer!.querySelector('.loading-overlay')) {
-          imgContainer!.innerHTML = `
-            <div class="error-message">
-              <h3>⚠️ Image Loading Timeout</h3>
-              <p>Image took too long to load.</p>
-              <p style="font-size: 12px; color: #999;">The image may be too large or corrupted.</p>
-            </div>
-          `;
-        }
-      }, 10000);
-      
-      img.addEventListener('load', () => clearTimeout(timeout));
-      
-      img.src = dataUrl;
-      imgContainer.appendChild(img);
-      
-    } catch (error) {
-      console.error('Error processing base64 image:', error);
-      imgContainer.innerHTML = `
-        <div class="error-message">
-          <h3>⚠️ Image Processing Failed</h3>
-          <p>Failed to process the base64 image data.</p>
-          <p style="font-size: 12px; color: #999;">The image data may be in an invalid format.</p>
-        </div>
-      `;
-    }
-  }
-
-  // ... rest of existing methods ...
+:root {
+  /* Light mode (default) */
+  --adk-artifact-view-header-bg: #ffffff;
+  --adk-artifact-view-header-border: #e0e0e0;
+  --adk-artifact-view-file-name-color: #1a1a1b;
+  --adk-artifact-view-file-version-color: #4a5568;
+  --adk-artifact-view-file-version-bg: #e2e8f0;
+  --adk-artifact-view-zoom-btn-bg: #ffffff;
+  --adk-artifact-view-zoom-btn-border: #e2e8f0;
+  --adk-artifact-view-zoom-btn-color: #4a5568;
+  --adk-artifact-view-zoom-btn-hover-bg: #f8fafc;
+  --adk-artifact-view-zoom-btn-hover-border: #cbd5e1;
+  --adk-artifact-view-zoom-btn-hover-color: #1a1a1b;
+  --adk-artifact-view-zoom-level-color: #4a5568;
+  --adk-artifact-view-image-container-bg: #f5f5f5;
 }
 
-
+/* Dark mode */
+.dark-mode,
+[data-theme="dark"] {
+  --adk-artifact-view-header-bg: #0a0a0b;
+  --adk-artifact-view-header-border: #2a2a2b;
+  --adk-artifact-view-file-name-color: #f1f5f9;
+  --adk-artifact-view-file-version-color: #cbd5e1;
+  --adk-artifact-view-file-version-bg: rgba(148, 163, 184, 0.2);
+  --adk-artifact-view-zoom-btn-bg: #1a1a1b;
+  --adk-artifact-view-zoom-btn-border: #2a2a2b;
+  --adk-artifact-view-zoom-btn-color: #cbd5e1;
+  --adk-artifact-view-zoom-btn-hover-bg: #2a2a2b;
+  --adk-artifact-view-zoom-btn-hover-border: #3a3a3b;
+  --adk-artifact-view-zoom-btn-hover-color: #f1f5f9;
+  --adk-artifact-view-zoom-level-color: #cbd5e1;
+  --adk-artifact-view-image-container-bg: #0a0a0b;
+}
 
 
 
@@ -177,15 +43,8 @@ export class YourComponent {
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
-  border-bottom: 1px solid #e0e0e0;
-  background: #ffffff;
-}
-
-/* Dark mode for header */
-.dark-mode .preview-header,
-[data-theme="dark"] .preview-header {
-  background: #0a0a0b;
-  border-bottom-color: #2a2a2b;
+  border-bottom: 1px solid var(--adk-artifact-view-header-border);
+  background: var(--adk-artifact-view-header-bg);
 }
 
 .file-info {
@@ -198,31 +57,18 @@ export class YourComponent {
   font-size: 16px;
   font-weight: 600;
   letter-spacing: 0.3px;
-  color: #1a1a1b;
+  color: var(--adk-artifact-view-file-name-color);
 }
 
 .file-version {
   font-size: 12px;
   font-weight: 500;
-  color: #4a5568;
-  background: #e2e8f0;
+  color: var(--adk-artifact-view-file-version-color);
+  background: var(--adk-artifact-view-file-version-bg);
   padding: 4px 10px;
   border-radius: 12px;
 }
 
-/* Dark mode */
-.dark-mode .file-name,
-[data-theme="dark"] .file-name {
-  color: #f1f5f9;
-}
-
-.dark-mode .file-version,
-[data-theme="dark"] .file-version {
-  color: #cbd5e1;
-  background: rgba(148, 163, 184, 0.2);
-}
-
-/* Zoom controls */
 .zoom-controls {
   display: flex;
   align-items: center;
@@ -235,18 +81,18 @@ export class YourComponent {
   justify-content: center;
   width: 32px;
   height: 32px;
-  border: 1px solid #e2e8f0;
-  background: #ffffff;
+  border: 1px solid var(--adk-artifact-view-zoom-btn-border);
+  background: var(--adk-artifact-view-zoom-btn-bg);
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s ease;
-  color: #4a5568;
+  color: var(--adk-artifact-view-zoom-btn-color);
 }
 
 .zoom-btn:hover:not(:disabled) {
-  background: #f8fafc;
-  border-color: #cbd5e1;
-  color: #1a1a1b;
+  background: var(--adk-artifact-view-zoom-btn-hover-bg);
+  border-color: var(--adk-artifact-view-zoom-btn-hover-border);
+  color: var(--adk-artifact-view-zoom-btn-hover-color);
 }
 
 .zoom-btn:active:not(:disabled) {
@@ -261,48 +107,34 @@ export class YourComponent {
 .zoom-level {
   font-size: 13px;
   font-weight: 500;
-  color: #4a5568;
+  color: var(--adk-artifact-view-zoom-level-color);
   min-width: 45px;
   text-align: center;
 }
 
-/* Dark mode for zoom controls */
-.dark-mode .zoom-btn,
-[data-theme="dark"] .zoom-btn {
-  background: #1a1a1b;
-  border-color: #2a2a2b;
-  color: #cbd5e1;
+.preview-container {
+  height: calc(100% - 49px);
+  width: 100%;
+  position: relative;
 }
 
-.dark-mode .zoom-btn:hover:not(:disabled),
-[data-theme="dark"] .zoom-btn:hover:not(:disabled) {
-  background: #2a2a2b;
-  border-color: #3a3a3b;
-  color: #f1f5f9;
+.preview-iframe {
+  height: 100%;
+  width: 100%;
+  border: none;
 }
 
-.dark-mode .zoom-level,
-[data-theme="dark"] .zoom-level {
-  color: #cbd5e1;
-}
-
-/* Image container adjustments for zoom */
 .image-preview-container {
   height: 100%;
   width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f5f5f5;
+  background: var(--adk-artifact-view-image-container-bg);
   position: absolute;
   top: 0;
   left: 0;
   overflow: auto;
-}
-
-.dark-mode .image-preview-container,
-[data-theme="dark"] .image-preview-container {
-  background: #0a0a0b;
 }
 
 .preview-image {
@@ -310,4 +142,32 @@ export class YourComponent {
   max-height: 100%;
   object-fit: contain;
   transform-origin: center center;
+}
+
+.loading-overlay {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.spinner {
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #3498db;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.error-message {
+  color: #d32f2f;
+  font-family: Arial, sans-serif;
+  text-align: center;
+  padding: 20px;
 }
