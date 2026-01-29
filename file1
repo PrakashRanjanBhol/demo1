@@ -1,27 +1,33 @@
 updatePreview() {
-  if (!this.previewFrame?.nativeElement) return;
   if (!this.artifactVersion) return;
 
-  const iframe = this.previewFrame.nativeElement;
+  if (this.artifactVersion.type === 'html') {
+    // Render HTML in iframe
+    this.renderHtmlInIframe();
+  } else if (this.artifactVersion.type === 'image') {
+    // Render image as img tag
+    this.renderImage();
+  } else {
+    // Handle null or unknown type
+    this.clearPreview();
+  }
+}
 
+private renderHtmlInIframe() {
+  if (!this.previewFrame?.nativeElement) return;
+  
+  const iframe = this.previewFrame.nativeElement;
+  
+  // Show iframe, hide image
+  iframe.style.display = 'block';
+  
   // Show loader
   this.showLoader(iframe);
 
   const doc = iframe.contentDocument || iframe.contentWindow?.document;
   if (doc) {
     doc.open();
-    
-    if (this.artifactVersion.type === 'html') {
-      // Render as HTML with CDN loading detection
-      doc.write(this.wrapHtmlWithLoadingDetection(this.artifactVersion.content));
-    } else if (this.artifactVersion.type === 'image') {
-      // Render as image
-      doc.write(this.wrapImageWithLoadingDetection(this.artifactVersion.content));
-    } else {
-      // Handle null or unknown type
-      doc.write('<html><body><p>No content available</p></body></html>');
-    }
-    
+    doc.write(this.wrapHtmlWithLoadingDetection(this.artifactVersion!.content));
     doc.close();
 
     // Listen for messages from iframe
@@ -29,120 +35,91 @@ updatePreview() {
   }
 }
 
-private wrapImageWithLoadingDetection(imageContent: string): string {
-  return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <style>
-        body {
-          margin: 0;
-          padding: 0;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          min-height: 100vh;
-          background: #f5f5f5;
-        }
-        .loading-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          background: rgba(255, 255, 255, 0.9);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 9999;
-          flex-direction: column;
-        }
-        .spinner {
-          border: 4px solid #f3f3f3;
-          border-top: 4px solid #3498db;
-          border-radius: 50%;
-          width: 40px;
-          height: 40px;
-          animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-        .error-message {
-          color: #d32f2f;
-          font-family: Arial, sans-serif;
-          text-align: center;
-          padding: 20px;
-        }
-        .image-container {
-          max-width: 100%;
-          max-height: 100vh;
-          padding: 20px;
-          box-sizing: border-box;
-        }
-        .image-container img {
-          max-width: 100%;
-          max-height: 100%;
-          object-fit: contain;
-          display: block;
-        }
-      </style>
-    </head>
-    <body>
-      <div id="loading-overlay" class="loading-overlay">
-        <div class="spinner"></div>
-        <p style="margin-top: 20px; color: #666;">Loading image...</p>
-      </div>
-      
-      <div class="image-container">
-        <img id="artifact-image" src="${this.escapeHtml(imageContent)}" alt="Artifact Image" />
-      </div>
-      
-      <script>
-        (function() {
-          const img = document.getElementById('artifact-image');
-          const overlay = document.getElementById('loading-overlay');
-          
-          function hideLoader() {
-            if (overlay) {
-              overlay.style.display = 'none';
-            }
-          }
-          
-          function showError() {
-            if (overlay) {
-              overlay.innerHTML = \`
-                <div class="error-message">
-                  <h3>⚠️ Image Loading Failed</h3>
-                  <p>Failed to load the image.</p>
-                  <p style="font-size: 12px; color: #999;">Please check the image URL or your internet connection.</p>
-                </div>
-              \`;
-            }
-            window.parent.postMessage({ type: 'image-load-error' }, '*');
-          }
-          
-          img.addEventListener('load', function() {
-            hideLoader();
-            window.parent.postMessage({ type: 'image-load-complete' }, '*');
-          });
-          
-          img.addEventListener('error', function() {
-            showError();
-          });
-          
-          // Timeout fallback (10 seconds)
-          setTimeout(function() {
-            if (overlay && overlay.style.display !== 'none') {
-              showError();
-            }
-          }, 10000);
-        })();
-      </script>
-    </body>
-    </html>
+private renderImage() {
+  if (!this.previewFrame?.nativeElement) return;
+  
+  const iframe = this.previewFrame.nativeElement;
+  
+  // Hide iframe
+  iframe.style.display = 'none';
+  
+  // Get or create image container
+  let imgContainer = document.getElementById('image-preview-container');
+  if (!imgContainer) {
+    imgContainer = document.createElement('div');
+    imgContainer.id = 'image-preview-container';
+    imgContainer.className = 'image-preview-container';
+    iframe.parentElement?.appendChild(imgContainer);
+  }
+  
+  // Show loader
+  imgContainer.innerHTML = `
+    <div class="loading-overlay">
+      <div class="spinner"></div>
+      <p style="margin-top: 20px; color: #666;">Loading image...</p>
+    </div>
   `;
+  
+  // Create image element
+  const img = document.createElement('img');
+  img.className = 'preview-image';
+  img.alt = 'Artifact Image';
+  
+  // Handle image load
+  img.onload = () => {
+    // Remove loader
+    const loader = imgContainer!.querySelector('.loading-overlay');
+    if (loader) {
+      loader.remove();
+    }
+    console.log('Image loaded successfully');
+  };
+  
+  // Handle image error
+  img.onerror = () => {
+    imgContainer!.innerHTML = `
+      <div class="error-message">
+        <h3>⚠️ Image Loading Failed</h3>
+        <p>Failed to load the image.</p>
+        <p style="font-size: 12px; color: #999;">Please check the image URL or your internet connection.</p>
+      </div>
+    `;
+    console.error('Image failed to load');
+  };
+  
+  // Set timeout for loading
+  const timeout = setTimeout(() => {
+    if (imgContainer!.querySelector('.loading-overlay')) {
+      imgContainer!.innerHTML = `
+        <div class="error-message">
+          <h3>⚠️ Image Loading Timeout</h3>
+          <p>Image took too long to load.</p>
+          <p style="font-size: 12px; color: #999;">Please check your internet connection.</p>
+        </div>
+      `;
+    }
+  }, 10000);
+  
+  // Clear timeout on successful load
+  img.addEventListener('load', () => clearTimeout(timeout));
+  
+  // Set image source
+  img.src = this.artifactVersion!.content;
+  
+  // Append image to container
+  imgContainer.appendChild(img);
+}
+
+private clearPreview() {
+  if (this.previewFrame?.nativeElement) {
+    const iframe = this.previewFrame.nativeElement;
+    iframe.style.display = 'none';
+  }
+  
+  const imgContainer = document.getElementById('image-preview-container');
+  if (imgContainer) {
+    imgContainer.innerHTML = '<p style="text-align: center; color: #999;">No content available</p>';
+  }
 }
 
 private wrapHtmlWithLoadingDetection(html: string): string {
@@ -298,17 +275,6 @@ private wrapHtmlWithLoadingDetection(html: string): string {
   `;
 }
 
-private escapeHtml(text: string): string {
-  const map: { [key: string]: string } = {
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#039;'
-  };
-  return text.replace(/[&<>"']/g, (m) => map[m]);
-}
-
 private setupIframeMessageListener(iframe: HTMLIFrameElement) {
   const messageHandler = (event: MessageEvent) => {
     // Verify message is from our iframe
@@ -321,19 +287,10 @@ private setupIframeMessageListener(iframe: HTMLIFrameElement) {
       case 'cdn-load-error':
         console.error('CDN resources failed to load');
         break;
-      case 'image-load-complete':
-        console.log('Image loaded successfully');
-        break;
-      case 'image-load-error':
-        console.error('Image failed to load');
-        break;
     }
   };
 
   window.addEventListener('message', messageHandler);
-  
-  // Clean up listener when component is destroyed
-  // Store the handler reference if you need to remove it later
 }
 
 private showLoader(iframe: HTMLIFrameElement) {
@@ -373,4 +330,72 @@ private showLoader(iframe: HTMLIFrameElement) {
     `);
     doc.close();
   }
+}
+
+
+
+
+
+<div class="preview-container">
+  <iframe #previewFrame class="preview-iframe" sandbox="allow-scripts allow-same-origin"></iframe>
+  <!-- Image container will be dynamically created here -->
+</div>
+
+
+.preview-container {
+  height: 100%;
+  width: 100%;
+  position: relative;
+}
+
+.preview-iframe {
+  height: 100%;
+  width: 100%;
+  border: none;
+}
+
+.image-preview-container {
+  height: 100%;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f5f5f5;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.preview-image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.loading-overlay {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.spinner {
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #3498db;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.error-message {
+  color: #d32f2f;
+  font-family: Arial, sans-serif;
+  text-align: center;
+  padding: 20px;
 }
