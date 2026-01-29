@@ -1,41 +1,88 @@
-<main>
-  <div class="content-layout">
-    <!-- Left Section: Main Content -->
-    <div class="main-content">
-      <div class="content-card">
-        <h1 class="content-title">Sample Content</h1>
-        <p class="content-text">
-          This is your main content area. You can add any components, widgets, or content here. 
-          The layout features a professional design with a sticky header, flexible content area, 
-          and a footer that stays at the bottom. Toggle between light and dark modes using the 
-          theme button in the header.
-        </p>
-        <p class="content-text" style="margin-top: 16px;">
-          The right sidebar displays additional content and adjusts its width based on screen size:
-          320px for screens less than 1600px, and 380px for larger screens.
-        </p>
+// Update the interface:
+interface ArtifactVersion {
+  content: string;
+  type: 'html' | 'image' | null;
+  version: number;
+}
+
+// Update the loadArtifactVersions method:
+loadArtifactVersions(artifact: string): void {
+  this.loadingVersions = true;
+  const apiUrl = `https://your-api.com/artifacts/${encodeURIComponent(artifact)}/versions`;
+  
+  this.http.get<ArtifactVersion[]>(apiUrl).subscribe({
+    next: (versions) => {
+      this.artifactVersions = versions;
+      this.loadingVersions = false;
+    },
+    error: (error) => {
+      console.error('Error loading artifact versions:', error);
+      this.loadingVersions = false;
+      // Mock data for demonstration
+      this.artifactVersions = [
+        { content: 'something', type: 'html', version: 0 },
+        { content: 'another', type: 'image', version: 1 },
+        { content: 'data', type: null, version: 2 }
+      ];
+    }
+  });
+}
+
+// Update the downloadArtifact method:
+downloadArtifact(artifactName: string, version: ArtifactVersion): void {
+  const downloadUrl = `https://your-api.com/artifacts/${encodeURIComponent(artifactName)}/versions/${version.version}/download`;
+  window.open(downloadUrl, '_blank');
+}
+
+// Add new method for viewing:
+viewArtifact(artifactName: string, version: ArtifactVersion): void {
+  // Open view in new window or modal
+  const viewUrl = `https://your-api.com/artifacts/${encodeURIComponent(artifactName)}/versions/${version.version}/view`;
+  window.open(viewUrl, '_blank');
+}
+
+
+
+
+
+
+<!-- Update the versions list section: -->
+<div *ngIf="!loadingVersions && artifactVersions.length > 0" class="tree-container">
+  <div class="tree-node" *ngFor="let version of artifactVersions; let isLast = last">
+    <div class="tree-line-container">
+      <div class="tree-line" [class.last]="isLast"></div>
+    </div>
+    <div class="tree-content">
+      <div class="version-node">
+        <div class="version-row">
+          <span class="version-name">Version {{ version.version }}</span>
+          <div class="version-actions">
+            <button 
+              *ngIf="version.type === 'html' || version.type === 'image'"
+              class="view-btn" 
+              (click)="viewArtifact(artifact, version); $event.stopPropagation()"
+              [title]="'View ' + version.type"
+            >
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+              </svg>
+            </button>
+            <button 
+              class="download-btn" 
+              (click)="downloadArtifact(artifact, version); $event.stopPropagation()"
+              title="Download"
+            >
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
-
-    <!-- Separator Line -->
-    <div class="separator"></div>
-
-    <!-- Right Section: Sidebar -->
-    <aside class="sidebar">
-      <div class="sidebar-content">
-        <div class="sidebar-header">
-          <h2 class="sidebar-title">Sidebar Content</h2>
-        </div>
-        <div class="sidebar-body">
-          <p class="sidebar-text">
-            This is the right sidebar section. You can add additional content, widgets, 
-            or tools here.
-          </p>
-        </div>
-      </div>
-    </aside>
   </div>
-</main>
+</div>
 
 
 
@@ -43,165 +90,49 @@
 
 
 
-/* Main Content Styles */
-:host {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
+
+/* Add new styles: */
+.version-actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
 }
 
-main {
-  flex: 1;
-  max-width: 1400px;
-  width: 100%;
-  margin: 0 auto;
-  display: flex;
-  flex-direction: column;
-  overflow-x: hidden;
+.view-btn {
+    background: transparent;
+    border: 1px solid var(--adk-agents-border);
+    border-radius: 4px;
+    padding: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--adk-agents-text-primary);
+    transition: all 0.2s;
+    flex-shrink: 0;
 }
 
-.content-layout {
-  display: flex;
-  gap: 0;
-  flex: 1;
-  position: relative;
-  overflow-x: hidden;
+.view-btn:hover {
+    background: #3b82f6;
+    border-color: #3b82f6;
+    color: white;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
 }
 
-/* Main Content Section */
-.main-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
+.view-btn:active {
+    transform: translateY(0);
 }
 
-.content-card {
-  background-color: var(--header-bg);
-  border-radius: 12px;
-  padding: 32px;
-  transition: background-color 0.3s ease;
-  flex: 1;
+.view-btn svg {
+    width: 14px;
+    height: 14px;
 }
 
-.content-title {
-  font-size: 20px;
-  font-weight: 600;
-  margin-bottom: 16px;
-  color: var(--text-color);
-}
-
-.content-text {
-  font-size: 14px;
-  line-height: 1.6;
-  color: var(--text-color);
-  opacity: 0.8;
-}
-
-/* Separator Line */
-.separator {
-  width: 1px;
-  background-color: var(--border-color);
-  transition: background-color 0.3s ease;
-  flex-shrink: 0;
-}
-
-/* Sidebar Section */
-.sidebar {
-  width: 320px;
-  background-color: var(--header-bg);
-  border-radius: 12px;
-  transition: background-color 0.3s ease;
-  flex-shrink: 0;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.sidebar-content {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  min-width: 320px;
-}
-
-.sidebar-header {
-  padding: 24px 24px 16px 24px;
-  border-bottom: 1px solid var(--border-color);
-  flex-shrink: 0;
-}
-
-.sidebar-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--text-color);
-  margin: 0;
-}
-
-.sidebar-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: 24px;
-}
-
-.sidebar-text {
-  font-size: 14px;
-  line-height: 1.6;
-  color: var(--text-color);
-  opacity: 0.8;
-}
-
-/* Responsive breakpoint for larger screens */
-@media (min-width: 1600px) {
-  .sidebar {
-    width: 380px;
-  }
-
-  .sidebar-content {
-    min-width: 380px;
-  }
-}
-
-/* Responsive Design for tablets and mobile */
-@media (max-width: 1024px) {
-  .content-layout {
-    flex-direction: column;
-  }
-
-  .main-content {
-    padding-bottom: 20px;
-  }
-
-  .separator {
-    width: 100%;
-    height: 1px;
-    margin: 20px 0;
-  }
-
-  .sidebar {
-    width: 100%;
-    max-height: 400px;
-  }
-
-  .sidebar-content {
-    min-width: 100%;
-  }
-}
-
-@media (max-width: 768px) {
-  .content-card {
-    padding: 24px;
-  }
-
-  .sidebar-header {
-    padding: 20px 20px 16px 20px;
-  }
-
-  .sidebar-body {
-    padding: 20px;
-  }
-
-  .content-layout {
-    gap: 0;
-  }
+/* Update .version-row: */
+.version-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: space-between;
 }
