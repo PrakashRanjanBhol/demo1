@@ -1,101 +1,107 @@
-.image-preview-container {
-  height: 100%;
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--adk-artifact-view-image-container-bg);
-  position: absolute;
-  top: 0;
-  left: 0;
-  overflow: auto;
-  padding: 20px;
-  box-sizing: border-box;
-}
+updatePreview() {
+  if (!this.artifactVersion) return;
 
-.image-wrapper {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: min-content;
-  min-height: min-content;
-}
+  // Clear existing content first
+  this.clearPreview();
 
-.preview-image {
-  display: block;
-  max-width: none;
-  max-height: none;
-  object-fit: contain;
-  transform-origin: center center;
-  transition: transform 0.2s ease;
-}
-
-.preview-image.zoomed {
-  max-width: none;
-  max-height: none;
-}
-
-
-
-
-
-
-
-
-private applyZoom() {
-  const imgContainer = document.getElementById('image-preview-container');
-  if (imgContainer) {
-    const img = imgContainer.querySelector('.preview-image') as HTMLImageElement;
-    if (img) {
-      // Store scroll position relative to center
-      const scrollLeft = imgContainer.scrollLeft;
-      const scrollTop = imgContainer.scrollTop;
-      const containerWidth = imgContainer.clientWidth;
-      const containerHeight = imgContainer.clientHeight;
-      const scrollWidth = imgContainer.scrollWidth;
-      const scrollHeight = imgContainer.scrollHeight;
-      
-      // Calculate center position before zoom
-      const centerX = (scrollLeft + containerWidth / 2) / scrollWidth;
-      const centerY = (scrollTop + containerHeight / 2) / scrollHeight;
-      
-      // Apply zoom
-      img.style.transform = `scale(${this.zoomLevel})`;
-      
-      // Add/remove zoomed class
-      if (this.zoomLevel > 1) {
-        img.classList.add('zoomed');
-      } else {
-        img.classList.remove('zoomed');
-      }
-      
-      // Wait for transform to complete
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          // Calculate new scroll position to maintain center
-          const newScrollWidth = imgContainer.scrollWidth;
-          const newScrollHeight = imgContainer.scrollHeight;
-          const newScrollLeft = centerX * newScrollWidth - containerWidth / 2;
-          const newScrollTop = centerY * newScrollHeight - containerHeight / 2;
-          
-          // Apply new scroll position
-          imgContainer.scrollLeft = newScrollLeft;
-          imgContainer.scrollTop = newScrollTop;
-        });
-      });
-    }
+  if (this.artifactVersion.type === 'html') {
+    // Render HTML in iframe
+    this.renderHtmlInIframe();
+  } else if (this.artifactVersion.type === 'image') {
+    // Render image as img tag
+    this.renderImage();
   }
 }
+
+
+
+
+
+private clearPreview() {
+  // Clear iframe
+  if (this.previewFrame?.nativeElement) {
+    const iframe = this.previewFrame.nativeElement;
+    iframe.style.display = 'none';
+    
+    // Clear iframe content
+    const doc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (doc) {
+      doc.open();
+      doc.write('');
+      doc.close();
+    }
+  }
+  
+  // Clear image container
+  const imgContainer = document.getElementById('image-preview-container');
+  if (imgContainer) {
+    imgContainer.innerHTML = '';
+    imgContainer.style.display = 'none';
+  }
+  
+  // Reset zoom level
+  this.zoomLevel = 1;
+}
+
+
+
+
+
+
+
+
+
+
+private renderHtmlInIframe() {
+  if (!this.previewFrame?.nativeElement) return;
+  
+  const iframe = this.previewFrame.nativeElement;
+  
+  // Hide image container if exists
+  const imgContainer = document.getElementById('image-preview-container');
+  if (imgContainer) {
+    imgContainer.style.display = 'none';
+    imgContainer.innerHTML = '';
+  }
+  
+  // Show iframe
+  iframe.style.display = 'block';
+  
+  // Show loader
+  this.showLoader(iframe);
+
+  const doc = iframe.contentDocument || iframe.contentWindow?.document;
+  if (doc) {
+    doc.open();
+    doc.write(this.wrapHtmlWithLoadingDetection(this.artifactVersion!.content));
+    doc.close();
+
+    // Listen for messages from iframe
+    this.setupIframeMessageListener(iframe);
+  }
+}
+
+
+
+
+
+
 
 private renderImage() {
   if (!this.previewFrame?.nativeElement) return;
   
   const iframe = this.previewFrame.nativeElement;
   
-  // Hide iframe
+  // Hide and clear iframe
   iframe.style.display = 'none';
+  const doc = iframe.contentDocument || iframe.contentWindow?.document;
+  if (doc) {
+    doc.open();
+    doc.write('');
+    doc.close();
+  }
   
-  // Reset zoom level when rendering new image
+  // Reset zoom level
   this.zoomLevel = 1;
   
   // Get or create image container
@@ -106,6 +112,9 @@ private renderImage() {
     imgContainer.className = 'image-preview-container';
     iframe.parentElement?.appendChild(imgContainer);
   }
+  
+  // Clear previous content
+  imgContainer.innerHTML = '';
   
   // Show container
   imgContainer.style.display = 'flex';
@@ -137,17 +146,15 @@ private renderImage() {
       }
       
       // Set initial size based on container
-      const containerWidth = imgContainer!.clientWidth - 40; // Account for padding
+      const containerWidth = imgContainer!.clientWidth - 40;
       const containerHeight = imgContainer!.clientHeight - 40;
       const imgWidth = img.naturalWidth;
       const imgHeight = img.naturalHeight;
       
-      // Calculate scale to fit image in container
       const scaleX = containerWidth / imgWidth;
       const scaleY = containerHeight / imgHeight;
-      const initialScale = Math.min(scaleX, scaleY, 1); // Don't scale up initially
+      const initialScale = Math.min(scaleX, scaleY, 1);
       
-      // Set initial dimensions
       img.style.width = `${imgWidth * initialScale}px`;
       img.style.height = `${imgHeight * initialScale}px`;
       
