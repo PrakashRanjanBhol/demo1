@@ -5,7 +5,7 @@ updatePreview() {
     // Render HTML in iframe
     this.renderHtmlInIframe();
   } else if (this.artifactVersion.type === 'image') {
-    // Render image as img tag
+    // Render base64 image as img tag
     this.renderImage();
   } else {
     // Handle null or unknown type
@@ -18,8 +18,12 @@ private renderHtmlInIframe() {
   
   const iframe = this.previewFrame.nativeElement;
   
-  // Show iframe, hide image
+  // Show iframe, hide image container
   iframe.style.display = 'block';
+  const imgContainer = document.getElementById('image-preview-container');
+  if (imgContainer) {
+    imgContainer.style.display = 'none';
+  }
   
   // Show loader
   this.showLoader(iframe);
@@ -52,6 +56,9 @@ private renderImage() {
     iframe.parentElement?.appendChild(imgContainer);
   }
   
+  // Show container
+  imgContainer.style.display = 'flex';
+  
   // Show loader
   imgContainer.innerHTML = `
     <div class="loading-overlay">
@@ -60,54 +67,136 @@ private renderImage() {
     </div>
   `;
   
-  // Create image element
-  const img = document.createElement('img');
-  img.className = 'preview-image';
-  img.alt = 'Artifact Image';
-  
-  // Handle image load
-  img.onload = () => {
-    // Remove loader
-    const loader = imgContainer!.querySelector('.loading-overlay');
-    if (loader) {
-      loader.remove();
-    }
-    console.log('Image loaded successfully');
-  };
-  
-  // Handle image error
-  img.onerror = () => {
-    imgContainer!.innerHTML = `
-      <div class="error-message">
-        <h3>⚠️ Image Loading Failed</h3>
-        <p>Failed to load the image.</p>
-        <p style="font-size: 12px; color: #999;">Please check the image URL or your internet connection.</p>
-      </div>
-    `;
-    console.error('Image failed to load');
-  };
-  
-  // Set timeout for loading
-  const timeout = setTimeout(() => {
-    if (imgContainer!.querySelector('.loading-overlay')) {
+  try {
+    // Convert URL-safe base64 to standard base64
+    const base64Content = this.convertUrlSafeBase64ToStandard(this.artifactVersion!.content);
+    
+    // Detect image format and create data URL
+    const dataUrl = this.createDataUrl(base64Content);
+    
+    // Create image element
+    const img = document.createElement('img');
+    img.className = 'preview-image';
+    img.alt = 'Artifact Image';
+    
+    // Handle image load
+    img.onload = () => {
+      // Remove loader
+      const loader = imgContainer!.querySelector('.loading-overlay');
+      if (loader) {
+        loader.remove();
+      }
+      console.log('Image loaded successfully');
+    };
+    
+    // Handle image error
+    img.onerror = () => {
       imgContainer!.innerHTML = `
         <div class="error-message">
-          <h3>⚠️ Image Loading Timeout</h3>
-          <p>Image took too long to load.</p>
-          <p style="font-size: 12px; color: #999;">Please check your internet connection.</p>
+          <h3>⚠️ Image Loading Failed</h3>
+          <p>Failed to load the image.</p>
+          <p style="font-size: 12px; color: #999;">The image data may be corrupted or in an invalid format.</p>
         </div>
       `;
+      console.error('Image failed to load');
+    };
+    
+    // Set timeout for loading
+    const timeout = setTimeout(() => {
+      if (imgContainer!.querySelector('.loading-overlay')) {
+        imgContainer!.innerHTML = `
+          <div class="error-message">
+            <h3>⚠️ Image Loading Timeout</h3>
+            <p>Image took too long to load.</p>
+            <p style="font-size: 12px; color: #999;">The image may be too large or corrupted.</p>
+          </div>
+        `;
+      }
+    }, 10000);
+    
+    // Clear timeout on successful load
+    img.addEventListener('load', () => clearTimeout(timeout));
+    
+    // Set image source
+    img.src = dataUrl;
+    
+    // Append image to container
+    imgContainer.appendChild(img);
+    
+  } catch (error) {
+    console.error('Error processing base64 image:', error);
+    imgContainer.innerHTML = `
+      <div class="error-message">
+        <h3>⚠️ Image Processing Failed</h3>
+        <p>Failed to process the base64 image data.</p>
+        <p style="font-size: 12px; color: #999;">The image data may be in an invalid format.</p>
+      </div>
+    `;
+  }
+}
+
+private convertUrlSafeBase64ToStandard(urlSafeBase64: string): string {
+  // Remove data URL prefix if present
+  let base64 = urlSafeBase64;
+  if (base64.startsWith('data:')) {
+    return base64; // Already a complete data URL
+  }
+  
+  // Convert URL-safe base64 to standard base64
+  // Replace '-' with '+' and '_' with '/'
+  base64 = base64.replace(/-/g, '+').replace(/_/g, '/');
+  
+  // Add padding if needed
+  const padding = base64.length % 4;
+  if (padding > 0) {
+    base64 += '='.repeat(4 - padding);
+  }
+  
+  return base64;
+}
+
+private createDataUrl(base64Content: string): string {
+  // If already a data URL, return as is
+  if (base64Content.startsWith('data:')) {
+    return base64Content;
+  }
+  
+  // Detect image format from base64 content
+  const imageType = this.detectImageType(base64Content);
+  
+  // Create data URL
+  return `data:${imageType};base64,${base64Content}`;
+}
+
+private detectImageType(base64: string): string {
+  // Decode first few bytes to detect image signature
+  try {
+    const binaryString = atob(base64.substring(0, 20));
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
     }
-  }, 10000);
+    
+    // Check magic numbers for different image formats
+    if (bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF) {
+      return 'image/jpeg';
+    } else if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) {
+      return 'image/png';
+    } else if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) {
+      return 'image/gif';
+    } else if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46) {
+      return 'image/webp';
+    } else if (bytes[0] === 0x42 && bytes[1] === 0x4D) {
+      return 'image/bmp';
+    } else if (bytes[0] === 0x3C && bytes[1] === 0x73 && bytes[2] === 0x76 && bytes[3] === 0x67) {
+      return 'image/svg+xml';
+    }
+  } catch (e) {
+    console.warn('Could not detect image type, defaulting to png', e);
+  }
   
-  // Clear timeout on successful load
-  img.addEventListener('load', () => clearTimeout(timeout));
-  
-  // Set image source
-  img.src = this.artifactVersion!.content;
-  
-  // Append image to container
-  imgContainer.appendChild(img);
+  // Default to PNG if detection fails
+  return 'image/png';
 }
 
 private clearPreview() {
@@ -118,6 +207,7 @@ private clearPreview() {
   
   const imgContainer = document.getElementById('image-preview-container');
   if (imgContainer) {
+    imgContainer.style.display = 'flex';
     imgContainer.innerHTML = '<p style="text-align: center; color: #999;">No content available</p>';
   }
 }
@@ -177,7 +267,6 @@ private wrapHtmlWithLoadingDetection(html: string): string {
           let totalResources = 0;
           let hasError = false;
 
-          // Find all external scripts and stylesheets
           function findExternalResources() {
             const scripts = document.querySelectorAll('script[src]');
             const links = document.querySelectorAll('link[rel="stylesheet"][href]');
@@ -250,17 +339,14 @@ private wrapHtmlWithLoadingDetection(html: string): string {
             });
           }
 
-          // Initialize
           findExternalResources();
           
           if (totalResources === 0) {
-            // No external resources, hide loader immediately
             hideLoader();
             window.parent.postMessage({ type: 'cdn-load-complete' }, '*');
           } else {
             attachLoadListeners();
             
-            // Timeout fallback (10 seconds)
             setTimeout(function() {
               if (loadedCount < totalResources) {
                 hasError = true;
@@ -277,7 +363,6 @@ private wrapHtmlWithLoadingDetection(html: string): string {
 
 private setupIframeMessageListener(iframe: HTMLIFrameElement) {
   const messageHandler = (event: MessageEvent) => {
-    // Verify message is from our iframe
     if (event.source !== iframe.contentWindow) return;
 
     switch(event.data.type) {
@@ -330,72 +415,4 @@ private showLoader(iframe: HTMLIFrameElement) {
     `);
     doc.close();
   }
-}
-
-
-
-
-
-<div class="preview-container">
-  <iframe #previewFrame class="preview-iframe" sandbox="allow-scripts allow-same-origin"></iframe>
-  <!-- Image container will be dynamically created here -->
-</div>
-
-
-.preview-container {
-  height: 100%;
-  width: 100%;
-  position: relative;
-}
-
-.preview-iframe {
-  height: 100%;
-  width: 100%;
-  border: none;
-}
-
-.image-preview-container {
-  height: 100%;
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #f5f5f5;
-  position: absolute;
-  top: 0;
-  left: 0;
-}
-
-.preview-image {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
-}
-
-.loading-overlay {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-}
-
-.spinner {
-  border: 4px solid #f3f3f3;
-  border-top: 4px solid #3498db;
-  border-radius: 50%;
-  width: 40px;
-  height: 40px;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-.error-message {
-  color: #d32f2f;
-  font-family: Arial, sans-serif;
-  text-align: center;
-  padding: 20px;
 }
