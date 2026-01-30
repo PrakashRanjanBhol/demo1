@@ -1,1 +1,188 @@
-https://chatgpt.com/share/697c4511-0c00-8003-9da8-74069b560e7b
+private wrapHtmlWithLoadingDetection(html: string): string {
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        .loading-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background: rgba(255, 255, 255, 0.9);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 9999;
+          flex-direction: column;
+        }
+        .spinner {
+          border: 4px solid #f3f3f3;
+          border-top: 4px solid #3498db;
+          border-radius: 50%;
+          width: 40px;
+          height: 40px;
+          animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+        .error-message {
+          color: #d32f2f;
+          font-family: Arial, sans-serif;
+          text-align: center;
+          padding: 20px;
+        }
+      </style>
+    </head>
+    <body>
+      <div id="loading-overlay" class="loading-overlay">
+        <div class="spinner"></div>
+        <p style="margin-top: 20px; color: #666;">Loading dependencies...</p>
+      </div>
+      
+      <div id="content-wrapper" style="display: none;">
+        ${html}
+      </div>
+      
+      <script>
+        (function() {
+          let scriptsToLoad = [];
+          let linksToLoad = [];
+          let loadedCount = 0;
+          let totalResources = 0;
+          let hasError = false;
+          let timeoutId = null;
+
+          function findExternalResources() {
+            // Wait for content to be in DOM
+            const contentWrapper = document.getElementById('content-wrapper');
+            if (!contentWrapper) return;
+            
+            const scripts = contentWrapper.querySelectorAll('script[src]');
+            const links = contentWrapper.querySelectorAll('link[rel="stylesheet"][href]');
+            
+            scripts.forEach(script => {
+              const src = script.getAttribute('src');
+              if (src && (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('//'))) {
+                scriptsToLoad.push(script);
+              }
+            });
+            
+            links.forEach(link => {
+              const href = link.getAttribute('href');
+              if (href && (href.startsWith('http://') || href.startsWith('https://') || href.startsWith('//'))) {
+                linksToLoad.push(link);
+              }
+            });
+            
+            totalResources = scriptsToLoad.length + linksToLoad.length;
+          }
+
+          function hideLoader() {
+            const overlay = document.getElementById('loading-overlay');
+            if (overlay) {
+              overlay.style.display = 'none';
+            }
+            const contentWrapper = document.getElementById('content-wrapper');
+            if (contentWrapper) {
+              contentWrapper.style.display = 'block';
+            }
+          }
+
+          function showError() {
+            const overlay = document.getElementById('loading-overlay');
+            if (overlay) {
+              overlay.innerHTML = \`
+                <div class="error-message">
+                  <h3>⚠️ Dependency Loading Failed</h3>
+                  <p>Failed to load one or more external resources.</p>
+                  <p style="font-size: 12px; color: #999;">Please check your internet connection or CDN availability.</p>
+                </div>
+              \`;
+            }
+            window.parent.postMessage({ type: 'cdn-load-error' }, '*');
+          }
+
+          function checkComplete() {
+            loadedCount++;
+            
+            if (loadedCount >= totalResources) {
+              // Clear timeout since all resources finished loading
+              if (timeoutId) {
+                clearTimeout(timeoutId);
+              }
+              
+              if (hasError) {
+                showError();
+              } else {
+                hideLoader();
+                window.parent.postMessage({ type: 'cdn-load-complete' }, '*');
+              }
+            }
+          }
+
+          function attachLoadListeners() {
+            scriptsToLoad.forEach(script => {
+              const newScript = document.createElement('script');
+              newScript.src = script.src;
+              
+              if (script.type) newScript.type = script.type;
+              if (script.async) newScript.async = true;
+              if (script.defer) newScript.defer = true;
+              
+              newScript.onload = checkComplete;
+              newScript.onerror = function() {
+                console.error('Failed to load script:', script.src);
+                hasError = true;
+                checkComplete();
+              };
+              
+              document.head.appendChild(newScript);
+            });
+
+            linksToLoad.forEach(link => {
+              const newLink = document.createElement('link');
+              newLink.rel = link.rel;
+              newLink.href = link.href;
+              if (link.type) newLink.type = link.type;
+              
+              newLink.onload = checkComplete;
+              newLink.onerror = function() {
+                console.error('Failed to load stylesheet:', link.href);
+                hasError = true;
+                checkComplete();
+              };
+              
+              document.head.appendChild(newLink);
+            });
+          }
+
+          // Initialize
+          findExternalResources();
+          
+          if (totalResources === 0) {
+            // No external resources, hide loader immediately
+            hideLoader();
+            window.parent.postMessage({ type: 'cdn-load-complete' }, '*');
+          } else {
+            console.log('Found', totalResources, 'external resources to load');
+            attachLoadListeners();
+            
+            // Timeout fallback (10 seconds)
+            timeoutId = setTimeout(function() {
+              if (loadedCount < totalResources) {
+                console.error('Timeout: Only', loadedCount, 'of', totalResources, 'resources loaded');
+                hasError = true;
+                showError();
+              }
+            }, 10000);
+          }
+        })();
+      </script>
+    </body>
+    </html>
+  `;
+}
