@@ -1,11 +1,20 @@
 import { Component } from '@angular/core';
 import { marked } from 'marked';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import { trigger, transition, style, animate } from '@angular/animations';
 
 @Component({
   selector: 'app-content-analytics',
   templateUrl: './content-analytics.component.html',
-  styleUrls: ['./content-analytics.component.css']
+  styleUrls: ['./content-analytics.component.css'],
+  animations: [
+    trigger('fadeInUp', [
+      transition(':enter', [
+        style({ opacity: 0, transform: 'translateY(20px)' }),
+        animate('400ms ease-out', style({ opacity: 1, transform: 'translateY(0)' }))
+      ])
+    ])
+  ]
 })
 export class ContentAnalyticsComponent {
   // File upload
@@ -26,6 +35,16 @@ export class ContentAnalyticsComponent {
   selectedItemName = '';
   selectedItemDate = '';
   selectedItemContent: SafeHtml = '';
+
+  showSearchFilter: boolean = false;
+  showDateFilter: boolean = false;
+
+  searchQuery: string = '';
+  dateFrom: string = '';
+  dateTo: string = '';
+
+  selectedHistoryItem: any = null;
+
 
   sampleContent = `
 # Machine Learning Fundamentals: A Comprehensive Overview
@@ -285,6 +304,29 @@ Machine learning is a powerful tool that continues to evolve and expand its capa
 **Remember:** The journey of mastering machine learning is continuous. Keep learning, experimenting, and building!
 `;
 
+  historyItems = [
+    {
+      id: 'item1',
+      name: 'Machine Learning Lecture 01.mp3',
+      displayDate: 'Created on January 28, 2026 at 2:30 PM',
+      date: new Date('2026-01-28')
+    },
+    {
+      id: 'item2',
+      name: 'Deep Learning Fundamentals.wav',
+      displayDate: 'Created on January 27, 2026 at 10:15 AM',
+      date: new Date('2026-01-27')
+    },
+    {
+      id: 'item3',
+      name: 'Neural Networks Introduction.m4a',
+      displayDate: 'Created on January 26, 2026 at 4:45 PM',
+      date: new Date('2026-01-26')
+    }
+  ];
+
+  filteredHistory = [...this.historyItems];
+
   constructor(private sanitizer: DomSanitizer) { }
 
   toggleHeader(): void {
@@ -343,16 +385,21 @@ Machine learning is a powerful tool that continues to evolve and expand its capa
 
   onHistoryItemClick(itemId: string): void {
     console.log('History item clicked:', itemId);
-    // Load the historical data for this item
-    // Update the workspace result tab with the historical results
 
-    // Here you would typically:
-    // 1. Fetch the historical data based on itemId
-    // 2. Update the result content in the workspace
-    // 3. Optionally switch back to upload view or stay in history
+    // Find the selected item
+    const item = this.historyItems.find(i => i.id === itemId);
+    if (item) {
+      this.selectedHistoryItem = item;
 
-    // Example: You might want to stay in history view or switch back
-    // this.uploadView = 'upload'; // Uncomment if you want to switch back to upload view
+      // Here you would typically:
+      // 1. Fetch the historical data based on itemId
+      // 2. Update the result content in the workspace
+      console.log('Selected item:', this.selectedHistoryItem);
+    }
+  }
+
+  clearSelection(): void {
+    this.selectedHistoryItem = null;
   }
 
   openDetail(itemName: string, itemDate: string, content: string) {
@@ -370,9 +417,57 @@ Machine learning is a powerful tool that continues to evolve and expand its capa
   closeDetail() {
     this.isDetailOpen = false;
   }
+
+  // Filter method
+  filterHistory() {
+    this.filteredHistory = this.historyItems.filter(item => {
+      // Search filter
+      const matchesSearch = !this.searchQuery ||
+        item.name.toLowerCase().includes(this.searchQuery.toLowerCase());
+
+      // Date range filter
+      let matchesDate = true;
+      if (this.dateFrom) {
+        const fromDate = new Date(this.dateFrom);
+        matchesDate = matchesDate && item.date >= fromDate;
+      }
+      if (this.dateTo) {
+        const toDate = new Date(this.dateTo);
+        toDate.setHours(23, 59, 59, 999); // Include the entire end date
+        matchesDate = matchesDate && item.date <= toDate;
+      }
+
+      return matchesSearch && matchesDate;
+    });
+  }
+
+  toggleSearchFilter() {
+    this.showSearchFilter = !this.showSearchFilter;
+    if (!this.showSearchFilter) {
+      this.clearSearch();
+    }
+  }
+
+  toggleDateFilter() {
+    this.showDateFilter = !this.showDateFilter;
+    if (!this.showDateFilter) {
+      this.clearDateFilter();
+    }
+  }
+
+  // Clear search
+  clearSearch() {
+    this.searchQuery = '';
+    this.filterHistory();
+  }
+
+  // Clear date filter
+  clearDateFilter() {
+    this.dateFrom = '';
+    this.dateTo = '';
+    this.filterHistory();
+  }
 }
-
-
 
 
 
@@ -566,29 +661,113 @@ Machine learning is a powerful tool that continues to evolve and expand its capa
 
                     <!-- History View -->
                     <div class="history-view" *ngIf="uploadView === 'history'">
+
+                        <div class="filter-section-header">
+                            <div class="filter-header-left">
+                                <div class="filter-header-icon">
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                        stroke-width="1.5" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round"
+                                            d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" />
+                                    </svg>
+                                </div>
+                                <h3 class="filter-header-title">Filters</h3>
+                            </div>
+
+                            <!-- Filter Toggle Buttons Inside Header -->
+                            <div class="filter-header-actions">
+                                <button class="filter-toggle-btn" [class.active]="showSearchFilter"
+                                    (click)="toggleSearchFilter()" title="Search">
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                        stroke-width="1.5" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round"
+                                            d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+                                    </svg>
+                                    <span>Search</span>
+                                </button>
+
+                                <button class="filter-toggle-btn" [class.active]="showDateFilter"
+                                    (click)="toggleDateFilter()" title="Date Range">
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                        stroke-width="1.5" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round"
+                                            d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+                                    </svg>
+                                    <span>Date Range</span>
+                                </button>
+                            </div>
+                        </div>
+
+
+                        <!-- Collapsible Search Filter -->
+                        <div class="filter-panel" *ngIf="showSearchFilter">
+                            <div class="search-box">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                    stroke-width="1.5" stroke="currentColor" class="search-icon">
+                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                        d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+                                </svg>
+                                <input type="text" class="search-input" placeholder="Search files..."
+                                    [(ngModel)]="searchQuery" (input)="filterHistory()">
+                                <button class="clear-search-btn" *ngIf="searchQuery" (click)="clearSearch()">
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                        stroke-width="1.5" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Collapsible Date Range Filter -->
+                        <div class="filter-panel" *ngIf="showDateFilter">
+                            <div class="date-filters-inline">
+                                <div class="date-input-wrapper">
+                                    <label class="date-label">From</label>
+                                    <input type="date" class="date-input" [(ngModel)]="dateFrom"
+                                        (change)="filterHistory()">
+                                </div>
+                                <div class="date-input-wrapper">
+                                    <label class="date-label">To</label>
+                                    <input type="date" class="date-input" [(ngModel)]="dateTo"
+                                        (change)="filterHistory()">
+                                </div>
+                                <button class="clear-filter-btn" *ngIf="dateFrom || dateTo" (click)="clearDateFilter()"
+                                    title="Clear date filter">
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                        stroke-width="1.5" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round"
+                                            d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="content-section-header">
+                            <div class="content-header-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                    stroke-width="1.5" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                        d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z" />
+                                </svg>
+                            </div>
+                            <h3 class="content-header-title">History Records</h3>
+                            <span class="content-count">{{ filteredHistory.length }} files</span>
+                        </div>
+
+                        <!-- History Content -->
                         <div class="history-content">
-                            <div class="history-item" (click)="onHistoryItemClick('item1')">
-                                <div class="history-item-icon">
-                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
-                                        stroke-width="1.5" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round"
-                                            d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
-                                    </svg>
-                                </div>
-                                <div class="history-item-details">
-                                    <h4 class="history-item-name">Machine Learning Lecture 01.mp3</h4>
-                                    <p class="history-item-date">Created on January 28, 2026 at 2:30 PM</p>
-                                </div>
-                                <button class="history-item-action" (click)="$event.stopPropagation()">
-                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
-                                        stroke-width="1.5" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round"
-                                            d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-                                    </svg>
-                                </button>
+                            <div class="no-results" *ngIf="filteredHistory.length === 0">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                    stroke-width="1.5" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                        d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                                </svg>
+                                <p>No files found matching your criteria</p>
                             </div>
 
-                            <div class="history-item" (click)="onHistoryItemClick('item2')">
+                            <div class="history-item" *ngFor="let item of filteredHistory"
+                                [class.selected]="selectedHistoryItem?.id === item.id"
+                                (click)="onHistoryItemClick(item.id)">
                                 <div class="history-item-icon">
                                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
                                         stroke-width="1.5" stroke="currentColor">
@@ -597,31 +776,19 @@ Machine learning is a powerful tool that continues to evolve and expand its capa
                                     </svg>
                                 </div>
                                 <div class="history-item-details">
-                                    <h4 class="history-item-name">Deep Learning Fundamentals.wav</h4>
-                                    <p class="history-item-date">Created on January 27, 2026 at 10:15 AM</p>
+                                    <h4 class="history-item-name">{{ item.name }}</h4>
+                                    <p class="history-item-date">{{ item.displayDate }}</p>
                                 </div>
-                                <button class="history-item-action" (click)="$event.stopPropagation()">
+                                <!-- Check Mark for Selected Item -->
+                                <div class="history-item-checkmark" *ngIf="selectedHistoryItem?.id === item.id">
                                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
-                                        stroke-width="1.5" stroke="currentColor">
+                                        stroke-width="2.5" stroke="currentColor">
                                         <path stroke-linecap="round" stroke-linejoin="round"
-                                            d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-                                    </svg>
-                                </button>
-                            </div>
-
-                            <div class="history-item" (click)="onHistoryItemClick('item3')">
-                                <div class="history-item-icon">
-                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
-                                        stroke-width="1.5" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round"
-                                            d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
+                                            d="M4.5 12.75l6 6 9-13.5" />
                                     </svg>
                                 </div>
-                                <div class="history-item-details">
-                                    <h4 class="history-item-name">Neural Networks Introduction.m4a</h4>
-                                    <p class="history-item-date">Created on January 26, 2026 at 4:45 PM</p>
-                                </div>
-                                <button class="history-item-action" (click)="$event.stopPropagation()">
+                                <button class="history-item-action" *ngIf="selectedHistoryItem?.id !== item.id"
+                                    (click)="$event.stopPropagation()">
                                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
                                         stroke-width="1.5" stroke="currentColor">
                                         <path stroke-linecap="round" stroke-linejoin="round"
@@ -640,14 +807,51 @@ Machine learning is a powerful tool that continues to evolve and expand its capa
             <section class="workspace-section">
                 <div class="workspace-header">
                     <div class="section-header">
-                        <h2 class="section-title">Workspace Result</h2>
+                        <div class="workspace-header-content">
+                            <h2 class="section-title">Workspace Result</h2>
+                            <!-- Selected File Info - Shows when a file is selected -->
+                            <div class="selected-file-info" *ngIf="selectedHistoryItem">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                    stroke-width="1.5" stroke="currentColor" class="file-info-icon">
+                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                        d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
+                                </svg>
+                                <span class="file-name">{{ selectedHistoryItem.name }}</span>
+                                <span class="file-separator">•</span>
+                                <span class="file-date">{{ selectedHistoryItem.displayDate }}</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
                 <div class="workspace-content-wrapper">
                     <div class="workspace-content">
                         <!-- Result Tab -->
-                        <div class="result-content">
+
+                        <!-- Empty State - Show when no file is selected -->
+                        <div class="workspace-empty-state" *ngIf="!selectedHistoryItem">
+                            <div class="empty-state-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                    stroke-width="1.5" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                        d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                                </svg>
+                            </div>
+                            <h3 class="empty-state-title">No Analysis Selected</h3>
+                            <p class="empty-state-message">
+                                Select a file from the history to view its analysis results
+                            </p>
+                            <div class="empty-state-hint">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                    stroke-width="1.5" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                        d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+                                </svg>
+                                <span>Click on any history item to get started</span>
+                            </div>
+                        </div>
+
+                        <div class="result-content" *ngIf="selectedHistoryItem" @fadeInUp>
                             <!-- Sample results - replace with actual data -->
 
                             <!-- Summary -->
@@ -835,6 +1039,8 @@ Machine learning is a powerful tool that continues to evolve and expand its capa
         </div>
     </div>
 </main>
+
+
 
 
 
@@ -1648,6 +1854,19 @@ main {
     display: flex;
     flex-direction: column;
     gap: 12px;
+    animation: fadeInUp 0.4s ease-out;
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .result-item {
@@ -2026,6 +2245,32 @@ main {
         margin: 16px 16px 0 16px;
         padding: 14px 16px;
     }
+
+    .date-filters {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .clear-filter-btn {
+        width: 100%;
+    }
+
+    .filter-section-header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .filter-header-left {
+        justify-content: center;
+    }
+
+    .filter-header-actions {
+        width: 100%;
+    }
+
+    .filter-toggle-btn {
+        flex: 1;
+    }
 }
 
 /* View Toggle Button in Header */
@@ -2293,290 +2538,578 @@ main {
     background-color: var(--primary-color);
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* You can add global styles to this file, and also import other style files */
-
-/* Light Mode Variables (Default) */
-:root {
-    --primary-color: #8b5cf6;
-    --bg-color: #ffffff;
-    --text-color: #1f2937;
-    --header-bg: #ffffff;
-    --footer-bg: #f9fafb;
-    --border-color: #bfbfbf;
-    --shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-    --shadow-color: rgba(0, 0, 0, 0.05);
-}
-
-/* Dark Mode Variables */
-[data-theme="dark"] {
-    --bg-color: #0a0a0b;
-    --text-color: #e5e7eb;
-    --header-bg: #111113;
-    --footer-bg: #141415;
-    --border-color: #27272a;
-    --shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-    --shadow-color: rgba(0, 0, 0, 0.15);
-}
-
-/* Apply theme to body */
-body {
-    background-color: var(--bg-color);
-    color: var(--text-color);
-    transition: background-color 0.3s ease, color 0.3s ease;
-    margin: 0;
-    padding: 0;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-    height: 100vh;
-    overflow: hidden;
+/* History Filters */
+.history-filters {
     display: flex;
     flex-direction: column;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border-color);
 }
 
-* {
-    box-sizing: border-box;
-}
-
-app-root {
+/* Search Box */
+.search-box {
+    position: relative;
     display: flex;
-    flex-direction: column;
-    height: 100vh;
+    align-items: center;
+}
+
+.search-icon {
+    position: absolute;
+    left: 12px;
+    width: 18px;
+    height: 18px;
+    stroke: var(--text-color);
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.search-input {
     width: 100%;
-    overflow: hidden;
-}
-
-
-
-/* Markdown Content Styling */
-.markdown-content {
+    padding: 10px 40px 10px 40px;
+    background-color: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
     font-size: 14px;
-    line-height: 1.7;
     color: var(--text-color);
+    transition: all 0.2s ease;
 }
 
-.markdown-content h1,
-.markdown-content h2,
-.markdown-content h3,
-.markdown-content h4 {
-    margin-top: 24px;
-    margin-bottom: 12px;
+.search-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+}
+
+.search-input::placeholder {
+    color: var(--text-color);
+    opacity: 0.4;
+}
+
+.clear-search-btn {
+    position: absolute;
+    right: 8px;
+    width: 24px;
+    height: 24px;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.clear-search-btn:hover {
+    background-color: var(--footer-bg);
+}
+
+.clear-search-btn svg {
+    width: 14px;
+    height: 14px;
+    stroke: var(--text-color);
+    opacity: 0.6;
+}
+
+/* Date Filters */
+.date-filters {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+}
+
+.date-input-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.date-label {
+    font-size: 12px;
     font-weight: 600;
     color: var(--text-color);
+    opacity: 0.7;
 }
 
-.markdown-content h1 {
-    font-size: 24px;
-}
-
-.markdown-content h2 {
-    font-size: 20px;
-}
-
-.markdown-content h3 {
-    font-size: 16px;
-}
-
-.markdown-content h4 {
-    font-size: 14px;
-}
-
-.markdown-content p {
-    margin: 12px 0;
-}
-
-.markdown-content ul,
-.markdown-content ol {
-    margin: 12px 0;
-    padding-left: 24px;
-}
-
-.markdown-content li {
-    margin: 6px 0;
-}
-
-.markdown-content code {
-    background-color: var(--footer-bg);
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-family: 'Courier New', monospace;
-    font-size: 13px;
-}
-
-.markdown-content pre {
-    background-color: var(--footer-bg);
-    padding: 16px;
+.date-input {
+    padding: 10px 12px;
+    background-color: var(--bg-color);
+    border: 1px solid var(--border-color);
     border-radius: 8px;
-    overflow-x: auto;
-    margin: 16px 0;
+    font-size: 13px;
+    color: var(--text-color);
+    transition: all 0.2s ease;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
 
-.markdown-content pre code {
-    background-color: transparent;
-    padding: 0;
+.date-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
 }
 
-.markdown-content blockquote {
-    border-left: 4px solid var(--primary-color);
-    padding-left: 16px;
-    margin: 16px 0;
-    font-style: italic;
+.date-input::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 0.2s ease;
+}
+
+.date-input::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+}
+
+.clear-filter-btn {
+    width: 40px;
+    height: 40px;
+    background-color: var(--footer-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.clear-filter-btn:hover {
+    background-color: var(--bg-color);
+    border-color: var(--primary-color);
+}
+
+.clear-filter-btn svg {
+    width: 18px;
+    height: 18px;
+    stroke: var(--text-color);
+}
+
+/* No Results */
+.no-results {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 24px;
+    text-align: center;
+}
+
+.no-results svg {
+    width: 48px;
+    height: 48px;
+    stroke: var(--text-color);
+    opacity: 0.3;
+    margin-bottom: 16px;
+}
+
+.no-results p {
+    font-size: 14px;
+    color: var(--text-color);
+    opacity: 0.6;
+    margin: 0;
+}
+
+/* Filter Panel - Collapsible */
+.filter-panel {
+    margin-bottom: 12px;
+    animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Date Filters - Inline Layout */
+.date-filters-inline {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+}
+
+.date-filters-inline .date-input-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.date-filters-inline .clear-filter-btn {
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+}
+
+/* Filter Section Header */
+.filter-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    /* Space between left and right */
+    gap: 16px;
+    padding: 12px 16px;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(167, 139, 250, 0.08));
+    border: 1px solid rgba(139, 92, 246, 0.15);
+    border-radius: 8px;
+    margin-bottom: 12px;
+}
+
+.filter-header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.filter-header-icon {
+    width: 32px;
+    height: 32px;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(167, 139, 250, 0.15));
+    border: 1px solid rgba(139, 92, 246, 0.25);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.filter-header-icon svg {
+    width: 16px;
+    height: 16px;
+    stroke: var(--primary-color);
+}
+
+.filter-header-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-color);
+    margin: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Filter Header Actions - Right Side */
+.filter-header-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.filter-toggle-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background-color: var(--bg-color);
+    /* Better contrast in header */
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-color);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.filter-toggle-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(139, 92, 246, 0.1), transparent);
+    transition: left 0.5s ease;
+}
+
+.filter-toggle-btn:hover {
+    border-color: var(--primary-color);
+    background-color: var(--footer-bg);
+}
+
+.filter-toggle-btn:hover::before {
+    left: 100%;
+}
+
+.filter-toggle-btn.active {
+    background: linear-gradient(135deg, var(--primary-color), #a78bfa);
+    color: white;
+    border-color: var(--primary-color);
+    box-shadow: 0 2px 8px rgba(139, 92, 246, 0.2);
+}
+
+.filter-toggle-btn svg {
+    width: 16px;
+    height: 16px;
+    stroke: var(--text-color);
+    transition: all 0.3s ease;
+}
+
+.filter-toggle-btn.active svg {
+    stroke: white;
+}
+
+
+/* Content Section Header */
+.content-section-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.05), rgba(167, 139, 250, 0.05));
+    border-left: 3px solid var(--primary-color);
+    border-radius: 4px;
+    margin-top: 16px;
+    margin-bottom: 12px;
+}
+
+.content-header-icon {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.content-header-icon svg {
+    width: 18px;
+    height: 18px;
+    stroke: var(--primary-color);
     opacity: 0.8;
 }
 
-/* Enhanced Markdown Content Styling */
-.markdown-content {
-    font-size: 14px;
-    line-height: 1.7;
+.content-header-title {
+    font-size: 13px;
+    font-weight: 700;
     color: var(--text-color);
+    margin: 0;
+    flex: 1;
 }
 
-.markdown-content h1,
-.markdown-content h2,
-.markdown-content h3,
-.markdown-content h4 {
-    margin-top: 24px;
-    margin-bottom: 12px;
+.content-count {
+    font-size: 11px;
     font-weight: 600;
     color: var(--text-color);
-    line-height: 1.3;
+    opacity: 0.6;
+    padding: 4px 10px;
+    background-color: rgba(139, 92, 246, 0.1);
+    border-radius: 12px;
 }
 
-.markdown-content h1 {
-    font-size: 28px;
-    border-bottom: 2px solid var(--border-color);
-    padding-bottom: 8px;
+/* Workspace Empty State */
+.workspace-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 40px;
+    text-align: center;
+    min-height: 400px;
 }
 
-.markdown-content h2 {
-    font-size: 22px;
-    border-bottom: 1px solid var(--border-color);
-    padding-bottom: 6px;
+.empty-state-icon {
+    width: 120px;
+    height: 120px;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(167, 139, 250, 0.1));
+    border: 2px solid rgba(139, 92, 246, 0.2);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 24px;
+    animation: float 3s ease-in-out infinite;
 }
 
-.markdown-content h3 {
+.empty-state-icon svg {
+    width: 56px;
+    height: 56px;
+    stroke: var(--primary-color);
+    opacity: 0.7;
+}
+
+@keyframes float {
+
+    0%,
+    100% {
+        transform: translateY(0px);
+    }
+
+    50% {
+        transform: translateY(-10px);
+    }
+}
+
+.empty-state-title {
     font-size: 18px;
-}
-
-.markdown-content h4 {
-    font-size: 16px;
-}
-
-.markdown-content p {
-    margin: 12px 0;
-}
-
-.markdown-content strong {
     font-weight: 700;
-    color: var(--primary-color);
+    color: var(--text-color);
+    margin: 0 0 12px 0;
 }
 
-.markdown-content em {
-    font-style: italic;
-    opacity: 0.9;
-}
-
-.markdown-content ul,
-.markdown-content ol {
-    margin: 12px 0;
-    padding-left: 24px;
-}
-
-.markdown-content li {
-    margin: 8px 0;
+.empty-state-message {
+    font-size: 14px;
+    color: var(--text-color);
+    opacity: 0.7;
+    margin: 0 0 24px 0;
+    max-width: 320px;
     line-height: 1.6;
 }
 
-.markdown-content code {
-    background-color: var(--footer-bg);
-    padding: 3px 8px;
-    border-radius: 4px;
-    font-family: 'Courier New', 'Monaco', monospace;
-    font-size: 13px;
-    color: #e83e8c;
-    border: 1px solid var(--border-color);
-}
-
-.markdown-content pre {
-    background-color: var(--footer-bg);
-    padding: 16px;
-    border-radius: 8px;
-    overflow-x: auto;
-    margin: 16px 0;
-    border: 1px solid var(--border-color);
-}
-
-.markdown-content pre code {
-    background-color: transparent;
-    padding: 0;
-    border: none;
+.empty-state-hint {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(167, 139, 250, 0.08));
+    border: 1px solid rgba(139, 92, 246, 0.2);
+    border-radius: 20px;
+    font-size: 12px;
     color: var(--text-color);
+    opacity: 0.8;
+    animation: pulse 2s ease-in-out infinite;
 }
 
-.markdown-content blockquote {
-    border-left: 4px solid var(--primary-color);
-    padding-left: 16px;
-    margin: 16px 0;
-    font-style: italic;
-    opacity: 0.9;
-    background-color: var(--footer-bg);
-    padding: 12px 16px;
-    border-radius: 4px;
+.empty-state-hint svg {
+    width: 16px;
+    height: 16px;
+    stroke: var(--primary-color);
+    flex-shrink: 0;
 }
 
-.markdown-content hr {
-    border: none;
-    border-top: 2px solid var(--border-color);
-    margin: 24px 0;
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 0.8;
+    }
+
+    50% {
+        opacity: 1;
+    }
 }
 
-.markdown-content a {
-    color: var(--primary-color);
-    text-decoration: none;
-    border-bottom: 1px solid transparent;
-    transition: border-bottom 0.2s ease;
+.workspace-header-content {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
 
-.markdown-content a:hover {
-    border-bottom: 1px solid var(--primary-color);
-}
-
-.markdown-content table {
-    width: 100%;
-    border-collapse: collapse;
-    margin: 16px 0;
-}
-
-.markdown-content table th,
-.markdown-content table td {
-    padding: 10px;
-    border: 1px solid var(--border-color);
-    text-align: left;
-}
-
-.markdown-content table th {
-    background-color: var(--footer-bg);
-    font-weight: 600;
-}
-
-.markdown-content img {
-    max-width: 100%;
-    height: auto;
+.selected-file-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(167, 139, 250, 0.1));
+    border: 1px solid rgba(139, 92, 246, 0.2);
     border-radius: 8px;
-    margin: 16px 0;
+    animation: slideDown 0.3s ease;
+    max-width: 100%;
+    overflow: hidden;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.file-info-icon {
+    width: 16px;
+    height: 16px;
+    stroke: var(--primary-color);
+    flex-shrink: 0;
+}
+
+.file-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 300px;
+}
+
+.file-separator {
+    color: var(--text-color);
+    opacity: 0.4;
+    font-weight: 700;
+}
+
+.file-date {
+    font-size: 11px;
+    color: var(--text-color);
+    opacity: 0.6;
+    white-space: nowrap;
+}
+
+/* History Item - Selected State */
+.history-item.selected {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.12), rgba(167, 139, 250, 0.12));
+    border-color: var(--primary-color);
+    box-shadow: 0 4px 16px rgba(139, 92, 246, 0.2);
+    transform: translateX(4px);
+}
+
+.history-item.selected .history-item-icon {
+    background: linear-gradient(135deg, var(--primary-color), #a78bfa);
+    border-color: var(--primary-color);
+}
+
+.history-item.selected .history-item-icon svg {
+    stroke: white;
+}
+
+.history-item.selected .history-item-name {
+    color: var(--primary-color);
+    font-weight: 700;
+}
+
+/* Checkmark for Selected Item */
+.history-item-checkmark {
+    width: 32px;
+    height: 32px;
+    background: linear-gradient(135deg, var(--primary-color), #a78bfa);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    animation: scaleIn 0.3s ease;
+    box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3);
+}
+
+.history-item-checkmark svg {
+    width: 18px;
+    height: 18px;
+    stroke: white;
+}
+
+@keyframes scaleIn {
+    from {
+        opacity: 0;
+        transform: scale(0.5);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
 }
