@@ -1,427 +1,3 @@
-import { Component } from '@angular/core';
-import { marked } from 'marked';
-import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
-import { trigger, transition, style, animate } from '@angular/animations';
-
-// Interface for result items
-interface ResultItem {
-  id: string;
-  title: string;
-  icon: string;
-  content: string;
-  type: 'summary' | 'keywords' | 'questions' | 'custom';
-}
-
-@Component({
-  selector: 'app-content-analytics',
-  templateUrl: './content-analytics.component.html',
-  styleUrls: ['./content-analytics.component.css']
-})
-export class ContentAnalyticsComponent {
-  // File upload
-  selectedFile: File | null = null;
-  selectedFileName: string = '';
-  isDragging: boolean = false;
-
-  // Optional prompts
-  optionalPrompts: string = '';
-
-  // Upload view toggle (upload or history)
-  uploadView: 'upload' | 'history' = 'upload';
-
-  // Header expand/collapse
-  isHeaderExpanded: boolean = false;
-
-  isDetailOpen = false;
-  selectedItemName = '';
-  selectedItemDate = '';
-  selectedItemContent: SafeHtml = '';
-  selectedResultItemId: string = '';
-
-  showSearchFilter: boolean = false;
-  showDateFilter: boolean = false;
-
-  searchQuery: string = '';
-  dateFrom: string = '';
-  dateTo: string = '';
-
-  selectedHistoryItem: any = null;
-
-  isProcessing: boolean = false;
-  processingProgress: number = 0;
-  processingFileName: string = '';
-
-  // Dynamic result items
-  resultItems: ResultItem[] = [];
-
-  sampleContent = `
-# Machine Learning Fundamentals: A Comprehensive Overview
-
-## Introduction to Machine Learning
-
-Machine learning is a subset of artificial intelligence that focuses on building systems that can **learn from data** and improve their performance over time without being explicitly programmed. This revolutionary approach has transformed various industries and continues to shape our digital future.
-
-### Key Concepts
-
-Machine learning algorithms can be broadly categorized into three main types:
-
-1. **Supervised Learning** - Learning from labeled data
-2. **Unsupervised Learning** - Finding patterns in unlabeled data
-3. **Reinforcement Learning** - Learning through interaction and feedback
-
----
-
-## Supervised Learning
-
-Supervised learning is the most common type of machine learning. In this approach, the algorithm learns from a training dataset that includes both input features and corresponding output labels.
-
-### Popular Algorithms
-
-- **Linear Regression** - For predicting continuous values
-- **Logistic Regression** - For binary classification problems
-- **Decision Trees** - For both regression and classification
-- **Random Forests** - Ensemble method using multiple decision trees
-- **Support Vector Machines (SVM)** - For classification and regression tasks
-- **Neural Networks** - Deep learning models with multiple layers
-
-### Real-World Applications
-
-> "Machine learning is the future of technology, and supervised learning forms the foundation of most practical applications we see today."
-
-Some practical applications include:
-
-- Email spam detection and filtering
-- Image recognition and classification
-- Medical diagnosis and disease prediction
-- Credit risk assessment in banking
-- Customer churn prediction
-- Fraud detection systems
-
----
-
-## Conclusion
-
-Machine learning is a powerful tool that continues to evolve and expand its capabilities. Understanding the fundamentals—from basic algorithms to advanced deep learning techniques—is crucial for developing effective solutions to real-world problems.
-
-*Last Updated: January 28, 2026*
-
-**Remember:** The journey of mastering machine learning is continuous. Keep learning, experimenting, and building!
-`;
-
-  historyItems = [
-    {
-      id: 'item1',
-      name: 'Machine Learning Lecture 01.mp3',
-      displayDate: 'Created on January 28, 2026 at 2:30 PM',
-      date: new Date('2026-01-28')
-    },
-    {
-      id: 'item2',
-      name: 'Deep Learning Fundamentals.wav',
-      displayDate: 'Created on January 27, 2026 at 10:15 AM',
-      date: new Date('2026-01-27')
-    },
-    {
-      id: 'item3',
-      name: 'Neural Networks Introduction.m4a',
-      displayDate: 'Created on January 26, 2026 at 4:45 PM',
-      date: new Date('2026-01-26')
-    }
-  ];
-
-  filteredHistory = [...this.historyItems];
-
-  constructor(private sanitizer: DomSanitizer) { }
-
-  toggleHeader(): void {
-    this.isHeaderExpanded = !this.isHeaderExpanded;
-  }
-
-  onFileSelected(event: any): void {
-    const file = event.target.files[0];
-    if (file) {
-      this.selectedFile = file;
-      this.selectedFileName = file.name;
-    }
-  }
-
-  onFileDrop(event: DragEvent): void {
-    event.preventDefault();
-    this.isDragging = false;
-
-    const files = event.dataTransfer?.files;
-    if (files && files.length > 0) {
-      this.selectedFile = files[0];
-      this.selectedFileName = files[0].name;
-    }
-  }
-
-  onDragOver(event: DragEvent): void {
-    event.preventDefault();
-    this.isDragging = true;
-  }
-
-  onDragLeave(event: DragEvent): void {
-    event.preventDefault();
-    this.isDragging = false;
-  }
-
-  removeFile(): void {
-    this.selectedFile = null;
-    this.selectedFileName = '';
-  }
-
-  onGenerate(): void {
-    if (this.selectedFile) {
-      console.log('Generating analysis for:', this.selectedFileName);
-      console.log('Optional prompts:', this.optionalPrompts);
-
-      // Start processing
-      this.isProcessing = true;
-      this.processingProgress = 0;
-      this.processingFileName = this.selectedFileName;
-
-      // Simulate progress over 20 seconds
-      const interval = setInterval(() => {
-        this.processingProgress += 5; // Increment by 5% every second (20 steps = 20 seconds)
-
-        if (this.processingProgress >= 100) {
-          clearInterval(interval);
-          this.processingProgress = 100;
-
-          // Wait a brief moment to show 100%, then navigate
-          setTimeout(() => {
-            this.completeProcessing();
-          }, 500);
-        }
-      }, 1000); // Update every 1 second
-    }
-  }
-
-  completeProcessing(): void {
-    // Create a new history item with the processed file
-    const newItem = {
-      id: 'item' + (this.historyItems.length + 1),
-      name: this.processingFileName,
-      displayDate: 'Created on ' + new Date().toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      }),
-      date: new Date()
-    };
-
-    // Add to the beginning of history
-    this.historyItems.unshift(newItem);
-    this.filteredHistory = [...this.historyItems];
-
-    // Reset processing state
-    this.isProcessing = false;
-    this.processingProgress = 0;
-
-    // Clear upload form
-    this.selectedFile = null;
-    this.selectedFileName = '';
-    this.optionalPrompts = '';
-
-    // Switch to history view
-    this.uploadView = 'history';
-
-    // Auto-select the newly created item
-    setTimeout(() => {
-      this.selectedHistoryItem = newItem;
-      // Load results for the new item
-      this.loadResultsForItem(newItem.id);
-    }, 300);
-  }
-
-  onReset(): void {
-    this.selectedFile = null;
-    this.selectedFileName = '';
-    this.optionalPrompts = '';
-    this.isDragging = false;
-  }
-
-  onHistoryItemClick(itemId: string): void {
-    console.log('History item clicked:', itemId);
-
-    // Find the selected item
-    const item = this.historyItems.find(i => i.id === itemId);
-    if (item) {
-      this.selectedHistoryItem = item;
-
-      // Load results for this item
-      this.loadResultsForItem(itemId);
-    }
-  }
-
-  // Load results for a specific history item
-  loadResultsForItem(itemId: string): void {
-    // In a real application, you would fetch data from a service
-    // For now, we'll use sample data
-    this.resultItems = this.getSampleResultItems(itemId);
-  }
-
-  // Get sample result items (replace with actual API call)
-  getSampleResultItems(itemId: string): ResultItem[] {
-    return [
-      {
-        id: 'result1',
-        title: 'Lecture Summary',
-        icon: 'document',
-        content: 'This lecture covers fundamental concepts in machine learning, including supervised and unsupervised learning approaches. The instructor explains neural network architectures and demonstrates practical applications using Python libraries.',
-        type: 'summary'
-      },
-      {
-        id: 'result2',
-        title: 'Keywords',
-        icon: 'tag',
-        content: '• Neural Networks • Deep Learning • Supervised Learning • Unsupervised Learning • Backpropagation • Gradient Descent • Activation Functions • Training Data • Model Optimization',
-        type: 'keywords'
-      },
-      {
-        id: 'result3',
-        title: 'Assessment Question',
-        icon: 'question',
-        content: 'What are the main differences between supervised and unsupervised learning? Explain the backpropagation algorithm and its role in neural networks.',
-        type: 'questions'
-      },
-      {
-        id: 'result4',
-        title: 'Key Insights',
-        icon: 'lightbulb',
-        content: 'The lecture emphasizes the importance of proper data preprocessing and feature engineering in machine learning workflows. It also highlights common pitfalls in model training and validation.',
-        type: 'custom'
-      }
-    ];
-  }
-
-  clearSelection(): void {
-    this.selectedHistoryItem = null;
-    this.resultItems = [];
-  }
-
-  openDetail(item: ResultItem) {
-    this.selectedItemName = item.title;
-    this.selectedItemDate = this.selectedHistoryItem?.displayDate || '';
-
-    // Set the selected result item ID for highlighting
-    this.selectedResultItemId = item.id;
-
-    // Parse markdown to HTML
-    const htmlContent: any = marked(this.sampleContent);
-    // Sanitize the HTML for security
-    this.selectedItemContent = this.sanitizer.bypassSecurityTrustHtml(htmlContent);
-
-    this.isDetailOpen = true;
-  }
-
-  closeDetail() {
-    this.isDetailOpen = false;
-    // Clear the selected result item when detail is closed
-    this.selectedResultItemId = '';
-  }
-
-  // Get SVG path for different icon types
-  getIconPath(iconType: string): string {
-    const icons: { [key: string]: string } = {
-      'document': 'M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z',
-      'tag': 'M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z M6 6h.008v.008H6V6z',
-      'question': 'M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z',
-      'lightbulb': 'M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.823 1.508-2.316a7.5 7.5 0 10-7.517 0c.85.493 1.509 1.333 1.509 2.316V18'
-    };
-    return icons[iconType] || icons['document'];
-  }
-
-  // Copy content to clipboard
-  copyToClipboard(content: string): void {
-    navigator.clipboard.writeText(content).then(() => {
-      console.log('Content copied to clipboard');
-      // You can add a toast notification here
-    });
-  }
-
-  // Download content as text file
-  downloadContent(item: ResultItem): void {
-    const blob = new Blob([item.content], { type: 'text/plain' });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${item.title.replace(/\s+/g, '_')}.txt`;
-    link.click();
-    window.URL.revokeObjectURL(url);
-  }
-
-  // Filter method
-  filterHistory() {
-    this.filteredHistory = this.historyItems.filter(item => {
-      // Search filter
-      const matchesSearch = !this.searchQuery ||
-        item.name.toLowerCase().includes(this.searchQuery.toLowerCase());
-
-      // Date range filter
-      let matchesDate = true;
-      if (this.dateFrom) {
-        const fromDate = new Date(this.dateFrom);
-        matchesDate = matchesDate && item.date >= fromDate;
-      }
-      if (this.dateTo) {
-        const toDate = new Date(this.dateTo);
-        toDate.setHours(23, 59, 59, 999); // Include the entire end date
-        matchesDate = matchesDate && item.date <= toDate;
-      }
-
-      return matchesSearch && matchesDate;
-    });
-  }
-
-  toggleSearchFilter() {
-    this.showSearchFilter = !this.showSearchFilter;
-    if (!this.showSearchFilter) {
-      this.clearSearch();
-    }
-  }
-
-  toggleDateFilter() {
-    this.showDateFilter = !this.showDateFilter;
-    if (!this.showDateFilter) {
-      this.clearDateFilter();
-    }
-  }
-
-  // Clear search
-  clearSearch() {
-    this.searchQuery = '';
-    this.filterHistory();
-  }
-
-  // Clear date filter
-  clearDateFilter() {
-    this.dateFrom = '';
-    this.dateTo = '';
-    this.filterHistory();
-  }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 <main>
     <!-- Page Header -->
     <div class="page-header" [class.expanded]="isHeaderExpanded">
@@ -823,7 +399,8 @@ Machine learning is a powerful tool that continues to evolve and expand its capa
                         <!-- Dynamic Result Content -->
                         <div class="result-content" *ngIf="selectedHistoryItem && resultItems.length > 0">
                             <!-- Dynamic Result Items -->
-                            <div class="result-item" *ngFor="let item of resultItems">
+                            <div class="result-item" *ngFor="let item of resultItems"
+                                [class.selected]="selectedResultItemId === item.id">
                                 <div class="result-item-header">
                                     <div class="result-item-icon">
                                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
@@ -847,14 +424,13 @@ Machine learning is a powerful tool that continues to evolve and expand its capa
                                         <span>Viewing</span>
                                     </div>
                                     <div class="result-actions">
-                                        <!-- View/Eye Icon -->
-                                        <button class="result-action-icon-btn" title="View" (click)="openDetail(item)">
+                                        <!-- Expand Icon (two diagonal arrows) -->
+                                        <button class="result-action-icon-btn" title="Expand"
+                                            (click)="openDetail(item)">
                                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
                                                 stroke-width="1.5" stroke="currentColor">
                                                 <path stroke-linecap="round" stroke-linejoin="round"
-                                                    d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
-                                                <path stroke-linecap="round" stroke-linejoin="round"
-                                                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                    d="M15.75 4.5H19.5v3.75M19.5 4.5l-5.25 5.25M8.25 19.5H4.5v-3.75M4.5 19.5l5.25-5.25" />
                                             </svg>
                                         </button>
                                         <!-- Copy Icon (Document Duplicate) -->
@@ -908,12 +484,6 @@ Machine learning is a powerful tool that continues to evolve and expand its capa
         </div>
     </div>
 </main>
-
-
-
-
-
-
 
 
 
@@ -1110,13 +680,11 @@ main {
     display: flex;
     flex-direction: row;
     gap: 16px;
-    /* Add gap - ADJUST THIS VALUE (12px, 16px, 20px, 24px) */
     flex: 1;
     overflow: hidden;
     margin-top: 16px;
     position: relative;
     padding: 0 24px;
-    /* Add padding to sides for better spacing */
 }
 
 /* Modern separator design */
@@ -1136,7 +704,6 @@ main {
 
 .content-layout::after {
     display: none;
-    /* Remove the purple accent line if you want */
 }
 
 /* Upload Column (Left - 50%) */
@@ -1154,11 +721,9 @@ main {
     order: 1;
     position: relative;
     border-radius: 0;
-    /* CHANGED: Remove rounded corners */
     border: 1px solid var(--border-color);
 }
 
-/* Add a subtle shadow effect to make the divider more visible */
 .upload-column::after {
     display: none;
 }
@@ -1212,7 +777,6 @@ main {
     transition: all 0.3s ease;
     order: 2;
     border-radius: 0;
-    /* CHANGED: Remove rounded corners */
     border: 1px solid var(--border-color);
 }
 
@@ -1258,7 +822,6 @@ main {
     flex-direction: column;
     height: 100%;
     overflow: hidden;
-    /* No scroll here */
 }
 
 /* Header - Sticky and fixed height */
@@ -1292,12 +855,10 @@ main {
 /* Upload Content */
 .upload-content {
     flex: 1;
-    /* Takes remaining space */
     display: flex;
     flex-direction: column;
     gap: 20px;
     overflow-y: auto;
-    /* SCROLLING HERE */
     overflow-x: hidden;
     padding: 20px 24px 24px 24px;
 }
@@ -1600,23 +1161,9 @@ main {
     flex-direction: column;
     height: 100%;
     overflow: hidden;
-    /* No scroll here */
 }
 
 /* Workspace header should not grow */
-.workspace-header {
-    position: sticky;
-    top: 0;
-    z-index: 10;
-    background: var(--bg-color);
-    padding: 24px 24px 16px 24px;
-    flex-shrink: 0;
-    /* Header doesn't shrink */
-    border-bottom: 1px solid var(--border-color);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-}
-
 .workspace-header {
     position: sticky;
     top: 0;
@@ -1640,11 +1187,9 @@ main {
 /* Workspace Content Wrapper */
 .workspace-content-wrapper {
     flex: 1;
-    /* Takes remaining space */
     display: flex;
     flex-direction: column;
     overflow-y: auto;
-    /* SCROLLING HERE */
     overflow-x: hidden;
     padding: 20px 24px 24px 24px;
 }
@@ -1750,7 +1295,6 @@ main {
     z-index: 1;
     overflow: visible;
     width: 100%;
-    /* Ensure full width */
 }
 
 @keyframes fadeIn {
@@ -1798,6 +1342,46 @@ main {
     box-shadow: 0 2px 8px rgba(139, 92, 246, 0.1);
 }
 
+/* Result Item - Selected State (mirrors .history-item.selected) */
+.result-item.selected {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.12), rgba(167, 139, 250, 0.12));
+    border-color: var(--primary-color);
+    box-shadow: 0 4px 16px rgba(139, 92, 246, 0.2);
+    transform: translateX(4px);
+}
+
+.result-item.selected .result-item-icon {
+    background: linear-gradient(135deg, var(--primary-color), #a78bfa);
+    border-color: var(--primary-color);
+}
+
+.result-item.selected .result-item-icon svg {
+    stroke: white;
+}
+
+.result-item.selected .result-item-title {
+    color: var(--primary-color);
+    font-weight: 700;
+}
+
+/* Selected state: keep the view button highlighted */
+.result-item.selected .result-action-icon-btn:first-child {
+    background: linear-gradient(135deg, var(--primary-color), #a78bfa);
+    border-color: var(--primary-color);
+}
+
+.result-item.selected .result-action-icon-btn:first-child svg {
+    stroke: white;
+    opacity: 1;
+}
+
+/* Selected hover — prevent the generic hover from fighting the selected state */
+.result-item.selected:hover {
+    border-color: var(--primary-color);
+    box-shadow: 0 6px 20px rgba(139, 92, 246, 0.3);
+    transform: translateX(4px);
+}
+
 .result-item-header {
     display: flex;
     align-items: center;
@@ -1815,12 +1399,14 @@ main {
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    transition: all 0.2s ease;
 }
 
 .result-item-icon svg {
     width: 17px;
     height: 17px;
     stroke: var(--primary-color);
+    transition: stroke 0.2s ease;
 }
 
 .result-item-title-section {
@@ -1833,6 +1419,7 @@ main {
     font-weight: 600;
     color: var(--text-color);
     margin: 0;
+    transition: color 0.2s ease, font-weight 0.2s ease;
 }
 
 /* Icon-Only Action Buttons - Beautiful Design */
@@ -1885,9 +1472,7 @@ main {
 /* Icon Styling */
 .result-action-icon-btn svg {
     width: 15px;
-    /* Changed from 18px to 16px */
     height: 15px;
-    /* Changed from 18px to 16px */
     stroke: var(--text-color);
     opacity: 0.7;
     transition: all 0.3s ease;
@@ -1902,7 +1487,6 @@ main {
 /* Color-Coded Icons on Hover */
 .result-action-icon-btn:nth-child(1):hover {
     border-color: #3b82f6;
-    /* Blue for View */
 }
 
 .result-action-icon-btn:nth-child(1):hover svg {
@@ -1911,7 +1495,6 @@ main {
 
 .result-action-icon-btn:nth-child(2):hover {
     border-color: #8b5cf6;
-    /* Purple for Copy */
 }
 
 .result-action-icon-btn:nth-child(2):hover svg {
@@ -1920,7 +1503,6 @@ main {
 
 .result-action-icon-btn:nth-child(3):hover {
     border-color: #10b981;
-    /* Green for Download */
 }
 
 .result-action-icon-btn:nth-child(3):hover svg {
@@ -2099,7 +1681,6 @@ main {
     .workspace-column {
         width: 100%;
         border-radius: 0;
-        /* Keep sharp corners on mobile too */
     }
 
     .workspace-column {
@@ -2362,12 +1943,9 @@ main {
 .detail-sidebar {
     position: fixed;
     top: 114px;
-    /* Adjust this value to match where workspace border starts */
     left: 84px;
-    /* 24px padding + 60px gap */
     width: 0;
     height: calc(100vh - 155px);
-    /* Full height minus top offset */
     background-color: var(--bg-color);
     box-shadow: 4px 0 20px var(--shadow-color);
     z-index: 1001;
@@ -2380,7 +1958,6 @@ main {
 
 .detail-sidebar.active {
     width: calc(50% - 62px);
-    /* Half of content-layout minus gap and left offset */
 }
 
 /* Sidebar Header */
@@ -2419,16 +1996,13 @@ main {
 
 .detail-close-btn {
     width: 28px;
-    /* Changed from 36px */
     height: 28px;
-    /* Changed from 36px */
     display: flex;
     align-items: center;
     justify-content: center;
     background-color: transparent;
     border: 1px solid var(--border-color);
     border-radius: 6px;
-    /* Changed from 8px for proportion */
     cursor: pointer;
     transition: all 0.2s ease;
     flex-shrink: 0;
@@ -2441,9 +2015,7 @@ main {
 
 .detail-close-btn svg {
     width: 16px;
-    /* Changed from 20px */
     height: 16px;
-    /* Changed from 20px */
     stroke: var(--text-color);
 }
 
@@ -2688,7 +2260,6 @@ main {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    /* Space between left and right */
     gap: 16px;
     padding: 12px 16px;
     background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(167, 139, 250, 0.08));
@@ -2743,7 +2314,6 @@ main {
     gap: 8px;
     padding: 8px 16px;
     background-color: var(--bg-color);
-    /* Better contrast in header */
     border: 1px solid var(--border-color);
     border-radius: 8px;
     font-size: 13px;
@@ -2848,20 +2418,15 @@ main {
     align-items: center;
     justify-content: center;
     padding: 40px 40px;
-    /* Reduced from 60px */
     text-align: center;
     min-height: auto;
-    /* Changed from 400px */
     max-width: 500px;
     margin: auto;
-    /* Center horizontally */
 }
 
 .empty-state-icon {
     width: 80px;
-    /* Reduced from 120px */
     height: 80px;
-    /* Reduced from 120px */
     background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(167, 139, 250, 0.1));
     border: 2px solid rgba(139, 92, 246, 0.2);
     border-radius: 50%;
@@ -2869,15 +2434,12 @@ main {
     align-items: center;
     justify-content: center;
     margin-bottom: 20px;
-    /* Reduced from 24px */
     animation: float 3s ease-in-out infinite;
 }
 
 .empty-state-icon svg {
     width: 40px;
-    /* Reduced from 56px */
     height: 40px;
-    /* Reduced from 56px */
     stroke: var(--primary-color);
     opacity: 0.7;
 }
@@ -2896,11 +2458,9 @@ main {
 
 .empty-state-title {
     font-size: 16px;
-    /* Reduced from 18px */
     font-weight: 700;
     color: var(--text-color);
     margin: 0 0 10px 0;
-    /* Reduced from 12px */
 }
 
 .empty-state-message {
@@ -2908,7 +2468,6 @@ main {
     color: var(--text-color);
     opacity: 0.7;
     margin: 0 0 20px 0;
-    /* Reduced from 24px */
     max-width: 320px;
     line-height: 1.6;
 }
@@ -2963,18 +2522,6 @@ main {
     animation: slideDown 0.3s ease;
     max-width: 100%;
     overflow: hidden;
-}
-
-@keyframes slideDown {
-    from {
-        opacity: 0;
-        transform: translateY(-10px);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
 }
 
 .file-info-icon {
@@ -3184,56 +2731,6 @@ main {
     animation: fadeInOut 2s ease-in-out infinite;
 }
 
-/* Result Item - Viewing State */
-.result-item.viewing {
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.12), rgba(167, 139, 250, 0.12));
-    border-color: var(--primary-color);
-    box-shadow: 0 4px 16px rgba(139, 92, 246, 0.25);
-    transform: scale(1.01);
-}
-
-.result-item.viewing::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 3px;
-    background: linear-gradient(90deg, var(--primary-color), #a78bfa, var(--primary-color));
-    background-size: 200% 100%;
-    animation: shimmerTop 2s ease infinite;
-    border-radius: 10px 10px 0 0;
-}
-
-@keyframes shimmerTop {
-    0% {
-        background-position: 0% 50%;
-    }
-
-    50% {
-        background-position: 100% 50%;
-    }
-
-    100% {
-        background-position: 0% 50%;
-    }
-}
-
-.result-item.viewing .result-item-icon {
-    background: linear-gradient(135deg, var(--primary-color), #a78bfa);
-    border-color: var(--primary-color);
-    animation: pulse 2s ease-in-out infinite;
-}
-
-.result-item.viewing .result-item-icon svg {
-    stroke: white;
-}
-
-.result-item.viewing .result-item-title {
-    color: var(--primary-color);
-    font-weight: 700;
-}
-
 /* Title with Badge Container */
 .title-with-badge {
     display: flex;
@@ -3289,22 +2786,4 @@ main {
         transform: scale(1.15);
         opacity: 0.9;
     }
-}
-
-/* Override hover state when viewing */
-.result-item.viewing:hover {
-    border-color: var(--primary-color);
-    box-shadow: 0 6px 20px rgba(139, 92, 246, 0.3);
-    transform: scale(1.01);
-}
-
-/* View button state when viewing */
-.result-item.viewing .result-action-icon-btn:nth-child(1) {
-    background: linear-gradient(135deg, var(--primary-color), #a78bfa);
-    border-color: var(--primary-color);
-}
-
-.result-item.viewing .result-action-icon-btn:nth-child(1) svg {
-    stroke: white;
-    opacity: 1;
 }
