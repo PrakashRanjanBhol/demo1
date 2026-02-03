@@ -1,3 +1,417 @@
+import { Component } from '@angular/core';
+import { marked } from 'marked';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import { trigger, transition, style, animate } from '@angular/animations';
+
+// Interface for result items
+interface ResultItem {
+  id: string;
+  title: string;
+  icon: string;
+  content: string;
+  type: 'summary' | 'keywords' | 'questions' | 'custom';
+}
+
+@Component({
+  selector: 'app-content-analytics',
+  templateUrl: './content-analytics.component.html',
+  styleUrls: ['./content-analytics.component.css']
+})
+export class ContentAnalyticsComponent {
+  // File upload
+  selectedFile: File | null = null;
+  selectedFileName: string = '';
+  isDragging: boolean = false;
+
+  // Optional prompts
+  optionalPrompts: string = '';
+
+  // Upload view toggle (upload or history)
+  uploadView: 'upload' | 'history' = 'upload';
+
+  // Header expand/collapse
+  isHeaderExpanded: boolean = false;
+
+  isDetailOpen = false;
+  selectedItemName = '';
+  selectedItemDate = '';
+  selectedItemContent: SafeHtml = '';
+  selectedResultItemId: string = '';
+
+  showSearchFilter: boolean = false;
+  showDateFilter: boolean = false;
+
+  searchQuery: string = '';
+  dateFrom: string = '';
+  dateTo: string = '';
+
+  selectedHistoryItem: any = null;
+
+  isProcessing: boolean = false;
+  processingProgress: number = 0;
+  processingFileName: string = '';
+
+  // Dynamic result items
+  resultItems: ResultItem[] = [];
+
+  sampleContent = `
+# Machine Learning Fundamentals: A Comprehensive Overview
+
+## Introduction to Machine Learning
+
+Machine learning is a subset of artificial intelligence that focuses on building systems that can **learn from data** and improve their performance over time without being explicitly programmed. This revolutionary approach has transformed various industries and continues to shape our digital future.
+
+### Key Concepts
+
+Machine learning algorithms can be broadly categorized into three main types:
+
+1. **Supervised Learning** - Learning from labeled data
+2. **Unsupervised Learning** - Finding patterns in unlabeled data
+3. **Reinforcement Learning** - Learning through interaction and feedback
+
+---
+
+## Supervised Learning
+
+Supervised learning is the most common type of machine learning. In this approach, the algorithm learns from a training dataset that includes both input features and corresponding output labels.
+
+### Popular Algorithms
+
+- **Linear Regression** - For predicting continuous values
+- **Logistic Regression** - For binary classification problems
+- **Decision Trees** - For both regression and classification
+- **Random Forests** - Ensemble method using multiple decision trees
+- **Support Vector Machines (SVM)** - For classification and regression tasks
+- **Neural Networks** - Deep learning models with multiple layers
+
+### Real-World Applications
+
+> "Machine learning is the future of technology, and supervised learning forms the foundation of most practical applications we see today."
+
+Some practical applications include:
+
+- Email spam detection and filtering
+- Image recognition and classification
+- Medical diagnosis and disease prediction
+- Credit risk assessment in banking
+- Customer churn prediction
+- Fraud detection systems
+
+---
+
+## Conclusion
+
+Machine learning is a powerful tool that continues to evolve and expand its capabilities. Understanding the fundamentals—from basic algorithms to advanced deep learning techniques—is crucial for developing effective solutions to real-world problems.
+
+*Last Updated: January 28, 2026*
+
+**Remember:** The journey of mastering machine learning is continuous. Keep learning, experimenting, and building!
+`;
+
+  historyItems = [
+    {
+      id: 'item1',
+      name: 'Machine Learning Lecture 01.mp3',
+      displayDate: 'Created on January 28, 2026 at 2:30 PM',
+      date: new Date('2026-01-28')
+    },
+    {
+      id: 'item2',
+      name: 'Deep Learning Fundamentals.wav',
+      displayDate: 'Created on January 27, 2026 at 10:15 AM',
+      date: new Date('2026-01-27')
+    },
+    {
+      id: 'item3',
+      name: 'Neural Networks Introduction.m4a',
+      displayDate: 'Created on January 26, 2026 at 4:45 PM',
+      date: new Date('2026-01-26')
+    }
+  ];
+
+  filteredHistory = [...this.historyItems];
+
+  constructor(private sanitizer: DomSanitizer) { }
+
+  toggleHeader(): void {
+    this.isHeaderExpanded = !this.isHeaderExpanded;
+  }
+
+  onFileSelected(event: any): void {
+    const file = event.target.files[0];
+    if (file) {
+      this.selectedFile = file;
+      this.selectedFileName = file.name;
+    }
+  }
+
+  onFileDrop(event: DragEvent): void {
+    event.preventDefault();
+    this.isDragging = false;
+
+    const files = event.dataTransfer?.files;
+    if (files && files.length > 0) {
+      this.selectedFile = files[0];
+      this.selectedFileName = files[0].name;
+    }
+  }
+
+  onDragOver(event: DragEvent): void {
+    event.preventDefault();
+    this.isDragging = true;
+  }
+
+  onDragLeave(event: DragEvent): void {
+    event.preventDefault();
+    this.isDragging = false;
+  }
+
+  removeFile(): void {
+    this.selectedFile = null;
+    this.selectedFileName = '';
+  }
+
+  onGenerate(): void {
+    if (this.selectedFile) {
+      console.log('Generating analysis for:', this.selectedFileName);
+      console.log('Optional prompts:', this.optionalPrompts);
+
+      // Start processing
+      this.isProcessing = true;
+      this.processingProgress = 0;
+      this.processingFileName = this.selectedFileName;
+
+      // Simulate progress over 20 seconds
+      const interval = setInterval(() => {
+        this.processingProgress += 5; // Increment by 5% every second (20 steps = 20 seconds)
+
+        if (this.processingProgress >= 100) {
+          clearInterval(interval);
+          this.processingProgress = 100;
+
+          // Wait a brief moment to show 100%, then navigate
+          setTimeout(() => {
+            this.completeProcessing();
+          }, 500);
+        }
+      }, 1000); // Update every 1 second
+    }
+  }
+
+  completeProcessing(): void {
+    // Create a new history item with the processed file
+    const newItem = {
+      id: 'item' + (this.historyItems.length + 1),
+      name: this.processingFileName,
+      displayDate: 'Created on ' + new Date().toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      }),
+      date: new Date()
+    };
+
+    // Add to the beginning of history
+    this.historyItems.unshift(newItem);
+    this.filteredHistory = [...this.historyItems];
+
+    // Reset processing state
+    this.isProcessing = false;
+    this.processingProgress = 0;
+
+    // Clear upload form
+    this.selectedFile = null;
+    this.selectedFileName = '';
+    this.optionalPrompts = '';
+
+    // Switch to history view
+    this.uploadView = 'history';
+
+    // Auto-select the newly created item
+    setTimeout(() => {
+      this.selectedHistoryItem = newItem;
+      // Load results for the new item
+      this.loadResultsForItem(newItem.id);
+    }, 300);
+  }
+
+  onReset(): void {
+    this.selectedFile = null;
+    this.selectedFileName = '';
+    this.optionalPrompts = '';
+    this.isDragging = false;
+  }
+
+  onHistoryItemClick(itemId: string): void {
+    console.log('History item clicked:', itemId);
+
+    // Find the selected item
+    const item = this.historyItems.find(i => i.id === itemId);
+    if (item) {
+      this.selectedHistoryItem = item;
+
+      // Load results for this item
+      this.loadResultsForItem(itemId);
+    }
+  }
+
+  // Load results for a specific history item
+  loadResultsForItem(itemId: string): void {
+    // In a real application, you would fetch data from a service
+    // For now, we'll use sample data
+    this.resultItems = this.getSampleResultItems(itemId);
+  }
+
+  // Get sample result items (replace with actual API call)
+  getSampleResultItems(itemId: string): ResultItem[] {
+    return [
+      {
+        id: 'result1',
+        title: 'Lecture Summary',
+        icon: 'document',
+        content: 'This lecture covers fundamental concepts in machine learning, including supervised and unsupervised learning approaches. The instructor explains neural network architectures and demonstrates practical applications using Python libraries.',
+        type: 'summary'
+      },
+      {
+        id: 'result2',
+        title: 'Keywords',
+        icon: 'tag',
+        content: '• Neural Networks • Deep Learning • Supervised Learning • Unsupervised Learning • Backpropagation • Gradient Descent • Activation Functions • Training Data • Model Optimization',
+        type: 'keywords'
+      },
+      {
+        id: 'result3',
+        title: 'Assessment Question',
+        icon: 'question',
+        content: 'What are the main differences between supervised and unsupervised learning? Explain the backpropagation algorithm and its role in neural networks.',
+        type: 'questions'
+      }
+    ];
+  }
+
+  clearSelection(): void {
+    this.selectedHistoryItem = null;
+    this.resultItems = [];
+  }
+
+  openDetail(item: ResultItem) {
+    this.selectedItemName = item.title;
+    this.selectedItemDate = this.selectedHistoryItem?.displayDate || '';
+
+    // Set the selected result item ID for highlighting
+    this.selectedResultItemId = item.id;
+
+    // Parse markdown to HTML
+    const htmlContent: any = marked(this.sampleContent);
+    // Sanitize the HTML for security
+    this.selectedItemContent = this.sanitizer.bypassSecurityTrustHtml(htmlContent);
+
+    this.isDetailOpen = true;
+  }
+
+  closeDetail() {
+    this.isDetailOpen = false;
+    // Clear the selected result item when detail is closed
+    this.selectedResultItemId = '';
+  }
+
+  // Get SVG path for different icon types
+  getIconPath(iconType: string): string {
+    const icons: { [key: string]: string } = {
+      'document': 'M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z',
+      'tag': 'M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z M6 6h.008v.008H6V6z',
+      'question': 'M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z',
+      'lightbulb': 'M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.823 1.508-2.316a7.5 7.5 0 10-7.517 0c.85.493 1.509 1.333 1.509 2.316V18'
+    };
+    return icons[iconType] || icons['document'];
+  }
+
+  // Copy content to clipboard
+  copyToClipboard(content: string): void {
+    navigator.clipboard.writeText(content).then(() => {
+      console.log('Content copied to clipboard');
+      // You can add a toast notification here
+    });
+  }
+
+  // Download content as text file
+  downloadContent(item: ResultItem): void {
+    const blob = new Blob([item.content], { type: 'text/plain' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${item.title.replace(/\s+/g, '_')}.txt`;
+    link.click();
+    window.URL.revokeObjectURL(url);
+  }
+
+  // Filter method
+  filterHistory() {
+    this.filteredHistory = this.historyItems.filter(item => {
+      // Search filter
+      const matchesSearch = !this.searchQuery ||
+        item.name.toLowerCase().includes(this.searchQuery.toLowerCase());
+
+      // Date range filter
+      let matchesDate = true;
+      if (this.dateFrom) {
+        const fromDate = new Date(this.dateFrom);
+        matchesDate = matchesDate && item.date >= fromDate;
+      }
+      if (this.dateTo) {
+        const toDate = new Date(this.dateTo);
+        toDate.setHours(23, 59, 59, 999); // Include the entire end date
+        matchesDate = matchesDate && item.date <= toDate;
+      }
+
+      return matchesSearch && matchesDate;
+    });
+  }
+
+  toggleSearchFilter() {
+    this.showSearchFilter = !this.showSearchFilter;
+    if (!this.showSearchFilter) {
+      this.clearSearch();
+    }
+  }
+
+  toggleDateFilter() {
+    this.showDateFilter = !this.showDateFilter;
+    if (!this.showDateFilter) {
+      this.clearDateFilter();
+    }
+  }
+
+  // Clear search
+  clearSearch() {
+    this.searchQuery = '';
+    this.filterHistory();
+  }
+
+  // Clear date filter
+  clearDateFilter() {
+    this.dateFrom = '';
+    this.dateTo = '';
+    this.filterHistory();
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 <main>
     <!-- Page Header -->
     <div class="page-header" [class.expanded]="isHeaderExpanded">
@@ -374,6 +788,7 @@
                 <div class="workspace-content-wrapper">
                     <div class="workspace-content">
                         <!-- Empty State - Show when no file is selected -->
+                        <!-- Empty State - Show when no file is selected -->
                         <div class="workspace-empty-state" *ngIf="!selectedHistoryItem">
                             <div class="empty-state-icon">
                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
@@ -393,6 +808,133 @@
                                         d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
                                 </svg>
                                 <span>Click on any history item to get started</span>
+                            </div>
+
+                            <!-- How It Works Steps -->
+                            <div class="how-it-works">
+                                <div class="how-it-works-header">
+                                    <div class="how-it-works-header-line"></div>
+                                    <span class="how-it-works-label">How It Works</span>
+                                    <div class="how-it-works-header-line"></div>
+                                </div>
+
+                                <div class="how-it-works-steps">
+                                    <!-- Step 1 -->
+                                    <div class="how-step">
+                                        <div class="how-step-number">
+                                            <span>1</span>
+                                        </div>
+                                        <div class="how-step-content">
+                                            <div class="how-step-icon">
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                                    stroke-width="1.5" stroke="currentColor">
+                                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                                        d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
+                                                </svg>
+                                            </div>
+                                            <div class="how-step-text">
+                                                <h5 class="how-step-title">Upload Your Audio</h5>
+                                                <p class="how-step-desc">Drag & drop or browse to upload lecture files.
+                                                    Supports MP3, WAV, M4A, and FLAC formats.</p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Step 2 -->
+                                    <div class="how-step">
+                                        <div class="how-step-number">
+                                            <span>2</span>
+                                        </div>
+                                        <div class="how-step-content">
+                                            <div class="how-step-icon">
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                                    stroke-width="1.5" stroke="currentColor">
+                                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                                        d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+                                                </svg>
+                                            </div>
+                                            <div class="how-step-text">
+                                                <h5 class="how-step-title">Add Optional Prompts</h5>
+                                                <p class="how-step-desc">Guide the AI by adding custom instructions like
+                                                    focus areas, speaker identification, or specific topics.</p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Step 3 -->
+                                    <div class="how-step">
+                                        <div class="how-step-number">
+                                            <span>3</span>
+                                        </div>
+                                        <div class="how-step-content">
+                                            <div class="how-step-icon">
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                                    stroke-width="1.5" stroke="currentColor">
+                                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                                        d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
+                                                </svg>
+                                            </div>
+                                            <div class="how-step-text">
+                                                <h5 class="how-step-title">Generate Analysis</h5>
+                                                <p class="how-step-desc">Hit Generate and let the AI process your audio.
+                                                    Results appear in seconds with a live progress tracker.</p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Step 4 -->
+                                    <div class="how-step">
+                                        <div class="how-step-number">
+                                            <span>4</span>
+                                        </div>
+                                        <div class="how-step-content">
+                                            <div class="how-step-icon">
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                                    stroke-width="1.5" stroke="currentColor">
+                                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                                        d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                                                </svg>
+                                            </div>
+                                            <div class="how-step-text">
+                                                <h5 class="how-step-title">Review & Export</h5>
+                                                <p class="how-step-desc">Browse summaries, keywords, and questions.
+                                                    Expand, copy, or download any result directly from the workspace.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Supported Output Types -->
+                                <div class="output-types">
+                                    <span class="output-types-label">AI Generates</span>
+                                    <div class="output-types-list">
+                                        <div class="output-type-badge">
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                                stroke-width="1.5" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round"
+                                                    d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                                            </svg>
+                                            <span>Summaries</span>
+                                        </div>
+                                        <div class="output-type-badge">
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                                stroke-width="1.5" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round"
+                                                    d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z M6 6h.008v.008H6V6z" />
+                                            </svg>
+                                            <span>Keywords</span>
+                                        </div>
+                                        <div class="output-type-badge">
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                                stroke-width="1.5" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round"
+                                                    d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+                                            </svg>
+                                            <span>Questions</span>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -484,3 +1026,2493 @@
         </div>
     </div>
 </main>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* Main Content Styles */
+:host {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+    height: 100%;
+}
+
+main {
+    flex: 1;
+    width: 100%;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    height: 100%;
+}
+
+/* Page Header */
+.page-header {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.05), rgba(167, 139, 250, 0.05));
+    border-left: 4px solid var(--primary-color);
+    padding: 16px 24px;
+    margin: 20px 24px 0 24px;
+    border-radius: 8px;
+    flex-shrink: 0;
+    transition: all 0.3s ease;
+    overflow: hidden;
+}
+
+.page-header.expanded {
+    padding-bottom: 20px;
+}
+
+.header-icon-wrapper {
+    width: 40px;
+    height: 40px;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(167, 139, 250, 0.1));
+    border: 1px solid var(--primary-color);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.header-content {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    position: relative;
+    z-index: 1;
+}
+
+.header-icon {
+    width: 24px;
+    height: 24px;
+    stroke: var(--primary-color);
+}
+
+.header-text {
+    flex: 1;
+}
+
+.page-title {
+    font-size: 20px;
+    font-weight: 700;
+    margin: 0 0 3px 0;
+    letter-spacing: -0.02em;
+    color: var(--text-color);
+}
+
+.page-subtitle {
+    font-size: 12px;
+    color: var(--text-color);
+    opacity: 0.6;
+    margin: 0;
+}
+
+.header-toggle-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background-color: transparent;
+    border: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    flex-shrink: 0;
+}
+
+.header-toggle-btn:hover {
+    background-color: var(--footer-bg);
+    border-color: var(--primary-color);
+}
+
+.header-toggle-btn .toggle-icon {
+    width: 18px;
+    height: 18px;
+    stroke: var(--text-color);
+    transition: transform 0.3s ease;
+}
+
+.page-header.expanded .header-toggle-btn .toggle-icon {
+    transform: rotate(180deg);
+}
+
+/* Expanded Header Content */
+.header-expanded-content {
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    transition: all 0.3s ease;
+    margin-top: 0;
+}
+
+.page-header.expanded .header-expanded-content {
+    max-height: 200px;
+    opacity: 1;
+    margin-top: 16px;
+}
+
+.header-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+}
+
+.stat-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background-color: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    transition: all 0.2s ease;
+}
+
+.stat-item:hover {
+    border-color: var(--primary-color);
+    box-shadow: 0 2px 8px rgba(139, 92, 246, 0.1);
+}
+
+.stat-icon {
+    width: 36px;
+    height: 36px;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(167, 139, 250, 0.1));
+    border: 1px solid rgba(139, 92, 246, 0.2);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.stat-icon svg {
+    width: 18px;
+    height: 18px;
+    stroke: var(--primary-color);
+}
+
+.stat-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.stat-label {
+    font-size: 11px;
+    color: var(--text-color);
+    opacity: 0.6;
+    margin-bottom: 2px;
+}
+
+.stat-value {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-color);
+}
+
+/* Content Layout - Vertical Split */
+.content-layout {
+    display: flex;
+    flex-direction: row;
+    gap: 16px;
+    flex: 1;
+    overflow: hidden;
+    margin-top: 16px;
+    position: relative;
+    padding: 0 24px;
+}
+
+/* Modern separator design */
+.content-layout::before {
+    content: '';
+    position: absolute;
+    top: -8px;
+    left: 24px;
+    right: 24px;
+    height: 1px;
+    background: linear-gradient(90deg,
+            transparent 0%,
+            var(--border-color) 10%,
+            var(--border-color) 90%,
+            transparent 100%);
+}
+
+.content-layout::after {
+    display: none;
+}
+
+/* Upload Column (Left - 50%) */
+.upload-column {
+    flex: 1 1 50%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-right: none;
+    background: linear-gradient(135deg,
+            var(--header-bg) 0%,
+            var(--bg-color) 50%,
+            var(--header-bg) 100%);
+    transition: all 0.3s ease;
+    order: 1;
+    position: relative;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.upload-column::after {
+    display: none;
+}
+
+.upload-column::-webkit-scrollbar {
+    width: 6px;
+}
+
+.upload-column::-webkit-scrollbar-track {
+    background: rgba(139, 92, 246, 0.05);
+    border-radius: 3px;
+}
+
+.upload-column::-webkit-scrollbar-thumb {
+    background-color: rgba(139, 92, 246, 0.3);
+    border-radius: 3px;
+}
+
+.upload-column::-webkit-scrollbar-thumb:hover {
+    background-color: var(--primary-color);
+}
+
+.workspace-column::-webkit-scrollbar {
+    width: 6px;
+}
+
+.workspace-column::-webkit-scrollbar-track {
+    background: rgba(139, 92, 246, 0.05);
+    border-radius: 3px;
+}
+
+.workspace-column::-webkit-scrollbar-thumb {
+    background-color: rgba(139, 92, 246, 0.3);
+    border-radius: 3px;
+}
+
+.workspace-column::-webkit-scrollbar-thumb:hover {
+    background-color: var(--primary-color);
+}
+
+/* Workspace Column (Right - 50%) */
+.workspace-column {
+    flex: 1 1 50%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: linear-gradient(135deg,
+            var(--header-bg) 0%,
+            var(--bg-color) 50%,
+            var(--header-bg) 100%);
+    transition: all 0.3s ease;
+    order: 2;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+/* Section Styles */
+.section-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-color);
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    position: relative;
+    padding-left: 20px;
+}
+
+.section-title::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    width: 4px;
+    height: 28px;
+    background: linear-gradient(180deg, var(--primary-color), #a78bfa);
+    border-radius: 2px;
+    box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3);
+}
+
+.section-title::after {
+    content: '';
+    position: absolute;
+    left: -4px;
+    width: 12px;
+    height: 28px;
+    background: linear-gradient(180deg, var(--primary-color), #a78bfa);
+    border-radius: 2px;
+    opacity: 0.2;
+    filter: blur(4px);
+}
+
+/* Upload Section */
+.upload-section {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+/* Header - Sticky and fixed height */
+.upload-section .section-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: linear-gradient(135deg, var(--bg-color), var(--header-bg));
+    padding: 20px 24px;
+    margin-bottom: 0;
+    border-bottom: 2px solid transparent;
+    border-image: linear-gradient(90deg, transparent, var(--primary-color), transparent) 1;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+/* Section header should not grow */
+.section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.section-controls {
+    display: flex;
+    gap: 8px;
+}
+
+/* Upload Content */
+.upload-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 20px 24px 24px 24px;
+}
+
+/* Upload Fields Container - Horizontal Layout */
+.upload-fields-container {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* File Upload Area */
+.upload-area-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.upload-area-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-color);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.upload-area-label::before {
+    content: '📁';
+    font-size: 15px;
+}
+
+.file-upload-zone {
+    border: 2px dashed var(--border-color);
+    border-radius: 12px;
+    padding: 30px 24px;
+    text-align: center;
+    background-color: var(--bg-color);
+    transition: all 0.3s ease;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.file-upload-zone.drag-over {
+    border-color: var(--primary-color);
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.05), rgba(167, 139, 250, 0.05));
+}
+
+.file-upload-zone:hover {
+    border-color: var(--primary-color);
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.02), rgba(167, 139, 250, 0.02));
+}
+
+.upload-icon {
+    width: 48px;
+    height: 48px;
+    margin: 0 auto 12px;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(167, 139, 250, 0.1));
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.upload-icon svg {
+    width: 24px;
+    height: 24px;
+    stroke: var(--primary-color);
+}
+
+.upload-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-color);
+    margin: 0 0 6px 0;
+}
+
+.upload-subtitle {
+    font-size: 12px;
+    color: var(--text-color);
+    opacity: 0.5;
+    margin: 0 0 12px 0;
+}
+
+.upload-btn-wrapper {
+    display: flex;
+    justify-content: center;
+    position: relative;
+    z-index: 1;
+}
+
+.browse-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 20px;
+    background: linear-gradient(135deg, var(--primary-color), #a78bfa);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 8px rgba(139, 92, 246, 0.2);
+}
+
+.browse-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+}
+
+.browse-btn:active {
+    transform: translateY(0);
+}
+
+.file-input-hidden {
+    display: none;
+}
+
+.upload-info {
+    font-size: 11px;
+    color: var(--text-color);
+    opacity: 0.5;
+    margin: 12px 0 0 0;
+}
+
+.selected-file {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background-color: var(--footer-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    margin-top: 16px;
+}
+
+.selected-file svg {
+    width: 20px;
+    height: 20px;
+    stroke: var(--primary-color);
+    flex-shrink: 0;
+}
+
+.selected-file span {
+    flex: 1;
+    font-size: 14px;
+    color: var(--text-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.remove-file-btn {
+    width: 24px;
+    height: 24px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+.remove-file-btn:hover {
+    background-color: rgba(239, 68, 68, 0.1);
+}
+
+.remove-file-btn svg {
+    width: 16px;
+    height: 16px;
+    stroke: #ef4444;
+}
+
+/* Prompts Area */
+.prompts-area {
+    display: flex;
+    flex-direction: column;
+}
+
+.prompts-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-color);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.prompts-label::before {
+    content: '✍️';
+    font-size: 15px;
+}
+
+.prompts-textarea {
+    padding: 14px;
+    background-color: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 14px;
+    color: var(--text-color);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    resize: vertical;
+    min-height: 120px;
+    transition: all 0.2s ease;
+}
+
+.prompts-textarea:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+}
+
+.prompts-textarea::placeholder {
+    color: var(--text-color);
+    opacity: 0.4;
+}
+
+.prompts-hint {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--text-color);
+    opacity: 0.6;
+    margin-top: 8px;
+}
+
+.prompts-hint svg {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+}
+
+/* Action Buttons */
+.action-buttons {
+    display: flex;
+    gap: 12px;
+    padding-top: 8px;
+}
+
+.generate-btn,
+.reset-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.generate-btn {
+    background: linear-gradient(135deg, var(--primary-color), #a78bfa);
+    color: white;
+    box-shadow: 0 2px 8px rgba(139, 92, 246, 0.2);
+}
+
+.generate-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+}
+
+.generate-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.generate-btn svg,
+.reset-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+.reset-btn {
+    background-color: var(--footer-bg);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+}
+
+.reset-btn:hover {
+    background-color: var(--bg-color);
+    border-color: var(--primary-color);
+}
+
+/* Workspace Section */
+.workspace-section {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+/* Workspace header should not grow */
+.workspace-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: linear-gradient(135deg, var(--bg-color), var(--header-bg));
+    padding: 20px 24px;
+    flex-shrink: 0;
+    border-bottom: 2px solid transparent;
+    border-image: linear-gradient(90deg, transparent, var(--primary-color), transparent) 1;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.header-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+/* Workspace Content Wrapper */
+.workspace-content-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 20px 24px 24px 24px;
+}
+
+.workspace-content-wrapper:has(.result-content) {
+    align-items: initial;
+    justify-content: initial;
+}
+
+/* Keep center alignment only for empty state */
+.workspace-content-wrapper:has(.workspace-empty-state) {
+    align-items: center;
+    justify-content: flex-start;
+    padding-top: 28px;
+}
+
+
+/* Tabs */
+.tabs {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.tab {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 18px;
+    background-color: var(--footer-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-color);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    opacity: 0.7;
+    position: relative;
+    overflow: hidden;
+}
+
+.tab::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(139, 92, 246, 0.1), transparent);
+    transition: left 0.5s ease;
+    opacity: 0;
+}
+
+.tab:hover {
+    opacity: 1;
+    border-color: var(--primary-color);
+    transform: translateY(-1px);
+}
+
+.tab:hover::before {
+    opacity: 1;
+}
+
+.tab.active {
+    background: linear-gradient(135deg, var(--primary-color), #a78bfa);
+    color: white;
+    opacity: 1;
+    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3),
+        0 2px 4px rgba(139, 92, 246, 0.2);
+    transform: translateY(-1px);
+}
+
+.tab.active::before {
+    opacity: 0;
+}
+
+.tab.active svg {
+    stroke: white;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1));
+}
+
+.tab svg {
+    width: 16px;
+    height: 16px;
+    transition: all 0.3s ease;
+}
+
+.tab:hover svg {
+    transform: scale(1.1);
+}
+
+.tab.active:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(139, 92, 246, 0.4),
+        0 2px 4px rgba(139, 92, 246, 0.3);
+}
+
+/* Tab Content */
+.workspace-content {
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    z-index: 1;
+    overflow: visible;
+    width: 100%;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Result Content */
+.result-content {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    animation: fadeInUp 0.4s ease-out;
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.result-item {
+    background-color: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    overflow: hidden;
+    transition: all 0.2s ease;
+}
+
+.result-item:hover {
+    border-color: var(--primary-color);
+    box-shadow: 0 2px 8px rgba(139, 92, 246, 0.1);
+}
+
+/* Result Item - Selected State (mirrors .history-item.selected) */
+.result-item.selected {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.12), rgba(167, 139, 250, 0.12));
+    border-color: var(--primary-color);
+    box-shadow: 0 4px 16px rgba(139, 92, 246, 0.2);
+    transform: translateX(4px);
+}
+
+.result-item.selected .result-item-icon {
+    background: linear-gradient(135deg, var(--primary-color), #a78bfa);
+    border-color: var(--primary-color);
+}
+
+.result-item.selected .result-item-icon svg {
+    stroke: white;
+}
+
+.result-item.selected .result-item-title {
+    color: var(--primary-color);
+    font-weight: 700;
+}
+
+/* Selected state: keep the view button highlighted */
+.result-item.selected .result-action-icon-btn:first-child {
+    background: linear-gradient(135deg, var(--primary-color), #a78bfa);
+    border-color: var(--primary-color);
+}
+
+.result-item.selected .result-action-icon-btn:first-child svg {
+    stroke: white;
+    opacity: 1;
+}
+
+/* Selected hover — prevent the generic hover from fighting the selected state */
+.result-item.selected:hover {
+    border-color: var(--primary-color);
+    box-shadow: 0 6px 20px rgba(139, 92, 246, 0.3);
+    transform: translateX(4px);
+}
+
+.result-item-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+}
+
+.result-item-icon {
+    width: 34px;
+    height: 34px;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(167, 139, 250, 0.1));
+    border: 1px solid rgba(139, 92, 246, 0.2);
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.2s ease;
+}
+
+.result-item-icon svg {
+    width: 17px;
+    height: 17px;
+    stroke: var(--primary-color);
+    transition: stroke 0.2s ease;
+}
+
+.result-item-title-section {
+    flex: 1;
+    min-width: 0;
+}
+
+.result-item-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-color);
+    margin: 0;
+    transition: color 0.2s ease, font-weight 0.2s ease;
+}
+
+/* Icon-Only Action Buttons - Beautiful Design */
+
+.result-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.result-action-icon-btn {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Shimmer Effect */
+.result-action-icon-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(139, 92, 246, 0.2), transparent);
+    transition: left 0.5s ease;
+}
+
+.result-action-icon-btn:hover::before {
+    left: 100%;
+}
+
+/* Hover State */
+.result-action-icon-btn:hover {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(167, 139, 250, 0.1));
+    border-color: var(--primary-color);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.2);
+}
+
+/* Icon Styling */
+.result-action-icon-btn svg {
+    width: 15px;
+    height: 15px;
+    stroke: var(--text-color);
+    opacity: 0.7;
+    transition: all 0.3s ease;
+}
+
+.result-action-icon-btn:hover svg {
+    stroke: var(--primary-color);
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+/* Color-Coded Icons on Hover */
+.result-action-icon-btn:nth-child(1):hover {
+    border-color: #3b82f6;
+}
+
+.result-action-icon-btn:nth-child(1):hover svg {
+    stroke: #3b82f6;
+}
+
+.result-action-icon-btn:nth-child(2):hover {
+    border-color: #8b5cf6;
+}
+
+.result-action-icon-btn:nth-child(2):hover svg {
+    stroke: #8b5cf6;
+}
+
+.result-action-icon-btn:nth-child(3):hover {
+    border-color: #10b981;
+}
+
+.result-action-icon-btn:nth-child(3):hover svg {
+    stroke: #10b981;
+}
+
+.result-action-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(167, 139, 250, 0.08));
+    border: 1px solid rgba(139, 92, 246, 0.2);
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-color);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.result-action-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(139, 92, 246, 0.15), transparent);
+    transition: left 0.5s ease;
+}
+
+.result-action-btn:hover::before {
+    left: 100%;
+}
+
+.result-action-btn:hover {
+    background: linear-gradient(135deg, var(--primary-color), #a78bfa);
+    border-color: var(--primary-color);
+    color: white;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+}
+
+.result-action-btn svg {
+    width: 14px;
+    height: 14px;
+    transition: all 0.3s ease;
+}
+
+.result-action-btn:hover svg {
+    stroke: white;
+    transform: scale(1.1);
+}
+
+.result-action-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 6px rgba(139, 92, 246, 0.2);
+}
+
+.result-item-content {
+    padding: 6px 14px 12px 60px;
+}
+
+.result-text {
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-color);
+    margin: 0;
+}
+
+/* History Content */
+.history-content {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.history-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px;
+    background-color: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.history-item:hover {
+    border-color: var(--primary-color);
+    box-shadow: 0 2px 8px rgba(139, 92, 246, 0.1);
+}
+
+.history-item-icon {
+    width: 40px;
+    height: 40px;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(167, 139, 250, 0.1));
+    border: 1px solid rgba(139, 92, 246, 0.2);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.history-item-icon svg {
+    width: 20px;
+    height: 20px;
+    stroke: var(--primary-color);
+}
+
+.history-item-details {
+    flex: 1;
+    min-width: 0;
+}
+
+.history-item-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-color);
+    margin: 0 0 4px 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.history-item-date {
+    font-size: 12px;
+    color: var(--text-color);
+    opacity: 0.6;
+    margin: 0;
+}
+
+.history-item-action {
+    width: 32px;
+    height: 32px;
+    background-color: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.history-item-action:hover {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.history-item-action svg {
+    width: 16px;
+    height: 16px;
+    stroke: var(--text-color);
+    transition: stroke 0.2s ease;
+}
+
+.history-item-action:hover svg {
+    stroke: white;
+}
+
+/* Responsive Design */
+@media (max-width: 1024px) {
+    .content-layout {
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    .upload-column,
+    .workspace-column {
+        width: 100%;
+        border-radius: 0;
+    }
+
+    .workspace-column {
+        width: 100%;
+    }
+
+    .header-stats {
+        grid-template-columns: 1fr;
+    }
+
+    .detail-sidebar {
+        left: 24px;
+        top: 80px;
+        height: calc(100vh - 80px);
+    }
+
+    .detail-sidebar.active {
+        width: calc(100% - 48px);
+    }
+}
+
+@media (max-width: 768px) {
+
+    .upload-section,
+    .workspace-section {
+        padding: 20px;
+    }
+
+    .upload-fields-container {
+        gap: 16px;
+    }
+
+    .tabs {
+        flex-direction: column;
+    }
+
+    .tab {
+        justify-content: flex-start;
+    }
+
+    .action-buttons {
+        flex-direction: column;
+    }
+
+    .result-actions {
+        flex-direction: column;
+        width: 100%;
+    }
+
+    .result-action-btn {
+        width: 100%;
+    }
+
+    .header-stats {
+        grid-template-columns: 1fr;
+    }
+
+    .page-header {
+        margin: 16px 16px 0 16px;
+        padding: 14px 16px;
+    }
+
+    .date-filters {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .clear-filter-btn {
+        width: 100%;
+    }
+
+    .filter-section-header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .filter-header-left {
+        justify-content: center;
+    }
+
+    .filter-header-actions {
+        width: 100%;
+    }
+
+    .filter-toggle-btn {
+        flex: 1;
+    }
+}
+
+/* View Toggle Button in Header */
+.view-toggle-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 18px;
+    background: linear-gradient(135deg, var(--primary-color), #a78bfa);
+    border: none;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    color: white;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+    position: relative;
+    overflow: hidden;
+}
+
+.view-toggle-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+    transition: left 0.6s ease;
+}
+
+.view-toggle-btn:hover::before {
+    left: 100%;
+}
+
+.view-toggle-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(139, 92, 246, 0.4);
+}
+
+.view-toggle-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 3px 8px rgba(139, 92, 246, 0.3);
+}
+
+.view-toggle-btn svg {
+    width: 16px;
+    height: 16px;
+    stroke: white;
+    transition: all 0.3s ease;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
+}
+
+.view-toggle-btn:hover svg {
+    transform: scale(1.1) rotate(5deg);
+}
+
+/* Upload View */
+.upload-view {
+    animation: fadeIn 0.3s ease;
+    overflow: visible;
+}
+
+/* History View */
+.history-view {
+    animation: fadeIn 0.3s ease;
+    overflow: visible;
+}
+
+.history-view .history-content {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+/* Scrollbar styling for workspace-section */
+.workspace-section::-webkit-scrollbar {
+    width: 6px;
+}
+
+.workspace-section::-webkit-scrollbar-track {
+    background: rgba(139, 92, 246, 0.05);
+    border-radius: 3px;
+}
+
+.workspace-section::-webkit-scrollbar-thumb {
+    background-color: rgba(139, 92, 246, 0.3);
+    border-radius: 3px;
+}
+
+.workspace-section::-webkit-scrollbar-thumb:hover {
+    background-color: var(--primary-color);
+}
+
+/* Scrollbar styling for upload-section */
+.upload-section::-webkit-scrollbar {
+    width: 6px;
+}
+
+.upload-section::-webkit-scrollbar-track {
+    background: rgba(139, 92, 246, 0.05);
+    border-radius: 3px;
+}
+
+.upload-section::-webkit-scrollbar-thumb {
+    background-color: rgba(139, 92, 246, 0.3);
+    border-radius: 3px;
+}
+
+.upload-section::-webkit-scrollbar-thumb:hover {
+    background-color: var(--primary-color);
+}
+
+/* Scrollbar for upload content */
+.upload-content::-webkit-scrollbar {
+    width: 6px;
+}
+
+.upload-content::-webkit-scrollbar-track {
+    background: rgba(139, 92, 246, 0.05);
+    border-radius: 3px;
+}
+
+.upload-content::-webkit-scrollbar-thumb {
+    background-color: rgba(139, 92, 246, 0.3);
+    border-radius: 3px;
+}
+
+.upload-content::-webkit-scrollbar-thumb:hover {
+    background-color: var(--primary-color);
+}
+
+/* Scrollbar for workspace content */
+.workspace-content-wrapper::-webkit-scrollbar {
+    width: 6px;
+}
+
+.workspace-content-wrapper::-webkit-scrollbar-track {
+    background: rgba(139, 92, 246, 0.05);
+    border-radius: 3px;
+}
+
+.workspace-content-wrapper::-webkit-scrollbar-thumb {
+    background-color: rgba(139, 92, 246, 0.3);
+    border-radius: 3px;
+}
+
+.workspace-content-wrapper::-webkit-scrollbar-thumb:hover {
+    background-color: var(--primary-color);
+}
+
+
+/* Sliding Overlay */
+.detail-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.detail-overlay.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.detail-sidebar {
+    position: fixed;
+    top: 114px;
+    left: 84px;
+    width: 0;
+    height: calc(100vh - 155px);
+    background-color: var(--bg-color);
+    box-shadow: 4px 0 20px var(--shadow-color);
+    z-index: 1001;
+    overflow: hidden;
+    transition: width 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    border-radius: 8px;
+}
+
+.detail-sidebar.active {
+    width: calc(50% - 62px);
+}
+
+/* Sidebar Header */
+.detail-sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border-color);
+    background-color: var(--header-bg);
+    flex-shrink: 0;
+}
+
+.detail-sidebar-title-section {
+    flex: 1;
+    min-width: 0;
+    padding-right: 16px;
+}
+
+.detail-sidebar-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-color);
+    margin: 0 0 4px 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.detail-sidebar-meta {
+    font-size: 12px;
+    color: var(--text-color);
+    opacity: 0.6;
+    margin: 0;
+}
+
+.detail-close-btn {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.detail-close-btn:hover {
+    background-color: var(--footer-bg);
+    border-color: var(--primary-color);
+}
+
+.detail-close-btn svg {
+    width: 16px;
+    height: 16px;
+    stroke: var(--text-color);
+}
+
+/* Sidebar Content */
+.detail-sidebar-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px;
+}
+
+.detail-sidebar-content::-webkit-scrollbar {
+    width: 6px;
+}
+
+.detail-sidebar-content::-webkit-scrollbar-track {
+    background: rgba(139, 92, 246, 0.05);
+    border-radius: 3px;
+}
+
+.detail-sidebar-content::-webkit-scrollbar-thumb {
+    background-color: rgba(139, 92, 246, 0.3);
+    border-radius: 3px;
+}
+
+.detail-sidebar-content::-webkit-scrollbar-thumb:hover {
+    background-color: var(--primary-color);
+}
+
+/* History Filters */
+.history-filters {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+/* Search Box */
+.search-box {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.search-icon {
+    position: absolute;
+    left: 12px;
+    width: 18px;
+    height: 18px;
+    stroke: var(--text-color);
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.search-input {
+    width: 100%;
+    padding: 10px 40px 10px 40px;
+    background-color: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 14px;
+    color: var(--text-color);
+    transition: all 0.2s ease;
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+}
+
+.search-input::placeholder {
+    color: var(--text-color);
+    opacity: 0.4;
+}
+
+.clear-search-btn {
+    position: absolute;
+    right: 8px;
+    width: 24px;
+    height: 24px;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.clear-search-btn:hover {
+    background-color: var(--footer-bg);
+}
+
+.clear-search-btn svg {
+    width: 14px;
+    height: 14px;
+    stroke: var(--text-color);
+    opacity: 0.6;
+}
+
+/* Date Filters */
+.date-filters {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+}
+
+.date-input-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.date-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-color);
+    opacity: 0.7;
+}
+
+.date-input {
+    padding: 10px 12px;
+    background-color: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 13px;
+    color: var(--text-color);
+    transition: all 0.2s ease;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+.date-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+}
+
+.date-input::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 0.2s ease;
+}
+
+.date-input::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+}
+
+.clear-filter-btn {
+    width: 40px;
+    height: 40px;
+    background-color: var(--footer-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.clear-filter-btn:hover {
+    background-color: var(--bg-color);
+    border-color: var(--primary-color);
+}
+
+.clear-filter-btn svg {
+    width: 18px;
+    height: 18px;
+    stroke: var(--text-color);
+}
+
+/* No Results */
+.no-results {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 24px;
+    text-align: center;
+}
+
+.no-results svg {
+    width: 48px;
+    height: 48px;
+    stroke: var(--text-color);
+    opacity: 0.3;
+    margin-bottom: 16px;
+}
+
+.no-results p {
+    font-size: 14px;
+    color: var(--text-color);
+    opacity: 0.6;
+    margin: 0;
+}
+
+/* Filter Panel - Collapsible */
+.filter-panel {
+    margin-bottom: 12px;
+    animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Date Filters - Inline Layout */
+.date-filters-inline {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+}
+
+.date-filters-inline .date-input-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.date-filters-inline .clear-filter-btn {
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+}
+
+/* Filter Section Header */
+.filter-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px 16px;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(167, 139, 250, 0.08));
+    border: 1px solid rgba(139, 92, 246, 0.15);
+    border-radius: 8px;
+    margin-bottom: 12px;
+}
+
+.filter-header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.filter-header-icon {
+    width: 32px;
+    height: 32px;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(167, 139, 250, 0.15));
+    border: 1px solid rgba(139, 92, 246, 0.25);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.filter-header-icon svg {
+    width: 16px;
+    height: 16px;
+    stroke: var(--primary-color);
+}
+
+.filter-header-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-color);
+    margin: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Filter Header Actions - Right Side */
+.filter-header-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.filter-toggle-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background-color: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-color);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.filter-toggle-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(139, 92, 246, 0.1), transparent);
+    transition: left 0.5s ease;
+}
+
+.filter-toggle-btn:hover {
+    border-color: var(--primary-color);
+    background-color: var(--footer-bg);
+}
+
+.filter-toggle-btn:hover::before {
+    left: 100%;
+}
+
+.filter-toggle-btn.active {
+    background: linear-gradient(135deg, var(--primary-color), #a78bfa);
+    color: white;
+    border-color: var(--primary-color);
+    box-shadow: 0 2px 8px rgba(139, 92, 246, 0.2);
+}
+
+.filter-toggle-btn svg {
+    width: 16px;
+    height: 16px;
+    stroke: var(--text-color);
+    transition: all 0.3s ease;
+}
+
+.filter-toggle-btn.active svg {
+    stroke: white;
+}
+
+
+/* Content Section Header */
+.content-section-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.05), rgba(167, 139, 250, 0.05));
+    border-left: 3px solid var(--primary-color);
+    border-radius: 4px;
+    margin-top: 16px;
+    margin-bottom: 12px;
+}
+
+.content-header-icon {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.content-header-icon svg {
+    width: 18px;
+    height: 18px;
+    stroke: var(--primary-color);
+    opacity: 0.8;
+}
+
+.content-header-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-color);
+    margin: 0;
+    flex: 1;
+}
+
+.content-count {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-color);
+    opacity: 0.6;
+    padding: 4px 10px;
+    background-color: rgba(139, 92, 246, 0.1);
+    border-radius: 12px;
+}
+
+/* Workspace Empty State */
+.workspace-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 0 40px 40px 40px;
+    text-align: center;
+    min-height: auto;
+    max-width: 500px;
+    margin: 0 auto;
+}
+
+.empty-state-icon {
+    width: 80px;
+    height: 80px;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(167, 139, 250, 0.1));
+    border: 2px solid rgba(139, 92, 246, 0.2);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 20px;
+    animation: float 3s ease-in-out infinite;
+}
+
+.empty-state-icon svg {
+    width: 40px;
+    height: 40px;
+    stroke: var(--primary-color);
+    opacity: 0.7;
+}
+
+@keyframes float {
+
+    0%,
+    100% {
+        transform: translateY(0px);
+    }
+
+    50% {
+        transform: translateY(-10px);
+    }
+}
+
+.empty-state-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-color);
+    margin: 0 0 10px 0;
+}
+
+.empty-state-message {
+    font-size: 14px;
+    color: var(--text-color);
+    opacity: 0.7;
+    margin: 0 0 20px 0;
+    max-width: 320px;
+    line-height: 1.6;
+}
+
+.empty-state-hint {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(167, 139, 250, 0.08));
+    border: 1px solid rgba(139, 92, 246, 0.2);
+    border-radius: 20px;
+    font-size: 12px;
+    color: var(--text-color);
+    opacity: 0.8;
+    animation: pulse 2s ease-in-out infinite;
+}
+
+.empty-state-hint svg {
+    width: 16px;
+    height: 16px;
+    stroke: var(--primary-color);
+    flex-shrink: 0;
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 0.8;
+    }
+
+    50% {
+        opacity: 1;
+    }
+}
+
+.workspace-header-content {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.selected-file-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(167, 139, 250, 0.1));
+    border: 1px solid rgba(139, 92, 246, 0.2);
+    border-radius: 8px;
+    animation: slideDown 0.3s ease;
+    max-width: 100%;
+    overflow: hidden;
+}
+
+.file-info-icon {
+    width: 16px;
+    height: 16px;
+    stroke: var(--primary-color);
+    flex-shrink: 0;
+}
+
+.file-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 300px;
+}
+
+.file-separator {
+    color: var(--text-color);
+    opacity: 0.4;
+    font-weight: 700;
+}
+
+.file-date {
+    font-size: 11px;
+    color: var(--text-color);
+    opacity: 0.6;
+    white-space: nowrap;
+}
+
+/* History Item - Selected State */
+.history-item.selected {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.12), rgba(167, 139, 250, 0.12));
+    border-color: var(--primary-color);
+    box-shadow: 0 4px 16px rgba(139, 92, 246, 0.2);
+    transform: translateX(4px);
+}
+
+.history-item.selected .history-item-icon {
+    background: linear-gradient(135deg, var(--primary-color), #a78bfa);
+    border-color: var(--primary-color);
+}
+
+.history-item.selected .history-item-icon svg {
+    stroke: white;
+}
+
+.history-item.selected .history-item-name {
+    color: var(--primary-color);
+    font-weight: 700;
+}
+
+/* Checkmark for Selected Item */
+.history-item-checkmark {
+    width: 32px;
+    height: 32px;
+    background: linear-gradient(135deg, var(--primary-color), #a78bfa);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    animation: scaleIn 0.3s ease;
+    box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3);
+}
+
+.history-item-checkmark svg {
+    width: 18px;
+    height: 18px;
+    stroke: white;
+}
+
+@keyframes scaleIn {
+    from {
+        opacity: 0;
+        transform: scale(0.5);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* Processing Progress Container */
+.processing-container {
+    padding: 20px;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(167, 139, 250, 0.08));
+    border: 1px solid rgba(139, 92, 246, 0.2);
+    border-radius: 12px;
+    margin-top: 20px;
+    animation: slideIn 0.3s ease;
+}
+
+.processing-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 16px;
+}
+
+.processing-icon-wrapper {
+    width: 44px;
+    height: 44px;
+    background: linear-gradient(135deg, var(--primary-color), #a78bfa);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    animation: pulse 2s ease-in-out infinite;
+}
+
+.processing-icon {
+    width: 24px;
+    height: 24px;
+    stroke: white;
+    animation: rotate 2s linear infinite;
+}
+
+@keyframes rotate {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.processing-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.processing-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-color);
+    margin: 0 0 4px 0;
+}
+
+.processing-filename {
+    font-size: 12px;
+    color: var(--text-color);
+    opacity: 0.7;
+    margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.processing-percentage {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--primary-color);
+    flex-shrink: 0;
+}
+
+/* Progress Bar */
+.progress-bar-track {
+    width: 100%;
+    height: 8px;
+    background-color: rgba(139, 92, 246, 0.15);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary-color), #a78bfa, var(--primary-color));
+    background-size: 200% 100%;
+    border-radius: 4px;
+    transition: width 0.3s ease;
+    position: relative;
+    animation: gradientShift 2s ease infinite;
+}
+
+.progress-bar-shimmer {
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+    animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+    0% {
+        left: -100%;
+    }
+
+    100% {
+        left: 100%;
+    }
+}
+
+.processing-message {
+    font-size: 12px;
+    color: var(--text-color);
+    opacity: 0.7;
+    margin: 12px 0 0 0;
+    text-align: center;
+    animation: fadeInOut 2s ease-in-out infinite;
+}
+
+/* Title with Badge Container */
+.title-with-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Viewing Badge - Beside Title */
+.viewing-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    background: linear-gradient(135deg, var(--primary-color), #a78bfa);
+    border-radius: 12px;
+    font-size: 10px;
+    font-weight: 600;
+    color: white;
+    box-shadow: 0 2px 6px rgba(139, 92, 246, 0.3);
+    animation: fadeInScale 0.3s ease;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.viewing-badge svg {
+    width: 12px;
+    height: 12px;
+    stroke: white;
+    animation: pulseIcon 1.5s ease-in-out infinite;
+}
+
+@keyframes fadeInScale {
+    from {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@keyframes pulseIcon {
+
+    0%,
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+
+    50% {
+        transform: scale(1.15);
+        opacity: 0.9;
+    }
+}
+
+/* How It Works Section */
+.how-it-works {
+    width: 100%;
+    max-width: 420px;
+    margin-top: 32px;
+}
+
+.how-it-works-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.how-it-works-header-line {
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border-color));
+}
+
+.how-it-works-header-line:last-child {
+    background: linear-gradient(270deg, transparent, var(--border-color));
+}
+
+.how-it-works-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--primary-color);
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    white-space: nowrap;
+}
+
+.how-it-works-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+/* Single Step Row */
+.how-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    transition: all 0.25s ease;
+    cursor: default;
+}
+
+.how-step:hover {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.06), rgba(167, 139, 250, 0.04));
+    border-color: rgba(139, 92, 246, 0.15);
+}
+
+/* Step Number Badge */
+.how-step-number {
+    width: 24px;
+    height: 24px;
+    min-width: 24px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--primary-color), #a78bfa);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 1px;
+}
+
+.how-step-number span {
+    font-size: 11px;
+    font-weight: 700;
+    color: white;
+}
+
+/* Step Content: icon + text side by side */
+.how-step-content {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    flex: 1;
+    min-width: 0;
+}
+
+.how-step-icon {
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(167, 139, 250, 0.1));
+    border: 1px solid rgba(139, 92, 246, 0.2);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.how-step-icon svg {
+    width: 18px;
+    height: 18px;
+    stroke: var(--primary-color);
+}
+
+.how-step-text {
+    flex: 1;
+    min-width: 0;
+}
+
+.how-step-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-color);
+    margin: 0 0 3px 0;
+}
+
+.how-step-desc {
+    font-size: 12px;
+    color: var(--text-color);
+    opacity: 0.55;
+    margin: 0;
+    line-height: 1.5;
+}
+
+/* Output Type Badges Row */
+.output-types {
+    margin-top: 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+
+.output-types-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-color);
+    opacity: 0.5;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+}
+
+.output-types-list {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+}
+
+.output-type-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(167, 139, 250, 0.06));
+    border: 1px solid rgba(139, 92, 246, 0.18);
+    border-radius: 20px;
+    transition: all 0.2s ease;
+}
+
+.output-type-badge:hover {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.14), rgba(167, 139, 250, 0.1));
+    border-color: var(--primary-color);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(139, 92, 246, 0.15);
+}
+
+.output-type-badge svg {
+    width: 14px;
+    height: 14px;
+    stroke: var(--primary-color);
+}
+
+.output-type-badge span {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-color);
+    opacity: 0.75;
+}
