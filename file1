@@ -1,185 +1,26 @@
 import { Injectable } from '@angular/core';
-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { BehaviorSubject, Observable, throwError, Subject } from 'rxjs';
-import { catchError, tap } from 'rxjs/operators';
-import { Router } from '@angular/router';
-import { environment } from '../environments/environment';
-
-export interface User {
-  token: string;
-  is_admin: boolean;
-  user_name: string;
-}
-
-export interface AuthResponse {
-  token: string;
-  is_admin: boolean;
-  user_name: string;
-}
+import { Router, CanActivate, ActivatedRouteSnapshot, RouterStateSnapshot } from '@angular/router';
+import { AuthService } from '../services/auth.service';
 
 @Injectable({
   providedIn: 'root'
 })
-export class AuthService {
-  private apiUrl = environment.apiUrl;
-  private wsUrl = environment.wsUrl;
-  private ws: WebSocket | null = null;
-  private currentUserSubject: BehaviorSubject<User | null>;
-  public currentUser: Observable<User | null>;
-  private ssoErrorSubject = new Subject<string>();
-  public ssoError$ = this.ssoErrorSubject.asObservable();
-  
-  // Add overlay control
-  private isAuthenticatingSubject = new BehaviorSubject<boolean>(false);
-  public isAuthenticating$ = this.isAuthenticatingSubject.asObservable();
-
+export class AuthGuard implements CanActivate {
   constructor(
-    private http: HttpClient,
-    private router: Router
-  ) {
-    this.currentUserSubject = new BehaviorSubject<User | null>(null);
-    this.currentUser = this.currentUserSubject.asObservable();
-  }
+    private router: Router,
+    private authService: AuthService
+  ) {}
 
-  public get currentUserValue(): User | null {
-    return this.currentUserSubject.value;
-  }
-
-  // Initiate SSO login with WebSocket
-  initiateSSO(): Observable<any> {
-    return new Observable(observer => {
-      // Clear all localStorage data before starting SSO
-      localStorage.clear();
-      this.currentUserSubject.next(null);
-      
-      // Show overlay
-      this.isAuthenticatingSubject.next(true);
-      
-      // Create WebSocket connection
-      this.ws = new WebSocket(this.wsUrl);
-
-      this.ws.onopen = () => {
-        console.log('WebSocket connection opened');
-        
-        // Send initial message
-        const message = {
-          rqtype: environment.SSO.RQTYPE,
-          token: '',
-          data: environment.SSO.DATA
-        };
-        
-        this.ws?.send(JSON.stringify(message));
-      };
-
-      this.ws.onmessage = (event) => {
-        try {
-          const msg = JSON.parse(event.data);
-          
-          if (msg?.rpcode === 'RETURN_SUCCESS') {
-            // Success - parse the data and make SSO API call
-            const ssoInfo = JSON.parse(msg?.data);
-            const request = {
-              userInfo: ssoInfo.userInfo,
-              aeskey: ssoInfo.key
-            };
-            
-            this.performSSOLogin(request).subscribe({
-              next: (response) => {
-                observer.next(response);
-                observer.complete();
-                // Hide overlay after brief delay
-                setTimeout(() => {
-                  this.isAuthenticatingSubject.next(false);
-                }, 1000);
-              },
-              error: (error) => {
-                observer.error(error);
-                this.isAuthenticatingSubject.next(false);
-                this.closeWebSocket();
-              }
-            });
-          } else {
-            // SSO login failed
-            const errorMsg = 'SSO login failed';
-            this.ssoErrorSubject.next(errorMsg);
-            observer.error(new Error(errorMsg));
-            this.isAuthenticatingSubject.next(false);
-            this.closeWebSocket();
-          }
-        } catch (error) {
-          observer.error(error);
-          this.isAuthenticatingSubject.next(false);
-          this.closeWebSocket();
-        }
-      };
-
-      this.ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        observer.error(new Error('WebSocket connection error'));
-        this.isAuthenticatingSubject.next(false);
-        this.closeWebSocket();
-      };
-
-      this.ws.onclose = () => {
-        console.log('WebSocket connection closed');
-        // Trigger logout when WebSocket closes
-        this.logout();
-      };
-    });
-  }
-
-  // Perform SSO login API call
-  private performSSOLogin(request: any): Observable<AuthResponse> {
-    return this.http.post<AuthResponse>(`${this.apiUrl}/auth/sso/login`, request, {
-      withCredentials: true
-    }).pipe(
-      tap(response => {
-        // Map response to User object
-        const user: User = {
-          token: response.token,
-          is_admin: response.is_admin,
-          user_name: response.user_name
-        };
-        
-        // Store user in localStorage and update subject
-        localStorage.setItem('currentUser', JSON.stringify(user));
-        this.currentUserSubject.next(user);
-      }),
-      catchError(this.handleError)
-    );
-  }
-
-  // Close WebSocket connection
-  private closeWebSocket(): void {
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
+  canActivate(route: ActivatedRouteSnapshot, state: RouterStateSnapshot): boolean {
+    const currentUser = this.authService.currentUserValue;
+    
+    if (currentUser) {
+      // User is authenticated
+      return true;
     }
-  }
 
-  // Logout (client-side only)
-  logout(): void {
-    this.closeWebSocket();
-    localStorage.clear();
-    this.currentUserSubject.next(null);
-    this.isAuthenticatingSubject.next(false);
-    this.router.navigate(['/sso-connect']);
-  }
-
-  // Check if user is authenticated
-  isAuthenticated(): boolean {
-    return this.currentUserValue !== null;
-  }
-
-  private handleError(error: HttpErrorResponse) {
-    let errorMessage = 'An error occurred';
-    if (error.error instanceof ErrorEvent) {
-      errorMessage = `Error: ${error.error.message}`;
-    } else {
-      errorMessage = `Error Code: ${error.status}\nMessage: ${error.message}`;
-    }
-    console.error(errorMessage);
-    return throwError(() => new Error(errorMessage));
+    // Not authenticated - block access and return false
+    return false;
   }
 }
 
@@ -191,39 +32,58 @@ export class AuthService {
 
 
 
+ngOnInit(): void {
+  // Always attempt SSO login on page load/refresh
+  this.attemptAutoSSO();
 
-
-
-
-
-
-import { Component, OnInit, OnDestroy } from '@angular/core';
-import { AuthService } from '../services/auth.service';
-import { Subscription } from 'rxjs';
-
-@Component({
-  selector: 'app-sso-authenticating-overlay',
-  templateUrl: './sso-authenticating-overlay.component.html',
-  styleUrls: ['./sso-authenticating-overlay.component.css']
-})
-export class SsoAuthenticatingOverlayComponent implements OnInit, OnDestroy {
-  isAuthenticating: boolean = false;
-  private subscription?: Subscription;
-
-  constructor(private authService: AuthService) {}
-
-  ngOnInit(): void {
-    // Subscribe to authentication status from service
-    this.subscription = this.authService.isAuthenticating$.subscribe(
-      (isAuthenticating) => {
-        this.isAuthenticating = isAuthenticating;
-      }
-    );
+  // Load saved theme from localStorage
+  const savedTheme = localStorage.getItem('theme') as 'light' | 'dark';
+  if (savedTheme) {
+    this.currentTheme = savedTheme;
+    this.applyTheme(savedTheme);
   }
 
-  ngOnDestroy(): void {
-    if (this.subscription) {
-      this.subscription.unsubscribe();
+  // Load sidebar state from localStorage
+  const savedSidebarState = localStorage.getItem('sidebarCollapsed');
+  if (savedSidebarState !== null) {
+    this.isSidebarCollapsed = savedSidebarState === 'true';
+  }
+
+  // Subscribe to current user changes
+  this.authService.currentUser.subscribe(user => {
+    this.currentUser = user;
+    this.isAuthenticated = user !== null;
+    
+    // If user becomes authenticated and current route is blocked, navigate to content-analytics
+    if (user && this.router.url === '/') {
+      this.router.navigate(['/content-analytics']);
     }
-  }
+  });
+}
+
+// Attempt automatic SSO login
+private attemptAutoSSO(): void {
+  const currentUrl = this.router.url;
+  
+  this.authService.initiateSSO().subscribe({
+    next: (response) => {
+      console.log('Auto SSO login successful:', response);
+      this.isAuthenticated = true;
+      this.currentUser = response.user || this.authService.currentUserValue;
+      
+      // Navigate to intended URL or default to content-analytics
+      if (currentUrl === '/' || currentUrl === '/sso-connect') {
+        this.router.navigate(['/content-analytics']);
+      } else {
+        this.router.navigate([currentUrl]);
+      }
+    },
+    error: (error) => {
+      console.error('Auto SSO login failed:', error);
+      this.isAuthenticated = false;
+      this.currentUser = null;
+      // Redirect to SSO connect page on failure
+      this.router.navigate(['/sso-connect'], { replaceUrl: true });
+    }
+  });
 }
