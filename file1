@@ -1,69 +1,21 @@
-// Initiate SSO login with WebSocket
-initiateSSO(): Observable<any> {
-  return new Observable(observer => {
-    // Create WebSocket connection
-    this.ws = new WebSocket(this.wsUrl);
-
-    this.ws.onopen = () => {
-      console.log('WebSocket connection opened');
-      
-      // Send initial message
-      const message = {
-        rqtype: environment.SSO.RQTYPE,
-        token: '',
-        data: environment.SSO.DATA
-      };
-      
-      this.ws?.send(JSON.stringify(message));
-    };
-
-    this.ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        
-        if (msg?.rpcode === 'RETURN_SUCCESS') {
-          // Success - parse the data and make SSO API call
-          const ssoInfo = JSON.parse(msg?.data);
-          const request = {
-            userInfo: ssoInfo.userInfo,
-            aeskey: ssoInfo.key
-          };
-          
-          this.performSSOLogin(request).subscribe({
-            next: (response) => {
-              observer.next(response);
-              observer.complete();
-              this.closeWebSocket();
-            },
-            error: (error) => {
-              observer.error(error);
-              this.closeWebSocket();
-            }
-          });
-        } else {
-          // SSO login failed
-          const errorMsg = 'SSO login failed';
-          this.ssoErrorSubject.next(errorMsg);
-          observer.error(new Error(errorMsg));
-          this.closeWebSocket();
-        }
-      } catch (error) {
-        observer.error(error);
-        this.closeWebSocket();
-      }
-    };
-
-    this.ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-      observer.error(new Error('WebSocket connection error'));
-      this.closeWebSocket();
-    };
-
-    this.ws.onclose = () => {
-      console.log('WebSocket connection closed');
-    };
-  });
+export interface User {
+  token: string;
+  is_admin: boolean;
+  user_name: string;
 }
+
+export interface AuthResponse {
+  token: string;
+  is_admin: boolean;
+  user_name: string;
+}
+
+
+
+
+
+
+
 
 // Perform SSO login API call
 private performSSOLogin(request: any): Observable<AuthResponse> {
@@ -71,10 +23,45 @@ private performSSOLogin(request: any): Observable<AuthResponse> {
     withCredentials: true
   }).pipe(
     tap(response => {
+      // Map response to User object
+      const user: User = {
+        token: response.token,
+        is_admin: response.is_admin,
+        user_name: response.user_name
+      };
+      
       // Store user in localStorage and update subject
-      localStorage.setItem('currentUser', JSON.stringify(response.user));
-      this.currentUserSubject.next(response.user);
+      localStorage.setItem('currentUser', JSON.stringify(user));
+      this.currentUserSubject.next(user);
     }),
     catchError(this.handleError)
   );
+}
+
+
+
+
+
+
+
+
+
+
+// Get user initials for avatar
+getUserInitials(): string {
+  if (!this.currentUser) return 'U';
+  
+  const name = this.currentUser.user_name || 'User';
+  const parts = name.split(' ');
+  
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+  return name.substring(0, 2).toUpperCase();
+}
+
+// Get user display name
+getUserName(): string {
+  if (!this.currentUser) return 'User';
+  return this.currentUser.user_name || 'User';
 }
