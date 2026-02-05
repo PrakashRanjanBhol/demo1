@@ -1,97 +1,3 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
-import { Router } from '@angular/router';
-import { AuthService } from '../services/auth.service';
-import { Subscription } from 'rxjs';
-
-@Component({
-  selector: 'app-sso-connect',
-  templateUrl: './sso-connect.component.html',
-  styleUrls: ['./sso-connect.component.css']
-})
-export class SsoConnectComponent implements OnInit, OnDestroy {
-  isConnecting: boolean = false;
-  errorMessage: string = '';
-  private ssoSubscription?: Subscription;
-
-  constructor(
-    private authService: AuthService,
-    private router: Router
-  ) {}
-
-  ngOnInit(): void {
-    // Check if user is already authenticated
-    if (this.authService.isAuthenticated()) {
-      this.router.navigate(['/content-analytics']);
-    }
-  }
-
-  connectSSO(): void {
-    if (this.isConnecting) return;
-    
-    this.isConnecting = true;
-    this.errorMessage = '';
-
-    this.ssoSubscription = this.authService.initiateSSO().subscribe({
-      next: (response) => {
-        console.log('SSO login successful:', response);
-        this.isConnecting = false;
-        this.router.navigate(['/content-analytics']);
-      },
-      error: (error) => {
-        console.error('SSO login error:', error);
-        this.errorMessage = error.message || 'SSO authentication failed. Please try again.';
-        this.isConnecting = false;
-      }
-    });
-  }
-
-  ngOnDestroy(): void {
-    // Clean up subscription
-    if (this.ssoSubscription) {
-      this.ssoSubscription.unsubscribe();
-    }
-  }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-// src/environments/environment.ts
-export const environment = {
-  production: false,
-  apiUrl: 'http://localhost:3000/api', // Replace with your actual API base URL
-  wsUrl: 'ws://localhost:3000/ws', // Replace with your actual WebSocket URL
-  SSO: {
-    RQTYPE: 'YOUR_REQUEST_TYPE', // Replace with your actual request type
-    DATA: {} // Replace with your actual data object
-  }
-};
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { BehaviorSubject, Observable, throwError, Subject } from 'rxjs';
@@ -116,13 +22,11 @@ export interface AuthResponse {
   providedIn: 'root'
 })
 export class AuthService {
-  private apiUrl = environment.apiUrl; // Updated to use environment variable
-  private wsUrl = environment.wsUrl; // Updated to use environment variable
+  private apiUrl = environment.apiUrl;
+  private wsUrl = environment.wsUrl;
   private ws: WebSocket | null = null;
   private currentUserSubject: BehaviorSubject<User | null>;
   public currentUser: Observable<User | null>;
-  private authCheckCompleteSubject: BehaviorSubject<boolean>;
-  public authCheckComplete: Observable<boolean>;
   private ssoErrorSubject = new Subject<string>();
   public ssoError$ = this.ssoErrorSubject.asObservable();
 
@@ -130,34 +34,16 @@ export class AuthService {
     private http: HttpClient,
     private router: Router
   ) {
-    this.currentUserSubject = new BehaviorSubject<User | null>(null);
+    // Check for stored user in localStorage
+    const storedUser = localStorage.getItem('currentUser');
+    this.currentUserSubject = new BehaviorSubject<User | null>(
+      storedUser ? JSON.parse(storedUser) : null
+    );
     this.currentUser = this.currentUserSubject.asObservable();
-    this.authCheckCompleteSubject = new BehaviorSubject<boolean>(false);
-    this.authCheckComplete = this.authCheckCompleteSubject.asObservable();
   }
 
   public get currentUserValue(): User | null {
     return this.currentUserSubject.value;
-  }
-
-  public get isAuthCheckComplete(): boolean {
-    return this.authCheckCompleteSubject.value;
-  }
-
-  checkAuthStatus(): Observable<AuthResponse> {
-    return this.http.get<AuthResponse>(`${this.apiUrl}/auth/status`, {
-      withCredentials: true
-    }).pipe(
-      tap(response => {
-        this.currentUserSubject.next(response.user);
-        this.authCheckCompleteSubject.next(true);
-      }),
-      catchError((error: HttpErrorResponse) => {
-        this.currentUserSubject.next(null);
-        this.authCheckCompleteSubject.next(true);
-        return throwError(() => error);
-      })
-    );
   }
 
   // Initiate SSO login with WebSocket
@@ -233,8 +119,9 @@ export class AuthService {
       withCredentials: true
     }).pipe(
       tap(response => {
+        // Store user in localStorage and update subject
+        localStorage.setItem('currentUser', JSON.stringify(response.user));
         this.currentUserSubject.next(response.user);
-        this.authCheckCompleteSubject.next(true);
       }),
       catchError(this.handleError)
     );
@@ -248,19 +135,15 @@ export class AuthService {
     }
   }
 
-  logout(): Observable<any> {
-    this.closeWebSocket(); // Close any open WebSocket connections
-    return this.http.post(`${this.apiUrl}/auth/logout`, {}, {
-      withCredentials: true
-    }).pipe(
-      tap(() => {
-        this.currentUserSubject.next(null);
-        this.router.navigate(['/sso-connect']);
-      }),
-      catchError(this.handleError)
-    );
+  // Logout (client-side only)
+  logout(): void {
+    this.closeWebSocket();
+    localStorage.removeItem('currentUser');
+    this.currentUserSubject.next(null);
+    this.router.navigate(['/sso-connect']);
   }
 
+  // Check if user is authenticated
   isAuthenticated(): boolean {
     return this.currentUserValue !== null;
   }
@@ -275,4 +158,52 @@ export class AuthService {
     console.error(errorMessage);
     return throwError(() => new Error(errorMessage));
   }
+}
+
+
+
+
+
+
+
+
+
+
+ngOnInit(): void {
+  // Initialize authentication from localStorage
+  this.isAuthenticated = this.authService.isAuthenticated();
+  this.currentUser = this.authService.currentUserValue;
+
+  // If not authenticated, redirect to SSO connect
+  if (!this.isAuthenticated) {
+    this.router.navigate(['/sso-connect'], { replaceUrl: true });
+  }
+
+  // Load saved theme from localStorage
+  const savedTheme = localStorage.getItem('theme') as 'light' | 'dark';
+  if (savedTheme) {
+    this.currentTheme = savedTheme;
+    this.applyTheme(savedTheme);
+  }
+
+  // Load sidebar state from localStorage
+  const savedSidebarState = localStorage.getItem('sidebarCollapsed');
+  if (savedSidebarState !== null) {
+    this.isSidebarCollapsed = savedSidebarState === 'true';
+  }
+
+  // Subscribe to current user changes
+  this.authService.currentUser.subscribe(user => {
+    this.currentUser = user;
+    this.isAuthenticated = user !== null;
+  });
+}
+
+// Remove the checkAuthentication method - DELETE THIS
+
+// Update logout method
+logout(): void {
+  this.authService.logout();
+  this.isAuthenticated = false;
+  this.currentUser = null;
 }
