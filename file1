@@ -1,209 +1,54 @@
-import { Injectable } from '@angular/core';
-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { BehaviorSubject, Observable, throwError, Subject } from 'rxjs';
-import { catchError, tap } from 'rxjs/operators';
-import { Router } from '@angular/router';
-import { environment } from '../environments/environment';
+import { Component, OnInit, OnDestroy } from '@angular/core';
+import { AuthService } from '../services/auth.service';
+import { Router, NavigationEnd } from '@angular/router';
+import { Subscription } from 'rxjs';
+import { filter } from 'rxjs/operators';
 
-export interface User {
-  id: string;
-  email: string;
-  name: string;
-  avatar?: string;
-  role?: string;
-}
-
-export interface AuthResponse {
-  user: User;
-  token?: string;
-}
-
-@Injectable({
-  providedIn: 'root'
+@Component({
+  selector: 'app-sso-authenticating-overlay',
+  templateUrl: './sso-authenticating-overlay.component.html',
+  styleUrls: ['./sso-authenticating-overlay.component.css']
 })
-export class AuthService {
-  private apiUrl = environment.apiUrl;
-  private wsUrl = environment.wsUrl;
-  private ws: WebSocket | null = null;
-  private currentUserSubject: BehaviorSubject<User | null>;
-  public currentUser: Observable<User | null>;
-  private ssoErrorSubject = new Subject<string>();
-  public ssoError$ = this.ssoErrorSubject.asObservable();
+export class SsoAuthenticatingOverlayComponent implements OnInit, OnDestroy {
+  isAuthenticating: boolean = false;
+  private userSubscription?: Subscription;
+  private routerSubscription?: Subscription;
 
   constructor(
-    private http: HttpClient,
+    private authService: AuthService,
     private router: Router
-  ) {
-    // Check for stored user in localStorage
-    const storedUser = localStorage.getItem('currentUser');
-    this.currentUserSubject = new BehaviorSubject<User | null>(
-      storedUser ? JSON.parse(storedUser) : null
-    );
-    this.currentUser = this.currentUserSubject.asObservable();
-  }
+  ) {}
 
-  public get currentUserValue(): User | null {
-    return this.currentUserSubject.value;
-  }
-
-  // Initiate SSO login with WebSocket
-  initiateSSO(): Observable<any> {
-    return new Observable(observer => {
-      // Create WebSocket connection
-      this.ws = new WebSocket(this.wsUrl);
-
-      this.ws.onopen = () => {
-        console.log('WebSocket connection opened');
-        
-        // Send initial message
-        const message = {
-          rqtype: environment.SSO.RQTYPE,
-          token: '',
-          data: environment.SSO.DATA
-        };
-        
-        this.ws?.send(JSON.stringify(message));
-      };
-
-      this.ws.onmessage = (event) => {
-        try {
-          const msg = JSON.parse(event.data);
-          
-          if (msg?.recode === 'RETURN_SUCCESS') {
-            // Success - make SSO API call
-            const ssoInfo = msg?.data;
-            this.performSSOLogin(ssoInfo).subscribe({
-              next: (response) => {
-                observer.next(response);
-                observer.complete();
-                this.closeWebSocket();
-              },
-              error: (error) => {
-                observer.error(error);
-                this.closeWebSocket();
-              }
-            });
-          } else {
-            // SSO login failed
-            const errorMsg = 'SSO login failed';
-            this.ssoErrorSubject.next(errorMsg);
-            observer.error(new Error(errorMsg));
-            this.closeWebSocket();
-          }
-        } catch (error) {
-          observer.error(error);
-          this.closeWebSocket();
+  ngOnInit(): void {
+    // Show overlay only when user authentication changes
+    this.userSubscription = this.authService.currentUser.subscribe(
+      (user) => {
+        if (user) {
+          // User logged in successfully, show overlay briefly then hide
+          this.isAuthenticating = true;
+          setTimeout(() => {
+            this.isAuthenticating = false;
+          }, 1000);
         }
-      };
+      }
+    );
 
-      this.ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        observer.error(new Error('WebSocket connection error'));
-        this.closeWebSocket();
-      };
-
-      this.ws.onclose = () => {
-        console.log('WebSocket connection closed');
-      };
+    // Hide overlay when navigating to sso-connect page
+    this.routerSubscription = this.router.events.pipe(
+      filter(event => event instanceof NavigationEnd)
+    ).subscribe((event: any) => {
+      if (event.url.includes('/sso-connect')) {
+        this.isAuthenticating = false;
+      }
     });
   }
 
-  // Perform SSO login API call
-  private performSSOLogin(ssoInfo: any): Observable<AuthResponse> {
-    const payload = {
-      userInfo: ssoInfo.userInfo,
-      aeskey: ssoInfo.key
-    };
-
-    return this.http.post<AuthResponse>(`${this.apiUrl}/auth/sso/login`, payload, {
-      withCredentials: true
-    }).pipe(
-      tap(response => {
-        // Store user in localStorage and update subject
-        localStorage.setItem('currentUser', JSON.stringify(response.user));
-        this.currentUserSubject.next(response.user);
-      }),
-      catchError(this.handleError)
-    );
-  }
-
-  // Close WebSocket connection
-  private closeWebSocket(): void {
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
+  ngOnDestroy(): void {
+    if (this.userSubscription) {
+      this.userSubscription.unsubscribe();
+    }
+    if (this.routerSubscription) {
+      this.routerSubscription.unsubscribe();
     }
   }
-
-  // Logout (client-side only)
-  logout(): void {
-    this.closeWebSocket();
-    localStorage.removeItem('currentUser');
-    this.currentUserSubject.next(null);
-    this.router.navigate(['/sso-connect']);
-  }
-
-  // Check if user is authenticated
-  isAuthenticated(): boolean {
-    return this.currentUserValue !== null;
-  }
-
-  private handleError(error: HttpErrorResponse) {
-    let errorMessage = 'An error occurred';
-    if (error.error instanceof ErrorEvent) {
-      errorMessage = `Error: ${error.error.message}`;
-    } else {
-      errorMessage = `Error Code: ${error.status}\nMessage: ${error.message}`;
-    }
-    console.error(errorMessage);
-    return throwError(() => new Error(errorMessage));
-  }
-}
-
-
-
-
-
-
-
-
-
-
-ngOnInit(): void {
-  // Initialize authentication from localStorage
-  this.isAuthenticated = this.authService.isAuthenticated();
-  this.currentUser = this.authService.currentUserValue;
-
-  // If not authenticated, redirect to SSO connect
-  if (!this.isAuthenticated) {
-    this.router.navigate(['/sso-connect'], { replaceUrl: true });
-  }
-
-  // Load saved theme from localStorage
-  const savedTheme = localStorage.getItem('theme') as 'light' | 'dark';
-  if (savedTheme) {
-    this.currentTheme = savedTheme;
-    this.applyTheme(savedTheme);
-  }
-
-  // Load sidebar state from localStorage
-  const savedSidebarState = localStorage.getItem('sidebarCollapsed');
-  if (savedSidebarState !== null) {
-    this.isSidebarCollapsed = savedSidebarState === 'true';
-  }
-
-  // Subscribe to current user changes
-  this.authService.currentUser.subscribe(user => {
-    this.currentUser = user;
-    this.isAuthenticated = user !== null;
-  });
-}
-
-// Remove the checkAuthentication method - DELETE THIS
-
-// Update logout method
-logout(): void {
-  this.authService.logout();
-  this.isAuthenticated = false;
-  this.currentUser = null;
 }
