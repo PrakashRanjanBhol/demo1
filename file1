@@ -1,43 +1,227 @@
-/* SSO Connect Button */
-.sso-connect-btn {
-    width: auto;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 10px 20px; /* Reduced from 12px 24px */
-    background: linear-gradient(135deg, #8b5cf6, #a78bfa);
-    border: none;
-    border-radius: 12px;
-    font-size: 14px; /* Reduced from 15px */
-    font-weight: 600;
-    color: white;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4);
-    position: relative;
-    overflow: hidden;
+ngOnInit(): void {
+  // Check if user is already authenticated from localStorage
+  this.isAuthenticated = this.authService.isAuthenticated();
+  this.currentUser = this.authService.currentUserValue;
+
+  // If not authenticated, attempt automatic SSO login
+  if (!this.isAuthenticated) {
+    this.attemptAutoSSO();
+  }
+
+  // Load saved theme from localStorage
+  const savedTheme = localStorage.getItem('theme') as 'light' | 'dark';
+  if (savedTheme) {
+    this.currentTheme = savedTheme;
+    this.applyTheme(savedTheme);
+  }
+
+  // Load sidebar state from localStorage
+  const savedSidebarState = localStorage.getItem('sidebarCollapsed');
+  if (savedSidebarState !== null) {
+    this.isSidebarCollapsed = savedSidebarState === 'true';
+  }
+
+  // Subscribe to current user changes
+  this.authService.currentUser.subscribe(user => {
+    this.currentUser = user;
+    this.isAuthenticated = user !== null;
+  });
 }
 
-.sso-btn-icon {
-    width: 18px; /* Reduced from 20px */
-    height: 18px; /* Reduced from 20px */
-    display: flex;
-    align-items: center;
-    justify-content: center;
+// Attempt automatic SSO login
+private attemptAutoSSO(): void {
+  this.authService.initiateSSO().subscribe({
+    next: (response) => {
+      console.log('Auto SSO login successful:', response);
+      this.isAuthenticated = true;
+      this.currentUser = response.user || this.authService.currentUserValue;
+      // User will stay on whatever URL they entered
+    },
+    error: (error) => {
+      console.error('Auto SSO login failed:', error);
+      this.isAuthenticated = false;
+      this.currentUser = null;
+      // Redirect to SSO connect page on failure
+      this.router.navigate(['/sso-connect'], { replaceUrl: true });
+    }
+  });
 }
 
-.sso-btn-icon svg {
-    width: 18px; /* Reduced from 20px */
-    height: 18px; /* Reduced from 20px */
+
+
+
+
+
+
+
+
+
+
+import { Injectable } from '@angular/core';
+import { Router, CanActivate, ActivatedRouteSnapshot, RouterStateSnapshot } from '@angular/router';
+import { AuthService } from './auth.service';
+
+@Injectable({
+  providedIn: 'root'
+})
+export class AuthGuard implements CanActivate {
+  constructor(
+    private router: Router,
+    private authService: AuthService
+  ) {}
+
+  canActivate(route: ActivatedRouteSnapshot, state: RouterStateSnapshot): boolean {
+    const currentUser = this.authService.currentUserValue;
+    
+    if (currentUser) {
+      // User is authenticated
+      return true;
+    }
+
+    // Not authenticated - allow access temporarily while auto SSO is in progress
+    // app.component will handle redirect to /sso-connect if auto SSO fails
+    return true;
+  }
 }
 
-/* Spinner */
-.spinner {
-    width: 16px; /* Reduced from 20px */
-    height: 16px; /* Reduced from 20px */
-    border: 3px solid rgba(255, 255, 255, 0.3);
-    border-top-color: white;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
+
+
+
+
+
+
+
+
+
+
+
+
+
+import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Router } from '@angular/router';
+import { AuthService } from '../services/auth.service';
+import { Subscription } from 'rxjs';
+
+@Component({
+  selector: 'app-sso-connect',
+  templateUrl: './sso-connect.component.html',
+  styleUrls: ['./sso-connect.component.css']
+})
+export class SsoConnectComponent implements OnInit, OnDestroy {
+  isConnecting: boolean = false;
+  errorMessage: string = 'SSO authentication failed. Please try again.';
+  private ssoSubscription?: Subscription;
+
+  constructor(
+    private authService: AuthService,
+    private router: Router
+  ) {}
+
+  ngOnInit(): void {
+    // Check if user is already authenticated
+    if (this.authService.isAuthenticated()) {
+      this.router.navigate(['/content-analytics']);
+    }
+  }
+
+  // Manual retry for SSO connection
+  connectSSO(): void {
+    if (this.isConnecting) return;
+    
+    this.isConnecting = true;
+    this.errorMessage = '';
+
+    this.ssoSubscription = this.authService.initiateSSO().subscribe({
+      next: (response) => {
+        console.log('SSO login successful:', response);
+        this.isConnecting = false;
+        this.router.navigate(['/content-analytics']);
+      },
+      error: (error) => {
+        console.error('SSO login error:', error);
+        this.errorMessage = error.message || 'SSO authentication failed. Please try again.';
+        this.isConnecting = false;
+      }
+    });
+  }
+
+  ngOnDestroy(): void {
+    // Clean up subscription
+    if (this.ssoSubscription) {
+      this.ssoSubscription.unsubscribe();
+    }
+  }
+}
+
+
+
+
+
+
+
+
+
+import { Component, OnInit, OnDestroy } from '@angular/core';
+import { AuthService } from '../services/auth.service';
+import { Router, NavigationEnd } from '@angular/router';
+import { Subscription } from 'rxjs';
+import { filter } from 'rxjs/operators';
+
+@Component({
+  selector: 'app-sso-authenticating-overlay',
+  templateUrl: './sso-authenticating-overlay.component.html',
+  styleUrls: ['./sso-authenticating-overlay.component.css']
+})
+export class SsoAuthenticatingOverlayComponent implements OnInit, OnDestroy {
+  isAuthenticating: boolean = false;
+  private userSubscription?: Subscription;
+  private routerSubscription?: Subscription;
+  private initialCheckDone: boolean = false;
+
+  constructor(
+    private authService: AuthService,
+    private router: Router
+  ) {}
+
+  ngOnInit(): void {
+    // Show overlay initially if user is not authenticated (auto SSO in progress)
+    if (!this.authService.isAuthenticated()) {
+      this.isAuthenticating = true;
+    }
+
+    // Listen for authentication success
+    this.userSubscription = this.authService.currentUser.subscribe(
+      (user) => {
+        if (user) {
+          // User logged in successfully, show overlay briefly then hide
+          this.isAuthenticating = true;
+          setTimeout(() => {
+            this.isAuthenticating = false;
+          }, 1000);
+        } else if (this.initialCheckDone) {
+          // Authentication failed, hide overlay
+          this.isAuthenticating = false;
+        }
+        this.initialCheckDone = true;
+      }
+    );
+
+    // Hide overlay when navigating to sso-connect page
+    this.routerSubscription = this.router.events.pipe(
+      filter(event => event instanceof NavigationEnd)
+    ).subscribe((event: any) => {
+      if (event.url.includes('/sso-connect')) {
+        this.isAuthenticating = false;
+      }
+    });
+  }
+
+  ngOnDestroy(): void {
+    if (this.userSubscription) {
+      this.userSubscription.unsubscribe();
+    }
+    if (this.routerSubscription) {
+      this.routerSubscription.unsubscribe();
+    }
+  }
 }
