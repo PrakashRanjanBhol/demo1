@@ -1,72 +1,113 @@
-// Initiate SSO login with WebSocket
-initiateSSO(): Observable<any> {
-  return new Observable(observer => {
-    // Clear all localStorage data before starting SSO
-    localStorage.clear();
-    this.currentUserSubject.next(null);
+import { Component, OnInit } from '@angular/core';
+import { Router } from '@angular/router';
+import { AuthService } from '../services/auth.service';
+
+@Component({
+  selector: 'app-sso-connect',
+  templateUrl: './sso-connect.component.html',
+  styleUrls: ['./sso-connect.component.css']
+})
+export class SsoConnectComponent implements OnInit {
+  errorMessage: string = '';
+  showErrorPage: boolean = false;
+
+  constructor(
+    private authService: AuthService,
+    private router: Router
+  ) {}
+
+  ngOnInit(): void {
+    // Always attempt SSO login when this page loads
+    this.attemptSSO();
+  }
+
+  private attemptSSO(): void {
+    this.showErrorPage = false;
     
-    // Create WebSocket connection
-    this.ws = new WebSocket(this.wsUrl);
-
-    this.ws.onopen = () => {
-      console.log('WebSocket connection opened');
-      
-      // Send initial message
-      const message = {
-        rqtype: environment.SSO.RQTYPE,
-        token: '',
-        data: environment.SSO.DATA
-      };
-      
-      this.ws?.send(JSON.stringify(message));
-    };
-
-    this.ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        
-        if (msg?.rpcode === 'RETURN_SUCCESS') {
-          // Success - parse the data and make SSO API call
-          const ssoInfo = JSON.parse(msg?.data);
-          const request = {
-            userInfo: ssoInfo.userInfo,
-            aeskey: ssoInfo.key
-          };
-          
-          this.performSSOLogin(request).subscribe({
-            next: (response) => {
-              observer.next(response);
-              observer.complete();
-              // WebSocket connection stays open
-            },
-            error: (error) => {
-              observer.error(error);
-              this.closeWebSocket();
-            }
-          });
-        } else {
-          // SSO login failed
-          const errorMsg = 'SSO login failed';
-          this.ssoErrorSubject.next(errorMsg);
-          observer.error(new Error(errorMsg));
-          this.closeWebSocket();
-        }
-      } catch (error) {
-        observer.error(error);
-        this.closeWebSocket();
+    this.authService.initiateSSO().subscribe({
+      next: (response) => {
+        console.log('SSO login successful:', response);
+        // Redirect to content-analytics on success
+        this.router.navigate(['/content-analytics']);
+      },
+      error: (error) => {
+        console.error('SSO login failed:', error);
+        this.errorMessage = error.message || 'SSO authentication failed. Please try again.';
+        // Show error page
+        this.showErrorPage = true;
       }
-    };
+    });
+  }
 
-    this.ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-      observer.error(new Error('WebSocket connection error'));
-      this.closeWebSocket();
-    };
-
-    this.ws.onclose = () => {
-      console.log('WebSocket connection closed');
-      // Trigger logout when WebSocket closes
-      this.logout();
-    };
-  });
+  // Redirect to login URL
+  redirectToLogin(): void {
+    window.location.href = environment.loginUrl;
+  }
 }
+
+
+
+
+
+
+
+
+<!-- sso-connect.component.html -->
+<div class="sso-connect-container" *ngIf="showErrorPage">
+    <div class="sso-connect-card">
+        <!-- Error Icon -->
+        <div class="error-icon-wrapper">
+            <div class="error-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                </svg>
+            </div>
+        </div>
+
+        <!-- Error Message -->
+        <div class="error-section">
+            <h2 class="error-title">Authentication Failed</h2>
+            <p class="error-subtitle">We couldn't authenticate your account. Please try again.</p>
+        </div>
+
+        <!-- Error Details -->
+        <div class="error-details" *ngIf="errorMessage">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+            </svg>
+            <span>{{ errorMessage }}</span>
+        </div>
+
+        <!-- Login Button -->
+        <button class="login-btn" (click)="redirectToLogin()">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+            </svg>
+            <span>Login to App</span>
+        </button>
+
+        <!-- Help Section -->
+        <div class="help-section">
+            <div class="help-card">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+                </svg>
+                <div class="help-content">
+                    <h3>Need Assistance?</h3>
+                    <p>Contact your IT administrator for help</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- App Info -->
+        <div class="app-info">
+            <div class="app-logo">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                        d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
+                </svg>
+                <span>Content Analytics</span>
+            </div>
+        </div>
+    </div>
+</div>
