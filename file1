@@ -1,7 +1,101 @@
+import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Router } from '@angular/router';
+import { AuthService } from '../services/auth.service';
+import { Subscription } from 'rxjs';
+
+@Component({
+  selector: 'app-sso-connect',
+  templateUrl: './sso-connect.component.html',
+  styleUrls: ['./sso-connect.component.css']
+})
+export class SsoConnectComponent implements OnInit, OnDestroy {
+  isConnecting: boolean = false;
+  errorMessage: string = '';
+  private ssoSubscription?: Subscription;
+
+  constructor(
+    private authService: AuthService,
+    private router: Router
+  ) {}
+
+  ngOnInit(): void {
+    // Check if user is already authenticated
+    if (this.authService.isAuthenticated()) {
+      this.router.navigate(['/content-analytics']);
+    }
+  }
+
+  connectSSO(): void {
+    if (this.isConnecting) return;
+    
+    this.isConnecting = true;
+    this.errorMessage = '';
+
+    this.ssoSubscription = this.authService.initiateSSO().subscribe({
+      next: (response) => {
+        console.log('SSO login successful:', response);
+        this.isConnecting = false;
+        this.router.navigate(['/content-analytics']);
+      },
+      error: (error) => {
+        console.error('SSO login error:', error);
+        this.errorMessage = error.message || 'SSO authentication failed. Please try again.';
+        this.isConnecting = false;
+      }
+    });
+  }
+
+  ngOnDestroy(): void {
+    // Clean up subscription
+    if (this.ssoSubscription) {
+      this.ssoSubscription.unsubscribe();
+    }
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+// src/environments/environment.ts
+export const environment = {
+  production: false,
+  apiUrl: 'http://localhost:3000/api', // Replace with your actual API base URL
+  wsUrl: 'ws://localhost:3000/ws', // Replace with your actual WebSocket URL
+  SSO: {
+    RQTYPE: 'YOUR_REQUEST_TYPE', // Replace with your actual request type
+    DATA: {} // Replace with your actual data object
+  }
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { BehaviorSubject, Observable, throwError, Subject } from 'rxjs';
-import { catchError, map, tap } from 'rxjs/operators';
+import { catchError, tap } from 'rxjs/operators';
 import { Router } from '@angular/router';
 import { environment } from '../environments/environment';
 
@@ -22,8 +116,8 @@ export interface AuthResponse {
   providedIn: 'root'
 })
 export class AuthService {
-  private apiUrl = 'YOUR_API_BASE_URL';
-  private wsUrl = 'YOUR_WEBSOCKET_URL'; // Add your WebSocket URL
+  private apiUrl = environment.apiUrl; // Updated to use environment variable
+  private wsUrl = environment.wsUrl; // Updated to use environment variable
   private ws: WebSocket | null = null;
   private currentUserSubject: BehaviorSubject<User | null>;
   public currentUser: Observable<User | null>;
@@ -154,19 +248,6 @@ export class AuthService {
     }
   }
 
-  handleSSOCallback(code: string): Observable<AuthResponse> {
-    return this.http.post<AuthResponse>(`${this.apiUrl}/auth/sso/callback`, 
-      { code },
-      { withCredentials: true }
-    ).pipe(
-      tap(response => {
-        this.currentUserSubject.next(response.user);
-        this.authCheckCompleteSubject.next(true);
-      }),
-      catchError(this.handleError)
-    );
-  }
-
   logout(): Observable<any> {
     this.closeWebSocket(); // Close any open WebSocket connections
     return this.http.post(`${this.apiUrl}/auth/logout`, {}, {
@@ -195,52 +276,3 @@ export class AuthService {
     return throwError(() => new Error(errorMessage));
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-connectSSO(): void {
-  if (this.isConnecting) return;
-  
-  this.isConnecting = true;
-  this.errorMessage = '';
-
-  this.authService.initiateSSO().subscribe({
-    next: (response) => {
-      console.log('SSO login successful:', response);
-      this.isConnecting = false;
-      this.router.navigate(['/content-analytics']);
-    },
-    error: (error) => {
-      console.error('SSO login error:', error);
-      this.errorMessage = error.message || 'SSO authentication failed. Please try again.';
-      this.isConnecting = false;
-    }
-  });
-}
-
-
-
-
-
-
-
-
-
-
-
-export const environment = {
-  production: false,
-  SSO: {
-    RQTYPE: 'YOUR_REQUEST_TYPE', // Replace with your actual request type
-    DATA: {} // Replace with your actual data object
-  }
-};
