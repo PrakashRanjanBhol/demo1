@@ -1,963 +1,4 @@
-// auth.service.ts
-import { Injectable } from '@angular/core';
-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { BehaviorSubject, Observable, throwError } from 'rxjs';
-import { catchError, map, tap } from 'rxjs/operators';
-import { Router } from '@angular/router';
-
-export interface User {
-  id: string;
-  email: string;
-  name: string;
-  avatar?: string;
-  role?: string;
-}
-
-export interface AuthResponse {
-  user: User;
-  token?: string;
-}
-
-@Injectable({
-  providedIn: 'root'
-})
-export class AuthService {
-  private apiUrl = 'YOUR_API_BASE_URL'; // Replace with your actual API URL
-  private currentUserSubject: BehaviorSubject<User | null>;
-  public currentUser: Observable<User | null>;
-  private authCheckCompleteSubject: BehaviorSubject<boolean>;
-  public authCheckComplete: Observable<boolean>;
-
-  constructor(
-    private http: HttpClient,
-    private router: Router
-  ) {
-    this.currentUserSubject = new BehaviorSubject<User | null>(null);
-    this.currentUser = this.currentUserSubject.asObservable();
-    this.authCheckCompleteSubject = new BehaviorSubject<boolean>(false);
-    this.authCheckComplete = this.authCheckCompleteSubject.asObservable();
-  }
-
-  public get currentUserValue(): User | null {
-    return this.currentUserSubject.value;
-  }
-
-  public get isAuthCheckComplete(): boolean {
-    return this.authCheckCompleteSubject.value;
-  }
-
-  // Check authentication status on app load
-  checkAuthStatus(): Observable<AuthResponse> {
-    return this.http.get<AuthResponse>(`${this.apiUrl}/auth/status`, {
-      withCredentials: true // Important for SSO cookies
-    }).pipe(
-      tap(response => {
-        this.currentUserSubject.next(response.user);
-        this.authCheckCompleteSubject.next(true);
-      }),
-      catchError((error: HttpErrorResponse) => {
-        this.currentUserSubject.next(null);
-        this.authCheckCompleteSubject.next(true);
-        return throwError(() => error);
-      })
-    );
-  }
-
-  // Initiate SSO login
-  initiateSSO(): void {
-    // Redirect to your SSO provider
-    window.location.href = `${this.apiUrl}/auth/sso/login`;
-  }
-
-  // Handle SSO callback
-  handleSSOCallback(code: string): Observable<AuthResponse> {
-    return this.http.post<AuthResponse>(`${this.apiUrl}/auth/sso/callback`, 
-      { code },
-      { withCredentials: true }
-    ).pipe(
-      tap(response => {
-        this.currentUserSubject.next(response.user);
-        this.authCheckCompleteSubject.next(true);
-      }),
-      catchError(this.handleError)
-    );
-  }
-
-  // Logout
-  logout(): Observable<any> {
-    return this.http.post(`${this.apiUrl}/auth/logout`, {}, {
-      withCredentials: true
-    }).pipe(
-      tap(() => {
-        this.currentUserSubject.next(null);
-        this.router.navigate(['/sso-connect']);
-      }),
-      catchError(this.handleError)
-    );
-  }
-
-  // Check if user is authenticated
-  isAuthenticated(): boolean {
-    return this.currentUserValue !== null;
-  }
-
-  private handleError(error: HttpErrorResponse) {
-    let errorMessage = 'An error occurred';
-    if (error.error instanceof ErrorEvent) {
-      // Client-side error
-      errorMessage = `Error: ${error.error.message}`;
-    } else {
-      // Server-side error
-      errorMessage = `Error Code: ${error.status}\nMessage: ${error.message}`;
-    }
-    console.error(errorMessage);
-    return throwError(() => new Error(errorMessage));
-  }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-// auth.guard.ts
-import { Injectable } from '@angular/core';
-import { Router, CanActivate, ActivatedRouteSnapshot, RouterStateSnapshot } from '@angular/router';
-import { AuthService } from './auth.service';
-
-@Injectable({
-  providedIn: 'root'
-})
-export class AuthGuard implements CanActivate {
-  constructor(
-    private router: Router,
-    private authService: AuthService
-  ) {}
-
-  canActivate(route: ActivatedRouteSnapshot, state: RouterStateSnapshot): boolean {
-    const currentUser = this.authService.currentUserValue;
-    
-    if (currentUser) {
-      // User is authenticated
-      return true;
-    }
-
-    // Not authenticated, redirect to SSO connect page
-    this.router.navigate(['/sso-connect'], { 
-      queryParams: { returnUrl: state.url } 
-    });
-    return false;
-  }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// sso-connect.component.ts
-import { Component, OnInit } from '@angular/core';
-import { ActivatedRoute, Router } from '@angular/router';
-import { AuthService } from '../services/auth.service';
-
-@Component({
-  selector: 'app-sso-connect',
-  templateUrl: './sso-connect.component.html',
-  styleUrls: ['./sso-connect.component.css']
-})
-export class SsoConnectComponent implements OnInit {
-  isConnecting: boolean = false;
-  errorMessage: string = '';
-  returnUrl: string = '/';
-
-  constructor(
-    private authService: AuthService,
-    private router: Router,
-    private route: ActivatedRoute
-  ) {}
-
-  ngOnInit(): void {
-    // Get return URL from query parameters
-    this.returnUrl = this.route.snapshot.queryParams['returnUrl'] || '/';
-
-    // Check if we have an auth code in the URL (SSO callback)
-    const code = this.route.snapshot.queryParams['code'];
-    if (code) {
-      this.handleSSOCallback(code);
-    }
-  }
-
-  connectSSO(): void {
-    this.isConnecting = true;
-    this.errorMessage = '';
-    
-    try {
-      // Initiate SSO flow
-      this.authService.initiateSSO();
-    } catch (error) {
-      this.isConnecting = false;
-      this.errorMessage = 'Failed to initiate SSO connection. Please try again.';
-    }
-  }
-
-  private handleSSOCallback(code: string): void {
-    this.isConnecting = true;
-    this.authService.handleSSOCallback(code).subscribe({
-      next: (response) => {
-        // Successfully authenticated, redirect to return URL
-        this.router.navigate([this.returnUrl]);
-      },
-      error: (error) => {
-        this.isConnecting = false;
-        this.errorMessage = 'Authentication failed. Please try again.';
-        console.error('SSO callback error:', error);
-      }
-    });
-  }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<!-- sso-connect.component.html -->
-<div class="sso-connect-container">
-    <div class="sso-connect-card">
-        <!-- Logo/Branding -->
-        <div class="sso-logo">
-            <div class="logo-icon">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-                </svg>
-            </div>
-            <h1 class="app-title">Content Analytics</h1>
-        </div>
-
-        <!-- Welcome Message -->
-        <div class="welcome-section">
-            <h2 class="welcome-title">Welcome Back!</h2>
-            <p class="welcome-subtitle">Sign in with your organization account to continue</p>
-        </div>
-
-        <!-- SSO Connect Button -->
-        <button class="sso-connect-btn" (click)="connectSSO()" [disabled]="isConnecting">
-            <div class="sso-btn-icon" *ngIf="!isConnecting">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
-                </svg>
-            </div>
-            <div class="spinner" *ngIf="isConnecting"></div>
-            <span>{{ isConnecting ? 'Connecting...' : 'Sign in with SSO' }}</span>
-        </button>
-
-        <!-- Error Message -->
-        <div class="error-message" *ngIf="errorMessage">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
-            </svg>
-            <span>{{ errorMessage }}</span>
-        </div>
-
-        <!-- Help Text -->
-        <div class="help-text">
-            <p>Need help? Contact your IT administrator</p>
-        </div>
-    </div>
-
-    <!-- Background Decoration -->
-    <div class="background-decoration">
-        <div class="decoration-circle circle-1"></div>
-        <div class="decoration-circle circle-2"></div>
-        <div class="decoration-circle circle-3"></div>
-    </div>
-</div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* sso-connect.component.css */
-
-.sso-connect-container {
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    padding: 20px;
-    position: relative;
-    overflow: hidden;
-}
-
-/* Background Decoration */
-.background-decoration {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    pointer-events: none;
-    overflow: hidden;
-}
-
-.decoration-circle {
-    position: absolute;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.1);
-    animation: float 20s infinite ease-in-out;
-}
-
-.circle-1 {
-    width: 300px;
-    height: 300px;
-    top: -150px;
-    left: -150px;
-    animation-delay: 0s;
-}
-
-.circle-2 {
-    width: 400px;
-    height: 400px;
-    bottom: -200px;
-    right: -200px;
-    animation-delay: -7s;
-}
-
-.circle-3 {
-    width: 200px;
-    height: 200px;
-    top: 50%;
-    left: 50%;
-    animation-delay: -14s;
-}
-
-@keyframes float {
-    0%, 100% {
-        transform: translate(0, 0) scale(1);
-    }
-    33% {
-        transform: translate(30px, -30px) scale(1.1);
-    }
-    66% {
-        transform: translate(-20px, 20px) scale(0.9);
-    }
-}
-
-/* SSO Connect Card */
-.sso-connect-card {
-    background: white;
-    border-radius: 20px;
-    padding: 48px;
-    width: 100%;
-    max-width: 450px;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-    position: relative;
-    z-index: 1;
-    animation: slideIn 0.5s ease-out;
-}
-
-@keyframes slideIn {
-    from {
-        opacity: 0;
-        transform: translateY(30px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-/* Logo Section */
-.sso-logo {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    margin-bottom: 32px;
-}
-
-.logo-icon {
-    width: 80px;
-    height: 80px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: linear-gradient(135deg, #8b5cf6, #a78bfa);
-    border-radius: 20px;
-    margin-bottom: 16px;
-    box-shadow: 0 8px 24px rgba(139, 92, 246, 0.3);
-}
-
-.logo-icon svg {
-    width: 40px;
-    height: 40px;
-    color: white;
-}
-
-.app-title {
-    font-size: 28px;
-    font-weight: 700;
-    color: #1f2937;
-    margin: 0;
-    text-align: center;
-}
-
-/* Welcome Section */
-.welcome-section {
-    text-align: center;
-    margin-bottom: 32px;
-}
-
-.welcome-title {
-    font-size: 24px;
-    font-weight: 600;
-    color: #1f2937;
-    margin: 0 0 8px 0;
-}
-
-.welcome-subtitle {
-    font-size: 14px;
-    color: #6b7280;
-    margin: 0;
-}
-
-/* SSO Connect Button */
-.sso-connect-btn {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    padding: 16px 32px;
-    background: linear-gradient(135deg, #8b5cf6, #a78bfa);
-    border: none;
-    border-radius: 12px;
-    font-size: 16px;
-    font-weight: 600;
-    color: white;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4);
-    position: relative;
-    overflow: hidden;
-}
-
-.sso-connect-btn::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
-    transition: left 0.5s ease;
-}
-
-.sso-connect-btn:hover:not(:disabled)::before {
-    left: 100%;
-}
-
-.sso-connect-btn:hover:not(:disabled) {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 16px rgba(139, 92, 246, 0.5);
-}
-
-.sso-connect-btn:active:not(:disabled) {
-    transform: translateY(0);
-}
-
-.sso-connect-btn:disabled {
-    opacity: 0.7;
-    cursor: not-allowed;
-}
-
-.sso-btn-icon {
-    width: 24px;
-    height: 24px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.sso-btn-icon svg {
-    width: 24px;
-    height: 24px;
-}
-
-/* Spinner */
-.spinner {
-    width: 20px;
-    height: 20px;
-    border: 3px solid rgba(255, 255, 255, 0.3);
-    border-top-color: white;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-    to {
-        transform: rotate(360deg);
-    }
-}
-
-/* Error Message */
-.error-message {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 12px 16px;
-    background: #fef2f2;
-    border: 1px solid #fecaca;
-    border-radius: 8px;
-    margin-top: 16px;
-    color: #dc2626;
-    font-size: 14px;
-    animation: shake 0.5s ease;
-}
-
-.error-message svg {
-    width: 20px;
-    height: 20px;
-    flex-shrink: 0;
-}
-
-@keyframes shake {
-    0%, 100% {
-        transform: translateX(0);
-    }
-    25% {
-        transform: translateX(-10px);
-    }
-    75% {
-        transform: translateX(10px);
-    }
-}
-
-/* Help Text */
-.help-text {
-    text-align: center;
-    margin-top: 24px;
-}
-
-.help-text p {
-    font-size: 13px;
-    color: #9ca3af;
-    margin: 0;
-}
-
-/* Responsive */
-@media (max-width: 640px) {
-    .sso-connect-card {
-        padding: 32px 24px;
-    }
-
-    .logo-icon {
-        width: 64px;
-        height: 64px;
-    }
-
-    .logo-icon svg {
-        width: 32px;
-        height: 32px;
-    }
-
-    .app-title {
-        font-size: 24px;
-    }
-
-    .welcome-title {
-        font-size: 20px;
-    }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-// sso-authenticating-overlay.component.ts
-import { Component, OnInit, OnDestroy } from '@angular/core';
-import { AuthService } from '../services/auth.service';
-import { Subscription } from 'rxjs';
-
-@Component({
-  selector: 'app-sso-authenticating-overlay',
-  templateUrl: './sso-authenticating-overlay.component.html',
-  styleUrls: ['./sso-authenticating-overlay.component.css']
-})
-export class SsoAuthenticatingOverlayComponent implements OnInit, OnDestroy {
-  isAuthenticating: boolean = true;
-  private subscription?: Subscription;
-
-  constructor(private authService: AuthService) {}
-
-  ngOnInit(): void {
-    // Listen for auth check completion
-    this.subscription = this.authService.authCheckComplete.subscribe(
-      (isComplete) => {
-        if (isComplete) {
-          // Hide overlay after a brief delay to show completion
-          setTimeout(() => {
-            this.isAuthenticating = false;
-          }, 500);
-        }
-      }
-    );
-  }
-
-  ngOnDestroy(): void {
-    if (this.subscription) {
-      this.subscription.unsubscribe();
-    }
-  }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-<!-- sso-authenticating-overlay.component.html -->
-<div class="sso-overlay" *ngIf="isAuthenticating">
-    <div class="overlay-content">
-        <!-- Animated Logo -->
-        <div class="auth-logo">
-            <div class="logo-circle">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
-                </svg>
-            </div>
-            <div class="pulse-ring"></div>
-            <div class="pulse-ring pulse-ring-delay"></div>
-        </div>
-
-        <!-- Authenticating Text -->
-        <h2 class="auth-title">Authenticating</h2>
-        <p class="auth-subtitle">Please wait while we verify your credentials...</p>
-
-        <!-- Progress Dots -->
-        <div class="progress-dots">
-            <span class="dot"></span>
-            <span class="dot"></span>
-            <span class="dot"></span>
-        </div>
-
-        <!-- Status Message -->
-        <div class="status-message">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <span>Connecting to SSO provider</span>
-        </div>
-    </div>
-</div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* sso-authenticating-overlay.component.css */
-
-.sso-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: linear-gradient(135deg, rgba(102, 126, 234, 0.95) 0%, rgba(118, 75, 162, 0.95) 100%);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    z-index: 9999;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    animation: fadeIn 0.3s ease;
-}
-
-@keyframes fadeIn {
-    from {
-        opacity: 0;
-    }
-    to {
-        opacity: 1;
-    }
-}
-
-.overlay-content {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 24px;
-    animation: slideUp 0.5s ease-out;
-}
-
-@keyframes slideUp {
-    from {
-        opacity: 0;
-        transform: translateY(30px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-/* Animated Logo */
-.auth-logo {
-    position: relative;
-    width: 120px;
-    height: 120px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.logo-circle {
-    width: 120px;
-    height: 120px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: white;
-    border-radius: 50%;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-    position: relative;
-    z-index: 2;
-    animation: bounce 2s ease-in-out infinite;
-}
-
-.logo-circle svg {
-    width: 60px;
-    height: 60px;
-    color: #8b5cf6;
-}
-
-@keyframes bounce {
-    0%, 100% {
-        transform: scale(1);
-    }
-    50% {
-        transform: scale(1.05);
-    }
-}
-
-/* Pulse Rings */
-.pulse-ring {
-    position: absolute;
-    width: 120px;
-    height: 120px;
-    border: 3px solid rgba(255, 255, 255, 0.6);
-    border-radius: 50%;
-    animation: pulse 2s ease-out infinite;
-}
-
-.pulse-ring-delay {
-    animation-delay: 1s;
-}
-
-@keyframes pulse {
-    0% {
-        transform: scale(1);
-        opacity: 1;
-    }
-    100% {
-        transform: scale(1.8);
-        opacity: 0;
-    }
-}
-
-/* Authenticating Text */
-.auth-title {
-    font-size: 32px;
-    font-weight: 700;
-    color: white;
-    margin: 0;
-    text-align: center;
-    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-}
-
-.auth-subtitle {
-    font-size: 16px;
-    color: rgba(255, 255, 255, 0.9);
-    margin: 0;
-    text-align: center;
-    max-width: 400px;
-}
-
-/* Progress Dots */
-.progress-dots {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-}
-
-.dot {
-    width: 12px;
-    height: 12px;
-    background: white;
-    border-radius: 50%;
-    animation: dotPulse 1.4s ease-in-out infinite;
-}
-
-.dot:nth-child(2) {
-    animation-delay: 0.2s;
-}
-
-.dot:nth-child(3) {
-    animation-delay: 0.4s;
-}
-
-@keyframes dotPulse {
-    0%, 80%, 100% {
-        transform: scale(0.8);
-        opacity: 0.5;
-    }
-    40% {
-        transform: scale(1);
-        opacity: 1;
-    }
-}
-
-/* Status Message */
-.status-message {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 12px 24px;
-    background: rgba(255, 255, 255, 0.15);
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    border-radius: 30px;
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-}
-
-.status-message svg {
-    width: 20px;
-    height: 20px;
-    color: white;
-    animation: spin 2s linear infinite;
-}
-
-@keyframes spin {
-    from {
-        transform: rotate(0deg);
-    }
-    to {
-        transform: rotate(360deg);
-    }
-}
-
-.status-message span {
-    font-size: 14px;
-    font-weight: 500;
-    color: white;
-}
-
-/* Responsive */
-@media (max-width: 640px) {
-    .auth-logo {
-        width: 100px;
-        height: 100px;
-    }
-
-    .logo-circle {
-        width: 100px;
-        height: 100px;
-    }
-
-    .logo-circle svg {
-        width: 50px;
-        height: 50px;
-    }
-
-    .pulse-ring {
-        width: 100px;
-        height: 100px;
-    }
-
-    .auth-title {
-        font-size: 24px;
-    }
-
-    .auth-subtitle {
-        font-size: 14px;
-        padding: 0 20px;
-    }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-// app.component.ts - Updated with auth initialization
+// app.component.ts - Updated with SSO authentication
 import { Component, OnInit } from '@angular/core';
 import { Router } from '@angular/router';
 import { AuthService } from './services/auth.service';
@@ -968,7 +9,14 @@ import { AuthService } from './services/auth.service';
   styleUrls: ['./app.component.css']
 })
 export class AppComponent implements OnInit {
-  title = 'content-analytics';
+  currentTheme: 'light' | 'dark' = 'light';
+  appVersion: string = '1.0.0';
+  currentYear: number = new Date().getFullYear();
+  isSidebarCollapsed: boolean = true; // Default collapsed
+  
+  // SSO Authentication properties
+  isAuthenticated: boolean = false;
+  currentUser: any = null;
 
   constructor(
     private authService: AuthService,
@@ -976,18 +24,94 @@ export class AppComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
-    // Check authentication status on app load
+    // Initialize SSO authentication check
+    this.checkAuthentication();
+
+    // Load saved theme from localStorage
+    const savedTheme = localStorage.getItem('theme') as 'light' | 'dark';
+    if (savedTheme) {
+      this.currentTheme = savedTheme;
+      this.applyTheme(savedTheme);
+    }
+
+    // Load sidebar state from localStorage
+    const savedSidebarState = localStorage.getItem('sidebarCollapsed');
+    if (savedSidebarState !== null) {
+      this.isSidebarCollapsed = savedSidebarState === 'true';
+    }
+
+    // Subscribe to current user changes
+    this.authService.currentUser.subscribe(user => {
+      this.currentUser = user;
+      this.isAuthenticated = user !== null;
+    });
+  }
+
+  // Check authentication status on app load
+  private checkAuthentication(): void {
     this.authService.checkAuthStatus().subscribe({
       next: (response) => {
-        // User is authenticated, stay on current route or go to home
+        // User is authenticated
         console.log('User authenticated:', response.user);
+        this.isAuthenticated = true;
+        this.currentUser = response.user;
       },
       error: (error) => {
         // Authentication failed, redirect to SSO connect
         console.log('User not authenticated, redirecting to SSO connect');
+        this.isAuthenticated = false;
+        this.currentUser = null;
         this.router.navigate(['/sso-connect']);
       }
     });
+  }
+
+  // Logout user
+  logout(): void {
+    this.authService.logout().subscribe({
+      next: () => {
+        console.log('User logged out successfully');
+        this.isAuthenticated = false;
+        this.currentUser = null;
+      },
+      error: (error) => {
+        console.error('Logout error:', error);
+      }
+    });
+  }
+
+  toggleSidebar(): void {
+    this.isSidebarCollapsed = !this.isSidebarCollapsed;
+    localStorage.setItem('sidebarCollapsed', this.isSidebarCollapsed.toString());
+  }
+
+  onToggleTheme(): void {
+    this.currentTheme = this.currentTheme === 'light' ? 'dark' : 'light';
+    this.applyTheme(this.currentTheme);
+    localStorage.setItem('theme', this.currentTheme);
+  }
+
+  private applyTheme(theme: 'light' | 'dark'): void {
+    document.body.setAttribute('data-theme', theme);
+  }
+
+  // Get user initials for avatar
+  getUserInitials(): string {
+    if (!this.currentUser) return 'JD';
+    
+    const name = this.currentUser.name || this.currentUser.email || 'User';
+    const parts = name.split(' ');
+    
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[1][0]).toUpperCase();
+    }
+    return name.substring(0, 2).toUpperCase();
+  }
+
+  // Get user display name
+  getUserName(): string {
+    if (!this.currentUser) return 'John Doe';
+    return this.currentUser.name || this.currentUser.email || 'User';
   }
 }
 
@@ -1002,12 +126,87 @@ export class AppComponent implements OnInit {
 
 
 
-<!-- app.component.html - Add SSO overlay -->
+
+<!-- app.component.html - Updated with SSO overlay and logout -->
+
 <!-- SSO Authenticating Overlay -->
 <app-sso-authenticating-overlay></app-sso-authenticating-overlay>
 
-<!-- Main Router Outlet -->
-<router-outlet></router-outlet>
+<!-- Main App Layout (Only show when authenticated) -->
+<div class="app-layout" *ngIf="isAuthenticated">
+  <!-- Sidebar -->
+  <aside class="sidebar" [class.collapsed]="isSidebarCollapsed">
+    <div class="sidebar-header">
+      <div class="logo" (click)="isSidebarCollapsed ? toggleSidebar() : null">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+          stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round"
+            d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
+        </svg>
+        <span class="logo-text">Content Analytics</span>
+      </div>
+      <button class="toggle-sidebar-btn" (click)="toggleSidebar()" aria-label="Toggle sidebar">
+        <svg *ngIf="!isSidebarCollapsed" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+          stroke-width="1.5" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+        </svg>
+        <svg *ngIf="isSidebarCollapsed" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+          stroke-width="1.5" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" />
+        </svg>
+      </button>
+    </div>
+
+    <nav class="sidebar-nav">
+      <a href="#" class="nav-item active" data-tooltip="Content Analytics">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+          stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round"
+            d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5M9 11.25v1.5M12 9v3.75m3-6v6" />
+        </svg>
+        <span>Content Analytics</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="footer-actions">
+        <div class="footer-user">
+          <div class="footer-avatar">{{ getUserInitials() }}</div>
+          <span class="footer-name">{{ getUserName() }}</span>
+        </div>
+        <button class="footer-btn theme-toggle" (click)="onToggleTheme()"
+          [attr.aria-label]="'Switch to ' + (currentTheme === 'light' ? 'dark' : 'light') + ' mode'"
+          title="Toggle theme">
+          <svg *ngIf="currentTheme === 'light'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+            stroke-width="1.5" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
+          </svg>
+          <svg *ngIf="currentTheme === 'dark'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+            stroke-width="1.5" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
+          </svg>
+        </button>
+        <button class="footer-btn logout-btn" (click)="logout()"
+          aria-label="Logout"
+          title="Logout">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <div class="main-wrapper">
+    <router-outlet></router-outlet>
+
+    <app-footer [appVersion]="appVersion" [currentYear]="currentYear">
+    </app-footer>
+  </div>
+</div>
 
 
 
@@ -1019,31 +218,92 @@ export class AppComponent implements OnInit {
 
 
 
-// app-routing.module.ts - Updated with SSO routes and guards
-import { NgModule } from '@angular/core';
-import { RouterModule, Routes } from '@angular/router';
-import { ContentAnalyticsComponent } from './content-analytics/content-analytics.component';
-import { SsoConnectComponent } from './sso-connect/sso-connect.component';
-import { AuthGuard } from './guards/auth.guard';
 
-const routes: Routes = [
-  {
-    path: '',
-    component: ContentAnalyticsComponent,
-    canActivate: [AuthGuard] // Protect main route
-  },
-  {
-    path: 'sso-connect',
-    component: SsoConnectComponent // Public route for SSO login
-  },
-  {
-    path: '**',
-    redirectTo: ''
-  }
-];
 
-@NgModule({
-  imports: [RouterModule.forRoot(routes)],
-  exports: [RouterModule]
-})
-export class AppRoutingModule { }
+
+
+/* app.component.css - Add these styles for logout button */
+
+/* Logout Button */
+.logout-btn {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.logout-btn svg {
+    width: 18px;
+    height: 18px;
+    color: var(--text-muted);
+    transition: all 0.3s ease;
+}
+
+.logout-btn:hover {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: #ef4444;
+}
+
+.logout-btn:hover svg {
+    color: #ef4444;
+}
+
+.logout-btn:active {
+    transform: scale(0.95);
+}
+
+/* Adjust footer actions to accommodate logout button */
+.footer-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+}
+
+.footer-user {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0; /* Allow text truncation */
+}
+
+.footer-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* When sidebar is collapsed, hide logout button text */
+.sidebar.collapsed .logout-btn {
+    width: 36px;
+}
+
+/* Tooltip for logout button when collapsed */
+.sidebar.collapsed .logout-btn[title]::after {
+    content: attr(title);
+    position: absolute;
+    left: 100%;
+    margin-left: 12px;
+    padding: 6px 12px;
+    background: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 12px;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    z-index: 1000;
+}
+
+.sidebar.collapsed .logout-btn:hover[title]::after {
+    opacity: 1;
+}
