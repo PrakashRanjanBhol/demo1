@@ -1,42 +1,56 @@
-ngOnInit(): void {
-  // Always attempt SSO login on page load/refresh
-  this.attemptAutoSSO();
+import { Component, OnInit, OnDestroy } from '@angular/core';
+import { AuthService } from '../services/auth.service';
+import { Router, NavigationEnd } from '@angular/router';
+import { Subscription } from 'rxjs';
+import { filter } from 'rxjs/operators';
 
-  // Load saved theme from localStorage
-  const savedTheme = localStorage.getItem('theme') as 'light' | 'dark';
-  if (savedTheme) {
-    this.currentTheme = savedTheme;
-    this.applyTheme(savedTheme);
+@Component({
+  selector: 'app-sso-authenticating-overlay',
+  templateUrl: './sso-authenticating-overlay.component.html',
+  styleUrls: ['./sso-authenticating-overlay.component.css']
+})
+export class SsoAuthenticatingOverlayComponent implements OnInit, OnDestroy {
+  isAuthenticating: boolean = true; // Changed to true by default
+  private userSubscription?: Subscription;
+  private routerSubscription?: Subscription;
+
+  constructor(
+    private authService: AuthService,
+    private router: Router
+  ) {}
+
+  ngOnInit(): void {
+    // Show overlay by default (SSO authentication in progress)
+    this.isAuthenticating = true;
+
+    // Listen for authentication success
+    this.userSubscription = this.authService.currentUser.subscribe(
+      (user) => {
+        if (user) {
+          // User logged in successfully, show overlay briefly then hide
+          setTimeout(() => {
+            this.isAuthenticating = false;
+          }, 1000);
+        }
+      }
+    );
+
+    // Hide overlay when navigating to sso-connect page
+    this.routerSubscription = this.router.events.pipe(
+      filter(event => event instanceof NavigationEnd)
+    ).subscribe((event: any) => {
+      if (event.url.includes('/sso-connect')) {
+        this.isAuthenticating = false;
+      }
+    });
   }
 
-  // Load sidebar state from localStorage
-  const savedSidebarState = localStorage.getItem('sidebarCollapsed');
-  if (savedSidebarState !== null) {
-    this.isSidebarCollapsed = savedSidebarState === 'true';
-  }
-
-  // Subscribe to current user changes
-  this.authService.currentUser.subscribe(user => {
-    this.currentUser = user;
-    this.isAuthenticated = user !== null;
-  });
-}
-
-// Attempt automatic SSO login
-private attemptAutoSSO(): void {
-  this.authService.initiateSSO().subscribe({
-    next: (response) => {
-      console.log('Auto SSO login successful:', response);
-      this.isAuthenticated = true;
-      this.currentUser = response.user || this.authService.currentUserValue;
-      // User will stay on whatever URL they entered
-    },
-    error: (error) => {
-      console.error('Auto SSO login failed:', error);
-      this.isAuthenticated = false;
-      this.currentUser = null;
-      // Redirect to SSO connect page on failure
-      this.router.navigate(['/sso-connect'], { replaceUrl: true });
+  ngOnDestroy(): void {
+    if (this.userSubscription) {
+      this.userSubscription.unsubscribe();
     }
-  });
+    if (this.routerSubscription) {
+      this.routerSubscription.unsubscribe();
+    }
+  }
 }
