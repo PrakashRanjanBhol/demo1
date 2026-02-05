@@ -1,227 +1,398 @@
-ngOnInit(): void {
-  // Check if user is already authenticated from localStorage
-  this.isAuthenticated = this.authService.isAuthenticated();
-  this.currentUser = this.authService.currentUserValue;
+<!-- sso-connect.component.html -->
+<div class="sso-connect-container">
+    <div class="sso-connect-card">
+        <!-- Error Icon -->
+        <div class="error-icon-wrapper">
+            <div class="error-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                </svg>
+            </div>
+        </div>
 
-  // If not authenticated, attempt automatic SSO login
-  if (!this.isAuthenticated) {
-    this.attemptAutoSSO();
-  }
+        <!-- Error Message -->
+        <div class="error-section">
+            <h2 class="error-title">Authentication Failed</h2>
+            <p class="error-subtitle">We couldn't authenticate your account. Please try again.</p>
+        </div>
 
-  // Load saved theme from localStorage
-  const savedTheme = localStorage.getItem('theme') as 'light' | 'dark';
-  if (savedTheme) {
-    this.currentTheme = savedTheme;
-    this.applyTheme(savedTheme);
-  }
+        <!-- Error Details -->
+        <div class="error-details" *ngIf="errorMessage">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+            </svg>
+            <span>{{ errorMessage }}</span>
+        </div>
 
-  // Load sidebar state from localStorage
-  const savedSidebarState = localStorage.getItem('sidebarCollapsed');
-  if (savedSidebarState !== null) {
-    this.isSidebarCollapsed = savedSidebarState === 'true';
-  }
+        <!-- Retry Button -->
+        <button class="retry-btn" (click)="connectSSO()" [disabled]="isConnecting">
+            <div class="spinner" *ngIf="isConnecting"></div>
+            <svg *ngIf="!isConnecting" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+            </svg>
+            <span>{{ isConnecting ? 'Retrying...' : 'Retry Authentication' }}</span>
+        </button>
 
-  // Subscribe to current user changes
-  this.authService.currentUser.subscribe(user => {
-    this.currentUser = user;
-    this.isAuthenticated = user !== null;
-  });
+        <!-- Help Section -->
+        <div class="help-section">
+            <div class="help-card">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+                </svg>
+                <div class="help-content">
+                    <h3>Need Assistance?</h3>
+                    <p>Contact your IT administrator for help</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- App Info -->
+        <div class="app-info">
+            <div class="app-logo">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                        d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
+                </svg>
+                <span>Content Analytics</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Background Decoration -->
+    <div class="background-decoration">
+        <div class="decoration-circle circle-1"></div>
+        <div class="decoration-circle circle-2"></div>
+        <div class="decoration-circle circle-3"></div>
+    </div>
+</div>
+
+
+
+
+
+
+
+
+/* sso-connect.component.css */
+
+.sso-connect-container {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
 }
 
-// Attempt automatic SSO login
-private attemptAutoSSO(): void {
-  this.authService.initiateSSO().subscribe({
-    next: (response) => {
-      console.log('Auto SSO login successful:', response);
-      this.isAuthenticated = true;
-      this.currentUser = response.user || this.authService.currentUserValue;
-      // User will stay on whatever URL they entered
-    },
-    error: (error) => {
-      console.error('Auto SSO login failed:', error);
-      this.isAuthenticated = false;
-      this.currentUser = null;
-      // Redirect to SSO connect page on failure
-      this.router.navigate(['/sso-connect'], { replaceUrl: true });
-    }
-  });
+/* Background Decoration */
+.background-decoration {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+    overflow: hidden;
 }
 
-
-
-
-
-
-
-
-
-
-
-import { Injectable } from '@angular/core';
-import { Router, CanActivate, ActivatedRouteSnapshot, RouterStateSnapshot } from '@angular/router';
-import { AuthService } from './auth.service';
-
-@Injectable({
-  providedIn: 'root'
-})
-export class AuthGuard implements CanActivate {
-  constructor(
-    private router: Router,
-    private authService: AuthService
-  ) {}
-
-  canActivate(route: ActivatedRouteSnapshot, state: RouterStateSnapshot): boolean {
-    const currentUser = this.authService.currentUserValue;
-    
-    if (currentUser) {
-      // User is authenticated
-      return true;
-    }
-
-    // Not authenticated - allow access temporarily while auto SSO is in progress
-    // app.component will handle redirect to /sso-connect if auto SSO fails
-    return true;
-  }
+.decoration-circle {
+    position: absolute;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.05);
+    animation: float 20s infinite ease-in-out;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-import { Component, OnInit, OnDestroy } from '@angular/core';
-import { Router } from '@angular/router';
-import { AuthService } from '../services/auth.service';
-import { Subscription } from 'rxjs';
-
-@Component({
-  selector: 'app-sso-connect',
-  templateUrl: './sso-connect.component.html',
-  styleUrls: ['./sso-connect.component.css']
-})
-export class SsoConnectComponent implements OnInit, OnDestroy {
-  isConnecting: boolean = false;
-  errorMessage: string = 'SSO authentication failed. Please try again.';
-  private ssoSubscription?: Subscription;
-
-  constructor(
-    private authService: AuthService,
-    private router: Router
-  ) {}
-
-  ngOnInit(): void {
-    // Check if user is already authenticated
-    if (this.authService.isAuthenticated()) {
-      this.router.navigate(['/content-analytics']);
-    }
-  }
-
-  // Manual retry for SSO connection
-  connectSSO(): void {
-    if (this.isConnecting) return;
-    
-    this.isConnecting = true;
-    this.errorMessage = '';
-
-    this.ssoSubscription = this.authService.initiateSSO().subscribe({
-      next: (response) => {
-        console.log('SSO login successful:', response);
-        this.isConnecting = false;
-        this.router.navigate(['/content-analytics']);
-      },
-      error: (error) => {
-        console.error('SSO login error:', error);
-        this.errorMessage = error.message || 'SSO authentication failed. Please try again.';
-        this.isConnecting = false;
-      }
-    });
-  }
-
-  ngOnDestroy(): void {
-    // Clean up subscription
-    if (this.ssoSubscription) {
-      this.ssoSubscription.unsubscribe();
-    }
-  }
+.circle-1 {
+    width: 300px;
+    height: 300px;
+    top: -150px;
+    left: -150px;
+    animation-delay: 0s;
 }
 
+.circle-2 {
+    width: 400px;
+    height: 400px;
+    bottom: -200px;
+    right: -200px;
+    animation-delay: -7s;
+}
 
+.circle-3 {
+    width: 200px;
+    height: 200px;
+    top: 50%;
+    left: 50%;
+    animation-delay: -14s;
+}
 
+@keyframes float {
+    0%, 100% {
+        transform: translate(0, 0) scale(1);
+    }
+    33% {
+        transform: translate(30px, -30px) scale(1.1);
+    }
+    66% {
+        transform: translate(-20px, 20px) scale(0.9);
+    }
+}
 
+/* SSO Connect Card */
+.sso-connect-card {
+    background: white;
+    border-radius: 20px;
+    padding: 48px;
+    width: 100%;
+    max-width: 500px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    position: relative;
+    z-index: 1;
+    animation: slideIn 0.5s ease-out;
+    text-align: center;
+}
 
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
 
+/* Error Icon */
+.error-icon-wrapper {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 24px;
+}
 
+.error-icon {
+    width: 80px;
+    height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #fee2e2, #fecaca);
+    border-radius: 50%;
+    animation: pulse 2s ease-in-out infinite;
+}
 
+.error-icon svg {
+    width: 40px;
+    height: 40px;
+    color: #dc2626;
+}
 
-import { Component, OnInit, OnDestroy } from '@angular/core';
-import { AuthService } from '../services/auth.service';
-import { Router, NavigationEnd } from '@angular/router';
-import { Subscription } from 'rxjs';
-import { filter } from 'rxjs/operators';
+@keyframes pulse {
+    0%, 100% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4);
+    }
+    50% {
+        transform: scale(1.05);
+        box-shadow: 0 0 0 10px rgba(220, 38, 38, 0);
+    }
+}
 
-@Component({
-  selector: 'app-sso-authenticating-overlay',
-  templateUrl: './sso-authenticating-overlay.component.html',
-  styleUrls: ['./sso-authenticating-overlay.component.css']
-})
-export class SsoAuthenticatingOverlayComponent implements OnInit, OnDestroy {
-  isAuthenticating: boolean = false;
-  private userSubscription?: Subscription;
-  private routerSubscription?: Subscription;
-  private initialCheckDone: boolean = false;
+/* Error Section */
+.error-section {
+    margin-bottom: 24px;
+}
 
-  constructor(
-    private authService: AuthService,
-    private router: Router
-  ) {}
+.error-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: #1f2937;
+    margin: 0 0 8px 0;
+}
 
-  ngOnInit(): void {
-    // Show overlay initially if user is not authenticated (auto SSO in progress)
-    if (!this.authService.isAuthenticated()) {
-      this.isAuthenticating = true;
+.error-subtitle {
+    font-size: 13px;
+    color: #6b7280;
+    margin: 0;
+}
+
+/* Error Details */
+.error-details {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 16px;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    margin-bottom: 24px;
+    color: #dc2626;
+    font-size: 13px;
+}
+
+.error-details svg {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+}
+
+/* Retry Button */
+.retry-btn {
+    width: auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 20px;
+    background: linear-gradient(135deg, #dc2626, #b91c1c);
+    border: none;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    color: white;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 12px rgba(220, 38, 38, 0.4);
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 32px;
+}
+
+.retry-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+    transition: left 0.5s ease;
+}
+
+.retry-btn:hover:not(:disabled)::before {
+    left: 100%;
+}
+
+.retry-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(220, 38, 38, 0.5);
+}
+
+.retry-btn:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.retry-btn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+.retry-btn svg {
+    width: 18px;
+    height: 18px;
+}
+
+/* Spinner */
+.spinner {
+    width: 16px;
+    height: 16px;
+    border: 3px solid rgba(255, 255, 255, 0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Help Section */
+.help-section {
+    margin-bottom: 24px;
+}
+
+.help-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    text-align: left;
+}
+
+.help-card svg {
+    width: 24px;
+    height: 24px;
+    color: #6b7280;
+    flex-shrink: 0;
+}
+
+.help-content h3 {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1f2937;
+    margin: 0 0 4px 0;
+}
+
+.help-content p {
+    font-size: 12px;
+    color: #6b7280;
+    margin: 0;
+}
+
+/* App Info */
+.app-info {
+    padding-top: 24px;
+    border-top: 1px solid #e5e7eb;
+}
+
+.app-logo {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: #9ca3af;
+}
+
+.app-logo svg {
+    width: 20px;
+    height: 20px;
+}
+
+.app-logo span {
+    font-size: 13px;
+    font-weight: 500;
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+    .sso-connect-card {
+        padding: 32px 24px;
     }
 
-    // Listen for authentication success
-    this.userSubscription = this.authService.currentUser.subscribe(
-      (user) => {
-        if (user) {
-          // User logged in successfully, show overlay briefly then hide
-          this.isAuthenticating = true;
-          setTimeout(() => {
-            this.isAuthenticating = false;
-          }, 1000);
-        } else if (this.initialCheckDone) {
-          // Authentication failed, hide overlay
-          this.isAuthenticating = false;
-        }
-        this.initialCheckDone = true;
-      }
-    );
-
-    // Hide overlay when navigating to sso-connect page
-    this.routerSubscription = this.router.events.pipe(
-      filter(event => event instanceof NavigationEnd)
-    ).subscribe((event: any) => {
-      if (event.url.includes('/sso-connect')) {
-        this.isAuthenticating = false;
-      }
-    });
-  }
-
-  ngOnDestroy(): void {
-    if (this.userSubscription) {
-      this.userSubscription.unsubscribe();
+    .error-icon {
+        width: 64px;
+        height: 64px;
     }
-    if (this.routerSubscription) {
-      this.routerSubscription.unsubscribe();
+
+    .error-icon svg {
+        width: 32px;
+        height: 32px;
     }
-  }
+
+    .error-title {
+        font-size: 18px;
+    }
+
+    .help-card {
+        flex-direction: column;
+        text-align: center;
+    }
 }
