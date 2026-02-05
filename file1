@@ -1,3 +1,1217 @@
+import { Component } from '@angular/core';
+import { marked } from 'marked';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import { trigger, transition, style, animate } from '@angular/animations';
+
+// Interface for result items
+interface ResultItem {
+  id: string;
+  title: string;
+  icon: string;
+  content: string;
+  type: 'summary' | 'keywords' | 'questions' | 'custom';
+}
+
+@Component({
+  selector: 'app-content-analytics',
+  templateUrl: './content-analytics.component.html',
+  styleUrls: ['./content-analytics.component.css']
+})
+export class ContentAnalyticsComponent {
+  // File upload
+  selectedFile: File | null = null;
+  selectedFileName: string = '';
+  isDragging: boolean = false;
+
+  // Optional prompts
+  optionalPrompts: string = '';
+
+  // Header expand/collapse
+  isHeaderExpanded: boolean = false;
+
+  isDetailOpen = false;
+  selectedItemName = '';
+  selectedItemDate = '';
+  selectedItemContent: SafeHtml = '';
+  selectedResultItemId: string = '';
+
+  showSearchFilter: boolean = false;
+  showDateFilter: boolean = false;
+
+  searchQuery: string = '';
+  dateFrom: string = '';
+  dateTo: string = '';
+
+  selectedHistoryItem: any = null;
+
+  isProcessing: boolean = false;
+  processingProgress: number = 0;
+  processingFileName: string = '';
+
+  // Dynamic result items
+  resultItems: ResultItem[] = [];
+
+  currentStep: number = 1; // 1 for Upload, 2 for Generate
+  uploadedFiles: File[] = []; // Keep for storing browsed files
+  selectedUploadFile: File | null = null; // Single file selection for new upload
+  selectedPreviousFile: any | null = null;
+
+  uploadMode: 'new' | 'previous' = 'new';
+  allUploadedFiles: any[] = [
+    { id: 1, name: 'Machine Learning Lecture 01.mp3', uploadDate: new Date('2026-01-28') },
+    { id: 2, name: 'Deep Learning Fundamentals.wav', uploadDate: new Date('2026-01-27') },
+    { id: 3, name: 'Neural Networks Introduction.m4a', uploadDate: new Date('2026-01-26') }
+  ];
+  selectedPreviousFiles: any[] = [];
+
+  sampleContent = `
+# Machine Learning Fundamentals: A Comprehensive Overview
+
+## Introduction to Machine Learning
+
+Machine learning is a subset of artificial intelligence that focuses on building systems that can **learn from data** and improve their performance over time without being explicitly programmed. This revolutionary approach has transformed various industries and continues to shape our digital future.
+
+### Key Concepts
+
+Machine learning algorithms can be broadly categorized into three main types:
+
+1. **Supervised Learning** - Learning from labeled data
+2. **Unsupervised Learning** - Finding patterns in unlabeled data
+3. **Reinforcement Learning** - Learning through interaction and feedback
+
+---
+
+## Supervised Learning
+
+Supervised learning is the most common type of machine learning. In this approach, the algorithm learns from a training dataset that includes both input features and corresponding output labels.
+
+### Popular Algorithms
+
+- **Linear Regression** - For predicting continuous values
+- **Logistic Regression** - For binary classification problems
+- **Decision Trees** - For both regression and classification
+- **Random Forests** - Ensemble method using multiple decision trees
+- **Support Vector Machines (SVM)** - For classification and regression tasks
+- **Neural Networks** - Deep learning models with multiple layers
+
+### Real-World Applications
+
+> "Machine learning is the future of technology, and supervised learning forms the foundation of most practical applications we see today."
+
+Some practical applications include:
+
+- Email spam detection and filtering
+- Image recognition and classification
+- Medical diagnosis and disease prediction
+- Credit risk assessment in banking
+- Customer churn prediction
+- Fraud detection systems
+
+---
+
+## Conclusion
+
+Machine learning is a powerful tool that continues to evolve and expand its capabilities. Understanding the fundamentals—from basic algorithms to advanced deep learning techniques—is crucial for developing effective solutions to real-world problems.
+
+*Last Updated: January 28, 2026*
+
+**Remember:** The journey of mastering machine learning is continuous. Keep learning, experimenting, and building!
+`;
+
+  historyItems = [
+    {
+      id: 'item1',
+      name: 'Machine Learning Lecture 01.mp3',
+      displayDate: 'Created on January 28, 2026 at 2:30 PM',
+      date: new Date('2026-01-28')
+    },
+    {
+      id: 'item2',
+      name: 'Deep Learning Fundamentals.wav',
+      displayDate: 'Created on January 27, 2026 at 10:15 AM',
+      date: new Date('2026-01-27')
+    },
+    {
+      id: 'item3',
+      name: 'Neural Networks Introduction.m4a',
+      displayDate: 'Created on January 26, 2026 at 4:45 PM',
+      date: new Date('2026-01-26')
+    }
+  ];
+
+  filteredHistory = [...this.historyItems];
+
+  constructor(private sanitizer: DomSanitizer) { }
+
+  toggleHeader(): void {
+    this.isHeaderExpanded = !this.isHeaderExpanded;
+  }
+
+  onFileSelected(event: any): void {
+    const files = event.target.files;
+    if (files && files.length > 0) {
+      for (let i = 0; i < files.length; i++) {
+        const exists = this.uploadedFiles.some(f => f.name === files[i].name);
+        if (!exists) {
+          this.uploadedFiles.push(files[i]);
+        }
+      }
+    }
+  }
+
+  onFileDrop(event: DragEvent): void {
+    event.preventDefault();
+    this.isDragging = false;
+
+    const files = event.dataTransfer?.files;
+    if (files && files.length > 0) {
+      for (let i = 0; i < files.length; i++) {
+        const exists = this.uploadedFiles.some(f => f.name === files[i].name);
+        if (!exists) {
+          this.uploadedFiles.push(files[i]);
+        }
+      }
+    }
+  }
+
+  selectUploadFile(file: File): void {
+    this.selectedUploadFile = file;
+  }
+
+  isUploadFileSelected(file: File): boolean {
+    return this.selectedUploadFile === file;
+  }
+
+  removeIndividualFile(index: number): void {
+    this.uploadedFiles.splice(index, 1);
+  }
+
+  // New method to handle Upload button click (Step 1 -> Step 2)
+  onUpload(): void {
+    if (this.uploadedFiles.length > 0) {
+      this.currentStep = 2;
+      // Don't pre-select any file, user will select in step 2
+      this.selectedUploadFile = null;
+    }
+  }
+
+  onDragOver(event: DragEvent): void {
+    event.preventDefault();
+    this.isDragging = true;
+  }
+
+  onDragLeave(event: DragEvent): void {
+    event.preventDefault();
+    this.isDragging = false;
+  }
+
+  removeFile(): void {
+    this.selectedFile = null;
+    this.selectedFileName = '';
+  }
+
+  onGenerate(): void {
+    if (this.selectedUploadFile) {
+      console.log('Generating analysis for:', this.selectedUploadFile.name);
+      console.log('Optional prompts:', this.optionalPrompts);
+
+      this.isProcessing = true;
+      this.processingProgress = 0;
+      this.processingFileName = this.selectedUploadFile.name;
+
+      const interval = setInterval(() => {
+        this.processingProgress += 5;
+
+        if (this.processingProgress >= 100) {
+          clearInterval(interval);
+          this.processingProgress = 100;
+
+          setTimeout(() => {
+            this.completeProcessing();
+          }, 500);
+        }
+      }, 1000);
+    }
+  }
+
+  completeProcessing(): void {
+    const newItem = {
+      id: 'item' + (this.historyItems.length + 1),
+      name: this.processingFileName,
+      displayDate: 'Created on ' + new Date().toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      }),
+      date: new Date()
+    };
+
+    this.historyItems.unshift(newItem);
+    this.filteredHistory = [...this.historyItems];
+
+    this.isProcessing = false;
+    this.processingProgress = 0;
+
+    // Clear selection and go back to Step 1
+    this.selectedUploadFile = null;
+    this.uploadedFiles = [];
+    this.selectedFile = null;
+    this.selectedFileName = '';
+    this.optionalPrompts = '';
+    this.currentStep = 1;
+
+    setTimeout(() => {
+      this.selectedHistoryItem = newItem;
+      this.loadResultsForItem(newItem.id);
+    }, 300);
+  }
+
+  onReset(): void {
+    this.uploadedFiles = [];
+    this.selectedUploadFile = null;
+    this.selectedFile = null;
+    this.selectedFileName = '';
+    this.optionalPrompts = '';
+    this.isDragging = false;
+    this.currentStep = 1;
+  }
+
+  onCancel(): void {
+    this.currentStep = 1;
+    this.selectedUploadFile = null;
+    this.optionalPrompts = '';
+  }
+
+  onHistoryItemClick(itemId: string): void {
+    console.log('History item clicked:', itemId);
+
+    // Find the selected item
+    const item = this.historyItems.find(i => i.id === itemId);
+    if (item) {
+      this.selectedHistoryItem = item;
+
+      // Load results for this item
+      this.loadResultsForItem(itemId);
+    }
+  }
+
+  // Load results for a specific history item
+  loadResultsForItem(itemId: string): void {
+    // In a real application, you would fetch data from a service
+    // For now, we'll use sample data
+    this.resultItems = this.getSampleResultItems(itemId);
+  }
+
+  // Get sample result items (replace with actual API call)
+  getSampleResultItems(itemId: string): ResultItem[] {
+    return [
+      {
+        id: 'result1',
+        title: 'Lecture Summary',
+        icon: 'document',
+        content: 'This lecture covers fundamental concepts in machine learning, including supervised and unsupervised learning approaches. The instructor explains neural network architectures and demonstrates practical applications using Python libraries.',
+        type: 'summary'
+      },
+      {
+        id: 'result2',
+        title: 'Keywords',
+        icon: 'tag',
+        content: '• Neural Networks • Deep Learning • Supervised Learning • Unsupervised Learning • Backpropagation • Gradient Descent • Activation Functions • Training Data • Model Optimization',
+        type: 'keywords'
+      },
+      {
+        id: 'result3',
+        title: 'Assessment Question',
+        icon: 'question',
+        content: 'What are the main differences between supervised and unsupervised learning? Explain the backpropagation algorithm and its role in neural networks.',
+        type: 'questions'
+      }
+    ];
+  }
+
+  clearSelection(): void {
+    this.selectedHistoryItem = null;
+    this.resultItems = [];
+  }
+
+  openDetail(item: ResultItem) {
+    this.selectedItemName = item.title;
+    this.selectedItemDate = this.selectedHistoryItem?.displayDate || '';
+
+    // Set the selected result item ID for highlighting
+    this.selectedResultItemId = item.id;
+
+    // Parse markdown to HTML
+    const htmlContent: any = marked(this.sampleContent);
+    // Sanitize the HTML for security
+    this.selectedItemContent = this.sanitizer.bypassSecurityTrustHtml(htmlContent);
+
+    this.isDetailOpen = true;
+  }
+
+  closeDetail() {
+    this.isDetailOpen = false;
+    // Clear the selected result item when detail is closed
+    this.selectedResultItemId = '';
+  }
+
+  // Get SVG path for different icon types
+  getIconPath(iconType: string): string {
+    const icons: { [key: string]: string } = {
+      'document': 'M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z',
+      'tag': 'M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z M6 6h.008v.008H6V6z',
+      'question': 'M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z',
+      'lightbulb': 'M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.823 1.508-2.316a7.5 7.5 0 10-7.517 0c.85.493 1.509 1.333 1.509 2.316V18'
+    };
+    return icons[iconType] || icons['document'];
+  }
+
+  // Copy content to clipboard
+  copyToClipboard(content: string): void {
+    navigator.clipboard.writeText(content).then(() => {
+      console.log('Content copied to clipboard');
+      // You can add a toast notification here
+    });
+  }
+
+  // Download content as text file
+  downloadContent(item: ResultItem): void {
+    const blob = new Blob([item.content], { type: 'text/plain' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${item.title.replace(/\s+/g, '_')}.txt`;
+    link.click();
+    window.URL.revokeObjectURL(url);
+  }
+
+  // Filter method
+  filterHistory() {
+    this.filteredHistory = this.historyItems.filter(item => {
+      // Search filter
+      const matchesSearch = !this.searchQuery ||
+        item.name.toLowerCase().includes(this.searchQuery.toLowerCase());
+
+      // Date range filter
+      let matchesDate = true;
+      if (this.dateFrom) {
+        const fromDate = new Date(this.dateFrom);
+        matchesDate = matchesDate && item.date >= fromDate;
+      }
+      if (this.dateTo) {
+        const toDate = new Date(this.dateTo);
+        toDate.setHours(23, 59, 59, 999); // Include the entire end date
+        matchesDate = matchesDate && item.date <= toDate;
+      }
+
+      return matchesSearch && matchesDate;
+    });
+  }
+
+  toggleSearchFilter() {
+    this.showSearchFilter = !this.showSearchFilter;
+    if (!this.showSearchFilter) {
+      this.clearSearch();
+    }
+  }
+
+  toggleDateFilter() {
+    this.showDateFilter = !this.showDateFilter;
+    if (!this.showDateFilter) {
+      this.clearDateFilter();
+    }
+  }
+
+  // Clear search
+  clearSearch() {
+    this.searchQuery = '';
+    this.filterHistory();
+  }
+
+  // Clear date filter
+  clearDateFilter() {
+    this.dateFrom = '';
+    this.dateTo = '';
+    this.filterHistory();
+  }
+
+  toggleFileSelection(file: any): void {
+    if (this.selectedPreviousFile?.id === file.id) {
+      this.selectedPreviousFile = null; // Deselect if clicking the same file
+    } else {
+      this.selectedPreviousFile = file; // Select new file
+    }
+  }
+
+  isFileSelected(file: any): boolean {
+    return this.selectedPreviousFile?.id === file.id;
+  }
+
+  clearPreviousSelection(): void {
+    this.selectedPreviousFile = null;
+    this.optionalPrompts = '';
+  }
+
+  onGenerateFromPrevious(): void {
+    if (this.selectedPreviousFile) {
+      console.log('Generating analysis for previous file:', this.selectedPreviousFile.name);
+      console.log('Optional prompts:', this.optionalPrompts);
+
+      this.isProcessing = true;
+      this.processingProgress = 0;
+      this.processingFileName = this.selectedPreviousFile.name;
+
+      const interval = setInterval(() => {
+        this.processingProgress += 5;
+
+        if (this.processingProgress >= 100) {
+          clearInterval(interval);
+          this.processingProgress = 100;
+
+          setTimeout(() => {
+            this.completeProcessingFromPrevious();
+          }, 500);
+        }
+      }, 1000);
+    }
+  }
+
+  completeProcessingFromPrevious(): void {
+    const newItem = {
+      id: 'item' + (this.historyItems.length + 1),
+      name: this.processingFileName,
+      displayDate: 'Created on ' + new Date().toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      }),
+      date: new Date()
+    };
+
+    this.historyItems.unshift(newItem);
+    this.filteredHistory = [...this.historyItems];
+
+    this.isProcessing = false;
+    this.processingProgress = 0;
+
+    this.selectedPreviousFile = null;
+    this.optionalPrompts = '';
+
+    setTimeout(() => {
+      this.selectedHistoryItem = newItem;
+      this.loadResultsForItem(newItem.id);
+    }, 300);
+  }
+}
+
+
+
+
+
+
+
+
+
+
+<main>
+    <!-- Page Header -->
+    <div class="page-header" [class.expanded]="isHeaderExpanded">
+        <div class="header-content">
+            <div class="header-icon-wrapper">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                    stroke="currentColor" class="header-icon">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                        d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5M9 11.25v1.5M12 9v3.75m3-6v6" />
+                </svg>
+            </div>
+            <div class="header-text">
+                <h1 class="page-title">Content Analytics</h1>
+                <p class="page-subtitle">Transform your audio into actionable insights</p>
+            </div>
+            <button class="header-toggle-btn" (click)="toggleHeader()"
+                [attr.aria-label]="isHeaderExpanded ? 'Collapse header' : 'Expand header'">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                    stroke="currentColor" class="toggle-icon">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                </svg>
+            </button>
+        </div>
+        <div class="header-expanded-content">
+            <div class="header-stats">
+                <div class="stat-item">
+                    <div class="stat-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
+                        </svg>
+                    </div>
+                    <div class="stat-info">
+                        <div class="stat-label">Lectures Processed</div>
+                        <div class="stat-value">12 Audio Files</div>
+                    </div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                        </svg>
+                    </div>
+                    <div class="stat-info">
+                        <div class="stat-label">Summaries Generated</div>
+                        <div class="stat-value">48 Summaries</div>
+                    </div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+                        </svg>
+                    </div>
+                    <div class="stat-info">
+                        <div class="stat-label">Assessment Questions</div>
+                        <div class="stat-value">34 Questions</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="content-layout">
+        <!-- Upload Section (Left - 50%) -->
+        <!-- Upload Section (Now contains all three columns) -->
+        <div class="upload-column">
+            <section class="upload-section">
+                <div class="upload-content">
+                    <!-- Three-way Split: Upload (Left) + History (Middle) + Workspace (Right) -->
+                    <div class="split-three-columns">
+
+                        <!-- LEFT THIRD: Upload & Generate -->
+                        <div class="upload-third">
+                            <div class="section-header-inline">
+                                <h3 class="section-inline-title">Upload & Generate</h3>
+                            </div>
+
+                            <!-- Mode Toggle Tabs -->
+                            <div class="mode-toggle-tabs">
+                                <button class="mode-tab" [class.active]="uploadMode === 'new'"
+                                    (click)="uploadMode = 'new'; currentStep = 1">
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                        stroke-width="1.5" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round"
+                                            d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                                    </svg>
+                                    <span>New Upload</span>
+                                </button>
+                                <button class="mode-tab" [class.active]="uploadMode === 'previous'"
+                                    (click)="uploadMode = 'previous'">
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                        stroke-width="1.5" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round"
+                                            d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    <span>Previous Files</span>
+                                </button>
+                            </div>
+
+                            <!-- NEW UPLOAD MODE -->
+                            <div *ngIf="uploadMode === 'new'">
+                                <!-- Step Indicator -->
+                                <div class="step-indicator">
+                                    <div class="step-item" [class.active]="currentStep === 1"
+                                        [class.completed]="currentStep > 1">
+                                        <div class="step-number">1</div>
+                                        <div class="step-label">Upload</div>
+                                    </div>
+                                    <div class="step-connector" [class.active]="currentStep > 1"></div>
+                                    <div class="step-item" [class.active]="currentStep === 2">
+                                        <div class="step-number">2</div>
+                                        <div class="step-label">Generate</div>
+                                    </div>
+                                </div>
+
+                                <!-- STEP 1: Upload -->
+                                <div class="upload-content-wrapper" *ngIf="currentStep === 1">
+                                    <div class="upload-fields-container">
+                                        <!-- File Upload Area -->
+                                        <div class="upload-area-wrapper">
+                                            <label class="upload-area-label">Lecture / Related file or folder</label>
+                                            <div class="file-upload-zone" [class.drag-over]="isDragging"
+                                                (drop)="onFileDrop($event)" (dragover)="onDragOver($event)"
+                                                (dragleave)="onDragLeave($event)">
+                                                <div class="upload-icon">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none"
+                                                        viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                                        <path stroke-linecap="round" stroke-linejoin="round"
+                                                            d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
+                                                    </svg>
+                                                </div>
+                                                <h3 class="upload-title">Drop your audio file here</h3>
+                                                <p class="upload-subtitle">or</p>
+                                                <div class="upload-btn-wrapper">
+                                                    <button class="browse-btn" (click)="fileInput.click()">Browse
+                                                        Files</button>
+                                                </div>
+                                                <input #fileInput type="file" class="file-input-hidden" multiple
+                                                    (change)="onFileSelected($event)">
+                                                <p class="upload-info">Supported formats: MP3, WAV, M4A, FLAC</p>
+                                            </div>
+                                        </div>
+
+                                        <!-- Uploaded Files List - No selection in Step 1 -->
+                                        <div class="selected-files-list" *ngIf="uploadedFiles.length > 0">
+                                            <div class="selected-files-header">
+                                                <span class="selected-files-count">{{ uploadedFiles.length }} file(s)
+                                                    uploaded</span>
+                                            </div>
+                                            <div class="selected-file"
+                                                *ngFor="let file of uploadedFiles; let i = index">
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                                    stroke-width="1.5" stroke="currentColor">
+                                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                                        d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
+                                                </svg>
+                                                <span class="file-name-display">{{ file.name }}</span>
+                                                <span class="file-size">({{ (file.size / 1024 / 1024).toFixed(2) }}
+                                                    MB)</span>
+                                                <button class="remove-file-btn" (click)="removeIndividualFile(i)">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none"
+                                                        viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                                        <path stroke-linecap="round" stroke-linejoin="round"
+                                                            d="M6 18L18 6M6 6l12 12" />
+                                                    </svg>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Step 1 Action Buttons -->
+                                    <div class="action-buttons">
+                                        <button class="generate-btn" [disabled]="uploadedFiles.length === 0"
+                                            (click)="onUpload()">
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                                stroke-width="1.5" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round"
+                                                    d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                                            </svg>
+                                            Continue
+                                        </button>
+                                        <button class="reset-btn" (click)="onReset()">
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                                stroke-width="1.5" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round"
+                                                    d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                                            </svg>
+                                            Reset
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- STEP 2: Generate (New Upload) -->
+                                <div class="upload-content-wrapper" *ngIf="currentStep === 2">
+                                    <div class="upload-fields-container">
+                                        <!-- Uploaded Files with Radio Selection -->
+                                        <div class="uploaded-files-summary">
+                                            <label class="summary-label">Select One File to Generate</label>
+                                            <div class="summary-files-list radio-selection">
+                                                <div class="summary-file-item radio-select"
+                                                    *ngFor="let file of uploadedFiles"
+                                                    [class.selected]="isUploadFileSelected(file)"
+                                                    (click)="selectUploadFile(file)">
+                                                    <div class="file-radio">
+                                                        <div class="radio-dot" *ngIf="isUploadFileSelected(file)"></div>
+                                                    </div>
+                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none"
+                                                        viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                                        <path stroke-linecap="round" stroke-linejoin="round"
+                                                            d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
+                                                    </svg>
+                                                    <span class="file-name-truncate">{{ file.name }}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Optional Prompts -->
+                                        <div class="prompts-area">
+                                            <label class="prompts-label">Optional Prompts (Notes)</label>
+                                            <textarea class="prompts-textarea" [(ngModel)]="optionalPrompts"
+                                                name="prompts"
+                                                placeholder="Enter any specific instructions or notes for the AI analysis...&#10;&#10;Example:&#10;- Focus on extracting key topics&#10;- Identify speakers&#10;- Summarize main points"
+                                                rows="8"></textarea>
+                                            <p class="prompts-hint">
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                                    stroke-width="1.5" stroke="currentColor">
+                                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                                        d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+                                                </svg>
+                                                Add custom instructions to guide the AI analysis
+                                            </p>
+                                        </div>
+
+                                        <!-- Processing Progress Bar -->
+                                        <div class="processing-container" *ngIf="isProcessing">
+                                            <div class="processing-header">
+                                                <div class="processing-icon-wrapper">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none"
+                                                        viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"
+                                                        class="processing-icon">
+                                                        <path stroke-linecap="round" stroke-linejoin="round"
+                                                            d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
+                                                    </svg>
+                                                </div>
+                                                <div class="processing-info">
+                                                    <h4 class="processing-title">Processing Your File</h4>
+                                                    <p class="processing-filename">{{ processingFileName }}</p>
+                                                </div>
+                                                <span class="processing-percentage">{{ processingProgress }}%</span>
+                                            </div>
+
+                                            <div class="progress-bar-container">
+                                                <div class="progress-bar-track">
+                                                    <div class="progress-bar-fill" [style.width.%]="processingProgress">
+                                                        <div class="progress-bar-shimmer"></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <p class="processing-message">
+                                                Analyzing audio content, extracting insights, and generating results...
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <!-- Step 2 Action Buttons -->
+                                    <div class="action-buttons">
+                                        <button class="generate-btn" [disabled]="!selectedUploadFile || isProcessing"
+                                            (click)="onGenerate()">
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                                stroke-width="1.5" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round"
+                                                    d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
+                                            </svg>
+                                            {{ isProcessing ? 'Processing...' : 'Generate' }}
+                                        </button>
+                                        <button class="reset-btn" [disabled]="isProcessing" (click)="onCancel()">
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                                stroke-width="1.5" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round"
+                                                    d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
+                                            </svg>
+                                            Cancel
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- PREVIOUS FILES MODE -->
+                            <div *ngIf="uploadMode === 'previous'">
+                                <div class="upload-content-wrapper">
+                                    <div class="upload-fields-container">
+                                        <!-- Previous Files Selection -->
+                                        <div class="previous-files-section">
+                                            <label class="previous-files-label">
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                                    stroke-width="1.5" stroke="currentColor">
+                                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                                        d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 00-1.883 2.542l.857 6a2.25 2.25 0 002.227 1.932H19.05a2.25 2.25 0 002.227-1.932l.857-6a2.25 2.25 0 00-1.883-2.542m-16.5 0V6A2.25 2.25 0 016 3.75h3.879a1.5 1.5 0 011.06.44l2.122 2.12a1.5 1.5 0 001.06.44H18A2.25 2.25 0 0120.25 9v.776" />
+                                                </svg>
+                                                Select One File from Previously Uploaded
+                                            </label>
+
+                                            <div class="previous-files-list" *ngIf="allUploadedFiles.length > 0">
+                                                <div class="previous-file-item" *ngFor="let file of allUploadedFiles"
+                                                    [class.selected]="isFileSelected(file)"
+                                                    (click)="toggleFileSelection(file)">
+                                                    <div class="file-radio">
+                                                        <div class="radio-dot" *ngIf="isFileSelected(file)"></div>
+                                                    </div>
+                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none"
+                                                        viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"
+                                                        class="file-icon">
+                                                        <path stroke-linecap="round" stroke-linejoin="round"
+                                                            d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
+                                                    </svg>
+                                                    <div class="file-details">
+                                                        <span class="file-name">{{ file.name }}</span>
+                                                        <span class="file-date">{{ file.uploadDate | date: 'MMM d, y'
+                                                            }}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="no-previous-files" *ngIf="allUploadedFiles.length === 0">
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                                    stroke-width="1.5" stroke="currentColor">
+                                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                                        d="M2.25 13.5h3.86a2.25 2.25 0 012.012 1.244l.256.512a2.25 2.25 0 002.013 1.244h3.218a2.25 2.25 0 002.013-1.244l.256-.512a2.25 2.25 0 012.013-1.244h3.859m-19.5.338V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18v-4.162c0-.224-.034-.447-.1-.661L19.24 5.338a2.25 2.25 0 00-2.15-1.588H6.911a2.25 2.25 0 00-2.15 1.588L2.35 13.177a2.25 2.25 0 00-.1.661z" />
+                                                </svg>
+                                                <p>No previously uploaded files</p>
+                                                <small>Upload new files to see them here</small>
+                                            </div>
+                                        </div>
+
+                                        <!-- Optional Prompts -->
+                                        <div class="prompts-area">
+                                            <label class="prompts-label">Optional Prompts (Notes)</label>
+                                            <textarea class="prompts-textarea" [(ngModel)]="optionalPrompts"
+                                                name="prompts"
+                                                placeholder="Enter any specific instructions or notes for the AI analysis...&#10;&#10;Example:&#10;- Focus on extracting key topics&#10;- Identify speakers&#10;- Summarize main points"
+                                                rows="8"></textarea>
+                                            <p class="prompts-hint">
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                                    stroke-width="1.5" stroke="currentColor">
+                                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                                        d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+                                                </svg>
+                                                Add custom instructions to guide the AI analysis
+                                            </p>
+                                        </div>
+
+                                        <!-- Processing Progress Bar -->
+                                        <div class="processing-container" *ngIf="isProcessing">
+                                            <div class="processing-header">
+                                                <div class="processing-icon-wrapper">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none"
+                                                        viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"
+                                                        class="processing-icon">
+                                                        <path stroke-linecap="round" stroke-linejoin="round"
+                                                            d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
+                                                    </svg>
+                                                </div>
+                                                <div class="processing-info">
+                                                    <h4 class="processing-title">Processing Your File</h4>
+                                                    <p class="processing-filename">{{ processingFileName }}</p>
+                                                </div>
+                                                <span class="processing-percentage">{{ processingProgress }}%</span>
+                                            </div>
+
+                                            <div class="progress-bar-container">
+                                                <div class="progress-bar-track">
+                                                    <div class="progress-bar-fill" [style.width.%]="processingProgress">
+                                                        <div class="progress-bar-shimmer"></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <p class="processing-message">
+                                                Analyzing audio content, extracting insights, and generating results...
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <!-- Previous Files Action Buttons -->
+                                    <div class="action-buttons">
+                                        <button class="generate-btn" [disabled]="!selectedPreviousFile || isProcessing"
+                                            (click)="onGenerateFromPrevious()">
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                                stroke-width="1.5" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round"
+                                                    d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
+                                            </svg>
+                                            {{ isProcessing ? 'Processing...' : 'Generate' }}
+                                        </button>
+                                        <button class="reset-btn" [disabled]="isProcessing"
+                                            (click)="clearPreviousSelection()">
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                                stroke-width="1.5" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round"
+                                                    d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                                            </svg>
+                                            Clear
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- MIDDLE THIRD: History -->
+                        <div class="history-third">
+                            <div class="section-header-inline">
+                                <h3 class="section-inline-title">History</h3>
+                            </div>
+                            <div class="history-content-wrapper">
+                                <div class="filter-section-header">
+                                    <div class="filter-header-left">
+                                        <div class="filter-header-icon">
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                                stroke-width="1.5" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round"
+                                                    d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" />
+                                            </svg>
+                                        </div>
+                                        <h3 class="filter-header-title">Filters</h3>
+                                    </div>
+
+                                    <div class="filter-header-actions">
+                                        <button class="filter-toggle-btn" [class.active]="showSearchFilter"
+                                            (click)="toggleSearchFilter()" title="Search">
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                                stroke-width="1.5" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round"
+                                                    d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+                                            </svg>
+                                            <span>Search</span>
+                                        </button>
+
+                                        <button class="filter-toggle-btn" [class.active]="showDateFilter"
+                                            (click)="toggleDateFilter()" title="Date Range">
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                                stroke-width="1.5" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round"
+                                                    d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+                                            </svg>
+                                            <span>Date Range</span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- Collapsible Search Filter -->
+                                <div class="filter-panel" *ngIf="showSearchFilter">
+                                    <div class="search-box">
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                            stroke-width="1.5" stroke="currentColor" class="search-icon">
+                                            <path stroke-linecap="round" stroke-linejoin="round"
+                                                d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+                                        </svg>
+                                        <input type="text" class="search-input" placeholder="Search files..."
+                                            [(ngModel)]="searchQuery" (input)="filterHistory()">
+                                        <button class="clear-search-btn" *ngIf="searchQuery" (click)="clearSearch()">
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                                stroke-width="1.5" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round"
+                                                    d="M6 18L18 6M6 6l12 12" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- Collapsible Date Range Filter -->
+                                <div class="filter-panel" *ngIf="showDateFilter">
+                                    <div class="date-filters-inline">
+                                        <div class="date-input-wrapper">
+                                            <label class="date-label">From</label>
+                                            <input type="date" class="date-input" [(ngModel)]="dateFrom"
+                                                (change)="filterHistory()">
+                                        </div>
+                                        <div class="date-input-wrapper">
+                                            <label class="date-label">To</label>
+                                            <input type="date" class="date-input" [(ngModel)]="dateTo"
+                                                (change)="filterHistory()">
+                                        </div>
+                                        <button class="clear-filter-btn" *ngIf="dateFrom || dateTo"
+                                            (click)="clearDateFilter()" title="Clear date filter">
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                                stroke-width="1.5" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round"
+                                                    d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="content-section-header">
+                                    <div class="content-header-icon">
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                            stroke-width="1.5" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round"
+                                                d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z" />
+                                        </svg>
+                                    </div>
+                                    <h3 class="content-header-title">History Records</h3>
+                                    <span class="content-count">{{ filteredHistory.length }} files</span>
+                                </div>
+
+                                <!-- History Content -->
+                                <div class="history-content">
+                                    <div class="no-results" *ngIf="filteredHistory.length === 0">
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                            stroke-width="1.5" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round"
+                                                d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                                        </svg>
+                                        <p>No files found matching your criteria</p>
+                                    </div>
+
+                                    <div class="history-item" *ngFor="let item of filteredHistory"
+                                        [class.selected]="selectedHistoryItem?.id === item.id"
+                                        (click)="onHistoryItemClick(item.id)">
+                                        <div class="history-item-icon">
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                                stroke-width="1.5" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round"
+                                                    d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
+                                            </svg>
+                                        </div>
+                                        <div class="history-item-details">
+                                            <h4 class="history-item-name">{{ item.name }}</h4>
+                                            <p class="history-item-date">{{ item.displayDate }}</p>
+                                        </div>
+                                        <div class="history-item-checkmark" *ngIf="selectedHistoryItem?.id === item.id">
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                                stroke-width="2.5" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round"
+                                                    d="M4.5 12.75l6 6 9-13.5" />
+                                            </svg>
+                                        </div>
+                                        <button class="history-item-action" *ngIf="selectedHistoryItem?.id !== item.id"
+                                            (click)="$event.stopPropagation()">
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                                stroke-width="1.5" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round"
+                                                    d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- RIGHT THIRD: Workspace Results -->
+                        <div class="workspace-third">
+                            <div class="workspace-header-inline">
+                                <div class="workspace-header-content">
+                                    <h3 class="workspace-inline-title">Workspace Result</h3>
+                                    <!-- Selected File Info -->
+                                    <div class="selected-file-info" *ngIf="selectedHistoryItem">
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                            stroke-width="1.5" stroke="currentColor" class="file-info-icon">
+                                            <path stroke-linecap="round" stroke-linejoin="round"
+                                                d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
+                                        </svg>
+                                        <span class="file-name">{{ selectedHistoryItem.name }}</span>
+                                        <span class="file-separator">•</span>
+                                        <span class="file-date">{{ selectedHistoryItem.displayDate }}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="workspace-content-inline">
+                                <!-- Empty State -->
+                                <div class="workspace-empty-state" *ngIf="!selectedHistoryItem">
+                                    <div class="empty-state-icon">
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                            stroke-width="1.5" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round"
+                                                d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                                        </svg>
+                                    </div>
+                                    <h3 class="empty-state-title">No Analysis Selected</h3>
+                                    <p class="empty-state-message">
+                                        Select a file from the history to view its analysis results
+                                    </p>
+                                </div>
+
+                                <!-- Dynamic Result Content -->
+                                <div class="result-content" *ngIf="selectedHistoryItem && resultItems.length > 0">
+                                    <!-- Result Items -->
+                                    <div class="result-item" *ngFor="let item of resultItems"
+                                        [class.selected]="selectedResultItemId === item.id">
+                                        <div class="result-item-header">
+                                            <div class="result-item-icon">
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                                    stroke-width="1.5" stroke="currentColor">
+                                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                                        [attr.d]="getIconPath(item.icon)" />
+                                                </svg>
+                                            </div>
+                                            <div class="result-item-title-section">
+                                                <h4 class="result-item-title">{{ item.title }}</h4>
+                                            </div>
+                                            <!-- Viewing Badge -->
+                                            <div class="viewing-badge" *ngIf="selectedResultItemId === item.id">
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                                    stroke-width="2" stroke="currentColor">
+                                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                                        d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                </svg>
+                                                <span>Viewing</span>
+                                            </div>
+                                            <div class="result-actions">
+                                                <button class="result-action-icon-btn" title="Expand"
+                                                    (click)="openDetail(item)">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none"
+                                                        viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                                        <path stroke-linecap="round" stroke-linejoin="round"
+                                                            d="M15.75 4.5H19.5v3.75M19.5 4.5l-5.25 5.25M8.25 19.5H4.5v-3.75M4.5 19.5l5.25-5.25" />
+                                                    </svg>
+                                                </button>
+                                                <button class="result-action-icon-btn" title="Copy"
+                                                    (click)="copyToClipboard(item.content)">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none"
+                                                        viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                                        <path stroke-linecap="round" stroke-linejoin="round"
+                                                            d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 00-3.375-3.375h-1.5a1.125 1.125 0 01-1.125-1.125v-1.5a3.375 3.375 0 00-3.375-3.375H9.75" />
+                                                    </svg>
+                                                </button>
+                                                <button class="result-action-icon-btn" title="Download"
+                                                    (click)="downloadContent(item)">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none"
+                                                        viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                                        <path stroke-linecap="round" stroke-linejoin="round"
+                                                            d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                                                    </svg>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div class="result-item-content">
+                                            <p class="result-text">{{ item.content }}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </section>
+        </div>
+
+    </div>
+
+    <!-- Detail Overlay & Sidebar -->
+    <div class="detail-overlay" [class.active]="isDetailOpen" (click)="closeDetail()"></div>
+    <div class="detail-sidebar" [class.active]="isDetailOpen">
+        <div class="detail-sidebar-header">
+            <div class="detail-sidebar-title-section">
+                <h3 class="detail-sidebar-title">{{ selectedItemName }}</h3>
+                <p class="detail-sidebar-meta">{{ selectedItemDate }}</p>
+            </div>
+            <button class="detail-close-btn" (click)="closeDetail()">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                    stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+        <div class="detail-sidebar-content">
+            <div class="markdown-content" [innerHTML]="selectedItemContent"></div>
+        </div>
+    </div>
+</main>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* Main Content Styles */
 :host {
     display: flex;
@@ -472,6 +1686,7 @@ main {
     border: 1px solid var(--border-color);
     border-radius: 8px;
     margin-top: 16px;
+    cursor: default;
 }
 
 .selected-file svg {
@@ -1175,6 +2390,7 @@ main {
 
     .filter-toggle-btn {
         flex: 1;
+        justify-content: center;
     }
 
     .split-three-columns {
@@ -1580,10 +2796,10 @@ main {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 16px;
-    padding: 12px 16px;
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(167, 139, 250, 0.08));
-    border: 1px solid rgba(139, 92, 246, 0.15);
+    gap: 12px;
+    padding: 10px 12px;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.06), rgba(167, 139, 250, 0.06));
+    border: 1px solid rgba(139, 92, 246, 0.12);
     border-radius: 8px;
     margin-bottom: 12px;
 }
@@ -1591,15 +2807,15 @@ main {
 .filter-header-left {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
 }
 
 .filter-header-icon {
-    width: 32px;
-    height: 32px;
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(167, 139, 250, 0.15));
-    border: 1px solid rgba(139, 92, 246, 0.25);
-    border-radius: 8px;
+    width: 28px;
+    height: 28px;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.12), rgba(167, 139, 250, 0.12));
+    border: 1px solid rgba(139, 92, 246, 0.2);
+    border-radius: 6px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1607,13 +2823,13 @@ main {
 }
 
 .filter-header-icon svg {
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
     stroke: var(--primary-color);
 }
 
 .filter-header-title {
-    font-size: 14px;
+    font-size: 12px;
     font-weight: 700;
     color: var(--text-color);
     margin: 0;
@@ -1624,25 +2840,26 @@ main {
 /* Filter Header Actions - Right Side */
 .filter-header-actions {
     display: flex;
-    gap: 8px;
+    gap: 6px;
     flex-shrink: 0;
 }
 
 .filter-toggle-btn {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 16px;
+    gap: 6px;
+    padding: 6px 12px;
     background-color: var(--bg-color);
     border: 1px solid var(--border-color);
-    border-radius: 8px;
-    font-size: 13px;
+    border-radius: 6px;
+    font-size: 11px;
     font-weight: 600;
     color: var(--text-color);
     cursor: pointer;
     transition: all 0.3s ease;
     position: relative;
     overflow: hidden;
+    white-space: nowrap;
 }
 
 .filter-toggle-btn::before {
@@ -1659,6 +2876,8 @@ main {
 .filter-toggle-btn:hover {
     border-color: var(--primary-color);
     background-color: var(--footer-bg);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(139, 92, 246, 0.15);
 }
 
 .filter-toggle-btn:hover::before {
@@ -1669,20 +2888,39 @@ main {
     background: linear-gradient(135deg, var(--primary-color), #a78bfa);
     color: white;
     border-color: var(--primary-color);
-    box-shadow: 0 2px 8px rgba(139, 92, 246, 0.2);
+    box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3);
 }
 
 .filter-toggle-btn svg {
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
     stroke: var(--text-color);
     transition: all 0.3s ease;
+    flex-shrink: 0;
 }
 
 .filter-toggle-btn.active svg {
     stroke: white;
 }
 
+.filter-toggle-btn span {
+    font-size: 11px;
+    letter-spacing: 0.3px;
+}
+
+@keyframes filterActivePulse {
+    0% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(1.05);
+    }
+
+    100% {
+        transform: scale(1);
+    }
+}
 
 /* Content Section Header */
 .content-section-header {
@@ -2527,4 +3765,547 @@ main {
     height: 20px;
     background: linear-gradient(180deg, var(--primary-color), #a78bfa);
     border-radius: 2px;
+}
+
+/* Step Indicator */
+.step-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 16px 0;
+    margin-bottom: 20px;
+}
+
+.step-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    opacity: 0.4;
+    transition: all 0.3s ease;
+}
+
+.step-item.active,
+.step-item.completed {
+    opacity: 1;
+}
+
+.step-number {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background-color: var(--footer-bg);
+    border: 2px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-color);
+    transition: all 0.3s ease;
+}
+
+.step-item.active .step-number {
+    background: linear-gradient(135deg, var(--primary-color), #a78bfa);
+    border-color: var(--primary-color);
+    color: white;
+    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+}
+
+.step-item.completed .step-number {
+    background: linear-gradient(135deg, #10b981, #059669);
+    border-color: #10b981;
+    color: white;
+}
+
+.step-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+.step-connector {
+    flex: 1;
+    height: 2px;
+    background-color: var(--border-color);
+    max-width: 60px;
+    transition: all 0.3s ease;
+}
+
+.step-connector.active {
+    background: linear-gradient(90deg, #10b981, var(--primary-color));
+}
+
+/* Selected Files List */
+.selected-files-list {
+    margin-top: 16px;
+    padding: 16px;
+    background-color: var(--footer-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+.selected-files-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.selected-files-count {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--primary-color);
+}
+
+.selected-file {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    background-color: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    margin-bottom: 8px;
+    transition: all 0.2s ease;
+}
+
+.selected-file:last-child {
+    margin-bottom: 0;
+}
+
+.selected-file:hover {
+    border-color: var(--border-color);
+    box-shadow: none;
+}
+
+.file-name-display {
+    flex: 1;
+    font-size: 13px;
+    color: var(--text-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-weight: 500;
+}
+
+.file-size {
+    font-size: 11px;
+    color: var(--text-color);
+    opacity: 0.6;
+    flex-shrink: 0;
+}
+
+/* Uploaded Files Summary (Step 2) */
+.uploaded-files-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.summary-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-color);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.summary-label::before {
+    content: '✅';
+    font-size: 15px;
+}
+
+.summary-files-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    background-color: var(--footer-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+.summary-file-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background-color: var(--bg-color);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    border-radius: 6px;
+}
+
+.summary-file-item svg {
+    width: 18px;
+    height: 18px;
+    stroke: #10b981;
+    flex-shrink: 0;
+}
+
+.summary-file-item span {
+    flex: 1;
+    font-size: 13px;
+    color: var(--text-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+
+/* Mode Toggle Tabs */
+.mode-toggle-tabs {
+    display: flex;
+    gap: 8px;
+    padding: 0;
+    margin-bottom: 16px;
+}
+
+.mode-tab {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 16px;
+    background-color: var(--footer-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-color);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    opacity: 0.6;
+}
+
+.mode-tab svg {
+    width: 18px;
+    height: 18px;
+    stroke: var(--text-color);
+    transition: all 0.3s ease;
+}
+
+.mode-tab:hover {
+    opacity: 1;
+    border-color: var(--primary-color);
+    background-color: var(--bg-color);
+}
+
+.mode-tab.active {
+    background: linear-gradient(135deg, var(--primary-color), #a78bfa);
+    border-color: var(--primary-color);
+    color: white;
+    opacity: 1;
+    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+}
+
+.mode-tab.active svg {
+    stroke: white;
+}
+
+/* Previous Files Section */
+.previous-files-section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.previous-files-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-color);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.previous-files-label svg {
+    width: 18px;
+    height: 18px;
+    stroke: var(--primary-color);
+}
+
+.previous-files-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 300px;
+    overflow-y: auto;
+    padding: 12px;
+    background-color: var(--footer-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+.previous-files-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+.previous-files-list::-webkit-scrollbar-track {
+    background: rgba(139, 92, 246, 0.05);
+    border-radius: 3px;
+}
+
+.previous-files-list::-webkit-scrollbar-thumb {
+    background-color: rgba(139, 92, 246, 0.3);
+    border-radius: 3px;
+}
+
+.previous-file-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    background-color: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.previous-file-item:hover {
+    border-color: var(--primary-color);
+    box-shadow: 0 2px 8px rgba(139, 92, 246, 0.1);
+}
+
+.previous-file-item.selected {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.12), rgba(167, 139, 250, 0.12));
+    border-color: var(--primary-color);
+    box-shadow: 0 2px 8px rgba(139, 92, 246, 0.2);
+}
+
+.file-checkbox {
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--border-color);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.2s ease;
+}
+
+.previous-file-item.selected .file-checkbox {
+    background: linear-gradient(135deg, var(--primary-color), #a78bfa);
+    border-color: var(--primary-color);
+}
+
+.file-checkbox svg {
+    width: 14px;
+    height: 14px;
+    stroke: white;
+}
+
+.file-icon {
+    width: 18px;
+    height: 18px;
+    stroke: var(--primary-color);
+    flex-shrink: 0;
+}
+
+.file-details {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.file-details .file-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.file-details .file-date {
+    font-size: 11px;
+    color: var(--text-color);
+    opacity: 0.6;
+}
+
+.no-previous-files {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    text-align: center;
+    background-color: var(--footer-bg);
+    border: 1px dashed var(--border-color);
+    border-radius: 8px;
+}
+
+.no-previous-files svg {
+    width: 48px;
+    height: 48px;
+    stroke: var(--text-color);
+    opacity: 0.3;
+    margin-bottom: 12px;
+}
+
+.no-previous-files p {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-color);
+    margin: 0 0 4px 0;
+}
+
+.no-previous-files small {
+    font-size: 12px;
+    color: var(--text-color);
+    opacity: 0.6;
+}
+
+.selected-count-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 16px;
+    background: linear-gradient(135deg, var(--primary-color), #a78bfa);
+    color: white;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 700;
+    box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3);
+    align-self: flex-start;
+}
+
+/* Radio Button Styling */
+.file-radio {
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--border-color);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.2s ease;
+}
+
+.selected-file.radio-select.selected .file-radio,
+.previous-file-item.selected .file-radio {
+    border-color: var(--primary-color);
+    background: white;
+}
+
+.radio-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--primary-color), #a78bfa);
+    animation: radioPop 0.2s ease;
+}
+
+@keyframes radioPop {
+    0% {
+        transform: scale(0);
+    }
+
+    50% {
+        transform: scale(1.2);
+    }
+
+    100% {
+        transform: scale(1);
+    }
+}
+
+/* Update selected file styling for radio selection */
+.selected-file.radio-select {
+    cursor: pointer;
+}
+
+.selected-file.radio-select:hover {
+    border-color: var(--primary-color);
+    box-shadow: 0 2px 8px rgba(139, 92, 246, 0.15);
+}
+
+.selected-file.radio-select.selected {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.12), rgba(167, 139, 250, 0.12));
+    border-color: var(--primary-color);
+    box-shadow: 0 2px 8px rgba(139, 92, 246, 0.2);
+}
+
+/* Summary Files List with Radio Selection */
+.summary-files-list.radio-selection {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.summary-files-list.radio-selection::-webkit-scrollbar {
+    width: 6px;
+}
+
+.summary-files-list.radio-selection::-webkit-scrollbar-track {
+    background: rgba(139, 92, 246, 0.05);
+    border-radius: 3px;
+}
+
+.summary-files-list.radio-selection::-webkit-scrollbar-thumb {
+    background-color: rgba(139, 92, 246, 0.3);
+    border-radius: 3px;
+}
+
+.summary-file-item.radio-select {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    background-color: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.summary-file-item.radio-select:hover {
+    border-color: var(--primary-color);
+    box-shadow: 0 2px 8px rgba(139, 92, 246, 0.15);
+}
+
+.summary-file-item.radio-select.selected {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.12), rgba(167, 139, 250, 0.12));
+    border-color: var(--primary-color);
+    box-shadow: 0 2px 8px rgba(139, 92, 246, 0.2);
+}
+
+.summary-file-item.radio-select svg {
+    width: 18px;
+    height: 18px;
+    stroke: var(--primary-color);
+    flex-shrink: 0;
+}
+
+.file-name-truncate {
+    flex: 1;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.summary-file-item.radio-select.selected .file-name-truncate {
+    font-weight: 600;
+    color: var(--primary-color);
+}
+
+.summary-file-item.radio-select.selected .file-radio,
+.previous-file-item.selected .file-radio {
+    border-color: var(--primary-color);
+    background: white;
 }
