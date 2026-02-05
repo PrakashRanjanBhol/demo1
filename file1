@@ -1,42 +1,72 @@
-constructor(
-  private http: HttpClient,
-  private router: Router
-) {
-  // Don't check localStorage - always start with null
-  this.currentUserSubject = new BehaviorSubject<User | null>(null);
-  this.currentUser = this.currentUserSubject.asObservable();
-}
+// Initiate SSO login with WebSocket
+initiateSSO(): Observable<any> {
+  return new Observable(observer => {
+    // Clear all localStorage data before starting SSO
+    localStorage.clear();
+    this.currentUserSubject.next(null);
+    
+    // Create WebSocket connection
+    this.ws = new WebSocket(this.wsUrl);
 
+    this.ws.onopen = () => {
+      console.log('WebSocket connection opened');
+      
+      // Send initial message
+      const message = {
+        rqtype: environment.SSO.RQTYPE,
+        token: '',
+        data: environment.SSO.DATA
+      };
+      
+      this.ws?.send(JSON.stringify(message));
+    };
 
+    this.ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        
+        if (msg?.rpcode === 'RETURN_SUCCESS') {
+          // Success - parse the data and make SSO API call
+          const ssoInfo = JSON.parse(msg?.data);
+          const request = {
+            userInfo: ssoInfo.userInfo,
+            aeskey: ssoInfo.key
+          };
+          
+          this.performSSOLogin(request).subscribe({
+            next: (response) => {
+              observer.next(response);
+              observer.complete();
+              // WebSocket connection stays open
+            },
+            error: (error) => {
+              observer.error(error);
+              this.closeWebSocket();
+            }
+          });
+        } else {
+          // SSO login failed
+          const errorMsg = 'SSO login failed';
+          this.ssoErrorSubject.next(errorMsg);
+          observer.error(new Error(errorMsg));
+          this.closeWebSocket();
+        }
+      } catch (error) {
+        observer.error(error);
+        this.closeWebSocket();
+      }
+    };
 
+    this.ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      observer.error(new Error('WebSocket connection error'));
+      this.closeWebSocket();
+    };
 
-
-
-constructor(
-  private authService: AuthService,
-  private router: Router
-) {}
-
-ngOnInit(): void {
-  // Always attempt SSO login on page load/refresh
-  this.attemptAutoSSO();
-
-  // Load saved theme from localStorage
-  const savedTheme = localStorage.getItem('theme') as 'light' | 'dark';
-  if (savedTheme) {
-    this.currentTheme = savedTheme;
-    this.applyTheme(savedTheme);
-  }
-
-  // Load sidebar state from localStorage
-  const savedSidebarState = localStorage.getItem('sidebarCollapsed');
-  if (savedSidebarState !== null) {
-    this.isSidebarCollapsed = savedSidebarState === 'true';
-  }
-
-  // Subscribe to current user changes AFTER SSO attempt starts
-  this.authService.currentUser.subscribe(user => {
-    this.currentUser = user;
-    this.isAuthenticated = user !== null;
+    this.ws.onclose = () => {
+      console.log('WebSocket connection closed');
+      // Trigger logout when WebSocket closes
+      this.logout();
+    };
   });
 }
