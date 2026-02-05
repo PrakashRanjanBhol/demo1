@@ -1,54 +1,80 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
-import { AuthService } from '../services/auth.service';
-import { Router, NavigationEnd } from '@angular/router';
-import { Subscription } from 'rxjs';
-import { filter } from 'rxjs/operators';
+// Initiate SSO login with WebSocket
+initiateSSO(): Observable<any> {
+  return new Observable(observer => {
+    // Create WebSocket connection
+    this.ws = new WebSocket(this.wsUrl);
 
-@Component({
-  selector: 'app-sso-authenticating-overlay',
-  templateUrl: './sso-authenticating-overlay.component.html',
-  styleUrls: ['./sso-authenticating-overlay.component.css']
-})
-export class SsoAuthenticatingOverlayComponent implements OnInit, OnDestroy {
-  isAuthenticating: boolean = false;
-  private userSubscription?: Subscription;
-  private routerSubscription?: Subscription;
+    this.ws.onopen = () => {
+      console.log('WebSocket connection opened');
+      
+      // Send initial message
+      const message = {
+        rqtype: environment.SSO.RQTYPE,
+        token: '',
+        data: environment.SSO.DATA
+      };
+      
+      this.ws?.send(JSON.stringify(message));
+    };
 
-  constructor(
-    private authService: AuthService,
-    private router: Router
-  ) {}
-
-  ngOnInit(): void {
-    // Show overlay only when user authentication changes
-    this.userSubscription = this.authService.currentUser.subscribe(
-      (user) => {
-        if (user) {
-          // User logged in successfully, show overlay briefly then hide
-          this.isAuthenticating = true;
-          setTimeout(() => {
-            this.isAuthenticating = false;
-          }, 1000);
+    this.ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        
+        if (msg?.rpcode === 'RETURN_SUCCESS') {
+          // Success - parse the data and make SSO API call
+          const ssoInfo = JSON.parse(msg?.data);
+          const request = {
+            userInfo: ssoInfo.userInfo,
+            aeskey: ssoInfo.key
+          };
+          
+          this.performSSOLogin(request).subscribe({
+            next: (response) => {
+              observer.next(response);
+              observer.complete();
+              this.closeWebSocket();
+            },
+            error: (error) => {
+              observer.error(error);
+              this.closeWebSocket();
+            }
+          });
+        } else {
+          // SSO login failed
+          const errorMsg = 'SSO login failed';
+          this.ssoErrorSubject.next(errorMsg);
+          observer.error(new Error(errorMsg));
+          this.closeWebSocket();
         }
+      } catch (error) {
+        observer.error(error);
+        this.closeWebSocket();
       }
-    );
+    };
 
-    // Hide overlay when navigating to sso-connect page
-    this.routerSubscription = this.router.events.pipe(
-      filter(event => event instanceof NavigationEnd)
-    ).subscribe((event: any) => {
-      if (event.url.includes('/sso-connect')) {
-        this.isAuthenticating = false;
-      }
-    });
-  }
+    this.ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      observer.error(new Error('WebSocket connection error'));
+      this.closeWebSocket();
+    };
 
-  ngOnDestroy(): void {
-    if (this.userSubscription) {
-      this.userSubscription.unsubscribe();
-    }
-    if (this.routerSubscription) {
-      this.routerSubscription.unsubscribe();
-    }
-  }
+    this.ws.onclose = () => {
+      console.log('WebSocket connection closed');
+    };
+  });
+}
+
+// Perform SSO login API call
+private performSSOLogin(request: any): Observable<AuthResponse> {
+  return this.http.post<AuthResponse>(`${this.apiUrl}/auth/sso/login`, request, {
+    withCredentials: true
+  }).pipe(
+    tap(response => {
+      // Store user in localStorage and update subject
+      localStorage.setItem('currentUser', JSON.stringify(response.user));
+      this.currentUserSubject.next(response.user);
+    }),
+    catchError(this.handleError)
+  );
 }
