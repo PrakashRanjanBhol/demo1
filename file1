@@ -16,6 +16,24 @@ export interface UploadResponse {
   fileUrl?: string;
 }
 
+export interface FileItem {
+  id: number;
+  original_name: string;
+  inserted_at: string;
+}
+
+export interface FilesResponse {
+  status: string;
+  data: {
+    files: FileItem[];
+  };
+}
+
+export interface FilesByDateRequest {
+  start_date: string;
+  end_date: string;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -67,10 +85,60 @@ export class UploadService {
   }
 
   /**
-   * Get list of all uploaded files
+   * Get list of uploaded files by date range
+   * @param startDate - Start date in format 'YYYY-MM-DD'
+   * @param endDate - End date in format 'YYYY-MM-DD'
    */
-  getUploadedFiles(): Observable<any[]> {
-    return this.http.get<any[]>(`${this.apiUrl}/files`);
+  getFilesByDate(startDate: string, endDate: string): Observable<FilesResponse> {
+    const request: FilesByDateRequest = {
+      start_date: startDate,
+      end_date: endDate
+    };
+
+    return this.http.post<FilesResponse>(`${this.apiUrl}/files/by-date`, request);
+  }
+
+  /**
+   * Get all uploaded files (uses current date)
+   */
+  getUploadedFiles(): Observable<FileItem[]> {
+    const today = this.formatDate(new Date());
+    
+    return this.getFilesByDate(today, today).pipe(
+      map(response => {
+        if (response.status === 'success') {
+          return response.data.files;
+        }
+        return [];
+      })
+    );
+  }
+
+  /**
+   * Get files for a date range
+   */
+  getFilesInRange(startDate: Date, endDate: Date): Observable<FileItem[]> {
+    const start = this.formatDate(startDate);
+    const end = this.formatDate(endDate);
+    
+    return this.getFilesByDate(start, end).pipe(
+      map(response => {
+        if (response.status === 'success') {
+          return response.data.files;
+        }
+        return [];
+      })
+    );
+  }
+
+  /**
+   * Format date to 'YYYY-MM-DD'
+   */
+  private formatDate(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   }
 
   /**
@@ -97,380 +165,107 @@ export class UploadService {
 
 
 
-import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { Observable } from 'rxjs';
-
-export interface GenerateRequest {
-  fileId?: string;
-  fileName?: string;
-  prompts?: string;
-  mode: 'new' | 'previous';
-}
-
-export interface GenerateResponse {
-  success: boolean;
-  message: string;
-  results?: any;
-  analysisId?: string;
-}
-
-@Injectable({
-  providedIn: 'root'
-})
-export class GenerateService {
-  private apiUrl = 'http://localhost:3000/api';  // Replace with your API base URL
-
-  constructor(private http: HttpClient) {}
-
-  /**
-   * Generate analysis from uploaded file
-   */
-  generateAnalysis(request: GenerateRequest): Observable<GenerateResponse> {
-    return this.http.post<GenerateResponse>(`${this.apiUrl}/generate`, request);
-  }
-
-  /**
-   * Get analysis results
-   */
-  getAnalysisResults(analysisId: string): Observable<any> {
-    return this.http.get(`${this.apiUrl}/analysis/${analysisId}`);
-  }
-
-  /**
-   * Get analysis status
-   */
-  getAnalysisStatus(analysisId: string): Observable<any> {
-    return this.http.get(`${this.apiUrl}/analysis/${analysisId}/status`);
-  }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-import { Component, EventEmitter, Output, OnDestroy } from '@angular/core';
-import { HttpEventType } from '@angular/common/http';
-import { Subscription } from 'rxjs';
-import { UploadService, UploadResponse } from './services/upload.service';
-import { GenerateService, GenerateRequest } from './services/generate.service';
 
 interface UploadFile {
   id: number;
   name: string;
   uploadDate: Date;
+  insertedAt: string;
 }
 
-interface FileWithStatus {
-  file: File;
-  status: 'pending' | 'uploading' | 'uploaded' | 'error';
-  progress?: number;
-  uploadedFileId?: string;  // Store backend file ID after upload
+// ... rest of the component code ...
+
+loadPreviousFiles(): void {
+  // Get files from the last 30 days
+  const endDate = new Date();
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - 30);
+
+  const sub = this.uploadService.getFilesInRange(startDate, endDate).subscribe({
+    next: (files) => {
+      this.allUploadedFiles = files.map(f => ({
+        id: f.id,
+        name: f.original_name,
+        uploadDate: new Date(f.inserted_at),
+        insertedAt: f.inserted_at
+      }));
+    },
+    error: (error) => {
+      console.error('Error loading previous files:', error);
+      // Fallback to empty array or show error message
+      this.allUploadedFiles = [];
+    }
+  });
+  this.subscriptions.push(sub);
 }
 
-@Component({
-  selector: 'app-upload-generate',
-  templateUrl: './upload-generate.component.html',
-  styleUrls: ['./upload-generate.component.css']
-})
-export class UploadGenerateComponent implements OnDestroy {
-  @Output() onGenerate = new EventEmitter<{ file: any, prompts: string, mode: 'new' | 'previous' }>();
-
-  isDragging: boolean = false;
-  optionalPrompts: string = '';
-  isProcessing: boolean = false;
-  processingProgress: number = 0;
-  processingFileName: string = '';
-
-  currentStep: number = 1;
-  uploadedFilesWithStatus: FileWithStatus[] = [];
-  selectedUploadFile: File | null = null;
-
-  uploadMode: 'new' | 'previous' = 'new';
-  allUploadedFiles: UploadFile[] = [];
-  selectedPreviousFile: UploadFile | null = null;
-
-  private subscriptions: Subscription[] = [];
-
-  constructor(
-    private uploadService: UploadService,
-    private generateService: GenerateService
-  ) {
-    this.loadPreviousFiles();
-  }
-
-  ngOnDestroy(): void {
-    // Cleanup subscriptions
-    this.subscriptions.forEach(sub => sub.unsubscribe());
-  }
-
-  loadPreviousFiles(): void {
-    const sub = this.uploadService.getUploadedFiles().subscribe({
-      next: (files) => {
-        this.allUploadedFiles = files.map((f, index) => ({
-          id: f.id || index,
-          name: f.fileName || f.name,
-          uploadDate: new Date(f.uploadDate || f.createdAt)
-        }));
-      },
-      error: (error) => {
-        console.error('Error loading previous files:', error);
-        // Fallback to mock data
-        this.allUploadedFiles = [
-          { id: 1, name: 'Machine Learning Lecture 01.mp3', uploadDate: new Date('2026-01-28') },
-          { id: 2, name: 'Deep Learning Fundamentals.wav', uploadDate: new Date('2026-01-27') },
-          { id: 3, name: 'Neural Networks Introduction.m4a', uploadDate: new Date('2026-01-26') }
-        ];
-      }
-    });
-    this.subscriptions.push(sub);
-  }
-
-  onFileSelected(event: any): void {
-    const files = event.target.files;
-    if (files && files.length > 0) {
-      for (let i = 0; i < files.length; i++) {
-        const exists = this.uploadedFilesWithStatus.some(f => f.file.name === files[i].name);
-        if (!exists) {
-          this.uploadedFilesWithStatus.push({
-            file: files[i],
-            status: 'pending',
-            progress: 0
-          });
-        }
-      }
+// Alternative: Load only today's files
+loadTodaysFiles(): void {
+  const sub = this.uploadService.getUploadedFiles().subscribe({
+    next: (files) => {
+      this.allUploadedFiles = files.map(f => ({
+        id: f.id,
+        name: f.original_name,
+        uploadDate: new Date(f.inserted_at),
+        insertedAt: f.inserted_at
+      }));
+    },
+    error: (error) => {
+      console.error('Error loading today\'s files:', error);
+      this.allUploadedFiles = [];
     }
-  }
+  });
+  this.subscriptions.push(sub);
+}
 
-  onFileDrop(event: DragEvent): void {
-    event.preventDefault();
-    this.isDragging = false;
-
-    const files = event.dataTransfer?.files;
-    if (files && files.length > 0) {
-      for (let i = 0; i < files.length; i++) {
-        const exists = this.uploadedFilesWithStatus.some(f => f.file.name === files[i].name);
-        if (!exists) {
-          this.uploadedFilesWithStatus.push({
-            file: files[i],
-            status: 'pending',
-            progress: 0
-          });
-        }
-      }
+// Optional: Add method to load files with custom date range
+loadFilesByCustomDate(startDate: Date, endDate: Date): void {
+  const sub = this.uploadService.getFilesInRange(startDate, endDate).subscribe({
+    next: (files) => {
+      this.allUploadedFiles = files.map(f => ({
+        id: f.id,
+        name: f.original_name,
+        uploadDate: new Date(f.inserted_at),
+        insertedAt: f.inserted_at
+      }));
+    },
+    error: (error) => {
+      console.error('Error loading files by date:', error);
+      this.allUploadedFiles = [];
     }
-  }
+  });
+  this.subscriptions.push(sub);
+}
 
-  selectUploadFile(file: File): void {
-    this.selectedUploadFile = file;
-  }
 
-  isUploadFileSelected(file: File): boolean {
-    return this.selectedUploadFile === file;
-  }
 
-  removeIndividualFile(index: number): void {
-    this.uploadedFilesWithStatus.splice(index, 1);
-  }
 
-  async onUpload(): Promise<void> {
-    if (this.uploadedFilesWithStatus.length > 0) {
-      await this.uploadFilesSequentially();
-      this.currentStep = 2;
-      this.selectedUploadFile = null;
-    }
-  }
 
-  async uploadFilesSequentially(): Promise<void> {
-    for (let i = 0; i < this.uploadedFilesWithStatus.length; i++) {
-      const fileWithStatus = this.uploadedFilesWithStatus[i];
-      
-      // Set status to uploading
-      fileWithStatus.status = 'uploading';
-      fileWithStatus.progress = 0;
-      
-      try {
-        // Make API call through service
-        await this.uploadFileViaService(fileWithStatus);
-        
-        // Set status to uploaded on success
-        fileWithStatus.status = 'uploaded';
-        fileWithStatus.progress = 100;
-      } catch (error) {
-        // Set status to error on failure
-        fileWithStatus.status = 'error';
-        console.error(`Failed to upload ${fileWithStatus.file.name}:`, error);
-      }
-    }
-  }
 
-  private uploadFileViaService(fileWithStatus: FileWithStatus): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const sub = this.uploadService.uploadFile(fileWithStatus.file).subscribe({
-        next: (event: any) => {
-          if (event.type === HttpEventType.UploadProgress) {
-            // Update progress
-            if (event.total) {
-              fileWithStatus.progress = Math.round((100 * event.loaded) / event.total);
-            }
-          } else if (event.type === HttpEventType.Response) {
-            // Upload complete
-            const response = event.body as UploadResponse;
-            fileWithStatus.uploadedFileId = response.fileId;
-            console.log('Upload successful:', response);
-            resolve();
-          }
-        },
-        error: (error) => {
-          console.error('Upload error:', error);
-          reject(error);
-        }
-      });
-      this.subscriptions.push(sub);
-    });
-  }
 
-  onDragOver(event: DragEvent): void {
-    event.preventDefault();
-    this.isDragging = true;
-  }
 
-  onDragLeave(event: DragEvent): void {
-    event.preventDefault();
-    this.isDragging = false;
-  }
 
-  handleGenerate(): void {
-    if (this.uploadMode === 'new' && this.selectedUploadFile) {
-      this.startProcessing(this.selectedUploadFile.name);
-      
-      // Find the uploaded file with status
-      const fileWithStatus = this.uploadedFilesWithStatus.find(
-        f => f.file.name === this.selectedUploadFile?.name
-      );
 
-      const request: GenerateRequest = {
-        fileId: fileWithStatus?.uploadedFileId,
-        fileName: this.selectedUploadFile.name,
-        prompts: this.optionalPrompts,
-        mode: 'new'
-      };
 
-      this.generateAnalysis(request);
-    } else if (this.uploadMode === 'previous' && this.selectedPreviousFile) {
-      this.startProcessing(this.selectedPreviousFile.name);
-      
-      const request: GenerateRequest = {
-        fileId: this.selectedPreviousFile.id.toString(),
-        fileName: this.selectedPreviousFile.name,
-        prompts: this.optionalPrompts,
-        mode: 'previous'
-      };
 
-      this.generateAnalysis(request);
-    }
-  }
 
-  private generateAnalysis(request: GenerateRequest): void {
-    const sub = this.generateService.generateAnalysis(request).subscribe({
-      next: (response) => {
-        console.log('Generation successful:', response);
-        this.onGenerate.emit({
-          file: request,
-          prompts: this.optionalPrompts,
-          mode: request.mode
-        });
-        
-        // Simulate completion after API response
-        setTimeout(() => {
-          this.completeProcessing();
-        }, 500);
-      },
-      error: (error) => {
-        console.error('Generation error:', error);
-        this.isProcessing = false;
-        // You can show error message to user here
-      }
-    });
-    this.subscriptions.push(sub);
-  }
 
-  startProcessing(fileName: string): void {
-    this.isProcessing = true;
-    this.processingProgress = 0;
-    this.processingFileName = fileName;
 
-    const interval = setInterval(() => {
-      this.processingProgress += 5;
 
-      if (this.processingProgress >= 100) {
-        clearInterval(interval);
-        this.processingProgress = 100;
-      }
-    }, 1000);
-  }
-
-  completeProcessing(): void {
-    this.isProcessing = false;
-    this.processingProgress = 0;
-    this.selectedUploadFile = null;
-    this.uploadedFilesWithStatus = [];
-    this.selectedPreviousFile = null;
-    this.optionalPrompts = '';
-    this.currentStep = 1;
-  }
-
-  onReset(): void {
-    this.uploadedFilesWithStatus = [];
-    this.selectedUploadFile = null;
-    this.optionalPrompts = '';
-    this.isDragging = false;
-    this.currentStep = 1;
-  }
-
-  onCancel(): void {
-    this.currentStep = 1;
-    this.selectedUploadFile = null;
-    this.optionalPrompts = '';
-  }
-
-  toggleFileSelection(file: UploadFile): void {
-    if (this.selectedPreviousFile?.id === file.id) {
-      this.selectedPreviousFile = null;
-    } else {
-      this.selectedPreviousFile = file;
-    }
-  }
-
-  isFileSelected(file: UploadFile): boolean {
-    return this.selectedPreviousFile?.id === file.id;
-  }
-
-  clearPreviousSelection(): void {
-    this.selectedPreviousFile = null;
-    this.optionalPrompts = '';
-  }
-
-  getStatusBadgeClass(status: string): string {
-    return `status-badge status-${status}`;
-  }
-
-  getStatusText(status: string): string {
-    const statusMap: { [key: string]: string } = {
-      'pending': 'Pending',
-      'uploading': 'Uploading',
-      'uploaded': 'Uploaded',
-      'error': 'Error'
-    };
-    return statusMap[status] || status;
-  }
+constructor(
+  private uploadService: UploadService,
+  private generateService: GenerateService
+) {
+  // Choose one of these based on your requirement:
+  
+  // Option 1: Load files from last 30 days
+  this.loadPreviousFiles();
+  
+  // Option 2: Load only today's files
+  // this.loadTodaysFiles();
+  
+  // Option 3: Load files from specific date range
+  // const start = new Date('2026-01-01');
+  // const end = new Date();
+  // this.loadFilesByCustomDate(start, end);
 }
