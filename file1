@@ -1,83 +1,3 @@
-// Add these properties
-selectedStartDate: Date = new Date();
-selectedEndDate: Date = new Date();
-
-// Modify the constructor
-constructor(
-  private uploadService: UploadService,
-  private generateService: GenerateService
-) {
-  // Initialize date range to last 30 days
-  this.selectedEndDate = new Date();
-  this.selectedStartDate = new Date();
-  this.selectedStartDate.setDate(this.selectedStartDate.getDate() - 30);
-}
-
-// Modify loadPreviousFiles method
-loadPreviousFiles(): void {
-  this.isLoadingFiles = true;
-
-  const sub = this.uploadService.getFilesInRange(this.selectedStartDate, this.selectedEndDate).subscribe({
-    next: (files) => {
-      this.allUploadedFiles = files.map(f => ({
-        id: f.id,
-        name: f.original_name,
-        uploadDate: new Date(f.inserted_at),
-        insertedAt: f.inserted_at
-      }));
-      this.filesLoaded = true;
-      this.isLoadingFiles = false;
-    },
-    error: (error) => {
-      console.error('Error loading previous files:', error);
-      this.allUploadedFiles = [];
-      this.filesLoaded = true;
-      this.isLoadingFiles = false;
-    }
-  });
-  this.subscriptions.push(sub);
-}
-
-// Add this new method
-onDateRangeChange(): void {
-  this.filesLoaded = false;
-  this.loadPreviousFiles();
-}
-
-// Add these helper methods for date formatting
-getFormattedDate(date: Date): string {
-  return date.toISOString().split('T')[0];
-}
-
-
-
-
-
-
-
-
-
-
-
-
-<div class="previous-files-header">
-  <label class="previous-files-label">
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-      stroke="currentColor">
-      <path stroke-linecap="round" stroke-linejoin="round"
-        d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 00-1.883 2.542l.857 6a2.25 2.25 0 002.227 1.932H19.05a2.25 2.25 0 002.227-1.932l.857-6a2.25 2.25 0 00-1.883-2.542m-16.5 0V6A2.25 2.25 0 016 3.75h3.879a1.5 1.5 0 011.06.44l2.122 2.12a1.5 1.5 0 001.06.44H18A2.25 2.25 0 0120.25 9v.776" />
-    </svg>
-    Select One File from Previously Uploaded
-  </label>
-  <button class="refresh-btn" (click)="refreshPreviousFiles()" [disabled]="isLoadingFiles">
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-      stroke="currentColor" [class.spinning]="isLoadingFiles">
-      <path stroke-linecap="round" stroke-linejoin="round"
-        d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-    </svg>
-  </button>
-</div>
-
 <!-- Add Date Range Selector -->
 <div class="date-range-selector">
   <div class="date-input-group">
@@ -89,9 +9,10 @@ getFormattedDate(date: Date): string {
       </svg>
       From
     </label>
-    <input type="date" class="date-input" [(ngModel)]="selectedStartDate" 
-      [value]="getFormattedDate(selectedStartDate)"
-      (change)="onDateRangeChange()" [disabled]="isLoadingFiles">
+    <input type="date" class="date-input" 
+      [ngModel]="getFormattedDate(selectedStartDate)"
+      (ngModelChange)="selectedStartDate = $event; onDateRangeChange()" 
+      [disabled]="isLoadingFiles">
   </div>
   <div class="date-separator">
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
@@ -108,9 +29,10 @@ getFormattedDate(date: Date): string {
       </svg>
       To
     </label>
-    <input type="date" class="date-input" [(ngModel)]="selectedEndDate" 
-      [value]="getFormattedDate(selectedEndDate)"
-      (change)="onDateRangeChange()" [disabled]="isLoadingFiles">
+    <input type="date" class="date-input" 
+      [ngModel]="getFormattedDate(selectedEndDate)"
+      (ngModelChange)="selectedEndDate = $event; onDateRangeChange()" 
+      [disabled]="isLoadingFiles">
   </div>
 </div>
 
@@ -125,96 +47,25 @@ getFormattedDate(date: Date): string {
 
 
 
-/* Date Range Selector */
-.date-range-selector {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px;
-  background-color: var(--footer-bg);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  margin-bottom: 12px;
+// Modify onDateRangeChange method
+onDateRangeChange(): void {
+  // Convert string dates back to Date objects if needed
+  if (typeof this.selectedStartDate === 'string') {
+    this.selectedStartDate = new Date(this.selectedStartDate);
+  }
+  if (typeof this.selectedEndDate === 'string') {
+    this.selectedEndDate = new Date(this.selectedEndDate);
+  }
+  
+  this.filesLoaded = false;
+  this.loadPreviousFiles();
 }
 
-.date-input-group {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+// Update getFormattedDate method
+getFormattedDate(date: Date): string {
+  if (!date) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
-
-.date-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-color);
-  opacity: 0.7;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-}
-
-.date-label svg {
-  width: 14px;
-  height: 14px;
-  stroke: var(--primary-color);
-}
-
-.date-input {
-  padding: 8px 12px;
-  background-color: var(--bg-color);
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  font-size: 13px;
-  color: var(--text-color);
-  font-weight: 500;
-  transition: all 0.2s ease;
-  cursor: pointer;
-}
-
-.date-input:hover:not(:disabled) {
-  border-color: var(--primary-color);
-}
-
-.date-input:focus {
-  outline: none;
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
-}
-
-.date-input:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.date-separator {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-top: 18px;
-}
-
-.date-separator svg {
-  width: 20px;
-  height: 20px;
-  stroke: var(--text-color);
-  opacity: 0.4;
-}
-
-/* Calendar icon styling for date input */
-.date-input::-webkit-calendar-picker-indicator {
-  cursor: pointer;
-  filter: invert(0.5);
-}
-
-.date-input::-webkit-calendar-picker-indicator:hover {
-  filter: invert(0.3);
-}
-
-
-
-
-
-
