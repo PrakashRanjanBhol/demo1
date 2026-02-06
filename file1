@@ -1,41 +1,23 @@
+// Add these properties
+selectedStartDate: Date = new Date();
+selectedEndDate: Date = new Date();
+
+// Modify the constructor
 constructor(
   private uploadService: UploadService,
   private generateService: GenerateService
 ) {
-  // Don't load files on component initialization
-  // Files will be loaded when user clicks "Previous Files" tab
+  // Initialize date range to last 30 days
+  this.selectedEndDate = new Date();
+  this.selectedStartDate = new Date();
+  this.selectedStartDate.setDate(this.selectedStartDate.getDate() - 30);
 }
 
-ngOnDestroy(): void {
-  // Cleanup subscriptions
-  this.subscriptions.forEach(sub => sub.unsubscribe());
-}
-
-// Add flag to track if files are loaded
-private filesLoaded: boolean = false;
-isLoadingFiles: boolean = false;
-
-// Modified method to switch upload mode
-switchToMode(mode: 'new' | 'previous'): void {
-  this.uploadMode = mode;
-  
-  if (mode === 'previous' && !this.filesLoaded) {
-    // Load files only when switching to "Previous Files" tab for the first time
-    this.loadPreviousFiles();
-  } else if (mode === 'new') {
-    this.currentStep = 1;
-  }
-}
-
+// Modify loadPreviousFiles method
 loadPreviousFiles(): void {
   this.isLoadingFiles = true;
-  
-  // Get files from the last 30 days
-  const endDate = new Date();
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - 30);
 
-  const sub = this.uploadService.getFilesInRange(startDate, endDate).subscribe({
+  const sub = this.uploadService.getFilesInRange(this.selectedStartDate, this.selectedEndDate).subscribe({
     next: (files) => {
       this.allUploadedFiles = files.map(f => ({
         id: f.id,
@@ -56,12 +38,16 @@ loadPreviousFiles(): void {
   this.subscriptions.push(sub);
 }
 
-// Optional: Method to refresh files list
-refreshPreviousFiles(): void {
+// Add this new method
+onDateRangeChange(): void {
   this.filesLoaded = false;
   this.loadPreviousFiles();
 }
 
+// Add these helper methods for date formatting
+getFormattedDate(date: Date): string {
+  return date.toISOString().split('T')[0];
+}
 
 
 
@@ -72,24 +58,60 @@ refreshPreviousFiles(): void {
 
 
 
-<!-- Mode Toggle Tabs -->
-<div class="mode-toggle-tabs">
-    <button class="mode-tab" [class.active]="uploadMode === 'new'" (click)="switchToMode('new')">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-            stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round"
-                d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-        </svg>
-        <span>New Upload</span>
-    </button>
-    <button class="mode-tab" [class.active]="uploadMode === 'previous'" (click)="switchToMode('previous')">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-            stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round"
-                d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-        <span>Previous Files</span>
-    </button>
+
+
+<div class="previous-files-header">
+  <label class="previous-files-label">
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+      stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round"
+        d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 00-1.883 2.542l.857 6a2.25 2.25 0 002.227 1.932H19.05a2.25 2.25 0 002.227-1.932l.857-6a2.25 2.25 0 00-1.883-2.542m-16.5 0V6A2.25 2.25 0 016 3.75h3.879a1.5 1.5 0 011.06.44l2.122 2.12a1.5 1.5 0 001.06.44H18A2.25 2.25 0 0120.25 9v.776" />
+    </svg>
+    Select One File from Previously Uploaded
+  </label>
+  <button class="refresh-btn" (click)="refreshPreviousFiles()" [disabled]="isLoadingFiles">
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+      stroke="currentColor" [class.spinning]="isLoadingFiles">
+      <path stroke-linecap="round" stroke-linejoin="round"
+        d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+    </svg>
+  </button>
+</div>
+
+<!-- Add Date Range Selector -->
+<div class="date-range-selector">
+  <div class="date-input-group">
+    <label class="date-label">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+        stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round"
+          d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+      </svg>
+      From
+    </label>
+    <input type="date" class="date-input" [(ngModel)]="selectedStartDate" 
+      [value]="getFormattedDate(selectedStartDate)"
+      (change)="onDateRangeChange()" [disabled]="isLoadingFiles">
+  </div>
+  <div class="date-separator">
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+      stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 8.25L21 12m0 0l-3.75 3.75M21 12H3" />
+    </svg>
+  </div>
+  <div class="date-input-group">
+    <label class="date-label">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+        stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round"
+          d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+      </svg>
+      To
+    </label>
+    <input type="date" class="date-input" [(ngModel)]="selectedEndDate" 
+      [value]="getFormattedDate(selectedEndDate)"
+      (change)="onDateRangeChange()" [disabled]="isLoadingFiles">
+  </div>
 </div>
 
 
@@ -103,198 +125,96 @@ refreshPreviousFiles(): void {
 
 
 
-
-
-
-
-<!-- Mode Toggle Tabs -->
-<div class="mode-toggle-tabs">
-    <button class="mode-tab" [class.active]="uploadMode === 'new'" (click)="switchToMode('new')">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-            stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round"
-                d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-        </svg>
-        <span>New Upload</span>
-    </button>
-    <button class="mode-tab" [class.active]="uploadMode === 'previous'" (click)="switchToMode('previous')">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-            stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round"
-                d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-        <span>Previous Files</span>
-    </button>
-</div>
-
-
-
-
-
-
-
-
-
-
-
-<!-- PREVIOUS FILES MODE -->
-<div *ngIf="uploadMode === 'previous'">
-    <div class="upload-content-wrapper">
-        <div class="upload-fields-container">
-            <!-- Previous Files Selection -->
-            <div class="previous-files-section">
-                <div class="previous-files-header">
-                    <label class="previous-files-label">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                            stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round"
-                                d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 00-1.883 2.542l.857 6a2.25 2.25 0 002.227 1.932H19.05a2.25 2.25 0 002.227-1.932l.857-6a2.25 2.25 0 00-1.883-2.542m-16.5 0V6A2.25 2.25 0 016 3.75h3.879a1.5 1.5 0 011.06.44l2.122 2.12a1.5 1.5 0 001.06.44H18A2.25 2.25 0 0120.25 9v.776" />
-                        </svg>
-                        Select One File from Previously Uploaded
-                    </label>
-                    <button class="refresh-btn" (click)="refreshPreviousFiles()" [disabled]="isLoadingFiles">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                            stroke="currentColor" [class.spinning]="isLoadingFiles">
-                            <path stroke-linecap="round" stroke-linejoin="round"
-                                d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-                        </svg>
-                    </button>
-                </div>
-
-                <!-- Loading State -->
-                <div class="loading-container" *ngIf="isLoadingFiles">
-                    <div class="loading-spinner">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                            stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round"
-                                d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-                        </svg>
-                    </div>
-                    <p class="loading-text">Loading previous files...</p>
-                </div>
-
-                <!-- Files List -->
-                <div class="previous-files-list" *ngIf="!isLoadingFiles && allUploadedFiles.length > 0">
-                    <div class="previous-file-item" *ngFor="let file of allUploadedFiles"
-                        [class.selected]="isFileSelected(file)" (click)="toggleFileSelection(file)">
-                        <div class="file-radio">
-                            <div class="radio-dot" *ngIf="isFileSelected(file)"></div>
-                        </div>
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                            stroke="currentColor" class="file-icon">
-                            <path stroke-linecap="round" stroke-linejoin="round"
-                                d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
-                        </svg>
-                        <div class="file-details">
-                            <span class="file-name">{{ file.name }}</span>
-                            <span class="file-date">{{ file.insertedAt }}</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- No Files State -->
-                <div class="no-previous-files" *ngIf="!isLoadingFiles && allUploadedFiles.length === 0">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                        stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round"
-                            d="M2.25 13.5h3.86a2.25 2.25 0 012.012 1.244l.256.512a2.25 2.25 0 002.013 1.244h3.218a2.25 2.25 0 002.013-1.244l.256-.512a2.25 2.25 0 012.013-1.244h3.859m-19.5.338V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18v-4.162c0-.224-.034-.447-.1-.661L19.24 5.338a2.25 2.25 0 00-2.15-1.588H6.911a2.25 2.25 0 00-2.15 1.588L2.35 13.177a2.25 2.25 0 00-.1.661z" />
-                    </svg>
-                    <p>No previously uploaded files</p>
-                    <small>Upload new files to see them here</small>
-                </div>
-            </div>
-
-            <!-- Rest of the content (Optional Prompts, Processing, etc.) -->
-
-
-
-/* Previous Files Header */
-.previous-files-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 12px;
+/* Date Range Selector */
+.date-range-selector {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background-color: var(--footer-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  margin-bottom: 12px;
 }
 
-/* Refresh Button */
-.refresh-btn {
-    width: 32px;
-    height: 32px;
-    background-color: var(--footer-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: all 0.2s ease;
+.date-input-group {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.refresh-btn:hover:not(:disabled) {
-    background-color: var(--bg-color);
-    border-color: var(--primary-color);
+.date-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-color);
+  opacity: 0.7;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
 
-.refresh-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+.date-label svg {
+  width: 14px;
+  height: 14px;
+  stroke: var(--primary-color);
 }
 
-.refresh-btn svg {
-    width: 18px;
-    height: 18px;
-    stroke: var(--text-color);
-    transition: transform 0.3s ease;
+.date-input {
+  padding: 8px 12px;
+  background-color: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text-color);
+  font-weight: 500;
+  transition: all 0.2s ease;
+  cursor: pointer;
 }
 
-.refresh-btn svg.spinning {
-    animation: spin 1s linear infinite;
+.date-input:hover:not(:disabled) {
+  border-color: var(--primary-color);
 }
 
-@keyframes spin {
-    from {
-        transform: rotate(0deg);
-    }
-    to {
-        transform: rotate(360deg);
-    }
+.date-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
 }
 
-/* Loading Container */
-.loading-container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 60px 20px;
-    background-color: var(--footer-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
+.date-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
-.loading-spinner {
-    width: 48px;
-    height: 48px;
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(167, 139, 250, 0.1));
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-bottom: 16px;
-    animation: pulse 2s ease-in-out infinite;
+.date-separator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 18px;
 }
 
-.loading-spinner svg {
-    width: 24px;
-    height: 24px;
-    stroke: var(--primary-color);
-    animation: spin 2s linear infinite;
+.date-separator svg {
+  width: 20px;
+  height: 20px;
+  stroke: var(--text-color);
+  opacity: 0.4;
 }
 
-.loading-text {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text-color);
-    opacity: 0.7;
-    margin: 0;
+/* Calendar icon styling for date input */
+.date-input::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  filter: invert(0.5);
 }
+
+.date-input::-webkit-calendar-picker-indicator:hover {
+  filter: invert(0.3);
+}
+
+
+
+
+
+
