@@ -1,181 +1,35 @@
-import { Injectable } from '@angular/core';
-import { HttpClient, HttpEventType, HttpEvent } from '@angular/common/http';
-import { Observable } from 'rxjs';
-import { map } from 'rxjs/operators';
-
-export interface UploadProgress {
-  progress: number;
-  status: 'pending' | 'uploading' | 'uploaded' | 'error';
+constructor(
+  private uploadService: UploadService,
+  private generateService: GenerateService
+) {
+  // Don't load files on component initialization
+  // Files will be loaded when user clicks "Previous Files" tab
 }
 
-export interface UploadResponse {
-  success: boolean;
-  message: string;
-  fileId?: string;
-  fileName?: string;
-  fileUrl?: string;
+ngOnDestroy(): void {
+  // Cleanup subscriptions
+  this.subscriptions.forEach(sub => sub.unsubscribe());
 }
 
-export interface FileItem {
-  id: number;
-  original_name: string;
-  inserted_at: string;
-}
+// Add flag to track if files are loaded
+private filesLoaded: boolean = false;
+isLoadingFiles: boolean = false;
 
-export interface FilesResponse {
-  status: string;
-  data: {
-    files: FileItem[];
-  };
-}
-
-export interface FilesByDateRequest {
-  start_date: string;
-  end_date: string;
-}
-
-@Injectable({
-  providedIn: 'root'
-})
-export class UploadService {
-  private apiUrl = 'http://localhost:3000/api';  // Replace with your API base URL
-
-  constructor(private http: HttpClient) {}
-
-  /**
-   * Upload a single file with progress tracking
-   * @param file - File to upload
-   * @param metadata - Optional metadata to send with the file
-   */
-  uploadFile(file: File, metadata?: any): Observable<HttpEvent<UploadResponse>> {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('fileName', file.name);
-    formData.append('fileSize', file.size.toString());
-    formData.append('fileType', file.type);
-
-    // Add any additional metadata
-    if (metadata) {
-      Object.keys(metadata).forEach(key => {
-        formData.append(key, metadata[key]);
-      });
-    }
-
-    return this.http.post<UploadResponse>(`${this.apiUrl}/upload`, formData, {
-      reportProgress: true,
-      observe: 'events'
-    });
-  }
-
-  /**
-   * Upload file and return progress as percentage
-   */
-  uploadFileWithProgress(file: File, metadata?: any): Observable<number | UploadResponse> {
-    return this.uploadFile(file, metadata).pipe(
-      map(event => {
-        if (event.type === HttpEventType.UploadProgress) {
-          const progress = event.total ? Math.round((100 * event.loaded) / event.total) : 0;
-          return progress;
-        } else if (event.type === HttpEventType.Response) {
-          return event.body as UploadResponse;
-        }
-        return 0;
-      })
-    );
-  }
-
-  /**
-   * Get list of uploaded files by date range
-   * @param startDate - Start date in format 'YYYY-MM-DD'
-   * @param endDate - End date in format 'YYYY-MM-DD'
-   */
-  getFilesByDate(startDate: string, endDate: string): Observable<FilesResponse> {
-    const request: FilesByDateRequest = {
-      start_date: startDate,
-      end_date: endDate
-    };
-
-    return this.http.post<FilesResponse>(`${this.apiUrl}/files/by-date`, request);
-  }
-
-  /**
-   * Get all uploaded files (uses current date)
-   */
-  getUploadedFiles(): Observable<FileItem[]> {
-    const today = this.formatDate(new Date());
-    
-    return this.getFilesByDate(today, today).pipe(
-      map(response => {
-        if (response.status === 'success') {
-          return response.data.files;
-        }
-        return [];
-      })
-    );
-  }
-
-  /**
-   * Get files for a date range
-   */
-  getFilesInRange(startDate: Date, endDate: Date): Observable<FileItem[]> {
-    const start = this.formatDate(startDate);
-    const end = this.formatDate(endDate);
-    
-    return this.getFilesByDate(start, end).pipe(
-      map(response => {
-        if (response.status === 'success') {
-          return response.data.files;
-        }
-        return [];
-      })
-    );
-  }
-
-  /**
-   * Format date to 'YYYY-MM-DD'
-   */
-  private formatDate(date: Date): string {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  }
-
-  /**
-   * Delete uploaded file
-   */
-  deleteFile(fileId: string): Observable<any> {
-    return this.http.delete(`${this.apiUrl}/files/${fileId}`);
-  }
-
-  /**
-   * Get file details
-   */
-  getFileDetails(fileId: string): Observable<any> {
-    return this.http.get(`${this.apiUrl}/files/${fileId}`);
+// Modified method to switch upload mode
+switchToMode(mode: 'new' | 'previous'): void {
+  this.uploadMode = mode;
+  
+  if (mode === 'previous' && !this.filesLoaded) {
+    // Load files only when switching to "Previous Files" tab for the first time
+    this.loadPreviousFiles();
+  } else if (mode === 'new') {
+    this.currentStep = 1;
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-interface UploadFile {
-  id: number;
-  name: string;
-  uploadDate: Date;
-  insertedAt: string;
-}
-
-// ... rest of the component code ...
 
 loadPreviousFiles(): void {
+  this.isLoadingFiles = true;
+  
   // Get files from the last 30 days
   const endDate = new Date();
   const startDate = new Date();
@@ -189,83 +43,258 @@ loadPreviousFiles(): void {
         uploadDate: new Date(f.inserted_at),
         insertedAt: f.inserted_at
       }));
+      this.filesLoaded = true;
+      this.isLoadingFiles = false;
     },
     error: (error) => {
       console.error('Error loading previous files:', error);
-      // Fallback to empty array or show error message
       this.allUploadedFiles = [];
+      this.filesLoaded = true;
+      this.isLoadingFiles = false;
     }
   });
   this.subscriptions.push(sub);
 }
 
-// Alternative: Load only today's files
-loadTodaysFiles(): void {
-  const sub = this.uploadService.getUploadedFiles().subscribe({
-    next: (files) => {
-      this.allUploadedFiles = files.map(f => ({
-        id: f.id,
-        name: f.original_name,
-        uploadDate: new Date(f.inserted_at),
-        insertedAt: f.inserted_at
-      }));
-    },
-    error: (error) => {
-      console.error('Error loading today\'s files:', error);
-      this.allUploadedFiles = [];
-    }
-  });
-  this.subscriptions.push(sub);
-}
-
-// Optional: Add method to load files with custom date range
-loadFilesByCustomDate(startDate: Date, endDate: Date): void {
-  const sub = this.uploadService.getFilesInRange(startDate, endDate).subscribe({
-    next: (files) => {
-      this.allUploadedFiles = files.map(f => ({
-        id: f.id,
-        name: f.original_name,
-        uploadDate: new Date(f.inserted_at),
-        insertedAt: f.inserted_at
-      }));
-    },
-    error: (error) => {
-      console.error('Error loading files by date:', error);
-      this.allUploadedFiles = [];
-    }
-  });
-  this.subscriptions.push(sub);
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-constructor(
-  private uploadService: UploadService,
-  private generateService: GenerateService
-) {
-  // Choose one of these based on your requirement:
-  
-  // Option 1: Load files from last 30 days
+// Optional: Method to refresh files list
+refreshPreviousFiles(): void {
+  this.filesLoaded = false;
   this.loadPreviousFiles();
-  
-  // Option 2: Load only today's files
-  // this.loadTodaysFiles();
-  
-  // Option 3: Load files from specific date range
-  // const start = new Date('2026-01-01');
-  // const end = new Date();
-  // this.loadFilesByCustomDate(start, end);
+}
+
+
+
+
+
+
+
+
+
+
+
+<!-- Mode Toggle Tabs -->
+<div class="mode-toggle-tabs">
+    <button class="mode-tab" [class.active]="uploadMode === 'new'" (click)="switchToMode('new')">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+            stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round"
+                d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+        </svg>
+        <span>New Upload</span>
+    </button>
+    <button class="mode-tab" [class.active]="uploadMode === 'previous'" (click)="switchToMode('previous')">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+            stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round"
+                d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <span>Previous Files</span>
+    </button>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- Mode Toggle Tabs -->
+<div class="mode-toggle-tabs">
+    <button class="mode-tab" [class.active]="uploadMode === 'new'" (click)="switchToMode('new')">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+            stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round"
+                d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+        </svg>
+        <span>New Upload</span>
+    </button>
+    <button class="mode-tab" [class.active]="uploadMode === 'previous'" (click)="switchToMode('previous')">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+            stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round"
+                d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <span>Previous Files</span>
+    </button>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+<!-- PREVIOUS FILES MODE -->
+<div *ngIf="uploadMode === 'previous'">
+    <div class="upload-content-wrapper">
+        <div class="upload-fields-container">
+            <!-- Previous Files Selection -->
+            <div class="previous-files-section">
+                <div class="previous-files-header">
+                    <label class="previous-files-label">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 00-1.883 2.542l.857 6a2.25 2.25 0 002.227 1.932H19.05a2.25 2.25 0 002.227-1.932l.857-6a2.25 2.25 0 00-1.883-2.542m-16.5 0V6A2.25 2.25 0 016 3.75h3.879a1.5 1.5 0 011.06.44l2.122 2.12a1.5 1.5 0 001.06.44H18A2.25 2.25 0 0120.25 9v.776" />
+                        </svg>
+                        Select One File from Previously Uploaded
+                    </label>
+                    <button class="refresh-btn" (click)="refreshPreviousFiles()" [disabled]="isLoadingFiles">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                            stroke="currentColor" [class.spinning]="isLoadingFiles">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Loading State -->
+                <div class="loading-container" *ngIf="isLoadingFiles">
+                    <div class="loading-spinner">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                        </svg>
+                    </div>
+                    <p class="loading-text">Loading previous files...</p>
+                </div>
+
+                <!-- Files List -->
+                <div class="previous-files-list" *ngIf="!isLoadingFiles && allUploadedFiles.length > 0">
+                    <div class="previous-file-item" *ngFor="let file of allUploadedFiles"
+                        [class.selected]="isFileSelected(file)" (click)="toggleFileSelection(file)">
+                        <div class="file-radio">
+                            <div class="radio-dot" *ngIf="isFileSelected(file)"></div>
+                        </div>
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                            stroke="currentColor" class="file-icon">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
+                        </svg>
+                        <div class="file-details">
+                            <span class="file-name">{{ file.name }}</span>
+                            <span class="file-date">{{ file.insertedAt }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- No Files State -->
+                <div class="no-previous-files" *ngIf="!isLoadingFiles && allUploadedFiles.length === 0">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                        stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                            d="M2.25 13.5h3.86a2.25 2.25 0 012.012 1.244l.256.512a2.25 2.25 0 002.013 1.244h3.218a2.25 2.25 0 002.013-1.244l.256-.512a2.25 2.25 0 012.013-1.244h3.859m-19.5.338V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18v-4.162c0-.224-.034-.447-.1-.661L19.24 5.338a2.25 2.25 0 00-2.15-1.588H6.911a2.25 2.25 0 00-2.15 1.588L2.35 13.177a2.25 2.25 0 00-.1.661z" />
+                    </svg>
+                    <p>No previously uploaded files</p>
+                    <small>Upload new files to see them here</small>
+                </div>
+            </div>
+
+            <!-- Rest of the content (Optional Prompts, Processing, etc.) -->
+
+
+
+/* Previous Files Header */
+.previous-files-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+/* Refresh Button */
+.refresh-btn {
+    width: 32px;
+    height: 32px;
+    background-color: var(--footer-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.refresh-btn:hover:not(:disabled) {
+    background-color: var(--bg-color);
+    border-color: var(--primary-color);
+}
+
+.refresh-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.refresh-btn svg {
+    width: 18px;
+    height: 18px;
+    stroke: var(--text-color);
+    transition: transform 0.3s ease;
+}
+
+.refresh-btn svg.spinning {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Loading Container */
+.loading-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    background-color: var(--footer-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+.loading-spinner {
+    width: 48px;
+    height: 48px;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(167, 139, 250, 0.1));
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 16px;
+    animation: pulse 2s ease-in-out infinite;
+}
+
+.loading-spinner svg {
+    width: 24px;
+    height: 24px;
+    stroke: var(--primary-color);
+    animation: spin 2s linear infinite;
+}
+
+.loading-text {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-color);
+    opacity: 0.7;
+    margin: 0;
 }
