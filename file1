@@ -1,49 +1,59 @@
-/* Authenticating Text */
-.auth-title {
-    font-size: 28px; /* Reduced from 32px */
-    font-weight: 700;
-    color: white;
-    margin: 0;
-    text-align: center;
-    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+import { Injectable } from '@angular/core';
+import { HttpInterceptor, HttpRequest, HttpHandler, HttpEvent } from '@angular/common/http';
+import { Observable } from 'rxjs';
+
+@Injectable()
+export class AuthInterceptor implements HttpInterceptor {
+  intercept(req: HttpRequest<any>, next: HttpHandler): Observable<HttpEvent<any>> {
+    // Get user from localStorage
+    const currentUserStr = localStorage.getItem('currentUser');
+    
+    if (currentUserStr) {
+      try {
+        const currentUser = JSON.parse(currentUserStr);
+        const token = currentUser.token;
+        
+        if (token) {
+          // Clone the request and add Authorization header
+          const clonedRequest = req.clone({
+            setHeaders: {
+              Authorization: `Bearer ${token}`
+            }
+          });
+          
+          return next.handle(clonedRequest);
+        }
+      } catch (error) {
+        console.error('Error parsing currentUser from localStorage:', error);
+      }
+    }
+    
+    // If no token, proceed with original request
+    return next.handle(req);
+  }
 }
 
-.auth-subtitle {
-    font-size: 14px; /* Reduced from 16px */
-    color: rgba(255, 255, 255, 0.9);
-    margin: 0;
-    text-align: center;
-    max-width: 400px;
-}
 
-/* Responsive */
-@media (max-width: 640px) {
-    .auth-logo {
-        width: 80px;
-        height: 80px;
-    }
 
-    .logo-circle {
-        width: 80px;
-        height: 80px;
-    }
 
-    .logo-circle svg {
-        width: 40px;
-        height: 40px;
-    }
 
-    .pulse-ring {
-        width: 80px;
-        height: 80px;
-    }
 
-    .auth-title {
-        font-size: 22px; /* Reduced from 24px */
-    }
 
-    .auth-subtitle {
-        font-size: 13px; /* Reduced from 14px */
-        padding: 0 20px;
+
+
+
+import { HTTP_INTERCEPTORS } from '@angular/common/http';
+import { AuthInterceptor } from './interceptors/auth.interceptor';
+
+@NgModule({
+  // ... other configurations
+  providers: [
+    {
+      provide: HTTP_INTERCEPTORS,
+      useClass: AuthInterceptor,
+      multi: true
     }
-}
+  ],
+  // ... other configurations
+})
+export class AppModule { }
