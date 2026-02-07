@@ -1,190 +1,4 @@
-import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { Observable } from 'rxjs';
-import { map } from 'rxjs/operators';
-
-export interface ModelResponse {
-  status: string;
-  result: string[];
-}
-
-@Injectable({
-  providedIn: 'root'
-})
-export class ModelService {
-  private apiUrl = 'http://localhost:3000/api';
-
-  constructor(private http: HttpClient) { }
-
-  getModels(): Observable<string[]> {
-    return this.http.get<ModelResponse>(`${this.apiUrl}/content_analytics/get_models`).pipe(
-      map(response => {
-        if (response.status === 'Success') {
-          return response.result;
-        }
-        return [];
-      })
-    );
-  }
-}
-
-
-
-
-
-
-
-
-
-
-import { ModelService } from 'src/app/services/model.service'; // Add this import
-
-// Add these properties
-availableModels: string[] = [];
-selectedModel: string = '';
-isLoadingModels: boolean = false;
-showModelDropdown: boolean = false;
-
-// Update constructor
-constructor(
-  private uploadService: UploadService,
-  private generateService: GenerateService,
-  private modelService: ModelService // Add this
-) {
-  // Initialize date range to last 30 days
-  this.selectedEndDate = new Date();
-  this.selectedStartDate = new Date();
-  this.selectedStartDate.setDate(this.selectedStartDate.getDate() - 30);
-  
-  // Load models on component initialization
-  this.loadModels();
-}
-
-// Add this method
-loadModels(): void {
-  this.isLoadingModels = true;
-  const sub = this.modelService.getModels().subscribe({
-    next: (models) => {
-      this.availableModels = models;
-      if (models.length > 0) {
-        this.selectedModel = models[0]; // Select first model by default
-      }
-      this.isLoadingModels = false;
-    },
-    error: (error) => {
-      console.error('Error loading models:', error);
-      this.availableModels = [];
-      this.isLoadingModels = false;
-    }
-  });
-  this.subscriptions.push(sub);
-}
-
-// Add these methods
-toggleModelDropdown(): void {
-  this.showModelDropdown = !this.showModelDropdown;
-}
-
-selectModel(model: string): void {
-  this.selectedModel = model;
-  this.showModelDropdown = false;
-}
-
-// Close dropdown when clicking outside
-@HostListener('document:click', ['$event'])
-onDocumentClick(event: MouseEvent): void {
-  const target = event.target as HTMLElement;
-  if (!target.closest('.model-dropdown-container')) {
-    this.showModelDropdown = false;
-  }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<div class="section-header-inline">
-    <h3 class="section-inline-title">Upload & Generate</h3>
-    
-    <!-- Model Dropdown -->
-    <div class="model-dropdown-container" *ngIf="!isLoadingModels && availableModels.length > 0">
-        <button class="model-selector-btn" (click)="toggleModelDropdown()" [disabled]="isLoadingModels">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                stroke="currentColor" class="model-icon">
-                <path stroke-linecap="round" stroke-linejoin="round"
-                    d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
-            </svg>
-            <span class="model-name">{{ selectedModel }}</span>
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                stroke="currentColor" class="dropdown-arrow" [class.rotate]="showModelDropdown">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-            </svg>
-        </button>
-        
-        <div class="model-dropdown-menu" *ngIf="showModelDropdown" [@slideDown]>
-            <div class="model-option" *ngFor="let model of availableModels" 
-                [class.selected]="model === selectedModel"
-                (click)="selectModel(model)">
-                <div class="model-radio">
-                    <div class="radio-dot" *ngIf="model === selectedModel"></div>
-                </div>
-                <span class="model-option-name">{{ model }}</span>
-                <svg *ngIf="model === selectedModel" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" 
-                    stroke-width="2" stroke="currentColor" class="check-icon">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                </svg>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Loading Animation -->
-    <div class="model-loading" *ngIf="isLoadingModels">
-        <div class="loading-dots">
-            <span class="dot"></span>
-            <span class="dot"></span>
-            <span class="dot"></span>
-        </div>
-        <span class="loading-text">Loading models...</span>
-    </div>
-</div>
-
-
-
-
-
-
-
-
-
-
-
-/* Section Header with Model Dropdown */
-.section-header-inline {
-    position: sticky;
-    top: 0;
-    z-index: 10;
-    padding: 20px 0;
-    flex-shrink: 0;
-    margin-bottom: 20px;
-    background: var(--bg-color);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-}
-
-/* Model Dropdown Container */
+/* Model Dropdown Container - Compact */
 .model-dropdown-container {
     position: relative;
     flex-shrink: 0;
@@ -193,17 +7,17 @@ onDocumentClick(event: MouseEvent): void {
 .model-selector-btn {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 14px;
+    gap: 6px;
+    padding: 6px 10px;
     background-color: var(--footer-bg);
     border: 1px solid var(--border-color);
-    border-radius: 8px;
-    font-size: 13px;
+    border-radius: 6px;
+    font-size: 12px;
     font-weight: 600;
     color: var(--text-color);
     cursor: pointer;
     transition: all 0.2s ease;
-    min-width: 150px;
+    min-width: 120px;
 }
 
 .model-selector-btn:hover:not(:disabled) {
@@ -218,8 +32,8 @@ onDocumentClick(event: MouseEvent): void {
 }
 
 .model-icon {
-    width: 18px;
-    height: 18px;
+    width: 14px;
+    height: 14px;
     stroke: var(--primary-color);
     flex-shrink: 0;
 }
@@ -230,31 +44,33 @@ onDocumentClick(event: MouseEvent): void {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    font-size: 11px;
 }
 
 .dropdown-arrow {
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
     stroke: var(--text-color);
     transition: transform 0.3s ease;
     flex-shrink: 0;
+    opacity: 0.6;
 }
 
 .dropdown-arrow.rotate {
     transform: rotate(180deg);
 }
 
-/* Model Dropdown Menu */
+/* Model Dropdown Menu - Compact */
 .model-dropdown-menu {
     position: absolute;
-    top: calc(100% + 8px);
+    top: calc(100% + 4px);
     right: 0;
-    min-width: 200px;
+    min-width: 160px;
     background-color: var(--bg-color);
     border: 1px solid var(--border-color);
-    border-radius: 8px;
+    border-radius: 6px;
     box-shadow: 0 4px 12px var(--shadow-color);
-    padding: 6px;
+    padding: 4px;
     z-index: 1000;
     animation: slideDown 0.2s ease;
 }
@@ -273,9 +89,9 @@ onDocumentClick(event: MouseEvent): void {
 .model-option {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 10px 12px;
-    border-radius: 6px;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 4px;
     cursor: pointer;
     transition: all 0.2s ease;
 }
@@ -289,8 +105,8 @@ onDocumentClick(event: MouseEvent): void {
 }
 
 .model-radio {
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
     border: 2px solid var(--border-color);
     border-radius: 50%;
     display: flex;
@@ -305,8 +121,8 @@ onDocumentClick(event: MouseEvent): void {
 }
 
 .radio-dot {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
     background: linear-gradient(135deg, var(--primary-color), #a78bfa);
     animation: radioPop 0.2s ease;
@@ -314,7 +130,7 @@ onDocumentClick(event: MouseEvent): void {
 
 .model-option-name {
     flex: 1;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 500;
     color: var(--text-color);
 }
@@ -325,8 +141,8 @@ onDocumentClick(event: MouseEvent): void {
 }
 
 .check-icon {
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
     stroke: var(--primary-color);
     flex-shrink: 0;
     animation: checkPop 0.3s ease;
@@ -346,25 +162,25 @@ onDocumentClick(event: MouseEvent): void {
     }
 }
 
-/* Model Loading Animation */
+/* Model Loading Animation - Compact */
 .model-loading {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 8px 14px;
+    gap: 8px;
+    padding: 6px 10px;
     background-color: var(--footer-bg);
     border: 1px solid var(--border-color);
-    border-radius: 8px;
+    border-radius: 6px;
 }
 
 .loading-dots {
     display: flex;
-    gap: 4px;
+    gap: 3px;
 }
 
 .dot {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
     border-radius: 50%;
     background: linear-gradient(135deg, var(--primary-color), #a78bfa);
     animation: dotPulse 1.4s infinite ease-in-out;
@@ -394,7 +210,7 @@ onDocumentClick(event: MouseEvent): void {
 }
 
 .loading-text {
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
     color: var(--text-color);
     opacity: 0.7;
