@@ -1,273 +1,60 @@
-import { Component, EventEmitter, Output, OnInit, OnDestroy } from '@angular/core';
-import { HistoryService, HistoryFileResponse } from './history.service';
-import { Subject } from 'rxjs';
-import { takeUntil } from 'rxjs/operators';
-
-interface HistoryItem {
-  id: string;
-  name: string;
-  displayDate: string;
-  date: Date;
-  progress: number | null;
-  status: 'not-generated' | 'in-progress' | 'completed';
-  isClickable: boolean;
+/* Date Filters Inline */
+.date-filters-inline {
+    display: flex;
+    gap: 6px;
+    align-items: flex-end;
 }
 
-@Component({
-  selector: 'app-history',
-  templateUrl: './history.component.html',
-  styleUrls: ['./history.component.css']
-})
-export class HistoryComponent implements OnInit, OnDestroy {
-  @Output() onItemSelect = new EventEmitter<string>();
-
-  showSearchFilter: boolean = false;
-  showDateFilter: boolean = false;
-  searchQuery: string = '';
-  dateFrom: string = '';
-  dateTo: string = '';
-  
-  // Applied filters (shown in header and used for API call)
-  appliedDateFrom: string = '';
-  appliedDateTo: string = '';
-  
-  selectedHistoryItem: HistoryItem | null = null;
-  isLoading: boolean = false;
-  error: string | null = null;
-
-  historyItems: HistoryItem[] = [];
-  filteredHistory: HistoryItem[] = [];
-
-  private destroy$ = new Subject<void>();
-
-  constructor(private historyService: HistoryService) {}
-
-  ngOnInit(): void {
-    this.initializeDateRange();
-    this.loadHistoryData();
-  }
-
-  ngOnDestroy(): void {
-    this.destroy$.next();
-    this.destroy$.complete();
-  }
-
-  initializeDateRange(): void {
-    const today = new Date();
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(today.getDate() - 30);
-
-    this.dateFrom = this.formatDateForInput(thirtyDaysAgo);
-    this.dateTo = this.formatDateForInput(today);
-    
-    // Set applied dates
-    this.appliedDateFrom = this.dateFrom;
-    this.appliedDateTo = this.dateTo;
-  }
-
-  formatDateForInput(date: Date): string {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  }
-
-  formatDisplayDate(dateString: string): string {
-    if (!dateString) return '';
-    
-    const date = new Date(dateString);
-    const options: Intl.DateTimeFormatOptions = { 
-      month: 'short', 
-      day: 'numeric', 
-      year: 'numeric' 
-    };
-    
-    return date.toLocaleDateString('en-US', options);
-  }
-
-  loadHistoryData(): void {
-    this.isLoading = true;
-    this.error = null;
-
-    this.historyService.getHistoryFiles(this.appliedDateFrom, this.appliedDateTo)
-      .pipe(takeUntil(this.destroy$))
-      .subscribe({
-        next: (response) => {
-          if (response.status === 'success') {
-            this.historyItems = this.mapResponseToHistoryItems(response.data.files);
-            this.filteredHistory = [...this.historyItems];
-          }
-          this.isLoading = false;
-        },
-        error: (err) => {
-          console.error('Error loading history:', err);
-          this.error = 'Failed to load history items';
-          this.isLoading = false;
-        }
-      });
-  }
-
-  mapResponseToHistoryItems(files: HistoryFileResponse[]): HistoryItem[] {
-    return files.map(file => {
-      const status = this.getFileStatus(file.progress);
-      return {
-        id: file.id.toString(),
-        name: file.original_name,
-        displayDate: `Created on ${file.inserted_at}`,
-        date: new Date(file.inserted_at),
-        progress: file.progress,
-        status: status,
-        isClickable: status === 'completed'
-      };
-    });
-  }
-
-  getFileStatus(progress: number | null): 'not-generated' | 'in-progress' | 'completed' {
-    if (progress === null) {
-      return 'not-generated';
-    } else if (progress === 100) {
-      return 'completed';
-    } else {
-      return 'in-progress';
-    }
-  }
-
-  onHistoryItemClick(item: HistoryItem): void {
-    if (!item.isClickable) {
-      return;
-    }
-    this.selectedHistoryItem = item;
-    this.onItemSelect.emit(item.id);
-  }
-
-  filterHistory(): void {
-    this.filteredHistory = this.historyItems.filter(item => {
-      const matchesSearch = !this.searchQuery ||
-        item.name.toLowerCase().includes(this.searchQuery.toLowerCase());
-
-      let matchesDate = true;
-      if (this.appliedDateFrom) {
-        const fromDate = new Date(this.appliedDateFrom);
-        matchesDate = matchesDate && item.date >= fromDate;
-      }
-      if (this.appliedDateTo) {
-        const toDate = new Date(this.appliedDateTo);
-        toDate.setHours(23, 59, 59, 999);
-        matchesDate = matchesDate && item.date <= toDate;
-      }
-
-      return matchesSearch && matchesDate;
-    });
-  }
-
-  refreshHistory(): void {
-    // Apply the filter dates
-    this.appliedDateFrom = this.dateFrom;
-    this.appliedDateTo = this.dateTo;
-    
-    // Reload data with new dates
-    this.loadHistoryData();
-  }
-
-  toggleSearchFilter(): void {
-    this.showSearchFilter = !this.showSearchFilter;
-    if (!this.showSearchFilter) {
-      this.clearSearch();
-    }
-  }
-
-  toggleDateFilter(): void {
-    this.showDateFilter = !this.showDateFilter;
-  }
-
-  clearSearch(): void {
-    this.searchQuery = '';
-    this.filterHistory();
-  }
-
-  clearDateFilter(): void {
-    // Reset to applied dates (don't change applied dates)
-    this.dateFrom = this.appliedDateFrom;
-    this.dateTo = this.appliedDateTo;
-  }
-
-  clearSelection(): void {
-    this.selectedHistoryItem = null;
-  }
-
-  addHistoryItem(item: HistoryItem): void {
-    this.historyItems.unshift(item);
-    this.filteredHistory = [...this.historyItems];
-  }
+.date-input-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
 }
 
+.date-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-color);
+    opacity: 0.7;
+}
 
+.date-input {
+    padding: 8px 10px;
+    background-color: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 12px;
+    color: var(--text-color);
+    transition: all 0.2s ease;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
 
+.date-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+}
 
+.date-input::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 0.2s ease;
+    width: 14px;
+    height: 14px;
+}
 
+.date-input::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+}
 
-
-
-
-
-
-
-
-<!-- Collapsible Date Range Filter -->
-<div class="filter-panel" *ngIf="showDateFilter">
-    <div class="date-filters-inline">
-        <div class="date-input-wrapper">
-            <label class="date-label">From</label>
-            <input type="date" class="date-input" [(ngModel)]="dateFrom">
-        </div>
-        <div class="date-input-wrapper">
-            <label class="date-label">To</label>
-            <input type="date" class="date-input" [(ngModel)]="dateTo">
-        </div>
-        <button class="refresh-filter-btn" (click)="refreshHistory()" title="Apply date filter">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round"
-                    d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-            </svg>
-        </button>
-        <button class="clear-filter-btn" *ngIf="dateFrom !== appliedDateFrom || dateTo !== appliedDateTo" 
-            (click)="clearDateFilter()" title="Reset to applied dates">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-        </button>
-    </div>
-</div>
-
-<!-- Update the header to use appliedDateFrom and appliedDateTo -->
-<div class="date-range-display">
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-        stroke="currentColor">
-        <path stroke-linecap="round" stroke-linejoin="round"
-            d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
-    </svg>
-    <span class="date-range-text">{{ formatDisplayDate(appliedDateFrom) }} - {{ formatDisplayDate(appliedDateTo) }}</span>
-</div>
-
-
-
-
-
-
-
-
-
-
-
-/* Refresh Filter Button */
+/* Refresh Filter Button - Smaller */
 .refresh-filter-btn {
-    width: 40px;
-    height: 40px;
+    width: 36px;
+    height: 36px;
     background: linear-gradient(135deg, var(--primary-color), #a78bfa);
     border: 1px solid var(--primary-color);
-    border-radius: 8px;
+    border-radius: 6px;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -282,17 +69,18 @@ export class HistoryComponent implements OnInit, OnDestroy {
 }
 
 .refresh-filter-btn svg {
-    width: 18px;
-    height: 18px;
+    width: 16px;
+    height: 16px;
     stroke: white;
 }
 
+/* Clear Filter Button - Smaller */
 .clear-filter-btn {
-    width: 40px;
-    height: 40px;
+    width: 36px;
+    height: 36px;
     background-color: var(--footer-bg);
     border: 1px solid var(--border-color);
-    border-radius: 8px;
+    border-radius: 6px;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -307,8 +95,8 @@ export class HistoryComponent implements OnInit, OnDestroy {
 }
 
 .clear-filter-btn svg {
-    width: 18px;
-    height: 18px;
+    width: 16px;
+    height: 16px;
     stroke: var(--text-color);
 }
 
