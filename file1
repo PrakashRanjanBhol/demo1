@@ -1,16 +1,98 @@
-mapResponseToHistoryItems(files: HistoryFileResponse[]): HistoryItem[] {
-  return files
-    .filter(file => file.progress !== null) // ADD THIS LINE - Filter out null progress files
-    .map(file => {
-      const status = this.getFileStatus(file.progress);
-      return {
-        id: file.id.toString(),
-        name: file.original_name,
-        displayDate: `Created on ${file.inserted_at}`,
-        date: new Date(file.inserted_at),
-        progress: file.progress,
-        status: status,
-        isClickable: status === 'completed'
-      };
-    });
+onGenerateComplete(data: { file: any, prompts: string, mode: string }): void {
+  const fileId = data.file.fileID.toString();
+
+  // Check if item already exists in history
+  const existingItem = this.historyComponent?.historyItems.find((i: any) => i.id === fileId);
+
+  if (existingItem) {
+    // Item already exists, update status to in-progress
+    existingItem.status = 'in-progress';
+    existingItem.isClickable = false;
+    existingItem.progress = 'in progress';
+    
+    // Update the filtered history as well
+    this.historyComponent.filterHistory();
+    
+    // Select the item
+    this.selectedHistoryItem = existingItem;
+    return;
+  }
+
+  // Create new item if it doesn't exist with in-progress status
+  const newItem = {
+    id: fileId,
+    name: data.file.fileName,
+    displayDate: 'Created on ' + new Date().toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    }),
+    date: new Date(),
+    progress: 'in progress',
+    status: 'in-progress' as 'not-generated' | 'in-progress' | 'completed',
+    isClickable: false
+  };
+
+  // Add to history
+  if (this.historyComponent) {
+    this.historyComponent.addHistoryItem(newItem);
+  }
+
+  // Select the new item
+  this.selectedHistoryItem = newItem;
+}
+
+
+
+
+
+
+
+
+
+updateHistoryItemStatus(itemId: string, status: 'not-generated' | 'in-progress' | 'completed', progress: string | null): void {
+  const item = this.historyItems.find(i => i.id === itemId);
+  if (item) {
+    item.status = status;
+    item.progress = progress;
+    item.isClickable = status === 'completed';
+    this.filterHistory();
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+private onProgressComplete(): void {
+  this.stopPolling();
+
+  const fileName = this.uploadMode === 'new'
+    ? this.selectedUploadFile?.name
+    : this.selectedPreviousFile?.name;
+
+  this.onGenerate.emit({
+    file: {
+      fileID: this.uploadMode === 'new'
+        ? this.uploadedFilesWithStatus.find(f => f.file.name === this.selectedUploadFile?.name)?.uploadedFileId
+        : this.selectedPreviousFile?.id,
+      fileName: fileName,
+      optional_prompt: this.optionalPrompts,
+      model_name: this.selectedModel
+    },
+    prompts: this.optionalPrompts,
+    mode: this.uploadMode  // This ensures mode is passed correctly
+  });
+
+  setTimeout(() => {
+    this.completeProcessing();
+  }, 500);
 }
