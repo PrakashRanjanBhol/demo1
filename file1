@@ -1,49 +1,38 @@
-handleGenerate(): void {
-  if (this.uploadMode === 'new' && this.selectedUploadFile) {
-    const fileWithStatus = this.uploadedFilesWithStatus.find(
-      f => f.file.name === this.selectedUploadFile?.name
-    );
+import { Injectable } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Observable } from 'rxjs';
 
-    // EMIT IMMEDIATELY when Generate button is clicked
-    this.onGenerate.emit({
-      file: {
-        fileID: fileWithStatus?.uploadedFileId || '',
-        fileName: this.selectedUploadFile.name
-      },
-      prompts: this.optionalPrompts,
-      mode: this.uploadMode
-    });
+export interface FAQ {
+  question: string;
+  answer: string;
+}
 
-    this.startProcessing(this.selectedUploadFile.name);
+export interface FileResultData {
+  summary: string;
+  keywords: string[];
+  faq: FAQ[];
+}
 
-    const request: GenerateRequest = {
-      fileID: fileWithStatus?.uploadedFileId || '',
-      optional_prompt: this.optionalPrompts,
-      model_name: this.selectedModel
-    };
+export interface FileResultResponse {
+  status: string;
+  data: FileResultData;
+}
 
-    this.generateAnalysis(request);
+@Injectable({
+  providedIn: 'root'
+})
+export class ResultsService {
+  private apiUrl = 'http://localhost:3000/api';  // Replace with your API base URL
 
-  } else if (this.uploadMode === 'previous' && this.selectedPreviousFile) {
-    // EMIT IMMEDIATELY when Generate button is clicked
-    this.onGenerate.emit({
-      file: {
-        fileID: this.selectedPreviousFile.id,
-        fileName: this.selectedPreviousFile.name
-      },
-      prompts: this.optionalPrompts,
-      mode: this.uploadMode
-    });
+  constructor(private http: HttpClient) { }
 
-    this.startProcessing(this.selectedPreviousFile.name);
-
-    const request: GenerateRequest = {
-      fileID: this.selectedPreviousFile.id,
-      optional_prompt: this.optionalPrompts,
-      model_name: this.selectedModel
-    };
-
-    this.generateAnalysis(request);
+  /**
+   * Get file results by file ID
+   * @param fileId - File ID to fetch results
+   * @returns Observable of FileResultResponse
+   */
+  getFileResults(fileId: string | number): Observable<FileResultResponse> {
+    return this.http.get<FileResultResponse>(`${this.apiUrl}/files/${fileId}`);
   }
 }
 
@@ -57,91 +46,149 @@ handleGenerate(): void {
 
 
 
-private onProgressComplete(): void {
-  this.stopPolling();
-
-  // Update the history item status to completed
-  const fileId = this.uploadMode === 'new'
-    ? this.uploadedFilesWithStatus.find(f => f.file.name === this.selectedUploadFile?.name)?.uploadedFileId
-    : this.selectedPreviousFile?.id;
-
-  // Emit completion event to update status and load results
-  this.onGenerate.emit({
-    file: {
-      fileID: fileId,
-      fileName: this.uploadMode === 'new' ? this.selectedUploadFile?.name : this.selectedPreviousFile?.name,
-      isComplete: true  // Add this flag to indicate completion
-    },
-    prompts: this.optionalPrompts,
-    mode: this.uploadMode
-  });
-
-  setTimeout(() => {
-    this.completeProcessing();
-  }, 500);
-}
 
 
+import { Component, ViewChild } from '@angular/core';
+import { ResultsService, FileResultData } from '../../services/results.service'; // ADD THIS IMPORT
 
+@Component({
+  selector: 'app-content-analytics',
+  templateUrl: './content-analytics.component.html',
+  styleUrls: ['./content-analytics.component.css']
+})
+export class ContentAnalyticsComponent {
+  @ViewChild('historyComponent') historyComponent: any;
 
+  isHeaderExpanded: boolean = false;
+  selectedHistoryItem: any = null;
+  resultItems: any[] = [];
+  isLoadingResults: boolean = false; // ADD THIS
 
+  // ADD CONSTRUCTOR
+  constructor(private resultsService: ResultsService) { }
 
+  toggleHeader(): void {
+    this.isHeaderExpanded = !this.isHeaderExpanded;
+  }
 
+  onGenerateComplete(data: { file: any, prompts: string, mode: string }): void {
+    const fileId = data.file.fileID.toString();
+    const isComplete = data.file.isComplete || false;
 
+    const existingItem = this.historyComponent?.historyItems.find((i: any) => i.id === fileId);
 
-
-
-onGenerateComplete(data: { file: any, prompts: string, mode: string }): void {
-  const fileId = data.file.fileID.toString();
-  const isComplete = data.file.isComplete || false;  // Check if this is completion event
-
-  // Check if item already exists in history
-  const existingItem = this.historyComponent?.historyItems.find((i: any) => i.id === fileId);
-
-  if (isComplete) {
-    // This is a completion event - update to completed status
-    if (existingItem) {
-      this.historyComponent.updateItemStatus(fileId, 'completed');
-      this.selectedHistoryItem = existingItem;
-      this.loadResultsForItem(fileId);
+    if (isComplete) {
+      if (existingItem) {
+        this.historyComponent.updateItemStatus(fileId, 'completed');
+        this.selectedHistoryItem = existingItem;
+        this.loadResultsForItem(fileId); // This will now make API call
+      }
+      return;
     }
-    return;
-  }
 
-  if (existingItem) {
-    // Item already exists, update its status to in-progress
-    this.historyComponent.updateItemStatus(fileId, 'in-progress');
-    this.selectedHistoryItem = existingItem;
-    // Clear results while processing
+    if (existingItem) {
+      this.historyComponent.updateItemStatus(fileId, 'in-progress');
+      this.selectedHistoryItem = existingItem;
+      this.resultItems = [];
+      return;
+    }
+
+    const newItem = {
+      id: fileId,
+      name: data.file.fileName,
+      displayDate: 'Created on ' + new Date().toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      }),
+      date: new Date(),
+      progress: 'in progress',
+      status: 'in-progress' as 'not-generated' | 'in-progress' | 'completed',
+      isClickable: false
+    };
+
+    if (this.historyComponent) {
+      this.historyComponent.addHistoryItem(newItem);
+    }
+
+    this.selectedHistoryItem = newItem;
     this.resultItems = [];
-    return;
   }
 
-  // Create new item with in-progress status
-  const newItem = {
-    id: fileId,
-    name: data.file.fileName,
-    displayDate: 'Created on ' + new Date().toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    }),
-    date: new Date(),
-    progress: 'in progress',
-    status: 'in-progress' as 'not-generated' | 'in-progress' | 'completed',
-    isClickable: false  // Not clickable until completed
-  };
-
-  // Add to history
-  if (this.historyComponent) {
-    this.historyComponent.addHistoryItem(newItem);
+  onHistoryItemSelected(itemId: string): void {
+    const item = this.historyComponent?.historyItems.find((i: any) => i.id === itemId);
+    if (item) {
+      this.selectedHistoryItem = item;
+      this.loadResultsForItem(itemId); // This will now make API call
+    }
   }
 
-  // Set as selected but don't load results yet
-  this.selectedHistoryItem = newItem;
-  this.resultItems = [];
+  // MODIFIED METHOD - Now makes API call
+  loadResultsForItem(itemId: string): void {
+    this.isLoadingResults = true;
+    this.resultItems = []; // Clear previous results
+
+    this.resultsService.getFileResults(itemId).subscribe({
+      next: (response) => {
+        if (response.status === 'success') {
+          this.resultItems = this.mapResponseToResultItems(response.data);
+        }
+        this.isLoadingResults = false;
+      },
+      error: (error) => {
+        console.error('Error loading results:', error);
+        this.resultItems = [];
+        this.isLoadingResults = false;
+      }
+    });
+  }
+
+  // NEW METHOD - Maps API response to result items
+  private mapResponseToResultItems(data: FileResultData): any[] {
+    const items: any[] = [];
+
+    // Add summary
+    if (data.summary) {
+      items.push({
+        id: 'summary',
+        title: 'Lecture Summary',
+        icon: 'document',
+        content: data.summary,
+        type: 'summary'
+      });
+    }
+
+    // Add keywords
+    if (data.keywords && data.keywords.length > 0) {
+      items.push({
+        id: 'keywords',
+        title: 'Keywords',
+        icon: 'tag',
+        content: data.keywords.map(k => `• ${k}`).join(' '),
+        type: 'keywords'
+      });
+    }
+
+    // Add FAQ as assessment questions
+    if (data.faq && data.faq.length > 0) {
+      data.faq.forEach((faqItem, index) => {
+        items.push({
+          id: `faq-${index}`,
+          title: `Question ${index + 1}`,
+          icon: 'question',
+          content: `**Q: ${faqItem.question}**\n\n**A:** ${faqItem.answer}`,
+          type: 'questions'
+        });
+      });
+    }
+
+    return items;
+  }
+
+  // REMOVE THIS METHOD - No longer needed
+  // getSampleResultItems(itemId: string): any[] { ... }
 }
 
 
@@ -159,18 +206,400 @@ onGenerateComplete(data: { file: any, prompts: string, mode: string }): void {
 
 
 
-/**
- * Update the status of an existing history item
- */
-updateItemStatus(itemId: string, newStatus: 'not-generated' | 'in-progress' | 'completed'): void {
-  // Find item in historyItems
-  const item = this.historyItems.find(i => i.id === itemId);
-  if (item) {
-    item.status = newStatus;
-    item.progress = newStatus === 'completed' ? 'completed' : 'in progress';
-    item.isClickable = newStatus === 'completed';
-    
-    // Update filtered list
-    this.filterHistory();
+
+<main>
+    <!-- Page Header -->
+    <div class="page-header" [class.expanded]="isHeaderExpanded">
+        <div class="header-content">
+            <div class="header-icon-wrapper">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                    stroke="currentColor" class="header-icon">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                        d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5M9 11.25v1.5M12 9v3.75m3-6v6" />
+                </svg>
+            </div>
+            <div class="header-text">
+                <h1 class="page-title">Content Analytics</h1>
+                <p class="page-subtitle">Transform your audio into actionable insights</p>
+            </div>
+            <button class="header-toggle-btn" (click)="toggleHeader()"
+                [attr.aria-label]="isHeaderExpanded ? 'Collapse header' : 'Expand header'">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                    stroke="currentColor" class="toggle-icon">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                </svg>
+            </button>
+        </div>
+        <div class="header-expanded-content">
+            <div class="header-stats">
+                <div class="stat-item">
+                    <div class="stat-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
+                        </svg>
+                    </div>
+                    <div class="stat-info">
+                        <div class="stat-label">Lectures Processed</div>
+                        <div class="stat-value">12 Audio Files</div>
+                    </div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                        </svg>
+                    </div>
+                    <div class="stat-info">
+                        <div class="stat-label">Summaries Generated</div>
+                        <div class="stat-value">48 Summaries</div>
+                    </div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+                        </svg>
+                    </div>
+                    <div class="stat-info">
+                        <div class="stat-label">Assessment Questions</div>
+                        <div class="stat-value">34 Questions</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="content-layout">
+        <!-- Upload Section with Three Columns -->
+        <div class="upload-column">
+            <section class="upload-section">
+                <div class="upload-content">
+                    <div class="split-three-columns">
+                        <!-- Upload & Generate Component -->
+                        <app-upload-generate (onGenerate)="onGenerateComplete($event)">
+                        </app-upload-generate>
+
+                        <!-- History Component -->
+                        <app-history #historyComponent (onItemSelect)="onHistoryItemSelected($event)">
+                        </app-history>
+
+                        <!-- Workspace Component - ADD isLoadingResults INPUT -->
+                        <app-workspace 
+                            [selectedHistoryItem]="selectedHistoryItem" 
+                            [resultItems]="resultItems"
+                            [isLoadingResults]="isLoadingResults">
+                        </app-workspace>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+</main>
+
+
+
+
+
+
+
+
+
+
+
+
+import { Component, Input } from '@angular/core';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import { marked } from 'marked';
+
+interface ResultItem {
+  id: string;
+  title: string;
+  icon: string;
+  content: string;
+  type: 'summary' | 'keywords' | 'questions' | 'custom';
+}
+
+interface HistoryItem {
+  id: string;
+  name: string;
+  displayDate: string;
+  date: Date;
+}
+
+@Component({
+  selector: 'app-workspace',
+  templateUrl: './workspace.component.html',
+  styleUrls: ['./workspace.component.css']
+})
+export class WorkspaceComponent {
+  @Input() selectedHistoryItem: HistoryItem | null = null;
+  @Input() resultItems: ResultItem[] = [];
+  @Input() isLoadingResults: boolean = false; // ADD THIS INPUT
+
+  isDetailOpen = false;
+  selectedItemName = '';
+  selectedItemDate = '';
+  selectedItemContent: SafeHtml = '';
+  selectedResultItemId: string = '';
+
+  constructor(private sanitizer: DomSanitizer) { }
+
+  openDetail(item: ResultItem): void {
+    this.selectedItemName = item.title;
+    this.selectedItemDate = this.selectedHistoryItem?.displayDate || '';
+    this.selectedResultItemId = item.id;
+
+    // Convert content to markdown HTML
+    const htmlContent: any = marked(item.content);
+    this.selectedItemContent = this.sanitizer.bypassSecurityTrustHtml(htmlContent);
+
+    this.isDetailOpen = true;
+  }
+
+  closeDetail(): void {
+    this.isDetailOpen = false;
+    this.selectedResultItemId = '';
+  }
+
+  getIconPath(iconType: string): string {
+    const icons: { [key: string]: string } = {
+      'document': 'M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z',
+      'tag': 'M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z M6 6h.008v.008H6V6z',
+      'question': 'M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z',
+      'lightbulb': 'M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.823 1.508-2.316a7.5 7.5 0 10-7.517 0c.85.493 1.509 1.333 1.509 2.316V18'
+    };
+    return icons[iconType] || icons['document'];
+  }
+
+  copyToClipboard(content: string): void {
+    navigator.clipboard.writeText(content).then(() => {
+      console.log('Content copied to clipboard');
+    });
+  }
+
+  downloadContent(item: ResultItem): void {
+    const blob = new Blob([item.content], { type: 'text/plain' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${item.title.replace(/\s+/g, '_')}.txt`;
+    link.click();
+    window.URL.revokeObjectURL(url);
   }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="workspace-third">
+    <div class="workspace-header-inline">
+        <div class="workspace-header-content">
+            <h3 class="workspace-inline-title">Workspace Result</h3>
+            <!-- Selected File Info -->
+            <div class="selected-file-info" *ngIf="selectedHistoryItem">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                    stroke="currentColor" class="file-info-icon">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                        d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
+                </svg>
+                <span class="file-name">{{ selectedHistoryItem.name }}</span>
+                <span class="file-separator">•</span>
+                <span class="file-date">{{ selectedHistoryItem.displayDate }}</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="workspace-content-inline">
+        <!-- Empty State -->
+        <div class="workspace-empty-state" *ngIf="!selectedHistoryItem">
+            <div class="empty-state-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                    stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                        d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                </svg>
+            </div>
+            <h3 class="empty-state-title">No Analysis Selected</h3>
+            <p class="empty-state-message">
+                Select a file from the history to view its analysis results
+            </p>
+        </div>
+
+        <!-- ADD THIS: Loading State -->
+        <div class="workspace-loading-state" *ngIf="selectedHistoryItem && isLoadingResults">
+            <div class="loading-spinner"></div>
+            <p class="loading-text">Loading results...</p>
+        </div>
+
+        <!-- Dynamic Result Content -->
+        <div class="result-content" *ngIf="selectedHistoryItem && !isLoadingResults && resultItems.length > 0">
+            <!-- Result Items -->
+            <div class="result-item" *ngFor="let item of resultItems"
+                [class.selected]="selectedResultItemId === item.id">
+                <div class="result-item-header">
+                    <div class="result-item-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" [attr.d]="getIconPath(item.icon)" />
+                        </svg>
+                    </div>
+                    <div class="result-item-title-section">
+                        <h4 class="result-item-title">{{ item.title }}</h4>
+                    </div>
+                    <!-- Viewing Badge -->
+                    <div class="viewing-badge" *ngIf="selectedResultItemId === item.id">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        <span>Viewing</span>
+                    </div>
+                    <div class="result-actions">
+                        <button class="result-action-icon-btn" title="Expand" (click)="openDetail(item)">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                                stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round"
+                                    d="M15.75 4.5H19.5v3.75M19.5 4.5l-5.25 5.25M8.25 19.5H4.5v-3.75M4.5 19.5l5.25-5.25" />
+                            </svg>
+                        </button>
+                        <button class="result-action-icon-btn" title="Copy" (click)="copyToClipboard(item.content)">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                                stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round"
+                                    d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 00-3.375-3.375h-1.5a1.125 1.125 0 01-1.125-1.125v-1.5a3.375 3.375 0 00-3.375-3.375H9.75" />
+                            </svg>
+                        </button>
+                        <button class="result-action-icon-btn" title="Download" (click)="downloadContent(item)">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                                stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round"
+                                    d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="result-item-content">
+                    <p class="result-text">{{ item.content }}</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ADD THIS: No Results State -->
+        <div class="workspace-empty-state" *ngIf="selectedHistoryItem && !isLoadingResults && resultItems.length === 0">
+            <div class="empty-state-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                    stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                        d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                </svg>
+            </div>
+            <h3 class="empty-state-title">No Results Found</h3>
+            <p class="empty-state-message">
+                No analysis results available for this file
+            </p>
+        </div>
+    </div>
+
+    <!-- Detail Overlay & Sidebar -->
+    <div class="detail-overlay" [class.active]="isDetailOpen" (click)="closeDetail()"></div>
+    <div class="detail-sidebar" [class.active]="isDetailOpen">
+        <div class="detail-sidebar-header">
+            <div class="detail-sidebar-title-section">
+                <h3 class="detail-sidebar-title">{{ selectedItemName }}</h3>
+                <p class="detail-sidebar-meta">{{ selectedItemDate }}</p>
+            </div>
+            <button class="detail-close-btn" (click)="closeDetail()">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                    stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+        <div class="detail-sidebar-content">
+            <div class="markdown-content" [innerHTML]="selectedItemContent"></div>
+        </div>
+    </div>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* ADD THESE NEW STYLES FOR LOADING STATE */
+
+/* Loading State */
+.workspace-loading-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 40px;
+    text-align: center;
+    flex: 1;
+}
+
+.loading-spinner {
+    width: 50px;
+    height: 50px;
+    border: 4px solid rgba(139, 92, 246, 0.1);
+    border-top: 4px solid var(--primary-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 20px;
+}
+
+@keyframes spin {
+    0% {
+        transform: rotate(0deg);
+    }
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+.loading-text {
+    font-size: 14px;
+    color: var(--text-color);
+    opacity: 0.7;
+    margin: 0;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 0.7;
+    }
+    50% {
+        opacity: 1;
+    }
+}
+
+/* ... REST OF YOUR EXISTING CSS REMAINS THE SAME ... */
