@@ -5,43 +5,48 @@ onGenerateComplete(data: { file: any, prompts: string, mode: string }): void {
   const existingItem = this.historyComponent?.historyItems.find((i: any) => i.id === fileId);
 
   if (existingItem) {
-    // Item already exists, update status to in-progress
-    existingItem.status = 'in-progress';
-    existingItem.isClickable = false;
-    existingItem.progress = 'in progress';
-    
-    // Update the filtered history as well
-    this.historyComponent.filterHistory();
-    
-    // Select the item
+    // Item already exists, update its status to in-progress
+    this.historyComponent.updateItemStatus(fileId, 'in-progress');
     this.selectedHistoryItem = existingItem;
-    return;
+  } else {
+    // Create new item with in-progress status
+    const newItem = {
+      id: fileId,
+      name: data.file.fileName,
+      displayDate: 'Created on ' + new Date().toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      }),
+      date: new Date(),
+      progress: 'in progress',  // CHANGED: Set to 'in progress' instead of 'completed'
+      status: 'in-progress' as 'not-generated' | 'in-progress' | 'completed',  // CHANGED: Set status to 'in-progress'
+      isClickable: false  // CHANGED: Set to false since it's still processing
+    };
+
+    // Add to history
+    if (this.historyComponent) {
+      this.historyComponent.addHistoryItem(newItem);
+    }
+
+    this.selectedHistoryItem = newItem;
   }
 
-  // Create new item if it doesn't exist with in-progress status
-  const newItem = {
-    id: fileId,
-    name: data.file.fileName,
-    displayDate: 'Created on ' + new Date().toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    }),
-    date: new Date(),
-    progress: 'in progress',
-    status: 'in-progress' as 'not-generated' | 'in-progress' | 'completed',
-    isClickable: false
-  };
+  // Don't load results yet since processing is in progress
+  // Results will be loaded after completion
+}
 
-  // Add to history
+// ADD THIS NEW METHOD to be called when generation is actually complete
+onGenerationComplete(fileId: string): void {
+  // Update the item status to completed
   if (this.historyComponent) {
-    this.historyComponent.addHistoryItem(newItem);
+    this.historyComponent.updateItemStatus(fileId, 'completed');
   }
 
-  // Select the new item
-  this.selectedHistoryItem = newItem;
+  // Now load the results
+  this.loadResultsForItem(fileId);
 }
 
 
@@ -52,47 +57,115 @@ onGenerateComplete(data: { file: any, prompts: string, mode: string }): void {
 
 
 
-updateHistoryItemStatus(itemId: string, status: 'not-generated' | 'in-progress' | 'completed', progress: string | null): void {
+
+// ADD THIS METHOD - Update item status
+updateItemStatus(itemId: string, status: 'not-generated' | 'in-progress' | 'completed'): void {
   const item = this.historyItems.find(i => i.id === itemId);
   if (item) {
     item.status = status;
-    item.progress = progress;
+    item.progress = status === 'completed' ? 'completed' : 'in progress';
     item.isClickable = status === 'completed';
+    
+    // Update filtered history as well
     this.filterHistory();
   }
 }
 
-
-
-
-
-
-
-
-
-
-
-private onProgressComplete(): void {
-  this.stopPolling();
-
-  const fileName = this.uploadMode === 'new'
-    ? this.selectedUploadFile?.name
-    : this.selectedPreviousFile?.name;
-
-  this.onGenerate.emit({
-    file: {
-      fileID: this.uploadMode === 'new'
-        ? this.uploadedFilesWithStatus.find(f => f.file.name === this.selectedUploadFile?.name)?.uploadedFileId
-        : this.selectedPreviousFile?.id,
-      fileName: fileName,
-      optional_prompt: this.optionalPrompts,
-      model_name: this.selectedModel
-    },
-    prompts: this.optionalPrompts,
-    mode: this.uploadMode  // This ensures mode is passed correctly
-  });
-
-  setTimeout(() => {
-    this.completeProcessing();
-  }, 500);
+// MODIFY THIS METHOD - Make it public so parent can call it
+public addHistoryItem(item: HistoryItem): void {
+  // Check if item already exists
+  const existingIndex = this.historyItems.findIndex(i => i.id === item.id);
+  
+  if (existingIndex !== -1) {
+    // Update existing item
+    this.historyItems[existingIndex] = item;
+  } else {
+    // Add new item at the beginning
+    this.historyItems.unshift(item);
+  }
+  
+  this.filteredHistory = [...this.historyItems];
 }
+
+
+
+
+
+
+
+
+
+
+
+
+onGenerateClick(): void {
+  // ... your existing code to call the generate API
+  
+  this.generateService.generateAnalysis(request).subscribe({
+    next: (response) => {
+      // Immediately emit the event with the file info
+      // This triggers the in-progress status
+      this.onGenerate.emit({
+        file: this.selectedFile,
+        prompts: this.prompts,
+        mode: this.selectedMode
+      });
+      
+      // THEN start polling for progress or wait for completion
+      this.pollProgress(this.selectedFile.fileID);
+    },
+    error: (error) => {
+      console.error('Generate failed:', error);
+    }
+  });
+}
+
+// ADD THIS METHOD - Poll for progress completion
+pollProgress(fileId: string): void {
+  const pollInterval = setInterval(() => {
+    this.generateService.getProgress(fileId).subscribe({
+      next: (progressResponse) => {
+        if (progressResponse.progress === 100 || progressResponse.status === 'completed') {
+          clearInterval(pollInterval);
+          
+          // Notify parent that generation is complete
+          // You'll need to add a new output event for this
+          this.onGenerationComplete.emit(fileId);
+        }
+      },
+      error: (error) => {
+        console.error('Progress check failed:', error);
+        clearInterval(pollInterval);
+      }
+    });
+  }, 2000); // Poll every 2 seconds
+}
+
+
+
+
+
+
+
+
+
+
+
+import { Component, EventEmitter, Output } from '@angular/core';
+
+@Component({
+  selector: 'app-upload-generate',
+  // ...
+})
+export class UploadGenerateComponent {
+  @Output() onGenerate = new EventEmitter<{ file: any, prompts: string, mode: string }>();
+  @Output() onGenerationComplete = new EventEmitter<string>(); // ADD THIS LINE
+  
+  // ... rest of your code
+}
+
+<!-- Upload & Generate Component -->
+<app-upload-generate 
+  (onGenerate)="onGenerateComplete($event)"
+  (onGenerationComplete)="onGenerationComplete($event)">
+</app-upload-generate>
