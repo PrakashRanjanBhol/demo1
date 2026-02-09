@@ -1,36 +1,53 @@
-// Add these computed properties
-get formattedStartDate(): string {
-  if (!this.selectedStartDate) return '';
-  const year = this.selectedStartDate.getFullYear();
-  const month = String(this.selectedStartDate.getMonth() + 1).padStart(2, '0');
-  const day = String(this.selectedStartDate.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+export interface HistoryFileResponse {
+  id: number;
+  original_name: string;
+  inserted_at: string;
+  progress: string | null; // Changed from number | null to string | null
 }
 
-get formattedEndDate(): string {
-  if (!this.selectedEndDate) return '';
-  const year = this.selectedEndDate.getFullYear();
-  const month = String(this.selectedEndDate.getMonth() + 1).padStart(2, '0');
-  const day = String(this.selectedEndDate.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+// In the component class:
+
+getFileStatus(progress: string | null): 'not-generated' | 'in-progress' | 'completed' {
+  if (progress === null) {
+    return 'not-generated';
+  } else if (progress === 'completed') {
+    return 'completed';
+  } else if (progress === 'in progress') {
+    return 'in-progress';
+  } else {
+    // Fallback for any other value
+    return 'not-generated';
+  }
 }
 
-// Remove the getFormattedDate() method completely
+mapResponseToHistoryItems(files: HistoryFileResponse[]): HistoryItem[] {
+  return files.map(file => {
+    const status = this.getFileStatus(file.progress);
+    return {
+      id: file.id.toString(),
+      name: file.original_name,
+      displayDate: `Created on ${file.inserted_at}`,
+      date: new Date(file.inserted_at),
+      progress: file.progress,
+      status: status,
+      isClickable: status === 'completed'
+    };
+  });
+}
 
 
 
 
 
 
-<input type="date" class="date-input" 
-  [ngModel]="formattedStartDate"
-  (ngModelChange)="onDateChange('start', $event)" 
-  [disabled]="isLoadingFiles">
 
 
-
-
-<input type="date" class="date-input" 
-  [ngModel]="formattedEndDate"
-  (ngModelChange)="onDateChange('end', $event)" 
-  [disabled]="isLoadingFiles">
+interface HistoryItem {
+  id: string;
+  name: string;
+  displayDate: string;
+  date: Date;
+  progress: string | null; // Changed from number | null to string | null
+  status: 'not-generated' | 'in-progress' | 'completed';
+  isClickable: boolean;
+}
