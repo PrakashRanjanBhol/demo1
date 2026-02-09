@@ -1,74 +1,17 @@
-// Add these imports at the top
-import { interval, Subscription } from 'rxjs';
-import { switchMap, takeWhile } from 'rxjs/operators';
-
-// Add this property
-private pollingSubscription: Subscription | null = null;
-
-// Update the generateAnalysis method
-private generateAnalysis(request: GenerateRequest): void {
-  const sub = this.generateService.generateAnalysis(request).subscribe({
-    next: (response) => {
-      console.log('Generation successful:', response);
-      
-      if (response.status === 'Success') {
-        // Start polling for progress
-        this.startProgressPolling(request.fileID);
-      } else {
-        this.isProcessing = false;
-      }
-    },
-    error: (error) => {
-      console.error('Generation error:', error);
-      this.isProcessing = false;
-    }
-  });
-  this.subscriptions.push(sub);
-}
-
-// Add this method for polling
-private startProgressPolling(fileId: string | number): void {
-  this.pollingSubscription = interval(10000) // Poll every 10 seconds
-    .pipe(
-      switchMap(() => this.generateService.getProgress(fileId)),
-      takeWhile((response) => {
-        if (response.status === 'Success') {
-          this.processingProgress = response.progress;
-          return response.progress < 100;
-        }
-        return false;
-      }, true) // inclusive: true to emit the final value when progress is 100
-    )
-    .subscribe({
-      next: (response) => {
-        console.log('Progress update:', response);
-        
-        if (response.progress === 100) {
-          // Progress complete
-          this.onProgressComplete();
-        }
-      },
-      error: (error) => {
-        console.error('Polling error:', error);
-        this.stopPolling();
-        this.isProcessing = false;
-      },
-      complete: () => {
-        console.log('Polling completed');
-        this.stopPolling();
-      }
-    });
-}
-
-// Add this method to handle completion
+// Update this method to include filename
 private onProgressComplete(): void {
   this.stopPolling();
+  
+  const fileName = this.uploadMode === 'new' 
+    ? this.selectedUploadFile?.name 
+    : this.selectedPreviousFile?.name;
   
   this.onGenerate.emit({
     file: {
       fileID: this.uploadMode === 'new' 
         ? this.uploadedFilesWithStatus.find(f => f.file.name === this.selectedUploadFile?.name)?.uploadedFileId 
         : this.selectedPreviousFile?.id,
+      fileName: fileName, // Add this line
       optional_prompt: this.optionalPrompts,
       model_name: this.selectedModel
     },
@@ -81,58 +24,50 @@ private onProgressComplete(): void {
   }, 500);
 }
 
-// Add this method to stop polling
-private stopPolling(): void {
-  if (this.pollingSubscription) {
-    this.pollingSubscription.unsubscribe();
-    this.pollingSubscription = null;
+
+
+
+
+
+
+
+
+onGenerateComplete(data: { file: any, prompts: string, mode: string }): void {
+  const newItem = {
+    id: data.file.fileID.toString(), // Changed to use fileID
+    name: data.file.fileName, // Changed to use fileName
+    displayDate: 'Created on ' + new Date().toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    }),
+    date: new Date(),
+    progress: 'in progress', // Set initial progress as 'in progress'
+    status: 'in-progress' as 'not-generated' | 'in-progress' | 'completed',
+    isClickable: false
+  };
+
+  // Add to history
+  if (this.historyComponent) {
+    this.historyComponent.addHistoryItem(newItem);
   }
-}
 
-// Update ngOnDestroy to clean up polling
-ngOnDestroy(): void {
-  this.subscriptions.forEach(sub => sub.unsubscribe());
-  this.stopPolling(); // Add this line
-}
+  // Optionally, you can simulate progress completion
+  // Remove this if progress is updated from backend
+  setTimeout(() => {
+    // Update the item to completed status
+    const itemToUpdate = this.historyComponent?.historyItems.find((i: any) => i.id === newItem.id);
+    if (itemToUpdate) {
+      itemToUpdate.progress = 'completed';
+      itemToUpdate.status = 'completed';
+      itemToUpdate.isClickable = true;
+      this.historyComponent.filteredHistory = [...this.historyComponent.historyItems];
+    }
 
-// Update completeProcessing to stop polling
-completeProcessing(): void {
-  this.stopPolling(); // Add this line
-  this.isProcessing = false;
-  this.processingProgress = 0;
-  this.selectedUploadFile = null;
-  this.uploadedFilesWithStatus = [];
-  this.selectedPreviousFile = null;
-  this.optionalPrompts = '';
-  this.currentStep = 1;
-  this.uploadStarted = false;
-  this.markForRecalculation();
-}
-
-// Update startProcessing method to remove the fake progress
-startProcessing(fileName: string): void {
-  this.isProcessing = true;
-  this.processingProgress = 0;
-  this.processingFileName = fileName;
-  // Removed the setInterval that was incrementing progress
-}
-
-
-
-
-
-
-
-
-
-// Add this interface
-export interface ProgressResponse {
-  status: string;
-  progress: number;
-}
-
-// Add this method in the GenerateService class
-getProgress(fileId: string | number): Observable<ProgressResponse> {
-  const request = { file_ids: fileId };
-  return this.http.post<ProgressResponse>(`${this.apiUrl}/files/progress`, request);
+    // Load results
+    this.selectedHistoryItem = itemToUpdate || newItem;
+    this.loadResultsForItem(newItem.id);
+  }, 3000); // Simulate 3 second processing time
 }
