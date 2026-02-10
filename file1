@@ -1,224 +1,52 @@
-// ONLY SHOWING THE MODIFIED PARTS
+// ONLY SHOWING THE MODIFIED PART
 
-export class WorkspaceComponent {
-  // ... existing properties ...
+// MODIFIED METHOD - Group all FAQs into single Assessment Questions block
+private mapResponseToResultItems(data: FileResultData): any[] {
+  const items: any[] = [];
 
-  isDetailOpen = false;
-  selectedItemName = '';
-  selectedItemDate = '';
-  selectedItemContent: SafeHtml = '';
-  selectedResultItemId: string = '';
-  
-  // NEW - Track if current detail view is for keywords
-  isDetailKeywords: boolean = false;
-  detailKeywords: string[] = [];  // Store keywords array for detail view
-  detailItemId: string = '';  // Store item ID for removal in detail view
-
-  // ... existing properties ...
-
-  constructor(private sanitizer: DomSanitizer) { }
-
-  // MODIFIED METHOD - Handle keywords differently
-  openDetail(item: ResultItem): void {
-    this.selectedItemName = item.title;
-    this.selectedItemDate = this.selectedHistoryItem?.displayDate || '';
-    this.selectedResultItemId = item.id;
-
-    // NEW - Check if this is keywords type
-    if (item.type === 'keywords') {
-      this.isDetailKeywords = true;
-      this.detailKeywords = this.getKeywordsArray(item);
-      this.detailItemId = item.id;
-      this.selectedItemContent = '';  // Don't parse as markdown
-    } else {
-      // For summary and questions, convert to markdown
-      this.isDetailKeywords = false;
-      this.detailKeywords = [];
-      this.detailItemId = '';
-      const htmlContent: any = marked(item.content);
-      this.selectedItemContent = this.sanitizer.bypassSecurityTrustHtml(htmlContent);
-    }
-
-    this.isDetailOpen = true;
+  // Add summary
+  if (data.summary) {
+    items.push({
+      id: 'summary',
+      title: 'Lecture Summary',
+      icon: 'document',
+      content: data.summary,
+      type: 'summary'
+    });
   }
 
-  // MODIFIED METHOD - Clear detail view flags
-  closeDetail(): void {
-    this.isDetailOpen = false;
-    this.selectedResultItemId = '';
-    this.isDetailKeywords = false;  // NEW
-    this.detailKeywords = [];  // NEW
-    this.detailItemId = '';  // NEW
+  // Add keywords as array
+  if (data.keywords && data.keywords.length > 0) {
+    items.push({
+      id: 'keywords',
+      title: 'Keywords',
+      icon: 'tag',
+      content: data.keywords.map(k => `• ${k}`).join(' '),
+      keywords: data.keywords,
+      type: 'keywords'
+    });
   }
 
-  // NEW METHOD - Remove keyword from detail view
-  removeKeywordFromDetail(keyword: string): void {
-    // Remove from detail view array
-    this.detailKeywords = this.detailKeywords.filter(k => k !== keyword);
-    
-    // Also update the main result item
-    this.removeKeyword(this.detailItemId, keyword);
+  // MODIFIED - Add ALL FAQs as single "Assessment Questions" block
+  if (data.faq && data.faq.length > 0) {
+    // Build single content string with all Q&A pairs
+    const allQuestionsContent = data.faq
+      .map((faqItem, index) => 
+        `**Question ${index + 1}:** ${faqItem.question}\n\n**Answer:** ${faqItem.answer}`
+      )
+      .join('\n\n---\n\n');  // Separator between questions
+
+    items.push({
+      id: 'assessment-questions',  // Single ID for all questions
+      title: 'Assessment Questions',
+      icon: 'question',
+      content: allQuestionsContent,
+      type: 'questions',
+      faqList: data.faq  // NEW - Store original FAQ array for reference
+    });
   }
 
-  // ... rest of existing methods ...
-}
-
-
-
-
-
-
-
-
-
-
-<!-- ONLY SHOWING THE MODIFIED PART - Detail Sidebar Content -->
-
-<!-- Detail Overlay & Sidebar -->
-<div class="detail-overlay" [class.active]="isDetailOpen" (click)="closeDetail()"></div>
-<div class="detail-sidebar" [class.active]="isDetailOpen">
-    <div class="detail-sidebar-header">
-        <div class="detail-sidebar-title-section">
-            <h3 class="detail-sidebar-title">{{ selectedItemName }}</h3>
-            <p class="detail-sidebar-meta">{{ selectedItemDate }}</p>
-        </div>
-        <button class="detail-close-btn" (click)="closeDetail()">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-        </button>
-    </div>
-    
-    <!-- MODIFIED - Detail Sidebar Content with conditional rendering -->
-    <div class="detail-sidebar-content">
-        <!-- FOR KEYWORDS - Show chips (no markdown parsing) -->
-        <div *ngIf="isDetailKeywords" class="detail-keywords-container">
-            <div class="detail-keywords-chips">
-                <div class="keyword-chip keyword-chip-detail" 
-                     *ngFor="let keyword of detailKeywords; let i = index"
-                     [style.background]="getChipBackground(i)"
-                     [style.border-color]="getChipBorderColor(i)">
-                    <span class="chip-text">{{ keyword }}</span>
-                    <button class="chip-remove-btn" 
-                            (click)="removeKeywordFromDetail(keyword)"
-                            title="Remove keyword">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
-                            stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                    </button>
-                </div>
-            </div>
-            
-            <!-- Show message if all keywords removed -->
-            <p class="detail-no-keywords-message" *ngIf="detailKeywords.length === 0">
-                All keywords have been removed
-            </p>
-        </div>
-
-        <!-- FOR SUMMARY & QUESTIONS - Show markdown content -->
-        <div *ngIf="!isDetailKeywords" class="markdown-content" [innerHTML]="selectedItemContent"></div>
-    </div>
-</div>
-
-
-
-
-
-
-
-
-
-
-
-/* ADD THESE STYLES TO workspace.component.css */
-
-/* Detail Sidebar - Keywords Container */
-.detail-keywords-container {
-    padding: 8px 0;
-}
-
-/* Detail Sidebar - Keywords Chips Grid */
-.detail-keywords-chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 12px;
-    padding: 0;
-    min-height: 60px;
-}
-
-/* Detail Sidebar - Larger Keyword Chips */
-.keyword-chip-detail {
-    padding: 10px 16px;
-    font-size: 14px;
-    border-radius: 24px;
-    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.12);
-}
-
-.keyword-chip-detail:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.18);
-}
-
-/* Detail Sidebar - Larger Remove Button */
-.keyword-chip-detail .chip-remove-btn {
-    width: 18px;
-    height: 18px;
-    background: rgba(255, 255, 255, 0.35);
-}
-
-.keyword-chip-detail .chip-remove-btn:hover {
-    background: rgba(255, 255, 255, 0.55);
-    transform: scale(1.15);
-}
-
-.keyword-chip-detail .chip-remove-btn svg {
-    width: 11px;
-    height: 11px;
-}
-
-/* Detail Sidebar - No Keywords Message */
-.detail-no-keywords-message {
-    font-size: 14px;
-    color: var(--text-color);
-    opacity: 0.6;
-    font-style: italic;
-    margin: 20px 0;
-    text-align: center;
-    padding: 40px 20px;
-    background: rgba(139, 92, 246, 0.05);
-    border: 1px dashed rgba(139, 92, 246, 0.2);
-    border-radius: 8px;
-}
-
-/* Detail Sidebar - Keywords Section Title (Optional) */
-.detail-keywords-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 16px;
-    padding-bottom: 12px;
-    border-bottom: 1px solid var(--border-color);
-}
-
-.detail-keywords-count {
-    font-size: 12px;
-    color: var(--text-color);
-    opacity: 0.6;
-    font-weight: 600;
-}
-
-/* Responsive - Detail Sidebar Keywords */
-@media (max-width: 768px) {
-    .detail-keywords-chips {
-        gap: 10px;
-    }
-    
-    .keyword-chip-detail {
-        padding: 8px 14px;
-        font-size: 13px;
-    }
+  return items;
 }
 
 
@@ -231,41 +59,54 @@ export class WorkspaceComponent {
 
 
 
+// ALTERNATIVE VERSION - Better formatted with numbers
 
-<!-- OPTIONAL ENHANCEMENT - Add keyword count header in detail sidebar -->
+// MODIFIED METHOD - Group all FAQs with cleaner formatting
+private mapResponseToResultItems(data: FileResultData): any[] {
+  const items: any[] = [];
 
-<!-- FOR KEYWORDS - Show chips with header (ENHANCED VERSION) -->
-<div *ngIf="isDetailKeywords" class="detail-keywords-container">
-    <!-- Optional: Keywords Count Header -->
-    <div class="detail-keywords-header">
-        <h4 style="margin: 0; font-size: 14px; font-weight: 600; color: var(--text-color);">
-            All Keywords
-        </h4>
-        <span class="detail-keywords-count">
-            {{ detailKeywords.length }} keyword{{ detailKeywords.length !== 1 ? 's' : '' }}
-        </span>
-    </div>
-    
-    <!-- Keywords Chips -->
-    <div class="detail-keywords-chips">
-        <div class="keyword-chip keyword-chip-detail" 
-             *ngFor="let keyword of detailKeywords; let i = index"
-             [style.background]="getChipBackground(i)"
-             [style.border-color]="getChipBorderColor(i)">
-            <span class="chip-text">{{ keyword }}</span>
-            <button class="chip-remove-btn" 
-                    (click)="removeKeywordFromDetail(keyword)"
-                    title="Remove keyword">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
-                    stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-            </button>
-        </div>
-    </div>
-    
-    <!-- Show message if all keywords removed -->
-    <p class="detail-no-keywords-message" *ngIf="detailKeywords.length === 0">
-        All keywords have been removed
-    </p>
-</div>
+  // Add summary
+  if (data.summary) {
+    items.push({
+      id: 'summary',
+      title: 'Lecture Summary',
+      icon: 'document',
+      content: data.summary,
+      type: 'summary'
+    });
+  }
+
+  // Add keywords as array
+  if (data.keywords && data.keywords.length > 0) {
+    items.push({
+      id: 'keywords',
+      title: 'Keywords',
+      icon: 'tag',
+      content: data.keywords.map(k => `• ${k}`).join(' '),
+      keywords: data.keywords,
+      type: 'keywords'
+    });
+  }
+
+  // MODIFIED - Add ALL FAQs as single block with better formatting
+  if (data.faq && data.faq.length > 0) {
+    // Build content with numbered questions
+    const allQuestionsContent = data.faq
+      .map((faqItem, index) => {
+        const qNumber = index + 1;
+        return `### Question ${qNumber}\n${faqItem.question}\n\n**Answer:**\n${faqItem.answer}`;
+      })
+      .join('\n\n---\n\n');
+
+    items.push({
+      id: 'assessment-questions',
+      title: `Assessment Questions (${data.faq.length})`,  // Show count in title
+      icon: 'question',
+      content: allQuestionsContent,
+      type: 'questions',
+      faqList: data.faq
+    });
+  }
+
+  return items;
+}
