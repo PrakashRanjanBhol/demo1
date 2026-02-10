@@ -1,81 +1,169 @@
-// MODIFIED METHOD - Smart auto-selection logic for generated files
+// MODIFIED PARTS - upload-generate.component.ts
 
-onGenerateComplete(data: { file: any, prompts: string, mode: string }): void {
-  const fileId = data.file.fileID.toString();
-  const isComplete = data.file.isComplete || false;
+// MODIFIED - Handle upload failures properly
+private async uploadAllFiles(): Promise<void> {
+  this.uploadError = '';
+  this.isUploading = true;
 
-  const existingItem = this.historyComponent?.historyItems.find((i: any) => i.id === fileId);
-
-  // HANDLE COMPLETION - Auto-select if no current selection
-  if (isComplete) {
-    if (existingItem) {
-      this.historyComponent.updateItemStatus(fileId, 'completed');
-      
-      // NEW - Auto-select only if nothing is currently selected
-      if (!this.selectedHistoryItem) {
-        this.selectedHistoryItem = existingItem;
-        this.loadResultsForItem(fileId);
-      } else {
-        // Keep current selection, don't switch to newly completed file
-        console.log(`File "${existingItem.name}" completed. Still viewing "${this.selectedHistoryItem.name}"`);
+  try {
+    // Upload files sequentially
+    for (const fileWithStatus of this.uploadedFilesWithStatus) {
+      if (fileWithStatus.status === 'pending') {
+        fileWithStatus.status = 'uploading';
+        
+        try {
+          await this.uploadFileViaService(fileWithStatus);
+          fileWithStatus.status = 'uploaded';
+        } catch (error) {
+          // MODIFIED - Mark as error and remove from list
+          fileWithStatus.status = 'error';
+          console.error('Upload failed for:', fileWithStatus.file.name, error);
+          
+          // IMPORTANT - Remove failed upload from the list
+          this.uploadedFilesWithStatus = this.uploadedFilesWithStatus.filter(
+            f => f !== fileWithStatus
+          );
+        }
       }
     }
-    return;
-  }
 
-  // HANDLE GENERATION START - Update status without changing selection
-  if (existingItem) {
-    // Update status to in-progress
-    this.historyComponent.updateItemStatus(fileId, 'in-progress');
-    
-    // Only update workspace if generating the SAME file
-    const isGeneratingSelectedFile = this.selectedHistoryItem?.id === fileId;
-    
-    if (isGeneratingSelectedFile) {
-      // Same file - clear results to show "generating"
-      this.selectedHistoryItem = existingItem;
-      this.resultItems = [];
+    // Check if at least one file uploaded successfully
+    const successfulUploads = this.uploadedFilesWithStatus.filter(
+      f => f.status === 'uploaded'
+    );
+
+    if (successfulUploads.length === 0) {
+      this.uploadError = 'All file uploads failed. Please try again.';
+      this.isUploading = false;
+      return;
     }
-    // else: Keep showing current file's results
+
+    // MODIFIED - If some failed, show message
+    const totalFiles = this.droppedFiles.length;
+    const failedCount = totalFiles - successfulUploads.length;
     
+    if (failedCount > 0) {
+      this.uploadError = `${failedCount} file(s) failed to upload. Continuing with ${successfulUploads.length} successful upload(s).`;
+    }
+
+    this.isUploading = false;
+
+  } catch (error) {
+    console.error('Upload process error:', error);
+    this.uploadError = 'Upload failed. Please try again.';
+    this.isUploading = false;
+  }
+}
+
+// MODIFIED - Update file selection to only show uploaded files
+updateFileSelection(): void {
+  // MODIFIED - Filter to only show successfully uploaded files
+  const uploadedFiles = this.uploadedFilesWithStatus.filter(
+    f => f.status === 'uploaded' && f.uploadedFileId
+  );
+
+  if (uploadedFiles.length > 0) {
+    this.selectedUploadFile = uploadedFiles[0].file;
+  } else {
+    this.selectedUploadFile = null;
+  }
+}
+
+// MODIFIED - validateAndProceed should check for uploaded files
+validateAndProceed(): void {
+  // Filter to only successfully uploaded files
+  const uploadedFiles = this.uploadedFilesWithStatus.filter(
+    f => f.status === 'uploaded' && f.uploadedFileId
+  );
+
+  if (uploadedFiles.length === 0) {
+    this.uploadError = 'No files uploaded successfully. Please upload files first.';
     return;
   }
 
-  // NEW ITEM CREATION
-  const displayDate = data.file.createdAt 
-    ? 'Created on ' + new Date(data.file.createdAt).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      })
-    : 'Created on ' + new Date().toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
+  // Clear any previous error
+  this.uploadError = '';
 
-  const newItem = {
-    id: fileId,
-    name: data.file.fileName,
-    displayDate: displayDate,
-    date: data.file.createdAt ? new Date(data.file.createdAt) : new Date(),
-    progress: 'in progress',
-    status: 'in-progress' as 'not-generated' | 'in-progress' | 'completed',
-    isClickable: false
-  };
-
-  if (this.historyComponent) {
-    this.historyComponent.addHistoryItem(newItem);
+  // Auto-select first uploaded file if none selected
+  if (!this.selectedUploadFile) {
+    this.selectedUploadFile = uploadedFiles[0].file;
   }
 
-  // NEW - Only select new item if nothing is currently selected
-  if (!this.selectedHistoryItem) {
-    this.selectedHistoryItem = newItem;
-    this.resultItems = [];
-  }
-  // else: Keep current selection
+  // Move to next step
+  this.currentStep = 'generate';
 }
+
+
+
+
+
+
+
+
+
+
+
+// ADD THIS METHOD TO upload-generate.component.ts
+
+/**
+ * Get only successfully uploaded files with valid IDs
+ */
+getUploadedFilesOnly(): FileWithStatus[] {
+  return this.uploadedFilesWithStatus.filter(
+    f => f.status === 'uploaded' && f.uploadedFileId
+  );
+}
+
+/**
+ * Get count of successfully uploaded files
+ */
+getUploadedFileCount(): number {
+  return this.getUploadedFilesOnly().length;
+}
+
+/**
+ * Get count of failed uploads
+ */
+getFailedFileCount(): number {
+  return this.uploadedFilesWithStatus.filter(
+    f => f.status === 'error'
+  ).length;
+}
+
+
+
+
+
+
+
+
+
+
+
+<!-- MODIFIED PART - File selection dropdown in Generate step -->
+
+<!-- File Selection Dropdown -->
+<div class="form-group" *ngIf="uploadMode === 'new'">
+    <label for="file-select" class="form-label">Select File to Generate</label>
+    
+    <!-- MODIFIED - Only show successfully uploaded files -->
+    <select 
+        id="file-select" 
+        class="form-select" 
+        [(ngModel)]="selectedUploadFile"
+        [disabled]="getUploadedFilesOnly().length === 0">
+        
+        <!-- Show only uploaded files with valid IDs -->
+        <option 
+            *ngFor="let fileWithStatus of getUploadedFilesOnly()" 
+            [ngValue]="fileWithStatus.file">
+            {{ fileWithStatus.uploadedFileName || fileWithStatus.file.name }}
+            ({{ (fileWithStatus.file.size / 1024).toFixed(2) }} KB)
+        </option>
+    </select>
+    
+    <!-- Show message if no files uploaded successfully -->
+    <p class="no-files-message" *ngIf="getUploadedFilesOnly().length === 0">
+        No files uploaded successfully. Please go back and upload files.
+    </p>
+</div>
