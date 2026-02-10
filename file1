@@ -1,97 +1,63 @@
-// ONLY SHOWING THE MODIFIED/NEW PARTS in content-analytics.component.ts
+// ONLY SHOWING THE MODIFIED PARTS
 
-import { Component, ViewChild } from '@angular/core';
-import { ResultsService, FileResultData } from '../../services/results.service';
+export class WorkspaceComponent {
+  // ... existing properties ...
 
-@Component({
-  selector: 'app-content-analytics',
-  templateUrl: './content-analytics.component.html',
-  styleUrls: ['./content-analytics.component.css']
-})
-export class ContentAnalyticsComponent {
-  @ViewChild('historyComponent') historyComponent: any;
+  isDetailOpen = false;
+  selectedItemName = '';
+  selectedItemDate = '';
+  selectedItemContent: SafeHtml = '';
+  selectedResultItemId: string = '';
+  
+  // NEW - Track if current detail view is for keywords
+  isDetailKeywords: boolean = false;
+  detailKeywords: string[] = [];  // Store keywords array for detail view
+  detailItemId: string = '';  // Store item ID for removal in detail view
 
-  isHeaderExpanded: boolean = false;
-  selectedHistoryItem: any = null;
-  resultItems: any[] = [];
-  isLoadingResults: boolean = false;
+  // ... existing properties ...
 
-  // NEW - For detail sidebar
-  isDetailSidebarOpen: boolean = false;
-  detailSidebarItem: any = null;
-  detailSidebarKeywords: string[] = [];
+  constructor(private sanitizer: DomSanitizer) { }
 
-  // NEW - Chip color schemes (same as workspace)
-  private chipColors = [
-    { bg: 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)', border: '#8b5cf6' },  // Purple
-    { bg: 'linear-gradient(135deg, #ec4899 0%, #db2777 100%)', border: '#ec4899' },  // Pink
-    { bg: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', border: '#3b82f6' },  // Blue
-    { bg: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', border: '#10b981' },  // Green
-    { bg: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', border: '#f59e0b' },  // Orange
-    { bg: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)', border: '#06b6d4' },  // Cyan
-    { bg: 'linear-gradient(135deg, #8b5cf6 0%, #a855f7 100%)', border: '#8b5cf6' },  // Light Purple
-    { bg: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)', border: '#ef4444' },  // Red
-    { bg: 'linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)', border: '#14b8a6' },  // Teal
-    { bg: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)', border: '#f97316' },  // Deep Orange
-  ];
+  // MODIFIED METHOD - Handle keywords differently
+  openDetail(item: ResultItem): void {
+    this.selectedItemName = item.title;
+    this.selectedItemDate = this.selectedHistoryItem?.displayDate || '';
+    this.selectedResultItemId = item.id;
 
-  constructor(private resultsService: ResultsService) { }
-
-  // ... existing methods (toggleHeader, onGenerateComplete, onHistoryItemSelected, loadResultsForItem) ...
-
-  // NEW METHOD - Open detail sidebar for keywords
-  openDetailSidebar(item: any): void {
-    this.detailSidebarItem = item;
-    
-    // Extract keywords array
+    // NEW - Check if this is keywords type
     if (item.type === 'keywords') {
-      if (item.keywords && Array.isArray(item.keywords)) {
-        this.detailSidebarKeywords = [...item.keywords];
-      } else if (item.content && typeof item.content === 'string') {
-        this.detailSidebarKeywords = item.content
-          .split('•')
-          .map((k: string) => k.trim())
-          .filter((k: string) => k.length > 0);
-      }
+      this.isDetailKeywords = true;
+      this.detailKeywords = this.getKeywordsArray(item);
+      this.detailItemId = item.id;
+      this.selectedItemContent = '';  // Don't parse as markdown
+    } else {
+      // For summary and questions, convert to markdown
+      this.isDetailKeywords = false;
+      this.detailKeywords = [];
+      this.detailItemId = '';
+      const htmlContent: any = marked(item.content);
+      this.selectedItemContent = this.sanitizer.bypassSecurityTrustHtml(htmlContent);
     }
-    
-    this.isDetailSidebarOpen = true;
+
+    this.isDetailOpen = true;
   }
 
-  // NEW METHOD - Close detail sidebar
-  closeDetailSidebar(): void {
-    this.isDetailSidebarOpen = false;
-    this.detailSidebarItem = null;
-    this.detailSidebarKeywords = [];
+  // MODIFIED METHOD - Clear detail view flags
+  closeDetail(): void {
+    this.isDetailOpen = false;
+    this.selectedResultItemId = '';
+    this.isDetailKeywords = false;  // NEW
+    this.detailKeywords = [];  // NEW
+    this.detailItemId = '';  // NEW
   }
 
-  // NEW METHOD - Get chip background color
-  getChipBackground(index: number): string {
-    const colorIndex = index % this.chipColors.length;
-    return this.chipColors[colorIndex].bg;
-  }
-
-  // NEW METHOD - Get chip border color
-  getChipBorderColor(index: number): string {
-    const colorIndex = index % this.chipColors.length;
-    return this.chipColors[colorIndex].border;
-  }
-
-  // NEW METHOD - Remove keyword from detail sidebar
+  // NEW METHOD - Remove keyword from detail view
   removeKeywordFromDetail(keyword: string): void {
-    // Remove from detail sidebar array
-    this.detailSidebarKeywords = this.detailSidebarKeywords.filter(k => k !== keyword);
+    // Remove from detail view array
+    this.detailKeywords = this.detailKeywords.filter(k => k !== keyword);
     
-    // Update the original item in resultItems
-    if (this.detailSidebarItem) {
-      const originalItem = this.resultItems.find(i => i.id === this.detailSidebarItem.id);
-      if (originalItem) {
-        if (originalItem.keywords && Array.isArray(originalItem.keywords)) {
-          originalItem.keywords = originalItem.keywords.filter((k: string) => k !== keyword);
-          originalItem.content = originalItem.keywords.map((k: string) => `• ${k}`).join(' ');
-        }
-      }
-    }
+    // Also update the main result item
+    this.removeKeyword(this.detailItemId, keyword);
   }
 
   // ... rest of existing methods ...
@@ -106,47 +72,31 @@ export class ContentAnalyticsComponent {
 
 
 
+<!-- ONLY SHOWING THE MODIFIED PART - Detail Sidebar Content -->
 
-<!-- ONLY SHOWING THE NEW PARTS TO ADD AT THE END OF content-analytics.component.html -->
-
-<!-- ADD THIS SECTION AT THE END, BEFORE </main> closing tag -->
-
-<!-- Detail Sidebar Overlay & Sidebar -->
-<div class="detail-overlay" [class.active]="isDetailSidebarOpen" (click)="closeDetailSidebar()"></div>
-
-<div class="detail-sidebar" [class.active]="isDetailSidebarOpen">
-    <!-- Sidebar Header -->
+<!-- Detail Overlay & Sidebar -->
+<div class="detail-overlay" [class.active]="isDetailOpen" (click)="closeDetail()"></div>
+<div class="detail-sidebar" [class.active]="isDetailOpen">
     <div class="detail-sidebar-header">
         <div class="detail-sidebar-title-section">
-            <h3 class="detail-sidebar-title">{{ detailSidebarItem?.title }}</h3>
-            <p class="detail-sidebar-meta" *ngIf="selectedHistoryItem">
-                {{ selectedHistoryItem.name }} • {{ selectedHistoryItem.displayDate }}
-            </p>
+            <h3 class="detail-sidebar-title">{{ selectedItemName }}</h3>
+            <p class="detail-sidebar-meta">{{ selectedItemDate }}</p>
         </div>
-        <button class="detail-close-btn" (click)="closeDetailSidebar()">
+        <button class="detail-close-btn" (click)="closeDetail()">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
                 stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
         </button>
     </div>
-
-    <!-- Sidebar Content -->
+    
+    <!-- MODIFIED - Detail Sidebar Content with conditional rendering -->
     <div class="detail-sidebar-content">
-        <!-- Keywords Display as Chips -->
-        <div *ngIf="detailSidebarItem?.type === 'keywords'" class="detail-keywords-container">
-            <div class="detail-section-title">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                    stroke="currentColor" class="section-icon">
-                    <path stroke-linecap="round" stroke-linejoin="round"
-                        d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z M6 6h.008v.008H6V6z" />
-                </svg>
-                <h4>All Keywords ({{ detailSidebarKeywords.length }})</h4>
-            </div>
-
+        <!-- FOR KEYWORDS - Show chips (no markdown parsing) -->
+        <div *ngIf="isDetailKeywords" class="detail-keywords-container">
             <div class="detail-keywords-chips">
-                <div class="keyword-chip-detail" 
-                     *ngFor="let keyword of detailSidebarKeywords; let i = index"
+                <div class="keyword-chip keyword-chip-detail" 
+                     *ngFor="let keyword of detailKeywords; let i = index"
                      [style.background]="getChipBackground(i)"
                      [style.border-color]="getChipBorderColor(i)">
                     <span class="chip-text">{{ keyword }}</span>
@@ -160,36 +110,18 @@ export class ContentAnalyticsComponent {
                     </button>
                 </div>
             </div>
-
-            <!-- Empty state -->
-            <div class="no-keywords-detail" *ngIf="detailSidebarKeywords.length === 0">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                    stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round"
-                        d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
-                </svg>
-                <p>All keywords have been removed</p>
-            </div>
+            
+            <!-- Show message if all keywords removed -->
+            <p class="detail-no-keywords-message" *ngIf="detailKeywords.length === 0">
+                All keywords have been removed
+            </p>
         </div>
 
-        <!-- Other content types (summary, questions) -->
-        <div *ngIf="detailSidebarItem?.type !== 'keywords'" class="detail-text-content">
-            <p>{{ detailSidebarItem?.content }}</p>
-        </div>
+        <!-- FOR SUMMARY & QUESTIONS - Show markdown content -->
+        <div *ngIf="!isDetailKeywords" class="markdown-content" [innerHTML]="selectedItemContent"></div>
     </div>
 </div>
 
-<!-- ALSO MODIFY the workspace component binding to handle expand click -->
-<!-- Find this line in your existing HTML: -->
-<!-- <app-workspace [selectedHistoryItem]="selectedHistoryItem" [resultItems]="resultItems" [isLoadingResults]="isLoadingResults"></app-workspace> -->
-
-<!-- Replace with: -->
-<app-workspace 
-    [selectedHistoryItem]="selectedHistoryItem" 
-    [resultItems]="resultItems"
-    [isLoadingResults]="isLoadingResults"
-    (onExpandItem)="openDetailSidebar($event)">
-</app-workspace>
 
 
 
@@ -200,320 +132,92 @@ export class ContentAnalyticsComponent {
 
 
 
+/* ADD THESE STYLES TO workspace.component.css */
 
-
-
-
-
-
-
-/* ADD THESE STYLES TO content-analytics.component.css */
-
-/* Detail Sidebar Overlay */
-.detail-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: rgba(0, 0, 0, 0.5);
-    z-index: 1000;
-    opacity: 0;
-    visibility: hidden;
-    transition: opacity 0.3s ease, visibility 0.3s ease;
-}
-
-.detail-overlay.active {
-    opacity: 1;
-    visibility: visible;
-}
-
-/* Detail Sidebar */
-.detail-sidebar {
-    position: fixed;
-    top: 0;
-    right: 0;
-    width: 0;
-    height: 100vh;
-    background-color: var(--bg-color);
-    box-shadow: -4px 0 20px rgba(0, 0, 0, 0.15);
-    z-index: 1001;
-    overflow: hidden;
-    transition: width 0.3s ease;
-    display: flex;
-    flex-direction: column;
-}
-
-.detail-sidebar.active {
-    width: 480px;
-}
-
-/* Sidebar Header */
-.detail-sidebar-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 20px 24px;
-    border-bottom: 1px solid var(--border-color);
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.05), rgba(167, 139, 250, 0.05));
-    flex-shrink: 0;
-}
-
-.detail-sidebar-title-section {
-    flex: 1;
-    min-width: 0;
-    padding-right: 16px;
-}
-
-.detail-sidebar-title {
-    font-size: 18px;
-    font-weight: 700;
-    color: var(--text-color);
-    margin: 0 0 4px 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.detail-sidebar-meta {
-    font-size: 12px;
-    color: var(--text-color);
-    opacity: 0.6;
-    margin: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.detail-close-btn {
-    width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background-color: transparent;
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    flex-shrink: 0;
-}
-
-.detail-close-btn:hover {
-    background-color: var(--footer-bg);
-    border-color: var(--primary-color);
-}
-
-.detail-close-btn svg {
-    width: 18px;
-    height: 18px;
-    stroke: var(--text-color);
-}
-
-/* Sidebar Content */
-.detail-sidebar-content {
-    flex: 1;
-    overflow-y: auto;
-    padding: 24px;
-}
-
-.detail-sidebar-content::-webkit-scrollbar {
-    width: 6px;
-}
-
-.detail-sidebar-content::-webkit-scrollbar-track {
-    background: rgba(139, 92, 246, 0.05);
-    border-radius: 3px;
-}
-
-.detail-sidebar-content::-webkit-scrollbar-thumb {
-    background-color: rgba(139, 92, 246, 0.3);
-    border-radius: 3px;
-}
-
-.detail-sidebar-content::-webkit-scrollbar-thumb:hover {
-    background-color: var(--primary-color);
-}
-
-/* Keywords Section in Detail */
+/* Detail Sidebar - Keywords Container */
 .detail-keywords-container {
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
+    padding: 8px 0;
 }
 
-.detail-section-title {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding-bottom: 12px;
-    border-bottom: 2px solid var(--border-color);
-}
-
-.detail-section-title .section-icon {
-    width: 20px;
-    height: 20px;
-    stroke: var(--primary-color);
-}
-
-.detail-section-title h4 {
-    font-size: 14px;
-    font-weight: 700;
-    color: var(--text-color);
-    margin: 0;
-}
-
-/* Keywords Chips in Detail Sidebar */
+/* Detail Sidebar - Keywords Chips Grid */
 .detail-keywords-chips {
     display: flex;
     flex-wrap: wrap;
-    gap: 10px;
-}
-
-/* Individual Keyword Chip in Detail (same size as workspace) */
-.keyword-chip-detail {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    border-radius: 20px;
-    border: 1px solid;
-    font-size: 12px;
-    font-weight: 600;
-    color: white;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    transition: all 0.3s ease;
-    animation: chipFadeIn 0.3s ease-out;
-    position: relative;
-    overflow: hidden;
-}
-
-/* Chip fade in animation */
-@keyframes chipFadeIn {
-    from {
-        opacity: 0;
-        transform: scale(0.8) translateY(-10px);
-    }
-    to {
-        opacity: 1;
-        transform: scale(1) translateY(0);
-    }
-}
-
-/* Chip hover effect */
-.keyword-chip-detail:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-}
-
-/* Chip text */
-.keyword-chip-detail .chip-text {
-    line-height: 1;
-    white-space: nowrap;
-    user-select: none;
-}
-
-/* Chip remove button */
-.keyword-chip-detail .chip-remove-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 16px;
-    height: 16px;
+    gap: 12px;
     padding: 0;
-    background: rgba(255, 255, 255, 0.3);
-    border: none;
-    border-radius: 50%;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    flex-shrink: 0;
+    min-height: 60px;
+}
+
+/* Detail Sidebar - Larger Keyword Chips */
+.keyword-chip-detail {
+    padding: 10px 16px;
+    font-size: 14px;
+    border-radius: 24px;
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.12);
+}
+
+.keyword-chip-detail:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.18);
+}
+
+/* Detail Sidebar - Larger Remove Button */
+.keyword-chip-detail .chip-remove-btn {
+    width: 18px;
+    height: 18px;
+    background: rgba(255, 255, 255, 0.35);
 }
 
 .keyword-chip-detail .chip-remove-btn:hover {
-    background: rgba(255, 255, 255, 0.5);
-    transform: scale(1.1);
+    background: rgba(255, 255, 255, 0.55);
+    transform: scale(1.15);
 }
 
 .keyword-chip-detail .chip-remove-btn svg {
-    width: 10px;
-    height: 10px;
-    stroke: white;
-    stroke-width: 2.5;
+    width: 11px;
+    height: 11px;
 }
 
-/* Chip shine effect on hover */
-.keyword-chip-detail::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
-    transition: left 0.5s ease;
-}
-
-.keyword-chip-detail:hover::before {
-    left: 100%;
-}
-
-/* No keywords message in detail */
-.no-keywords-detail {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 40px 20px;
-    text-align: center;
-    background: rgba(139, 92, 246, 0.05);
-    border-radius: 12px;
-    border: 1px dashed var(--border-color);
-}
-
-.no-keywords-detail svg {
-    width: 48px;
-    height: 48px;
-    stroke: var(--primary-color);
-    opacity: 0.5;
-    margin-bottom: 12px;
-}
-
-.no-keywords-detail p {
-    font-size: 13px;
+/* Detail Sidebar - No Keywords Message */
+.detail-no-keywords-message {
+    font-size: 14px;
     color: var(--text-color);
     opacity: 0.6;
-    margin: 0;
-}
-
-/* Detail text content (for summary/questions) */
-.detail-text-content {
-    padding: 20px;
-    background: var(--bg-color);
+    font-style: italic;
+    margin: 20px 0;
+    text-align: center;
+    padding: 40px 20px;
+    background: rgba(139, 92, 246, 0.05);
+    border: 1px dashed rgba(139, 92, 246, 0.2);
     border-radius: 8px;
-    border: 1px solid var(--border-color);
 }
 
-.detail-text-content p {
-    font-size: 14px;
-    line-height: 1.8;
+/* Detail Sidebar - Keywords Section Title (Optional) */
+.detail-keywords-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.detail-keywords-count {
+    font-size: 12px;
     color: var(--text-color);
-    margin: 0;
-    white-space: pre-wrap;
+    opacity: 0.6;
+    font-weight: 600;
 }
 
-/* Responsive */
+/* Responsive - Detail Sidebar Keywords */
 @media (max-width: 768px) {
-    .detail-sidebar.active {
-        width: 100%;
-    }
-
     .detail-keywords-chips {
-        gap: 8px;
+        gap: 10px;
     }
-
+    
     .keyword-chip-detail {
-        padding: 5px 10px;
-        font-size: 11px;
+        padding: 8px 14px;
+        font-size: 13px;
     }
 }
 
@@ -528,49 +232,40 @@ export class ContentAnalyticsComponent {
 
 
 
+<!-- OPTIONAL ENHANCEMENT - Add keyword count header in detail sidebar -->
 
-// ONLY SHOWING THE MODIFIED PARTS in workspace.component.ts
-
-import { Component, Input, Output, EventEmitter } from '@angular/core';
-import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
-import { marked } from 'marked';
-
-// ... interfaces remain same ...
-
-@Component({
-  selector: 'app-workspace',
-  templateUrl: './workspace.component.html',
-  styleUrls: ['./workspace.component.css']
-})
-export class WorkspaceComponent {
-  @Input() selectedHistoryItem: HistoryItem | null = null;
-  @Input() resultItems: ResultItem[] = [];
-  @Input() isLoadingResults: boolean = false;
-
-  // NEW OUTPUT - Emit when expand button is clicked
-  @Output() onExpandItem = new EventEmitter<any>();
-
-  isDetailOpen = false;
-  selectedItemName = '';
-  selectedItemDate = '';
-  selectedItemContent: SafeHtml = '';
-  selectedResultItemId: string = '';
-
-  expandedItems: Set<string> = new Set();
-  private readonly CHAR_LIMIT = 200;
-
-  // ... chip colors remain same ...
-
-  constructor(private sanitizer: DomSanitizer) { }
-
-  // MODIFIED METHOD - Emit event instead of opening detail here
-  openDetail(item: ResultItem): void {
-    // Emit to parent component (content-analytics)
-    this.onExpandItem.emit(item);
-  }
-
-  // Remove the old detail sidebar methods if you had them:
-  // closeDetail(), selectedItemContent, etc. - not needed anymore
-
-  // ... rest of methods remain same (getIconPath, copyToClipboard, etc.) ...
-}
+<!-- FOR KEYWORDS - Show chips with header (ENHANCED VERSION) -->
+<div *ngIf="isDetailKeywords" class="detail-keywords-container">
+    <!-- Optional: Keywords Count Header -->
+    <div class="detail-keywords-header">
+        <h4 style="margin: 0; font-size: 14px; font-weight: 600; color: var(--text-color);">
+            All Keywords
+        </h4>
+        <span class="detail-keywords-count">
+            {{ detailKeywords.length }} keyword{{ detailKeywords.length !== 1 ? 's' : '' }}
+        </span>
+    </div>
+    
+    <!-- Keywords Chips -->
+    <div class="detail-keywords-chips">
+        <div class="keyword-chip keyword-chip-detail" 
+             *ngFor="let keyword of detailKeywords; let i = index"
+             [style.background]="getChipBackground(i)"
+             [style.border-color]="getChipBorderColor(i)">
+            <span class="chip-text">{{ keyword }}</span>
+            <button class="chip-remove-btn" 
+                    (click)="removeKeywordFromDetail(keyword)"
+                    title="Remove keyword">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
+                    stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+    </div>
+    
+    <!-- Show message if all keywords removed -->
+    <p class="detail-no-keywords-message" *ngIf="detailKeywords.length === 0">
+        All keywords have been removed
+    </p>
+</div>
