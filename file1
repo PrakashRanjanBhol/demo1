@@ -1,320 +1,243 @@
-<!-- ONLY SHOWING THE MODIFIED PART -->
+// ONLY SHOWING THE MODIFIED PARTS
 
-<!-- Dynamic Result Content -->
-<div class="result-content" *ngIf="selectedHistoryItem && !isLoadingResults && resultItems.length > 0">
-    <!-- Result Items -->
-    <div class="result-item" *ngFor="let item of resultItems"
-        [class.selected]="selectedResultItemId === item.id">
-        <div class="result-item-header">
-            <div class="result-item-icon">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                    stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" [attr.d]="getIconPath(item.icon)" />
-                </svg>
-            </div>
-            <div class="result-item-title-section">
-                <h4 class="result-item-title">{{ item.title }}</h4>
-            </div>
-            <!-- Viewing Badge -->
-            <div class="viewing-badge" *ngIf="selectedResultItemId === item.id">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
-                    stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round"
-                        d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                <span>Viewing</span>
-            </div>
-            <div class="result-actions">
-                <button class="result-action-icon-btn" title="Expand" (click)="openDetail(item)">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                        stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round"
-                            d="M15.75 4.5H19.5v3.75M19.5 4.5l-5.25 5.25M8.25 19.5H4.5v-3.75M4.5 19.5l5.25-5.25" />
-                    </svg>
-                </button>
-                <button class="result-action-icon-btn" title="Copy" (click)="copyToClipboard(item.content)">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                        stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round"
-                            d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 00-3.375-3.375h-1.5a1.125 1.125 0 01-1.125-1.125v-1.5a3.375 3.375 0 00-3.375-3.375H9.75" />
-                    </svg>
-                </button>
-                <button class="result-action-icon-btn" title="Download" (click)="downloadContent(item)">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                        stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round"
-                            d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                    </svg>
-                </button>
-            </div>
-        </div>
-        
-        <!-- MODIFIED PART: Add ellipsis for summary and questions -->
-        <div class="result-item-content">
-            <!-- Show ellipsis for summary and questions types -->
-            <p class="result-text" 
-               [class.text-ellipsis]="shouldShowEllipsis(item)"
-               [class.text-expanded]="isExpanded(item.id)">
-                {{ item.content }}
-            </p>
-            
-            <!-- Show "Read more" / "Read less" button for summary and questions -->
-            <button class="read-more-btn" 
-                    *ngIf="shouldShowEllipsis(item) && isContentLong(item.content)"
-                    (click)="toggleExpand(item.id)">
-                {{ isExpanded(item.id) ? 'Read less' : 'Read more' }}
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" 
-                     stroke="currentColor"
-                     [class.rotate-180]="isExpanded(item.id)">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-                </svg>
-            </button>
-        </div>
-    </div>
-</div>
+import { Injectable } from '@angular/core';
+import { HttpClient, HttpEventType, HttpEvent } from '@angular/common/http';
+import { Observable } from 'rxjs';
+import { map } from 'rxjs/operators';
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-import { Component, Input } from '@angular/core';
-import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
-import { marked } from 'marked';
-
-interface ResultItem {
-  id: string;
-  title: string;
-  icon: string;
-  content: string;
-  type: 'summary' | 'keywords' | 'questions' | 'custom';
+// MODIFIED INTERFACE - Updated to match new API response
+export interface UploadResponse {
+  status: string;  // Changed from success to status
+  data?: {
+    id: number;
+    original_name: string;
+    created_at: string;
+  };
+  message?: string;  // Keep for backward compatibility
 }
 
-interface HistoryItem {
-  id: string;
-  name: string;
-  displayDate: string;
-  date: Date;
-}
+// ... rest of the interfaces remain the same ...
 
-@Component({
-  selector: 'app-workspace',
-  templateUrl: './workspace.component.html',
-  styleUrls: ['./workspace.component.css']
+@Injectable({
+  providedIn: 'root'
 })
-export class WorkspaceComponent {
-  @Input() selectedHistoryItem: HistoryItem | null = null;
-  @Input() resultItems: ResultItem[] = [];
-  @Input() isLoadingResults: boolean = false;
+export class UploadService {
+  private apiUrl = 'http://localhost:3000/api';
 
-  isDetailOpen = false;
-  selectedItemName = '';
-  selectedItemDate = '';
-  selectedItemContent: SafeHtml = '';
-  selectedResultItemId: string = '';
+  constructor(private http: HttpClient) { }
 
-  // NEW: Track expanded items
-  expandedItems: Set<string> = new Set();
-  
-  // NEW: Character limit for ellipsis
-  private readonly CHAR_LIMIT = 200; // Adjust this value as needed
+  // ... other methods remain the same ...
+}
 
-  constructor(private sanitizer: DomSanitizer) { }
 
-  openDetail(item: ResultItem): void {
-    this.selectedItemName = item.title;
-    this.selectedItemDate = this.selectedHistoryItem?.displayDate || '';
-    this.selectedResultItemId = item.id;
 
-    // Convert content to markdown HTML
-    const htmlContent: any = marked(item.content);
-    this.selectedItemContent = this.sanitizer.bypassSecurityTrustHtml(htmlContent);
 
-    this.isDetailOpen = true;
-  }
 
-  closeDetail(): void {
-    this.isDetailOpen = false;
-    this.selectedResultItemId = '';
-  }
 
-  getIconPath(iconType: string): string {
-    const icons: { [key: string]: string } = {
-      'document': 'M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z',
-      'tag': 'M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z M6 6h.008v.008H6V6z',
-      'question': 'M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z',
-      'lightbulb': 'M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.823 1.508-2.316a7.5 7.5 0 10-7.517 0c.85.493 1.509 1.333 1.509 2.316V18'
-    };
-    return icons[iconType] || icons['document'];
-  }
 
-  copyToClipboard(content: string): void {
-    navigator.clipboard.writeText(content).then(() => {
-      console.log('Content copied to clipboard');
+
+
+// ONLY SHOWING THE MODIFIED PARTS
+
+// MODIFIED INTERFACE - Add more properties from API response
+interface FileWithStatus {
+  file: File;
+  status: 'pending' | 'uploading' | 'uploaded' | 'error';
+  progress?: number;
+  uploadedFileId?: number;  // Changed from string to number
+  uploadedFileName?: string;  // NEW - Store original_name from API
+  uploadedDate?: string;  // NEW - Store created_at from API
+}
+
+// ... rest of the component code ...
+
+// MODIFIED METHOD - Update upload handling to store API response data
+private uploadFileViaService(fileWithStatus: FileWithStatus): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const sub = this.uploadService.uploadFile(fileWithStatus.file).subscribe({
+      next: (event: any) => {
+        if (event.type === HttpEventType.UploadProgress) {
+          if (event.total) {
+            fileWithStatus.progress = Math.round((100 * event.loaded) / event.total);
+          }
+        } else if (event.type === HttpEventType.Response) {
+          const response = event.body as UploadResponse;
+          
+          // MODIFIED - Store data from new API response structure
+          if (response.status === 'Success' && response.data) {
+            fileWithStatus.uploadedFileId = response.data.id;
+            fileWithStatus.uploadedFileName = response.data.original_name;
+            fileWithStatus.uploadedDate = response.data.created_at;
+            console.log('Upload successful:', response);
+            resolve();
+          } else {
+            reject(new Error('Upload failed'));
+          }
+        }
+      },
+      error: (error) => {
+        console.error('Upload error:', error);
+        reject(error);
+      }
     });
-  }
+    this.subscriptions.push(sub);
+  });
+}
 
-  downloadContent(item: ResultItem): void {
-    const blob = new Blob([item.content], { type: 'text/plain' });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${item.title.replace(/\s+/g, '_')}.txt`;
-    link.click();
-    window.URL.revokeObjectURL(url);
-  }
+// MODIFIED METHOD - Use uploaded file data when generating
+handleGenerate(): void {
+  if (this.uploadMode === 'new' && this.selectedUploadFile) {
+    const fileWithStatus = this.uploadedFilesWithStatus.find(f => f.file === this.selectedUploadFile);
 
-  // NEW METHODS FOR ELLIPSIS FUNCTIONALITY
-
-  /**
-   * Check if item should show ellipsis (only for summary and questions)
-   */
-  shouldShowEllipsis(item: ResultItem): boolean {
-    return item.type === 'summary' || item.type === 'questions';
-  }
-
-  /**
-   * Check if content is long enough to need "Read more" button
-   */
-  isContentLong(content: string): boolean {
-    return content.length > this.CHAR_LIMIT;
-  }
-
-  /**
-   * Check if item is currently expanded
-   */
-  isExpanded(itemId: string): boolean {
-    return this.expandedItems.has(itemId);
-  }
-
-  /**
-   * Toggle expand/collapse state for an item
-   */
-  toggleExpand(itemId: string): void {
-    if (this.expandedItems.has(itemId)) {
-      this.expandedItems.delete(itemId);
-    } else {
-      this.expandedItems.add(itemId);
+    if (!fileWithStatus?.uploadedFileId) {
+      alert('Please upload the file first before generating.');
+      return;
     }
+
+    // MODIFIED - Use data from API response
+    this.onGenerate.emit({
+      file: {
+        fileID: fileWithStatus.uploadedFileId,  // Now using number ID from API
+        fileName: fileWithStatus.uploadedFileName || fileWithStatus.file.name,  // Use API name or fallback
+        createdAt: fileWithStatus.uploadedDate  // NEW - Include creation date
+      },
+      prompts: this.optionalPrompts,
+      mode: this.uploadMode
+    });
+
+    this.startProcessing(fileWithStatus.uploadedFileName || fileWithStatus.file.name);
+
+    const request: GenerateRequest = {
+      fileID: fileWithStatus.uploadedFileId,
+      optional_prompt: this.optionalPrompts,
+      model_name: this.selectedModel
+    };
+
+    this.generateAnalysis(request);
+
+  } else if (this.uploadMode === 'previous' && this.selectedPreviousFile) {
+    // Previous file mode remains the same
+    this.onGenerate.emit({
+      file: {
+        fileID: this.selectedPreviousFile.id,
+        fileName: this.selectedPreviousFile.name
+      },
+      prompts: this.optionalPrompts,
+      mode: this.uploadMode
+    });
+
+    this.startProcessing(this.selectedPreviousFile.name);
+
+    const request: GenerateRequest = {
+      fileID: this.selectedPreviousFile.id,
+      optional_prompt: this.optionalPrompts,
+      model_name: this.selectedModel
+    };
+
+    this.generateAnalysis(request);
   }
 }
 
+// MODIFIED METHOD - Update completion handling to use correct file ID
+private onProgressComplete(): void {
+  this.stopPolling();
 
+  // MODIFIED - Get file data from the correct source
+  const fileData = this.uploadMode === 'new'
+    ? this.uploadedFilesWithStatus.find(f => f.file.name === this.selectedUploadFile?.name)
+    : null;
 
+  const fileId = this.uploadMode === 'new'
+    ? fileData?.uploadedFileId
+    : this.selectedPreviousFile?.id;
 
+  const fileName = this.uploadMode === 'new'
+    ? (fileData?.uploadedFileName || this.selectedUploadFile?.name)
+    : this.selectedPreviousFile?.name;
 
+  // Emit completion event to update status and load results
+  this.onGenerate.emit({
+    file: {
+      fileID: fileId,
+      fileName: fileName,
+      isComplete: true  // Flag to indicate completion
+    },
+    prompts: this.optionalPrompts,
+    mode: this.uploadMode
+  });
 
-
-
-
-
-
-
-
-
-
-
-/* ADD THESE STYLES TO YOUR workspace.component.css */
-
-/* Text Ellipsis Styles */
-.result-text {
-    font-size: 13px;
-    line-height: 1.6;
-    color: var(--text-color);
-    margin: 0;
-    transition: max-height 0.3s ease;
+  setTimeout(() => {
+    this.completeProcessing();
+  }, 500);
 }
 
-/* Collapsed state - show ellipsis */
-.result-text.text-ellipsis {
-    display: -webkit-box;
-    -webkit-line-clamp: 3; /* Show 3 lines */
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
 
-/* Expanded state - show full content */
-.result-text.text-ellipsis.text-expanded {
-    display: block;
-    -webkit-line-clamp: unset;
-    overflow: visible;
-}
 
-/* Read More/Less Button */
-.read-more-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    margin-top: 10px;
-    padding: 6px 14px;
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(167, 139, 250, 0.08));
-    border: 1px solid rgba(139, 92, 246, 0.2);
-    border-radius: 6px;
-    color: var(--primary-color);
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.3s ease;
-}
 
-.read-more-btn:hover {
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(167, 139, 250, 0.15));
-    border-color: var(--primary-color);
-    transform: translateX(2px);
-}
 
-.read-more-btn svg {
-    width: 14px;
-    height: 14px;
-    stroke: var(--primary-color);
-    transition: transform 0.3s ease;
-}
 
-.read-more-btn svg.rotate-180 {
-    transform: rotate(180deg);
-}
 
-/* Animation for smooth expand/collapse */
-@keyframes expandText {
-    from {
-        max-height: 80px;
+
+
+
+
+
+// ONLY SHOWING THE MODIFIED PARTS
+
+// MODIFIED METHOD - Handle new file data structure from upload response
+onGenerateComplete(data: { file: any, prompts: string, mode: string }): void {
+  const fileId = data.file.fileID.toString();
+  const isComplete = data.file.isComplete || false;
+
+  const existingItem = this.historyComponent?.historyItems.find((i: any) => i.id === fileId);
+
+  if (isComplete) {
+    if (existingItem) {
+      this.historyComponent.updateItemStatus(fileId, 'completed');
+      this.selectedHistoryItem = existingItem;
+      this.loadResultsForItem(fileId);
     }
-    to {
-        max-height: 1000px;
-    }
-}
+    return;
+  }
 
-.result-text.text-expanded {
-    animation: expandText 0.3s ease-out forwards;
-}
+  if (existingItem) {
+    this.historyComponent.updateItemStatus(fileId, 'in-progress');
+    this.selectedHistoryItem = existingItem;
+    this.resultItems = [];
+    return;
+  }
 
-/* Adjust result-item-content padding when button is present */
-.result-item-content:has(.read-more-btn) {
-    padding-bottom: 16px;
-}
+  // MODIFIED - Use data from new upload response structure
+  const displayDate = data.file.createdAt 
+    ? 'Created on ' + new Date(data.file.createdAt).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+    : 'Created on ' + new Date().toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
 
-/* Optional: Add fade effect at the bottom of truncated text */
-.result-text.text-ellipsis:not(.text-expanded)::after {
-    content: '';
-    position: absolute;
-    bottom: 0;
-    right: 0;
-    width: 100%;
-    height: 1.5em;
-    background: linear-gradient(to bottom, transparent, var(--bg-color));
-    pointer-events: none;
-}
+  const newItem = {
+    id: fileId,  // Using the ID from API response
+    name: data.file.fileName,
+    displayDate: displayDate,  // Using created_at from API or current date
+    date: data.file.createdAt ? new Date(data.file.createdAt) : new Date(),
+    progress: 'in progress',
+    status: 'in-progress' as 'not-generated' | 'in-progress' | 'completed',
+    isClickable: false
+  };
 
-.result-item-content {
-    position: relative; /* Required for ::after positioning */
+  if (this.historyComponent) {
+    this.historyComponent.addHistoryItem(newItem);
+  }
+
+  this.selectedHistoryItem = newItem;
+  this.resultItems = [];
 }
