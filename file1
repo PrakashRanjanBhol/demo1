@@ -1,26 +1,81 @@
-// COMPLETION HANDLING
-if (isComplete) {
-  if (existingItem) {
-    this.historyComponent.updateItemStatus(fileId, 'completed');
-    
-    // MODIFIED - Auto-select only if nothing selected
-    if (!this.selectedHistoryItem) {
-      this.selectedHistoryItem = existingItem;
-      this.loadResultsForItem(fileId);
+// MODIFIED METHOD - Smart auto-selection logic for generated files
+
+onGenerateComplete(data: { file: any, prompts: string, mode: string }): void {
+  const fileId = data.file.fileID.toString();
+  const isComplete = data.file.isComplete || false;
+
+  const existingItem = this.historyComponent?.historyItems.find((i: any) => i.id === fileId);
+
+  // HANDLE COMPLETION - Auto-select if no current selection
+  if (isComplete) {
+    if (existingItem) {
+      this.historyComponent.updateItemStatus(fileId, 'completed');
+      
+      // NEW - Auto-select only if nothing is currently selected
+      if (!this.selectedHistoryItem) {
+        this.selectedHistoryItem = existingItem;
+        this.loadResultsForItem(fileId);
+      } else {
+        // Keep current selection, don't switch to newly completed file
+        console.log(`File "${existingItem.name}" completed. Still viewing "${this.selectedHistoryItem.name}"`);
+      }
     }
-    // else: Keep current selection
+    return;
   }
-  return;
+
+  // HANDLE GENERATION START - Update status without changing selection
+  if (existingItem) {
+    // Update status to in-progress
+    this.historyComponent.updateItemStatus(fileId, 'in-progress');
+    
+    // Only update workspace if generating the SAME file
+    const isGeneratingSelectedFile = this.selectedHistoryItem?.id === fileId;
+    
+    if (isGeneratingSelectedFile) {
+      // Same file - clear results to show "generating"
+      this.selectedHistoryItem = existingItem;
+      this.resultItems = [];
+    }
+    // else: Keep showing current file's results
+    
+    return;
+  }
+
+  // NEW ITEM CREATION
+  const displayDate = data.file.createdAt 
+    ? 'Created on ' + new Date(data.file.createdAt).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+    : 'Created on ' + new Date().toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+
+  const newItem = {
+    id: fileId,
+    name: data.file.fileName,
+    displayDate: displayDate,
+    date: data.file.createdAt ? new Date(data.file.createdAt) : new Date(),
+    progress: 'in progress',
+    status: 'in-progress' as 'not-generated' | 'in-progress' | 'completed',
+    isClickable: false
+  };
+
+  if (this.historyComponent) {
+    this.historyComponent.addHistoryItem(newItem);
+  }
+
+  // NEW - Only select new item if nothing is currently selected
+  if (!this.selectedHistoryItem) {
+    this.selectedHistoryItem = newItem;
+    this.resultItems = [];
+  }
+  // else: Keep current selection
 }
-
-// ... rest of the method ...
-
-// NEW ITEM CREATION
-// ... create newItem ...
-
-// MODIFIED - Auto-select only if nothing selected
-if (!this.selectedHistoryItem) {
-  this.selectedHistoryItem = newItem;
-  this.resultItems = [];
-}
-// else: Keep current selection
