@@ -1,36 +1,67 @@
-/**
- * Get only successfully uploaded files with valid IDs
- */
+TypeScript (upload-generate.component.ts):
+1. Add property (after line 60):
+typescriptisUploadZoneDisabled: boolean = false;
+2. Modify onUpload() (line 211):
+typescriptthis.isUploadZoneDisabled = true;  // ADD this line
+3. Modify onReset() (line 426):
+typescriptthis.isUploadZoneDisabled = false;  // ADD this line
+4. Modify onCancel() (line 441):
+typescript// Replace entire method - clear everything
+this.uploadedFilesWithStatus = [];
+this.selectedUploadFile = null;
+this.optionalPrompts = '';
+this.currentStep = 1;
+this.uploadStarted = false;
+this.isUploadZoneDisabled = false;
+this.markForRecalculation();
+5. Modify switchToMode() (line 478):
+typescript// Add check at start
+if (this.isProcessing) {
+  return;
+}
+
+// In 'new' mode branch, add clearing logic
+if (mode === 'new') {
+  this.uploadedFilesWithStatus = [];
+  this.selectedUploadFile = null;
+  this.optionalPrompts = '';
+  this.currentStep = 1;
+  this.uploadStarted = false;
+  this.isUploadZoneDisabled = false;
+  this.markForRecalculation();
+}
+6. Add getter (after line 537):
+typescriptget isTabSwitchDisabled(): boolean {
+  return this.isProcessing;
+}
+
 getUploadedFilesOnly(): FileWithStatus[] {
   return this.uploadedFilesWithStatus.filter(
     f => f.status === 'uploaded' && f.uploadedFileId
   );
 }
 
+HTML (upload-generate.component.html):
+1. Upload zone (line ~99):
+html[class.disabled]="isUploadZoneDisabled"
+(drop)="isUploadZoneDisabled ? null : onFileDrop($event)"
+2. Browse input:
+html[disabled]="isUploadZoneDisabled"
+3. Mode tabs (line 59):
+html[disabled]="isTabSwitchDisabled"
+4. Cancel/Clear buttons:
+html[disabled]="isProcessing"
+5. File loop (line 184):
+html*ngFor="let fileWithStatus of getUploadedFilesOnly()"
 
+CSS:
+css.file-upload-zone.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+}
 
-
-
-<!-- CHANGE FROM: -->
-*ngFor="let fileWithStatus of uploadedFilesWithStatus"
-
-<!-- TO: -->
-*ngFor="let fileWithStatus of getUploadedFilesOnly()"
-
-
-
-onNext(): void {
-  const uploadedFiles = this.getUploadedFilesOnly();
-  
-  if (uploadedFiles.length === 0) {
-    alert('No files uploaded successfully. Please try again.');
-    return;
-  }
-  
-  this.currentStep = 2;
-  
-  // Auto-select first uploaded file
-  if (!this.selectedUploadFile || !uploadedFiles.find(f => f.file === this.selectedUploadFile)) {
-    this.selectedUploadFile = uploadedFiles[0].file;
-  }
+.mode-tab[disabled] {
+    opacity: 0.4;
+    cursor: not-allowed;
 }
