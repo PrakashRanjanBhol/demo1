@@ -1,105 +1,259 @@
-/* ADD/MODIFY THESE IN RESPECTIVE COMPONENT CSS FILES */
+// ONLY SHOWING THE MODIFIED PART - content-analytics.component.ts
 
-/* ============================================ */
-/* 1. upload-generate.component.css */
-/* ============================================ */
+export class ContentAnalyticsComponent {
+  @ViewChild('historyComponent') historyComponent: any;
 
-.upload-section-header {
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(167, 139, 250, 0.08));
-    border-bottom: 1px solid var(--border-color);
-    padding: 16px 20px;  /* Same padding */
-    min-height: 56px;    /* ADD THIS - Fixed height */
-    display: flex;       /* ADD THIS */
-    align-items: center; /* ADD THIS - Center vertically */
-    flex-shrink: 0;
+  isHeaderExpanded: boolean = false;
+  selectedHistoryItem: any = null;
+  resultItems: any[] = [];
+  isLoadingResults: boolean = false;
+
+  // NEW - Track the file being generated
+  private currentGeneratingFileId: string | null = null;
+
+  constructor(private resultsService: ResultsService) { }
+
+  toggleHeader(): void {
+    this.isHeaderExpanded = !this.isHeaderExpanded;
+  }
+
+  // MODIFIED METHOD - Handle generate events
+  onGenerateComplete(data: { file: any, prompts: string, mode: string }): void {
+    const fileId = data.file.fileID.toString();
+    const isComplete = data.file.isComplete || false;
+
+    const existingItem = this.historyComponent?.historyItems.find((i: any) => i.id === fileId);
+
+    if (isComplete) {
+      // Generation completed
+      this.currentGeneratingFileId = null;  // NEW - Clear generating flag
+      
+      if (existingItem) {
+        this.historyComponent.updateItemStatus(fileId, 'completed');
+        this.selectedHistoryItem = existingItem;
+        this.loadResultsForItem(fileId);
+      }
+      return;
+    }
+
+    // NEW - Check if we're generating for a different file than selected
+    if (this.selectedHistoryItem && this.selectedHistoryItem.id !== fileId) {
+      // Clear workspace if generating different file
+      this.resultItems = [];
+      this.isLoadingResults = false;
+    }
+
+    // NEW - Track which file is being generated
+    this.currentGeneratingFileId = fileId;
+
+    if (existingItem) {
+      // Item already exists, update its status to in-progress
+      this.historyComponent.updateItemStatus(fileId, 'in-progress');
+      
+      // NEW - Only set as selected if no other file is selected
+      // OR if this is the same file that was selected
+      if (!this.selectedHistoryItem || this.selectedHistoryItem.id === fileId) {
+        this.selectedHistoryItem = existingItem;
+      }
+      
+      // Clear results while processing
+      this.resultItems = [];
+      return;
+    }
+
+    // Create new item with in-progress status
+    const displayDate = data.file.createdAt 
+      ? 'Created on ' + new Date(data.file.createdAt).toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        })
+      : 'Created on ' + new Date().toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+
+    const newItem = {
+      id: fileId,
+      name: data.file.fileName,
+      displayDate: displayDate,
+      date: data.file.createdAt ? new Date(data.file.createdAt) : new Date(),
+      progress: 'in progress',
+      status: 'in-progress' as 'not-generated' | 'in-progress' | 'completed',
+      isClickable: false
+    };
+
+    if (this.historyComponent) {
+      this.historyComponent.addHistoryItem(newItem);
+    }
+
+    // NEW - Only set as selected if no other file is selected
+    if (!this.selectedHistoryItem) {
+      this.selectedHistoryItem = newItem;
+    }
+    
+    this.resultItems = [];
+  }
+
+  // MODIFIED METHOD - Check if item is being generated
+  onHistoryItemSelected(itemId: string): void {
+    const item = this.historyComponent?.historyItems.find((i: any) => i.id === itemId);
+    
+    if (item) {
+      this.selectedHistoryItem = item;
+      
+      // NEW - Only load results if not currently being generated
+      if (this.currentGeneratingFileId === itemId) {
+        // File is being generated, show empty workspace
+        this.resultItems = [];
+        this.isLoadingResults = false;
+      } else {
+        // File is completed, load results
+        this.loadResultsForItem(itemId);
+      }
+    }
+  }
+
+  loadResultsForItem(itemId: string): void {
+    this.isLoadingResults = true;
+    this.resultItems = [];
+
+    this.resultsService.getFileResults(itemId).subscribe({
+      next: (response) => {
+        if (response.status === 'success') {
+          this.resultItems = this.mapResponseToResultItems(response.data);
+        }
+        this.isLoadingResults = false;
+      },
+      error: (error) => {
+        console.error('Error loading results:', error);
+        this.resultItems = [];
+        this.isLoadingResults = false;
+      }
+    });
+  }
+
+  private mapResponseToResultItems(data: FileResultData): any[] {
+    // ... existing implementation ...
+  }
 }
 
-.upload-section-title {
-    font-size: 16px;
-    font-weight: 700;
-    margin: 0;
-    color: var(--text-color);
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    line-height: 1;  /* ADD THIS - Prevent text from affecting height */
-}
 
 
-/* ============================================ */
-/* 2. history.component.css */
-/* ============================================ */
-
-.section-header-inline {
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(167, 139, 250, 0.08));
-    border-bottom: 1px solid var(--border-color);
-    padding: 16px 20px;  /* Same padding */
-    min-height: 56px;    /* ADD THIS - Fixed height */
-    display: flex;       /* ADD THIS */
-    align-items: center; /* ADD THIS - Center vertically */
-    flex-shrink: 0;
-    position: relative;
-}
-
-.header-content {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    width: 100%;  /* ADD THIS */
-}
-
-.section-inline-title {
-    font-size: 16px;
-    font-weight: 700;
-    margin: 0;
-    color: var(--text-color);
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    line-height: 1;  /* ADD THIS */
-}
-
-/* Date range display - ensure it doesn't add extra height */
-.date-range-display {
-    line-height: 1;  /* ADD THIS */
-}
 
 
-/* ============================================ */
-/* 3. workspace.component.css */
-/* ============================================ */
 
-.workspace-header-inline {
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(167, 139, 250, 0.08));
-    border-bottom: 1px solid var(--border-color);
-    padding: 16px 20px;  /* Same padding */
-    min-height: 56px;    /* ADD THIS - Fixed height */
-    display: flex;       /* ADD THIS */
-    align-items: center; /* ADD THIS - Center vertically */
-    flex-shrink: 0;
-    position: relative;
-    margin-bottom: 0;
-}
 
-.workspace-header-content {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    width: 100%;  /* ADD THIS */
-}
 
-.workspace-inline-title {
-    font-size: 16px;
-    font-weight: 700;
-    color: var(--text-color);
-    margin: 0;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    line-height: 1;  /* ADD THIS */
-}
 
-/* Selected file info - ensure it doesn't add extra height */
-.selected-file-info {
-    line-height: 1.2;  /* ADD THIS */
+
+
+
+
+
+
+// SIMPLER ALTERNATIVE - Just clear workspace when generating different file
+
+export class ContentAnalyticsComponent {
+  @ViewChild('historyComponent') historyComponent: any;
+
+  isHeaderExpanded: boolean = false;
+  selectedHistoryItem: any = null;
+  resultItems: any[] = [];
+  isLoadingResults: boolean = false;
+
+  constructor(private resultsService: ResultsService) { }
+
+  // MODIFIED METHOD - Clear workspace if generating different file
+  onGenerateComplete(data: { file: any, prompts: string, mode: string }): void {
+    const fileId = data.file.fileID.toString();
+    const isComplete = data.file.isComplete || false;
+
+    const existingItem = this.historyComponent?.historyItems.find((i: any) => i.id === fileId);
+
+    if (isComplete) {
+      // Completion event
+      if (existingItem) {
+        this.historyComponent.updateItemStatus(fileId, 'completed');
+        this.selectedHistoryItem = existingItem;
+        this.loadResultsForItem(fileId);
+      }
+      return;
+    }
+
+    // START OF GENERATION
+    
+    // NEW - If selected file is different from the one being generated, clear workspace
+    if (this.selectedHistoryItem && this.selectedHistoryItem.id !== fileId) {
+      this.selectedHistoryItem = null;  // Clear selection
+      this.resultItems = [];             // Clear workspace
+      this.isLoadingResults = false;
+    }
+
+    if (existingItem) {
+      this.historyComponent.updateItemStatus(fileId, 'in-progress');
+      
+      // NEW - Only auto-select if no file currently selected
+      if (!this.selectedHistoryItem) {
+        this.selectedHistoryItem = existingItem;
+      }
+      
+      this.resultItems = [];
+      return;
+    }
+
+    // Create new item
+    const displayDate = data.file.createdAt 
+      ? 'Created on ' + new Date(data.file.createdAt).toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        })
+      : 'Created on ' + new Date().toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+
+    const newItem = {
+      id: fileId,
+      name: data.file.fileName,
+      displayDate: displayDate,
+      date: data.file.createdAt ? new Date(data.file.createdAt) : new Date(),
+      progress: 'in progress',
+      status: 'in-progress' as 'not-generated' | 'in-progress' | 'completed',
+      isClickable: false
+    };
+
+    if (this.historyComponent) {
+      this.historyComponent.addHistoryItem(newItem);
+    }
+
+    // NEW - Only auto-select if no file currently selected
+    if (!this.selectedHistoryItem) {
+      this.selectedHistoryItem = newItem;
+    }
+    
+    this.resultItems = [];
+  }
+
+  // No changes needed in this method
+  onHistoryItemSelected(itemId: string): void {
+    const item = this.historyComponent?.historyItems.find((i: any) => i.id === itemId);
+    if (item) {
+      this.selectedHistoryItem = item;
+      this.loadResultsForItem(itemId);
+    }
+  }
+
+  // ... rest of the methods remain the same ...
 }
