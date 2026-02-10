@@ -1,110 +1,3 @@
-// MODIFIED PARTS - upload-generate.component.ts
-
-// MODIFIED - Handle upload failures properly
-private async uploadAllFiles(): Promise<void> {
-  this.uploadError = '';
-  this.isUploading = true;
-
-  try {
-    // Upload files sequentially
-    for (const fileWithStatus of this.uploadedFilesWithStatus) {
-      if (fileWithStatus.status === 'pending') {
-        fileWithStatus.status = 'uploading';
-        
-        try {
-          await this.uploadFileViaService(fileWithStatus);
-          fileWithStatus.status = 'uploaded';
-        } catch (error) {
-          // MODIFIED - Mark as error and remove from list
-          fileWithStatus.status = 'error';
-          console.error('Upload failed for:', fileWithStatus.file.name, error);
-          
-          // IMPORTANT - Remove failed upload from the list
-          this.uploadedFilesWithStatus = this.uploadedFilesWithStatus.filter(
-            f => f !== fileWithStatus
-          );
-        }
-      }
-    }
-
-    // Check if at least one file uploaded successfully
-    const successfulUploads = this.uploadedFilesWithStatus.filter(
-      f => f.status === 'uploaded'
-    );
-
-    if (successfulUploads.length === 0) {
-      this.uploadError = 'All file uploads failed. Please try again.';
-      this.isUploading = false;
-      return;
-    }
-
-    // MODIFIED - If some failed, show message
-    const totalFiles = this.droppedFiles.length;
-    const failedCount = totalFiles - successfulUploads.length;
-    
-    if (failedCount > 0) {
-      this.uploadError = `${failedCount} file(s) failed to upload. Continuing with ${successfulUploads.length} successful upload(s).`;
-    }
-
-    this.isUploading = false;
-
-  } catch (error) {
-    console.error('Upload process error:', error);
-    this.uploadError = 'Upload failed. Please try again.';
-    this.isUploading = false;
-  }
-}
-
-// MODIFIED - Update file selection to only show uploaded files
-updateFileSelection(): void {
-  // MODIFIED - Filter to only show successfully uploaded files
-  const uploadedFiles = this.uploadedFilesWithStatus.filter(
-    f => f.status === 'uploaded' && f.uploadedFileId
-  );
-
-  if (uploadedFiles.length > 0) {
-    this.selectedUploadFile = uploadedFiles[0].file;
-  } else {
-    this.selectedUploadFile = null;
-  }
-}
-
-// MODIFIED - validateAndProceed should check for uploaded files
-validateAndProceed(): void {
-  // Filter to only successfully uploaded files
-  const uploadedFiles = this.uploadedFilesWithStatus.filter(
-    f => f.status === 'uploaded' && f.uploadedFileId
-  );
-
-  if (uploadedFiles.length === 0) {
-    this.uploadError = 'No files uploaded successfully. Please upload files first.';
-    return;
-  }
-
-  // Clear any previous error
-  this.uploadError = '';
-
-  // Auto-select first uploaded file if none selected
-  if (!this.selectedUploadFile) {
-    this.selectedUploadFile = uploadedFiles[0].file;
-  }
-
-  // Move to next step
-  this.currentStep = 'generate';
-}
-
-
-
-
-
-
-
-
-
-
-
-// ADD THIS METHOD TO upload-generate.component.ts
-
 /**
  * Get only successfully uploaded files with valid IDs
  */
@@ -114,56 +7,54 @@ getUploadedFilesOnly(): FileWithStatus[] {
   );
 }
 
-/**
- * Get count of successfully uploaded files
- */
-getUploadedFileCount(): number {
-  return this.getUploadedFilesOnly().length;
+
+
+
+
+
+<!-- BEFORE (shows all files including failed): -->
+<option *ngFor="let fileWithStatus of uploadedFilesWithStatus" ...>
+
+<!-- AFTER (shows only uploaded files): -->
+<option *ngFor="let fileWithStatus of getUploadedFilesOnly()" 
+        [ngValue]="fileWithStatus.file">
+    {{ fileWithStatus.uploadedFileName || fileWithStatus.file.name }}
+</option>
+
+
+
+
+
+
+
+validateAndProceed(): void {
+  const uploadedFiles = this.getUploadedFilesOnly();
+
+  if (uploadedFiles.length === 0) {
+    this.uploadError = 'No files uploaded successfully. Please try again.';
+    return;
+  }
+
+  // Auto-select first uploaded file
+  if (!this.selectedUploadFile) {
+    this.selectedUploadFile = uploadedFiles[0].file;
+  }
+
+  this.currentStep = 'generate';
 }
+```
 
-/**
- * Get count of failed uploads
- */
-getFailedFileCount(): number {
-  return this.uploadedFilesWithStatus.filter(
-    f => f.status === 'error'
-  ).length;
-}
+---
 
+## 📊 **Result:**
 
+**Before:**
+```
+Upload: File A ✓ (ID: 100), File B ✗ (Error)
+Dropdown shows: File A, File B  ❌ (File B has no ID!)
+```
 
-
-
-
-
-
-
-
-
-<!-- MODIFIED PART - File selection dropdown in Generate step -->
-
-<!-- File Selection Dropdown -->
-<div class="form-group" *ngIf="uploadMode === 'new'">
-    <label for="file-select" class="form-label">Select File to Generate</label>
-    
-    <!-- MODIFIED - Only show successfully uploaded files -->
-    <select 
-        id="file-select" 
-        class="form-select" 
-        [(ngModel)]="selectedUploadFile"
-        [disabled]="getUploadedFilesOnly().length === 0">
-        
-        <!-- Show only uploaded files with valid IDs -->
-        <option 
-            *ngFor="let fileWithStatus of getUploadedFilesOnly()" 
-            [ngValue]="fileWithStatus.file">
-            {{ fileWithStatus.uploadedFileName || fileWithStatus.file.name }}
-            ({{ (fileWithStatus.file.size / 1024).toFixed(2) }} KB)
-        </option>
-    </select>
-    
-    <!-- Show message if no files uploaded successfully -->
-    <p class="no-files-message" *ngIf="getUploadedFilesOnly().length === 0">
-        No files uploaded successfully. Please go back and upload files.
-    </p>
-</div>
+**After:**
+```
+Upload: File A ✓ (ID: 100), File B ✗ (Error)
+Dropdown shows: File A only  ✓ (File B filtered out!)
