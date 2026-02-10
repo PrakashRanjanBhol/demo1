@@ -1,63 +1,19 @@
-// ONLY SHOWING THE MODIFIED PART - onGenerateComplete method
-
-// MODIFIED METHOD - Don't clear workspace when starting generation for different file
-onGenerateComplete(data: { file: any, prompts: string, mode: string }): void {
-  const fileId = data.file.fileID.toString();
-  const isComplete = data.file.isComplete || false;
-
-  const existingItem = this.historyComponent?.historyItems.find((i: any) => i.id === fileId);
-
-  // MODIFIED - Handle completion
-  if (isComplete) {
-    if (existingItem) {
-      this.historyComponent.updateItemStatus(fileId, 'completed');
-      this.selectedHistoryItem = existingItem;
-      this.loadResultsForItem(fileId);
-    }
-    return;
+getMarkdownContent(item: ResultItem): SafeHtml {
+  // CREATE UNIQUE CACHE KEY
+  const fileId = this.selectedHistoryItem?.id || 'unknown';
+  const cacheKey = `${fileId}-${item.id}`;  // ← "100-summary", "101-summary"
+  
+  // CHECK CACHE
+  if (this.markdownCache.has(cacheKey)) {
+    return this.markdownCache.get(cacheKey)!;
   }
 
-  // MODIFIED - If item exists, just update status, DON'T clear workspace
-  if (existingItem) {
-    this.historyComponent.updateItemStatus(fileId, 'in-progress');
-    // DON'T set selectedHistoryItem here - keep current selection
-    // DON'T clear resultItems - keep showing current results
-    return;  // Early return
-  }
-
-  // NEW ITEM - Create new history entry
-  const displayDate = data.file.createdAt 
-    ? 'Created on ' + new Date(data.file.createdAt).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      })
-    : 'Created on ' + new Date().toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-
-  const newItem = {
-    id: fileId,
-    name: data.file.fileName,
-    displayDate: displayDate,
-    date: data.file.createdAt ? new Date(data.file.createdAt) : new Date(),
-    progress: 'in progress',
-    status: 'in-progress' as 'not-generated' | 'in-progress' | 'completed',
-    isClickable: false
-  };
-
-  if (this.historyComponent) {
-    this.historyComponent.addHistoryItem(newItem);
-  }
-
-  // MODIFIED - For new items, don't change selection or clear results
-  // Keep showing the currently selected file's results
-  // Don't update selectedHistoryItem
-  // Don't clear resultItems
+  // CONVERT MARKDOWN
+  const htmlContent: any = marked(item.content);
+  const safeHtml = this.sanitizer.bypassSecurityTrustHtml(htmlContent);
+  
+  // CACHE WITH UNIQUE KEY
+  this.markdownCache.set(cacheKey, safeHtml);
+  
+  return safeHtml;
 }
