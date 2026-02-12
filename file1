@@ -9,30 +9,73 @@ private handleGenerationStatusChange(statusUpdate: GenerationStatus): void {
 
   console.log(`Generation status update for item ${itemId}: ${statusUpdate.status}`);
 
-  // Find the history item element
-  const historyItemElement = document.querySelector(
-    `.history-item[data-item-id="${itemId}"]`
-  ) as HTMLElement;
-
   if (statusUpdate.status === 'Success') {
     // Move to Completed Results
     if (!item.hasResult) {
       console.log(`Moving item ${itemId} to Completed Results`);
       
-      // Add success animation
-      if (historyItemElement) {
-        historyItemElement.classList.add('success-animation');
-        setTimeout(() => {
-          historyItemElement.classList.remove('success-animation');
-        }, 1000);
-      }
-
-      // Update the item's hasResult property
+      // Update the item's hasResult property first
       item.hasResult = true;
 
       // Expand Completed section if it's collapsed
       if (!this.isCompletedExpanded) {
         this.isCompletedExpanded = true;
+      }
+
+      // Wait for DOM to update, then find element, animate, scroll and select
+      setTimeout(() => {
+        const historyItemElement = document.querySelector(
+          `.history-item[data-item-id="${itemId}"]`
+        ) as HTMLElement;
+
+        if (historyItemElement) {
+          // Add success animation
+          historyItemElement.classList.add('success-animation');
+          setTimeout(() => {
+            historyItemElement.classList.remove('success-animation');
+          }, 1000);
+
+          // Scroll to the card smoothly
+          historyItemElement.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center',
+            inline: 'nearest'
+          });
+
+          // Select the card after scrolling
+          setTimeout(() => {
+            this.selectedHistoryItem = item;
+            this.onItemSelect.emit(itemId);
+            console.log(`Card ${itemId} selected and scrolled into view`);
+          }, 300); // Wait for scroll to complete
+        }
+      }, 100); // Wait for Angular to re-render the lists
+    } else {
+      // Item was already in Completed section
+      const historyItemElement = document.querySelector(
+        `.history-item[data-item-id="${itemId}"]`
+      ) as HTMLElement;
+
+      if (historyItemElement) {
+        // Add success animation
+        historyItemElement.classList.add('success-animation');
+        setTimeout(() => {
+          historyItemElement.classList.remove('success-animation');
+        }, 1000);
+
+        // Scroll to the card smoothly
+        historyItemElement.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+          inline: 'nearest'
+        });
+
+        // Select the card after scrolling
+        setTimeout(() => {
+          this.selectedHistoryItem = item;
+          this.onItemSelect.emit(itemId);
+          console.log(`Card ${itemId} selected and scrolled into view`);
+        }, 300);
       }
     }
 
@@ -46,20 +89,40 @@ private handleGenerationStatusChange(statusUpdate: GenerationStatus): void {
     if (item.hasResult) {
       console.log(`Moving item ${itemId} to Pending Results`);
       
-      // Add failure animation
-      if (historyItemElement) {
-        historyItemElement.classList.add('failure-animation');
-        setTimeout(() => {
-          historyItemElement.classList.remove('failure-animation');
-        }, 1000);
-      }
-
-      // Update the item's hasResult property
+      // Update the item's hasResult property first
       item.hasResult = false;
 
       // Expand Pending section if it's collapsed
       if (!this.isPendingExpanded) {
         this.isPendingExpanded = true;
+      }
+
+      // Wait for DOM to update, then find element and animate
+      setTimeout(() => {
+        const historyItemElement = document.querySelector(
+          `.history-item[data-item-id="${itemId}"]`
+        ) as HTMLElement;
+
+        if (historyItemElement) {
+          // Add failure animation
+          historyItemElement.classList.add('failure-animation');
+          setTimeout(() => {
+            historyItemElement.classList.remove('failure-animation');
+          }, 1000);
+        }
+      }, 100);
+    } else {
+      // Item was already in Pending section
+      const historyItemElement = document.querySelector(
+        `.history-item[data-item-id="${itemId}"]`
+      ) as HTMLElement;
+
+      if (historyItemElement) {
+        // Add failure animation
+        historyItemElement.classList.add('failure-animation');
+        setTimeout(() => {
+          historyItemElement.classList.remove('failure-animation');
+        }, 1000);
       }
     }
 
@@ -69,4 +132,33 @@ private handleGenerationStatusChange(statusUpdate: GenerationStatus): void {
       this.addedToGenerationId = null;
     }
   }
+}
+
+
+
+
+
+
+
+
+
+/* Scroll highlight animation */
+@keyframes scrollHighlight {
+    0% {
+        box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.7);
+    }
+    50% {
+        box-shadow: 0 0 0 10px rgba(139, 92, 246, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(139, 92, 246, 0);
+    }
+}
+
+.history-item.selected {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.12), rgba(167, 139, 250, 0.12));
+    border-color: var(--primary-color);
+    box-shadow: 0 4px 16px rgba(139, 92, 246, 0.2);
+    transform: translateX(4px);
+    animation: scrollHighlight 1s ease-out;
 }
