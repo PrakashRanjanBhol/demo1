@@ -1,173 +1,269 @@
-export interface ModelsResponse {
-  status: string;
-  result: string[];
+import { Component, Input } from '@angular/core';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import { marked } from 'marked';
+
+interface ResultItem {
+  id: string;
+  title: string;
+  icon: string;
+  content: string;
+  type: 'summary' | 'keywords' | 'questions' | 'custom';
+  keywords?: string[];  // Store keywords as array
 }
 
-@Injectable({
-  providedIn: 'root'
-})
-export class UploadGenerateService {
-  private apiUrl = 'http://localhost:3000/api';  // Replace with your API base URL
-
-  constructor(private http: HttpClient) { }
-
-  /**
-   * Get available models
-   */
-  getModels(): Observable<ModelsResponse> {
-    return this.http.get<ModelsResponse>('/content_analytics/get_models');
-  }
-
-  // ... rest of the methods remain the same
+interface HistoryItem {
+  id: string;
+  name: string;
+  displayDate: string;
+  date: Date;
 }
-
-
-
-
-
-
-
-import { Component, EventEmitter, Output, Input, OnDestroy, OnChanges, SimpleChanges, OnInit } from '@angular/core';
-import { HttpEventType } from '@angular/common/http';
-import { Subscription, interval } from 'rxjs';
-import { switchMap, takeWhile } from 'rxjs/operators';
-import { 
-  UploadGenerateService, 
-  UploadResponse, 
-  GenerateRequest, 
-  GenerateResponse,
-  ProgressResponse,
-  ModelsResponse
-} from 'src/app/services/upload-generate.service';
-
-// ... interfaces remain the same
 
 @Component({
-  selector: 'app-upload-generate',
-  templateUrl: './upload-generate.component.html',
-  styleUrls: ['./upload-generate.component.css']
+  selector: 'app-workspace',
+  templateUrl: './workspace.component.html',
+  styleUrls: ['./workspace.component.css']
 })
-export class UploadGenerateComponent implements OnInit, OnDestroy, OnChanges {
-  @Input() requestFile: RequestFile | null = null;
-  @Output() onGenerate = new EventEmitter<{ file: any, prompts: string, mode: 'new' }>();
-  @Output() onFileRemoved = new EventEmitter<{ id: string | number, name: string }>();
-  @Output() onGenerationComplete = new EventEmitter<{ id: number, status: 'Success' | 'Failed' }>();
-  @Output() onFileUploaded = new EventEmitter<{ id: number, original_name: string, created_at: string }>();
+export class WorkspaceComponent {
+  @Input() selectedHistoryItem: HistoryItem | null = null;
+  // @Input() resultItems: ResultItem[] = [];
 
-  // ... existing properties
-
-  // Model properties
-  availableModels: string[] = [];
-  selectedModel: string = '';
-  isLoadingModels: boolean = false;
-  modelsLoadError: string = '';
-
-  private subscriptions: Subscription[] = [];
-  private highlightTimeout: any;
-  private progressPollingSubscription: Subscription | null = null;
-
-  constructor(
-    private uploadGenerateService: UploadGenerateService
-  ) { }
-
-  ngOnInit(): void {
-    this.loadModels();
-  }
-
-  ngOnChanges(changes: SimpleChanges): void {
-    if (changes['requestFile']) {
-      this.handleRequestFileChange(changes['requestFile'].currentValue);
+  resultItems: ResultItem[] = [
+    {
+      id: 'result1',
+      title: 'Lecture Summary',
+      icon: 'document',
+      content: 'This lecture covers fundamental concepts in machine learning, including supervised and unsupervised learning approaches. The instructor explains neural network architectures and demonstrates practical applications using Python libraries.',
+      type: 'summary'
+    },
+    {
+      id: 'result2',
+      title: 'Keywords',
+      icon: 'tag',
+      content: '• Neural Networks • Deep Learning • Supervised Learning • Unsupervised Learning • Backpropagation • Gradient Descent • Activation Functions • Training Data • Model Optimization',
+      type: 'keywords',
+      keywords: ['Neural Networks', 'Deep Learning', 'Supervised Learning', 'Unsupervised Learning', 'Backpropagation', 'Gradient Descent', 'Activation Functions', 'Training Data', 'Model Optimization']
+    },
+    {
+      id: 'result3',
+      title: 'Assessment Question',
+      icon: 'question',
+      content: 'What are the main differences between supervised and unsupervised learning? Explain the backpropagation algorithm and its role in neural networks.',
+      type: 'questions'
     }
+  ];
+
+  isDetailOpen = false;
+  selectedItemName = '';
+  selectedItemDate = '';
+  selectedItemContent: SafeHtml = '';
+  selectedResultItemId: string = '';
+
+  expandedItems: Set<string> = new Set();
+  private readonly CHAR_LIMIT = 200;
+
+  // Chip color schemes (gradient backgrounds)
+  private chipColors = [
+    { bg: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', border: '#667eea' },  // Purple
+    { bg: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', border: '#f093fb' },  // Pink
+    { bg: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)', border: '#4facfe' },  // Blue
+    { bg: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)', border: '#43e97b' },  // Green
+    { bg: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)', border: '#fa709a' },  // Orange-Pink
+    { bg: 'linear-gradient(135deg, #30cfd0 0%, #330867 100%)', border: '#30cfd0' },  // Teal
+    { bg: 'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)', border: '#a8edea' },  // Pastel
+    { bg: 'linear-gradient(135deg, #ff9a56 0%, #ff6a88 100%)', border: '#ff9a56' },  // Coral
+    { bg: 'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)', border: '#ffecd2' },  // Peach
+    { bg: 'linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%)', border: '#a1c4fd' },  // Sky Blue
+  ];
+
+  sampleContent = `
+# Machine Learning Fundamentals: A Comprehensive Overview
+
+## Introduction to Machine Learning
+
+Machine learning is a subset of artificial intelligence that focuses on building systems that can **learn from data** and improve their performance over time without being explicitly programmed. This revolutionary approach has transformed various industries and continues to shape our digital future.
+
+### Key Concepts
+
+Machine learning algorithms can be broadly categorized into three main types:
+
+1. **Supervised Learning** - Learning from labeled data
+2. **Unsupervised Learning** - Finding patterns in unlabeled data
+3. **Reinforcement Learning** - Learning through interaction and feedback
+
+---
+
+## Supervised Learning
+
+Supervised learning is the most common type of machine learning. In this approach, the algorithm learns from a training dataset that includes both input features and corresponding output labels.
+
+### Popular Algorithms
+
+- **Linear Regression** - For predicting continuous values
+- **Logistic Regression** - For binary classification problems
+- **Decision Trees** - For both regression and classification
+- **Random Forests** - Ensemble method using multiple decision trees
+- **Support Vector Machines (SVM)** - For classification and regression tasks
+- **Neural Networks** - Deep learning models with multiple layers
+
+### Real-World Applications
+
+> "Machine learning is the future of technology, and supervised learning forms the foundation of most practical applications we see today."
+
+Some practical applications include:
+
+- Email spam detection and filtering
+- Image recognition and classification
+- Medical diagnosis and disease prediction
+- Credit risk assessment in banking
+- Customer churn prediction
+- Fraud detection systems
+
+---
+
+## Conclusion
+
+Machine learning is a powerful tool that continues to evolve and expand its capabilities. Understanding the fundamentals—from basic algorithms to advanced deep learning techniques—is crucial for developing effective solutions to real-world problems.
+
+*Last Updated: January 28, 2026*
+
+**Remember:** The journey of mastering machine learning is continuous. Keep learning, experimenting, and building!
+`;
+
+  constructor(private sanitizer: DomSanitizer) { }
+
+  openDetail(item: ResultItem): void {
+    this.selectedItemName = item.title;
+    this.selectedItemDate = this.selectedHistoryItem?.displayDate || '';
+    this.selectedResultItemId = item.id;
+
+    const htmlContent: any = marked(this.sampleContent);
+    this.selectedItemContent = this.sanitizer.bypassSecurityTrustHtml(htmlContent);
+
+    this.isDetailOpen = true;
   }
 
-  ngOnDestroy(): void {
-    this.subscriptions.forEach(sub => sub.unsubscribe());
-    if (this.highlightTimeout) {
-      clearTimeout(this.highlightTimeout);
-    }
-    this.stopProgressPolling();
+  closeDetail(): void {
+    this.isDetailOpen = false;
+    this.selectedResultItemId = '';
   }
 
-  // Load models from API
-  loadModels(): void {
-    this.isLoadingModels = true;
-    this.modelsLoadError = '';
-
-    const sub = this.uploadGenerateService.getModels().subscribe({
-      next: (response: ModelsResponse) => {
-        console.log('Models loaded:', response);
-        
-        if (response.status === 'Success' && response.result && response.result.length > 0) {
-          this.availableModels = response.result;
-          // Select first model by default
-          this.selectedModel = this.availableModels[0];
-        } else {
-          this.modelsLoadError = 'No models available';
-        }
-        
-        this.isLoadingModels = false;
-      },
-      error: (error) => {
-        console.error('Error loading models:', error);
-        this.modelsLoadError = 'Failed to load models';
-        this.isLoadingModels = false;
-      }
-    });
-    
-    this.subscriptions.push(sub);
-  }
-
-  // Refresh models
-  refreshModels(): void {
-    this.loadModels();
-  }
-
-  // Handle model selection change
-  onModelChange(model: string): void {
-    this.selectedModel = model;
-    console.log('Model changed to:', model);
-  }
-
-  // ... rest of the existing methods remain the same
-
-  // Update the startGeneration method to use selectedModel:
-  private startGeneration(): void {
-    if (!this.selectedGenerateFile) return;
-
-    this.isProcessing = true;
-    this.processingProgress = 0;
-    this.processingFileName = this.selectedGenerateFile.name;
-    this.processingFileId = String(this.selectedGenerateFile.id);
-    this.generationStatus = 'generating';
-    this.generationErrorMessage = '';
-
-    const request: GenerateRequest = {
-      fileID: Number(this.selectedGenerateFile.id),
-      model_name: this.selectedModel, // Use selected model instead of hardcoded 'a'
-      optional_prompt: this.optionalPrompts || ''
+  getIconPath(iconType: string): string {
+    const icons: { [key: string]: string } = {
+      'document': 'M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z',
+      'tag': 'M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z M6 6h.008v.008H6V6z',
+      'question': 'M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z',
+      'lightbulb': 'M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.823 1.508-2.316a7.5 7.5 0 10-7.517 0c.85.493 1.509 1.333 1.509 2.316V18'
     };
-
-    const sub = this.uploadGenerateService.generateAnalysis(request).subscribe({
-      next: (response: GenerateResponse) => {
-        console.log('Generation API response:', response);
-        
-        if (response.status === 'Success') {
-          // Start progress polling
-          this.startProgressPolling(Number(this.selectedGenerateFile!.id));
-        } else {
-          // Generation failed to start
-          this.handleGenerationError('Failed to start generation');
-        }
-      },
-      error: (error) => {
-        console.error('Generation error:', error);
-        this.handleGenerationError('Failed to initiate generation: ' + (error.message || 'Unknown error'));
-      }
-    });
-    this.subscriptions.push(sub);
+    return icons[iconType] || icons['document'];
   }
 
-  // ... rest of the methods remain the same
+  /**
+   * Get keywords as array from result item
+   */
+  getKeywordsArray(item: ResultItem): string[] {
+    // If keywords are already an array (from API response)
+    if (item.keywords && Array.isArray(item.keywords)) {
+      return item.keywords;
+    }
+
+    // If content is a string with bullets, parse it
+    if (item.content && typeof item.content === 'string') {
+      return item.content
+        .split('•')
+        .map(k => k.trim())
+        .filter(k => k.length > 0);
+    }
+
+    return [];
+  }
+
+  /**
+   * Get chip background color based on index
+   */
+  getChipBackground(index: number): string {
+    const colorIndex = index % this.chipColors.length;
+    return this.chipColors[colorIndex].bg;
+  }
+
+  /**
+   * Get chip border color based on index
+   */
+  getChipBorderColor(index: number): string {
+    const colorIndex = index % this.chipColors.length;
+    return this.chipColors[colorIndex].border;
+  }
+
+  /**
+   * Remove a keyword from the list
+   */
+  removeKeyword(itemId: string, keyword: string): void {
+    const item = this.resultItems.find(i => i.id === itemId);
+    if (!item) return;
+
+    if (item.keywords && Array.isArray(item.keywords)) {
+      // Remove from keywords array
+      item.keywords = item.keywords.filter(k => k !== keyword);
+
+      // Update content string as well
+      item.content = item.keywords.map(k => `• ${k}`).join(' ');
+    } else {
+      // Parse from content string
+      const keywords = this.getKeywordsArray(item);
+      const updatedKeywords = keywords.filter(k => k !== keyword);
+
+      // Update both content and keywords array
+      item.content = updatedKeywords.map(k => `• ${k}`).join(' ');
+      item.keywords = updatedKeywords;
+    }
+  }
+
+  /**
+   * Toggle expand/collapse for long content
+   */
+  toggleExpand(itemId: string): void {
+    if (this.expandedItems.has(itemId)) {
+      this.expandedItems.delete(itemId);
+    } else {
+      this.expandedItems.add(itemId);
+    }
+  }
+
+  /**
+   * Check if item is expanded
+   */
+  isExpanded(itemId: string): boolean {
+    return this.expandedItems.has(itemId);
+  }
+
+  /**
+   * Check if content should show ellipsis
+   */
+  shouldShowEllipsis(item: ResultItem): boolean {
+    return item.type !== 'keywords';
+  }
+
+  /**
+   * Check if content is long enough to need read more
+   */
+  isContentLong(content: string): boolean {
+    return content.length > this.CHAR_LIMIT;
+  }
+
+  copyToClipboard(content: string): void {
+    navigator.clipboard.writeText(content).then(() => {
+      console.log('Content copied to clipboard');
+    });
+  }
+
+  downloadContent(item: ResultItem): void {
+    const blob = new Blob([item.content], { type: 'text/plain' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${item.title.replace(/\s+/g, '_')}.txt`;
+    link.click();
+    window.URL.revokeObjectURL(url);
+  }
 }
 
 
@@ -184,38 +280,149 @@ export class UploadGenerateComponent implements OnInit, OnDestroy, OnChanges {
 
 <div class="panel">
     <div class="panel-header">
-        <h3 class="panel-title">Upload & Generate</h3>
-        
-        <!-- Model Selector -->
-        <div class="model-selector-container">
-            <div class="model-selector-wrapper">
-                <label class="model-selector-label">Model:</label>
-                <select class="model-dropdown" 
-                        [(ngModel)]="selectedModel" 
-                        (change)="onModelChange(selectedModel)"
-                        [disabled]="isLoadingModels || isProcessing || isUploading">
-                    <option *ngFor="let model of availableModels" [value]="model">
-                        {{ model }}
-                    </option>
-                </select>
-                <button class="model-refresh-btn" 
-                        (click)="refreshModels()" 
-                        [disabled]="isLoadingModels || isProcessing || isUploading"
-                        [title]="'Refresh models'">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                        stroke="currentColor" [class.spin]="isLoadingModels">
-                        <path stroke-linecap="round" stroke-linejoin="round"
-                            d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-                    </svg>
-                </button>
+        <div class="panel-header-content">
+            <h3 class="panel-title">Workspace Result</h3>
+            <!-- Selected File Info -->
+            <div class="selected-file-info" *ngIf="selectedHistoryItem">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                    stroke="currentColor" class="file-info-icon">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                        d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
+                </svg>
+                <span class="file-name">{{ selectedHistoryItem.name }}</span>
+                <span class="file-separator">•</span>
+                <span class="file-date">{{ selectedHistoryItem.displayDate }}</span>
             </div>
-            <p class="model-error-message" *ngIf="modelsLoadError">{{ modelsLoadError }}</p>
         </div>
     </div>
-    
-    <!-- Rest of the template remains the same -->
+
     <div class="panel-content">
-        <!-- ... existing content ... -->
+        <!-- Empty State -->
+        <!-- <div class="workspace-empty-state" *ngIf="!selectedHistoryItem">
+            <div class="empty-state-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                    stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                        d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                </svg>
+            </div>
+            <h3 class="empty-state-title">No Analysis Selected</h3>
+            <p class="empty-state-message">
+                Select a file from the history to view its analysis results
+            </p>
+        </div> -->
+
+        <!-- Dynamic Result Content -->
+        <div class="result-content" >
+            <!-- Result Items -->
+            <div class="result-item" *ngFor="let item of resultItems"
+                [class.selected]="selectedResultItemId === item.id">
+                <div class="result-item-header">
+                    <div class="result-item-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" [attr.d]="getIconPath(item.icon)" />
+                        </svg>
+                    </div>
+                    <div class="result-item-title-section">
+                        <h4 class="result-item-title">{{ item.title }}</h4>
+                    </div>
+                    <!-- Viewing Badge -->
+                    <div class="viewing-badge" *ngIf="selectedResultItemId === item.id">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        <span>Viewing</span>
+                    </div>
+                    <div class="result-actions">
+                        <button class="result-action-icon-btn" title="Expand" (click)="openDetail(item)">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                                stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round"
+                                    d="M15.75 4.5H19.5v3.75M19.5 4.5l-5.25 5.25M8.25 19.5H4.5v-3.75M4.5 19.5l5.25-5.25" />
+                            </svg>
+                        </button>
+                        <button class="result-action-icon-btn" title="Copy" (click)="copyToClipboard(item.content)">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                                stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round"
+                                    d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 00-3.375-3.375h-1.5a1.125 1.125 0 01-1.125-1.125v-1.5a3.375 3.375 0 00-3.375-3.375H9.75" />
+                            </svg>
+                        </button>
+                        <button class="result-action-icon-btn" title="Download" (click)="downloadContent(item)">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                                stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round"
+                                    d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- MODIFIED CONTENT SECTION - Different display for keywords -->
+                <div class="result-item-content">
+                    <!-- KEYWORDS - Show as chips -->
+                    <div *ngIf="item.type === 'keywords'" class="keywords-chips-container">
+                        <div class="keyword-chip" *ngFor="let keyword of getKeywordsArray(item); let i = index"
+                            [style.background]="getChipBackground(i)" [style.border-color]="getChipBorderColor(i)">
+                            <span class="chip-text">{{ keyword }}</span>
+                            <button class="chip-remove-btn" (click)="removeKeyword(item.id, keyword)"
+                                title="Remove keyword">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
+                                    stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+
+                        <!-- Show message if all keywords removed -->
+                        <p class="no-keywords-message" *ngIf="getKeywordsArray(item).length === 0">
+                            No keywords available
+                        </p>
+                    </div>
+
+                    <!-- SUMMARY & QUESTIONS - Show with ellipsis -->
+                    <div *ngIf="item.type !== 'keywords'">
+                        <p class="result-text" [class.text-ellipsis]="shouldShowEllipsis(item) && !isExpanded(item.id)"
+                            [class.text-expanded]="isExpanded(item.id)">
+                            {{ item.content }}
+                        </p>
+
+                        <button class="read-more-btn" *ngIf="shouldShowEllipsis(item) && isContentLong(item.content)"
+                            (click)="toggleExpand(item.id)">
+                            {{ isExpanded(item.id) ? 'Read less' : 'Read more' }}
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                                stroke="currentColor" [class.rotate-180]="isExpanded(item.id)">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detail Overlay & Sidebar -->
+    <div class="detail-overlay" [class.active]="isDetailOpen" (click)="closeDetail()"></div>
+    <div class="detail-sidebar" [class.active]="isDetailOpen">
+        <div class="detail-sidebar-header">
+            <div class="detail-sidebar-title-section">
+                <h3 class="detail-sidebar-title">{{ selectedItemName }}</h3>
+                <p class="detail-sidebar-meta">{{ selectedItemDate }}</p>
+            </div>
+            <button class="detail-close-btn" (click)="closeDetail()">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                    stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+        <div class="detail-sidebar-content">
+            <div class="markdown-content" [innerHTML]="selectedItemContent"></div>
+        </div>
     </div>
 </div>
 
@@ -228,7 +435,28 @@ export class UploadGenerateComponent implements OnInit, OnDestroy, OnChanges {
 
 
 
-/* Update panel-header to accommodate model selector */
+
+
+
+
+
+/* Panel Component Styles */
+:host {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+}
+
+.panel {
+    flex: 1;
+    background-color: var(--bg-color);
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
 .panel-header {
     position: sticky;
     top: 0;
@@ -239,10 +467,12 @@ export class UploadGenerateComponent implements OnInit, OnDestroy, OnChanges {
     background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(167, 139, 250, 0.08));
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
+}
+
+.panel-header-content {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 20px;
+    flex-direction: column;
+    gap: 0;
 }
 
 .panel-title {
@@ -252,7 +482,6 @@ export class UploadGenerateComponent implements OnInit, OnDestroy, OnChanges {
     margin: 0;
     position: relative;
     padding-left: 16px;
-    flex-shrink: 0;
 }
 
 .panel-title::before {
@@ -265,117 +494,783 @@ export class UploadGenerateComponent implements OnInit, OnDestroy, OnChanges {
     border-radius: 2px;
 }
 
-/* Model Selector Styles */
-.model-selector-container {
+/* Selected File Info */
+.selected-file-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    margin-top: 12px;
+    padding: 8px 12px;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.05), rgba(167, 139, 250, 0.05));
+    border-radius: 8px;
+    border: 1px solid rgba(139, 92, 246, 0.2);
+}
+
+.file-info-icon {
+    width: 14px;
+    height: 14px;
+    stroke: var(--primary-color);
+    flex-shrink: 0;
+}
+
+.file-name {
+    font-weight: 600;
+    color: var(--text-color);
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.file-separator {
+    color: var(--primary-color);
+    font-weight: 600;
+}
+
+.file-date {
+    color: var(--text-color);
+    opacity: 0.6;
+    font-size: 11px;
+}
+
+.panel-content {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    color: var(--text-color);
+    min-height: 0;
     display: flex;
     flex-direction: column;
+}
+
+/* Scrollbar Styling */
+.panel-content::-webkit-scrollbar {
+    width: 6px;
+}
+
+.panel-content::-webkit-scrollbar-track {
+    background: rgba(139, 92, 246, 0.05);
+    border-radius: 3px;
+}
+
+.panel-content::-webkit-scrollbar-thumb {
+    background-color: rgba(139, 92, 246, 0.3);
+    border-radius: 3px;
+}
+
+.panel-content::-webkit-scrollbar-thumb:hover {
+    background: var(--primary-color);
+}
+
+/* Workspace Empty State */
+.workspace-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    text-align: center;
+    flex: 1;
+    max-width: 500px;
+    margin: 0 auto;
+}
+
+.empty-state-icon {
+    width: 80px;
+    height: 80px;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(167, 139, 250, 0.1));
+    border: 2px solid rgba(139, 92, 246, 0.2);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 20px;
+    animation: float 3s ease-in-out infinite;
+}
+
+.empty-state-icon svg {
+    width: 40px;
+    height: 40px;
+    stroke: var(--primary-color);
+    opacity: 0.7;
+}
+
+@keyframes float {
+
+    0%,
+    100% {
+        transform: translateY(0px);
+    }
+
+    50% {
+        transform: translateY(-10px);
+    }
+}
+
+.empty-state-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-color);
+    margin: 0 0 10px 0;
+}
+
+.empty-state-message {
+    font-size: 14px;
+    color: var(--text-color);
+    opacity: 0.7;
+    margin: 0 0 20px 0;
+    max-width: 320px;
+    line-height: 1.6;
+}
+
+/* Result Content */
+.result-content {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    animation: fadeInUp 0.4s ease-out;
+    min-height: min-content;
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Result Item */
+.result-item {
+    background-color: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    overflow: hidden;
+    transition: all 0.2s ease;
+}
+
+.result-item:hover {
+    border-color: var(--primary-color);
+    box-shadow: 0 2px 8px rgba(139, 92, 246, 0.1);
+}
+
+.result-item.selected {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.12), rgba(167, 139, 250, 0.12));
+    border-color: var(--primary-color);
+    box-shadow: 0 4px 16px rgba(139, 92, 246, 0.2);
+    transform: translateX(4px);
+}
+
+.result-item.selected .result-item-icon {
+    background: linear-gradient(135deg, var(--primary-color), #a78bfa);
+    border-color: var(--primary-color);
+}
+
+.result-item.selected .result-item-icon svg {
+    stroke: white;
+}
+
+.result-item.selected .result-item-title {
+    color: var(--primary-color);
+    font-weight: 700;
+}
+
+.result-item-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+}
+
+.result-item-icon {
+    width: 34px;
+    height: 34px;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(167, 139, 250, 0.1));
+    border: 1px solid rgba(139, 92, 246, 0.2);
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.2s ease;
+}
+
+.result-item-icon svg {
+    width: 17px;
+    height: 17px;
+    stroke: var(--primary-color);
+    transition: stroke 0.2s ease;
+}
+
+.result-item-title-section {
+    flex: 1;
+    min-width: 0;
+}
+
+.result-item-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-color);
+    margin: 0;
+    transition: color 0.2s ease, font-weight 0.2s ease;
+}
+
+/* Viewing Badge */
+.viewing-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    background: linear-gradient(135deg, var(--primary-color), #a78bfa);
+    border-radius: 12px;
+    font-size: 10px;
+    font-weight: 600;
+    color: white;
+    box-shadow: 0 2px 6px rgba(139, 92, 246, 0.3);
+    animation: fadeInScale 0.3s ease;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.viewing-badge svg {
+    width: 12px;
+    height: 12px;
+    stroke: white;
+    animation: pulseIcon 1.5s ease-in-out infinite;
+}
+
+@keyframes fadeInScale {
+    from {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@keyframes pulseIcon {
+
+    0%,
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+
+    50% {
+        transform: scale(1.15);
+        opacity: 0.9;
+    }
+}
+
+/* Result Actions */
+.result-actions {
+    display: flex;
     gap: 4px;
     flex-shrink: 0;
 }
 
-.model-selector-wrapper {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.model-selector-label {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text-color);
-    white-space: nowrap;
-}
-
-.model-dropdown {
-    padding: 6px 12px;
-    background-color: var(--bg-color);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text-color);
-    cursor: pointer;
-    transition: all 0.2s ease;
-    min-width: 120px;
-}
-
-.model-dropdown:hover:not(:disabled) {
-    border-color: var(--primary-color);
-    background-color: var(--footer-bg);
-}
-
-.model-dropdown:focus {
-    outline: none;
-    border-color: var(--primary-color);
-    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
-}
-
-.model-dropdown:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
-.model-refresh-btn {
-    width: 32px;
-    height: 32px;
-    padding: 6px;
-    background-color: var(--footer-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    cursor: pointer;
-    transition: all 0.2s ease;
+.result-action-icon-btn {
+    width: 28px;
+    height: 28px;
     display: flex;
     align-items: center;
     justify-content: center;
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
 }
 
-.model-refresh-btn:hover:not(:disabled) {
-    background: linear-gradient(135deg, var(--primary-color), #a78bfa);
+.result-action-icon-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(139, 92, 246, 0.2), transparent);
+    transition: left 0.5s ease;
+}
+
+.result-action-icon-btn:hover::before {
+    left: 100%;
+}
+
+.result-action-icon-btn:hover {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(167, 139, 250, 0.1));
     border-color: var(--primary-color);
-    transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.2);
 }
 
-.model-refresh-btn:hover:not(:disabled) svg {
-    stroke: white;
-}
-
-.model-refresh-btn:active:not(:disabled) {
-    transform: translateY(0);
-}
-
-.model-refresh-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
-.model-refresh-btn svg {
-    width: 18px;
-    height: 18px;
+.result-action-icon-btn svg {
+    width: 15px;
+    height: 15px;
     stroke: var(--text-color);
+    opacity: 0.7;
     transition: all 0.3s ease;
 }
 
-.model-refresh-btn svg.spin {
-    animation: spin 1s linear infinite;
+.result-action-icon-btn:hover svg {
+    stroke: var(--primary-color);
+    opacity: 1;
+    transform: scale(1.1);
 }
 
-@keyframes spin {
-    from {
-        transform: rotate(0deg);
-    }
-    to {
-        transform: rotate(360deg);
-    }
+.result-action-icon-btn:nth-child(1):hover {
+    border-color: #3b82f6;
 }
 
-.model-error-message {
-    font-size: 11px;
-    color: #ef4444;
+.result-action-icon-btn:nth-child(1):hover svg {
+    stroke: #3b82f6;
+}
+
+.result-action-icon-btn:nth-child(2):hover {
+    border-color: #8b5cf6;
+}
+
+.result-action-icon-btn:nth-child(2):hover svg {
+    stroke: #8b5cf6;
+}
+
+.result-action-icon-btn:nth-child(3):hover {
+    border-color: #10b981;
+}
+
+.result-action-icon-btn:nth-child(3):hover svg {
+    stroke: #10b981;
+}
+
+.result-item.selected .result-action-icon-btn:first-child {
+    background: linear-gradient(135deg, var(--primary-color), #a78bfa);
+    border-color: var(--primary-color);
+}
+
+.result-item.selected .result-action-icon-btn:first-child svg {
+    stroke: white;
+    opacity: 1;
+}
+
+.result-item-content {
+    padding: 6px 14px 12px 60px;
+}
+
+.result-text {
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-color);
     margin: 0;
-    text-align: right;
 }
 
-/* Rest of the CSS remains the same */
+/* Text ellipsis and expansion */
+.text-ellipsis {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
 
+.text-expanded {
+    display: block;
+    -webkit-line-clamp: unset;
+}
 
+/* Read more button */
+.read-more-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 8px;
+    padding: 4px 10px;
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--primary-color);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.read-more-btn:hover {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(167, 139, 250, 0.1));
+    border-color: var(--primary-color);
+}
+
+.read-more-btn svg {
+    width: 14px;
+    height: 14px;
+    stroke: var(--primary-color);
+    transition: transform 0.3s ease;
+}
+
+.read-more-btn svg.rotate-180 {
+    transform: rotate(180deg);
+}
+
+/* Keywords Chips Container */
+.keywords-chips-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 0;
+    min-height: 40px;
+}
+
+/* Individual Keyword Chip */
+.keyword-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 20px;
+    border: 1px solid;
+    font-size: 12px;
+    font-weight: 600;
+    color: white;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    transition: all 0.3s ease;
+    animation: chipFadeIn 0.3s ease-out;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Chip fade in animation */
+@keyframes chipFadeIn {
+    from {
+        opacity: 0;
+        transform: scale(0.8) translateY(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+/* Chip hover effect */
+.keyword-chip:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* Chip text */
+.chip-text {
+    line-height: 1;
+    white-space: nowrap;
+    user-select: none;
+}
+
+/* Chip remove button */
+.chip-remove-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    background: rgba(255, 255, 255, 0.3);
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.chip-remove-btn:hover {
+    background: rgba(255, 255, 255, 0.5);
+    transform: scale(1.1);
+}
+
+.chip-remove-btn svg {
+    width: 10px;
+    height: 10px;
+    stroke: white;
+    stroke-width: 2.5;
+}
+
+/* No keywords message */
+.no-keywords-message {
+    font-size: 12px;
+    color: var(--text-color);
+    opacity: 0.5;
+    font-style: italic;
+    margin: 0;
+    padding: 8px 0;
+}
+
+/* Chip remove animation */
+@keyframes chipRemove {
+    0% {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: 0.5;
+        transform: scale(0.9);
+    }
+
+    100% {
+        opacity: 0;
+        transform: scale(0.5);
+    }
+}
+
+.keyword-chip.removing {
+    animation: chipRemove 0.3s ease-out forwards;
+}
+
+/* Chip shine effect on hover */
+.keyword-chip::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+    transition: left 0.5s ease;
+}
+
+.keyword-chip:hover::before {
+    left: 100%;
+}
+
+/* Detail Overlay & Sidebar */
+.detail-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.detail-overlay.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.detail-sidebar {
+    position: fixed;
+    top: 114px;
+    left: 84px;
+    width: 0;
+    height: calc(100vh - 155px);
+    background-color: var(--bg-color);
+    box-shadow: 4px 0 20px rgba(0, 0, 0, 0.1);
+    z-index: 1001;
+    overflow: hidden;
+    transition: width 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    border-radius: 8px;
+}
+
+.detail-sidebar.active {
+    width: calc(50% - 62px);
+}
+
+.detail-sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border-color);
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(167, 139, 250, 0.08));
+    flex-shrink: 0;
+}
+
+.detail-sidebar-title-section {
+    flex: 1;
+    min-width: 0;
+    padding-right: 16px;
+}
+
+.detail-sidebar-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-color);
+    margin: 0 0 4px 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.detail-sidebar-meta {
+    font-size: 12px;
+    color: var(--text-color);
+    opacity: 0.6;
+    margin: 0;
+}
+
+.detail-close-btn {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.detail-close-btn:hover {
+    background-color: var(--footer-bg);
+    border-color: var(--primary-color);
+}
+
+.detail-close-btn svg {
+    width: 16px;
+    height: 16px;
+    stroke: var(--text-color);
+}
+
+.detail-sidebar-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px;
+}
+
+.detail-sidebar-content::-webkit-scrollbar {
+    width: 6px;
+}
+
+.detail-sidebar-content::-webkit-scrollbar-track {
+    background: rgba(139, 92, 246, 0.05);
+    border-radius: 3px;
+}
+
+.detail-sidebar-content::-webkit-scrollbar-thumb {
+    background-color: rgba(139, 92, 246, 0.3);
+    border-radius: 3px;
+}
+
+.detail-sidebar-content::-webkit-scrollbar-thumb:hover {
+    background-color: var(--primary-color);
+}
+
+/* Markdown Content Styles */
+.markdown-content {
+    line-height: 1.6;
+    color: var(--text-color);
+}
+
+.markdown-content h1 {
+    font-size: 24px;
+    font-weight: 700;
+    margin: 24px 0 16px 0;
+    color: var(--text-color);
+    border-bottom: 2px solid var(--border-color);
+    padding-bottom: 8px;
+}
+
+.markdown-content h2 {
+    font-size: 20px;
+    font-weight: 700;
+    margin: 20px 0 12px 0;
+    color: var(--text-color);
+}
+
+.markdown-content h3 {
+    font-size: 16px;
+    font-weight: 700;
+    margin: 16px 0 8px 0;
+    color: var(--text-color);
+}
+
+.markdown-content p {
+    margin: 12px 0;
+    line-height: 1.6;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+    margin: 12px 0;
+    padding-left: 24px;
+}
+
+.markdown-content li {
+    margin: 6px 0;
+}
+
+.markdown-content strong {
+    font-weight: 700;
+    color: var(--primary-color);
+}
+
+.markdown-content em {
+    font-style: italic;
+}
+
+.markdown-content blockquote {
+    border-left: 4px solid var(--primary-color);
+    padding-left: 16px;
+    margin: 16px 0;
+    font-style: italic;
+    opacity: 0.8;
+}
+
+.markdown-content hr {
+    border: none;
+    border-top: 1px solid var(--border-color);
+    margin: 24px 0;
+}
+
+.markdown-content code {
+    background-color: var(--footer-bg);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.9em;
+    font-family: 'Courier New', monospace;
+}
+
+.markdown-content pre {
+    background-color: var(--footer-bg);
+    padding: 12px;
+    border-radius: 8px;
+    overflow-x: auto;
+    margin: 16px 0;
+}
+
+.markdown-content pre code {
+    background-color: transparent;
+    padding: 0;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .keywords-chips-container {
+        gap: 6px;
+    }
+
+    .keyword-chip {
+        padding: 5px 10px;
+        font-size: 11px;
+    }
+
+    .result-item-content {
+        padding: 6px 14px 12px 14px;
+    }
+}
