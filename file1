@@ -8,8 +8,7 @@
         </svg>
         <div class="file-info">
             <span class="file-name">
-                <span class="file-id">#{{ selectedGenerateFile.id }}</span>
-                {{ selectedGenerateFile.name }}
+                <span class="file-id">#{{ selectedGenerateFile.id }}</span> {{ selectedGenerateFile.name }}
             </span>
             <span class="file-size" *ngIf="selectedGenerateFile.size > 0">
                 {{ getFileSizeDisplay() }}
@@ -32,22 +31,474 @@
 
 
 
-/* File ID styling */
-.selected-file-card .file-info .file-id {
-    display: inline-block;
-    padding: 2px 8px;
-    background: linear-gradient(135deg, var(--primary-color), #a78bfa);
-    color: white;
-    border-radius: 4px;
-    font-size: 11px;
-    font-weight: 700;
-    margin-right: 8px;
-    letter-spacing: 0.3px;
+
+
+<!-- File Selection Area -->
+<div class="generate-file-selection">
+    <div class="selection-header">
+        <label class="summary-label">Select One File to Generate</label>
+    </div>
+
+    <!-- Drag and Drop Area (Empty State) -->
+    <div class="generate-drop-zone" *ngIf="!selectedGenerateFile" [class.drag-over]="isDraggingGenerate"
+        (drop)="onGenerateFileDrop($event)" (dragover)="onGenerateDragOver($event)"
+        (dragleave)="onGenerateDragLeave($event)">
+        <div class="drop-zone-content">
+            <div class="pointing-hand">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                    stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                        d="M15.042 21.672L13.684 16.6m0 0l-2.51 2.225.569-9.47 5.227 7.917-3.286-.672zM12 2.25V4.5m5.834.166l-1.591 1.591M20.25 10.5H18M7.757 14.743l-1.59 1.59M6 10.5H3.75m4.007-4.243l-1.59-1.59" />
+                </svg>
+            </div>
+            <h3 class="drop-zone-title">Drag & Drop File Here</h3>
+            <p class="drop-zone-subtitle">Select a file from the History section</p>
+            <div class="drop-zone-hint">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                    stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                        d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                </svg>
+                <span>Drag a file from the History section to proceed</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Selected File Display -->
+    <div class="selected-generate-file" *ngIf="selectedGenerateFile">
+        <div class="selected-file-card">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                stroke="currentColor" class="file-icon">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+            </svg>
+            <div class="file-info">
+                <span class="file-name">
+                    <span class="file-id">#{{ selectedGenerateFile.id }}</span> {{ selectedGenerateFile.name }}
+                </span>
+                <span class="file-size" *ngIf="selectedGenerateFile.size > 0">
+                    {{ getFileSizeDisplay() }}
+                </span>
+                <span class="file-date" *ngIf="selectedGenerateFile.displayDate">
+                    {{ selectedGenerateFile.displayDate }}
+                </span>
+            </div>
+            <button class="remove-file-btn" (click)="removeGenerateFile()" [disabled]="isProcessing">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                    stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+    </div>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+import { Component, EventEmitter, Output, Input, OnDestroy, OnChanges, SimpleChanges } from '@angular/core';
+import { HttpEventType } from '@angular/common/http';
+import { Subscription } from 'rxjs';
+import { 
+  UploadGenerateService, 
+  UploadResponse, 
+  GenerateRequest, 
+  GenerateResponse 
+} from 'src/app/services/upload-generate.service';
+
+interface FileWithStatus {
+  file: File;
+  status: 'pending' | 'uploading' | 'uploaded' | 'error';
+  progress?: number;
+  uploadedFileId?: number;
+  uploadedFileName?: string;
+  uploadedAt?: string;
 }
 
-.selected-file-card .file-info .file-name {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 0;
+interface RequestFile {
+  id: number;
+  name: string;
+  hasResult: boolean;
+  displayDate: string;
+}
+
+@Component({
+  selector: 'app-upload-generate',
+  templateUrl: './upload-generate.component.html',
+  styleUrls: ['./upload-generate.component.css']
+})
+export class UploadGenerateComponent implements OnDestroy, OnChanges {
+  @Input() requestFile: RequestFile | null = null;
+  @Output() onGenerate = new EventEmitter<{ file: any, prompts: string, mode: 'new' }>();
+
+  isDragging: boolean = false;
+  optionalPrompts: string = '';
+  isProcessing: boolean = false;
+  processingProgress: number = 0;
+  processingFileName: string = '';
+
+  currentTab: 'upload' | 'generate' = 'upload';
+  uploadedFilesWithStatus: FileWithStatus[] = [];
+  selectedUploadFile: File | null = null;
+  isUploading: boolean = false;
+
+  // Accepted file types
+  acceptedFileTypes = ['.vtt', '.srt'];
+  acceptedMimeTypes = ['text/vtt', 'application/x-subrip'];
+
+  // For Generate tab
+  selectedGenerateFile: { name: string, size: number, id: string | number, displayDate?: string, hasResult?: boolean } | null = null;
+  isDraggingGenerate: boolean = false;
+
+  private subscriptions: Subscription[] = [];
+
+  constructor(
+    private uploadGenerateService: UploadGenerateService
+  ) { }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['requestFile']) {
+      this.handleRequestFileChange(changes['requestFile'].currentValue);
+    }
+  }
+
+  ngOnDestroy(): void {
+    this.subscriptions.forEach(sub => sub.unsubscribe());
+  }
+
+  private handleRequestFileChange(requestFile: RequestFile | null): void {
+    if (requestFile) {
+      // Switch to Generate tab
+      this.currentTab = 'generate';
+      
+      // Set the selected file for generation
+      this.selectedGenerateFile = {
+        name: requestFile.name,
+        size: 0, // Size not provided from parent
+        id: requestFile.id,
+        displayDate: requestFile.displayDate,
+        hasResult: requestFile.hasResult
+      };
+    } else {
+      // Clear the selected file
+      this.selectedGenerateFile = null;
+      // Optionally stay on current tab or you can switch to upload
+      // this.currentTab = 'upload';
+    }
+  }
+
+  onFileSelected(event: any): void {
+    if (this.isUploading) return;
+
+    const files = event.target.files;
+    if (files && files.length > 0) {
+      for (let i = 0; i < files.length; i++) {
+        if (this.isValidFileType(files[i])) {
+          const exists = this.uploadedFilesWithStatus.some(f => f.file.name === files[i].name);
+          if (!exists) {
+            this.uploadedFilesWithStatus.push({
+              file: files[i],
+              status: 'pending',
+              progress: 0
+            });
+          }
+        } else {
+          alert(`Invalid file type: ${files[i].name}. Only .vtt and .srt files are allowed.`);
+        }
+      }
+    }
+    // Reset input value to allow re-uploading same file
+    event.target.value = '';
+  }
+
+  onFileDrop(event: DragEvent): void {
+    if (this.isUploading) return;
+
+    event.preventDefault();
+    this.isDragging = false;
+
+    const files = event.dataTransfer?.files;
+    if (files && files.length > 0) {
+      for (let i = 0; i < files.length; i++) {
+        if (this.isValidFileType(files[i])) {
+          const exists = this.uploadedFilesWithStatus.some(f => f.file.name === files[i].name);
+          if (!exists) {
+            this.uploadedFilesWithStatus.push({
+              file: files[i],
+              status: 'pending',
+              progress: 0
+            });
+          }
+        } else {
+          alert(`Invalid file type: ${files[i].name}. Only .vtt and .srt files are allowed.`);
+        }
+      }
+    }
+  }
+
+  private isValidFileType(file: File): boolean {
+    const fileName = file.name.toLowerCase();
+    const fileExtension = fileName.substring(fileName.lastIndexOf('.'));
+    return this.acceptedFileTypes.includes(fileExtension);
+  }
+
+  selectUploadFile(file: File): void {
+    this.selectedUploadFile = file;
+  }
+
+  isUploadFileSelected(file: File): boolean {
+    return this.selectedUploadFile === file;
+  }
+
+  removeIndividualFile(index: number): void {
+    if (this.isUploading) return;
+    this.uploadedFilesWithStatus.splice(index, 1);
+  }
+
+  async onUpload(): Promise<void> {
+    if (this.uploadedFilesWithStatus.length > 0 && !this.isUploading) {
+      this.isUploading = true;
+      await this.uploadFilesSequentially();
+      this.isUploading = false;
+      // Stay on Upload tab - don't navigate to Generate
+    }
+  }
+
+  async uploadFilesSequentially(): Promise<void> {
+    for (let i = 0; i < this.uploadedFilesWithStatus.length; i++) {
+      const fileWithStatus = this.uploadedFilesWithStatus[i];
+
+      // Skip already uploaded files
+      if (fileWithStatus.status === 'uploaded') {
+        continue;
+      }
+
+      fileWithStatus.status = 'uploading';
+      fileWithStatus.progress = 0;
+
+      try {
+        await this.uploadFileViaService(fileWithStatus);
+        fileWithStatus.status = 'uploaded';
+        fileWithStatus.progress = 100;
+      } catch (error) {
+        fileWithStatus.status = 'error';
+        console.error(`Failed to upload ${fileWithStatus.file.name}:`, error);
+      }
+    }
+  }
+
+  private uploadFileViaService(fileWithStatus: FileWithStatus): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const sub = this.uploadGenerateService.uploadFile(fileWithStatus.file).subscribe({
+        next: (event: any) => {
+          if (event.type === HttpEventType.UploadProgress) {
+            if (event.total) {
+              fileWithStatus.progress = Math.round((100 * event.loaded) / event.total);
+            }
+          } else if (event.type === HttpEventType.Response) {
+            const response = event.body as UploadResponse;
+            if (response.status === 'Success') {
+              fileWithStatus.uploadedFileId = response.data.id;
+              fileWithStatus.uploadedFileName = response.data.original_name;
+              fileWithStatus.uploadedAt = response.data.created_at;
+              console.log('Upload successful:', response);
+              resolve();
+            } else {
+              reject(new Error('Upload failed with status: ' + response.status));
+            }
+          }
+        },
+        error: (error) => {
+          console.error('Upload error:', error);
+          reject(error);
+        }
+      });
+      this.subscriptions.push(sub);
+    });
+  }
+
+  onDragOver(event: DragEvent): void {
+    if (this.isUploading) return;
+    event.preventDefault();
+    this.isDragging = true;
+  }
+
+  onDragLeave(event: DragEvent): void {
+    event.preventDefault();
+    this.isDragging = false;
+  }
+
+  // Generate tab drag and drop
+  onGenerateDragOver(event: DragEvent): void {
+    event.preventDefault();
+    this.isDraggingGenerate = true;
+  }
+
+  onGenerateDragLeave(event: DragEvent): void {
+    event.preventDefault();
+    this.isDraggingGenerate = false;
+  }
+
+  onGenerateFileDrop(event: DragEvent): void {
+    event.preventDefault();
+    this.isDraggingGenerate = false;
+    // Handle file drop from history section
+    // This will be implemented when you integrate with actual history
+  }
+
+  removeGenerateFile(): void {
+    this.selectedGenerateFile = null;
+  }
+
+  handleGenerate(): void {
+    if (this.selectedGenerateFile) {
+      this.startProcessing(this.selectedGenerateFile.name);
+
+      const request: GenerateRequest = {
+        fileId: String(this.selectedGenerateFile.id),
+        fileName: this.selectedGenerateFile.name,
+        prompts: this.optionalPrompts,
+        mode: 'new'
+      };
+
+      this.generateAnalysis(request);
+    }
+  }
+
+  private generateAnalysis(request: GenerateRequest): void {
+    const sub = this.uploadGenerateService.generateAnalysis(request).subscribe({
+      next: (response) => {
+        console.log('Generation successful:', response);
+        this.onGenerate.emit({
+          file: request,
+          prompts: this.optionalPrompts,
+          mode: 'new'
+        });
+
+        setTimeout(() => {
+          this.completeProcessing();
+        }, 500);
+      },
+      error: (error) => {
+        console.error('Generation error:', error);
+        this.isProcessing = false;
+      }
+    });
+    this.subscriptions.push(sub);
+  }
+
+  startProcessing(fileName: string): void {
+    this.isProcessing = true;
+    this.processingProgress = 0;
+    this.processingFileName = fileName;
+
+    const interval = setInterval(() => {
+      this.processingProgress += 5;
+
+      if (this.processingProgress >= 100) {
+        clearInterval(interval);
+        this.processingProgress = 100;
+      }
+    }, 1000);
+  }
+
+  completeProcessing(): void {
+    this.isProcessing = false;
+    this.processingProgress = 0;
+    this.selectedGenerateFile = null;
+    this.optionalPrompts = '';
+  }
+
+  onReset(): void {
+    if (this.isUploading) return;
+    this.uploadedFilesWithStatus = [];
+    this.selectedUploadFile = null;
+    this.optionalPrompts = '';
+    this.isDragging = false;
+  }
+
+  onCancel(): void {
+    this.selectedGenerateFile = null;
+    this.optionalPrompts = '';
+  }
+
+  getStatusBadgeClass(status: string): string {
+    return `status-badge status-${status}`;
+  }
+
+  getStatusText(status: string): string {
+    const statusMap: { [key: string]: string } = {
+      'pending': 'Pending',
+      'uploading': 'Uploading',
+      'uploaded': 'Uploaded',
+      'error': 'Error'
+    };
+    return statusMap[status] || status;
+  }
+
+  switchToTab(tab: 'upload' | 'generate'): void {
+    if (this.isUploading && tab === 'generate') return;
+
+    // Don't reset if switching to generate tab with a requestFile
+    if (tab === 'generate' && this.requestFile) {
+      this.currentTab = tab;
+      return;
+    }
+
+    // Reset all data when switching tabs manually
+    this.uploadedFilesWithStatus = [];
+    this.selectedUploadFile = null;
+    
+    // Only reset selectedGenerateFile if not coming from parent
+    if (!this.requestFile) {
+      this.selectedGenerateFile = null;
+    }
+    
+    this.optionalPrompts = '';
+    this.isDragging = false;
+    this.isDraggingGenerate = false;
+    this.isProcessing = false;
+    this.processingProgress = 0;
+    this.processingFileName = '';
+
+    this.currentTab = tab;
+  }
+
+  shouldShowStatusBadge(fileWithStatus: FileWithStatus): boolean {
+    return fileWithStatus.status !== 'pending';
+  }
+
+  getFileSizeDisplay(): string {
+    if (this.selectedGenerateFile && this.selectedGenerateFile.size > 0) {
+      return `${(this.selectedGenerateFile.size / 1024 / 1024).toFixed(2)} MB`;
+    }
+    return 'Size unknown';
+  }
+}
+
+
+
+
+/* REMOVE THESE STYLES */
+.use-history-btn {
+    /* Remove entire block */
+}
+
+.use-history-btn svg {
+    /* Remove entire block */
+}
+
+.use-history-btn:hover:not(:disabled) {
+    /* Remove entire block */
+}
+
+.use-history-btn:disabled {
+    /* Remove entire block */
 }
