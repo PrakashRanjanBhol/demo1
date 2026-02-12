@@ -1,230 +1,466 @@
-/* Detail Sidebar Markdown Content Styles with ::ng-deep */
-::ng-deep .markdown-content {
-    line-height: 1.6;
-    color: var(--text-color);
+import { Injectable } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Observable } from 'rxjs';
+
+export interface FileItem {
+  id: number;
+  original_name: string;
+  inserted_at: string;
+  progress: string | null;
+  summary_prompt: string | null;  // New property
+  faq_prompt: string | null;      // New property
 }
 
-::ng-deep .markdown-content h1 {
-    font-size: 24px;
-    font-weight: 700;
-    margin: 24px 0 16px 0;
-    color: var(--primary-color);
-    border-bottom: 2px solid rgba(139, 92, 246, 0.3);
-    padding-bottom: 8px;
-    position: relative;
+export interface FilesResponse {
+  status: string;
+  data: {
+    files: FileItem[];
+  };
 }
 
-::ng-deep .markdown-content h1::before {
-    content: '';
-    position: absolute;
-    bottom: -2px;
-    left: 0;
-    width: 80px;
-    height: 2px;
-    background: var(--primary-color);
+export interface DateRangeRequest {
+  start_date: string;
+  end_date: string;
 }
 
-::ng-deep .markdown-content h2 {
-    font-size: 20px;
-    font-weight: 700;
-    margin: 20px 0 12px 0;
-    color: #9f7aea;
-    position: relative;
-    padding-left: 16px;
+@Injectable({
+  providedIn: 'root'
+})
+export class HistoryService {
+  private apiUrl = 'http://localhost:3000/api';
+
+  constructor(private http: HttpClient) {}
+
+  getFilesByDateRange(startDate: string, endDate: string): Observable<FilesResponse> {
+    const payload: DateRangeRequest = {
+      start_date: startDate,
+      end_date: endDate
+    };
+
+    return this.http.post<FilesResponse>(
+      `${this.apiUrl}/content_analytics/files/by-date/`, 
+      payload
+    );
+  }
 }
 
-::ng-deep .markdown-content h2::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 5px;
-    height: 22px;
-    background: linear-gradient(180deg, var(--primary-color), #a78bfa);
-    border-radius: 3px;
+
+
+
+
+
+
+
+import { Component, EventEmitter, Output, Input, OnInit, OnChanges, SimpleChanges } from '@angular/core';
+import { HistoryService, FileItem } from './history.service';
+
+interface HistoryItem {
+  id: string;
+  name: string;
+  displayDate: string;
+  date: Date;
+  hasResult: boolean;
+  summary_prompt: string | null;  // New property
+  faq_prompt: string | null;      // New property
 }
 
-::ng-deep .markdown-content h3 {
-    font-size: 16px;
-    font-weight: 700;
-    margin: 16px 0 8px 0;
-    color: #a78bfa;
+export interface HistoryItemSelect {
+  id: string;
+  name: string;
+  displayDate: string;
+  date: Date;
+  summary_prompt: string | null;  // New property
+  faq_prompt: string | null;      // New property
 }
 
-::ng-deep .markdown-content p {
-    margin: 12px 0;
-    line-height: 1.6;
+interface RemoveGenerateFile {
+  id: number;
+  name: string;
 }
 
-::ng-deep .markdown-content ul,
-::ng-deep .markdown-content ol {
-    margin: 12px 0;
-    padding-left: 24px;
+interface GenerationStatus {
+  id: number;
+  status: 'Success' | 'Failure';
 }
 
-::ng-deep .markdown-content ul li {
-    margin: 6px 0;
+interface NewUploadFile {
+  id: number;
+  original_name: string;
+  created_at: string;
 }
 
-::ng-deep .markdown-content ul li::marker {
-    color: var(--primary-color);
-    font-weight: bold;
+@Component({
+  selector: 'app-history',
+  templateUrl: './history.component.html',
+  styleUrls: ['./history.component.css']
+})
+export class HistoryComponent implements OnInit, OnChanges {
+  @Input() removeGenerateFile: RemoveGenerateFile | null = null;
+  @Input() generationStatus: GenerationStatus | null = null;
+  @Input() newUploadFile: NewUploadFile | null = null;
+  
+  @Output() onItemSelect = new EventEmitter<HistoryItemSelect>();
+  @Output() onAddToContentGeneration = new EventEmitter<HistoryItem>();
+  @Output() onRemoveFromContentGeneration = new EventEmitter<string>();
+
+  selectedHistoryItem: HistoryItem | null = null;
+  addedToGenerationId: string | null = null;
+  isPendingExpanded: boolean = true;
+  isCompletedExpanded: boolean = true;
+
+  startDate: string = '';
+  endDate: string = '';
+
+  historyItems: HistoryItem[] = [];
+  isLoading: boolean = false;
+  isRefreshing: boolean = false;
+  errorMessage: string = '';
+
+  // Filter properties
+  isFilterVisible: boolean = false;
+  filterFromDate: string = '';
+  filterToDate: string = '';
+  searchText: string = '';
+
+  constructor(private historyService: HistoryService) {}
+
+  ngOnInit(): void {
+    this.initializeDateRange();
+    this.fetchHistoryData();
+  }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['removeGenerateFile'] && changes['removeGenerateFile'].currentValue) {
+      const fileToRemove = changes['removeGenerateFile'].currentValue as RemoveGenerateFile;
+      this.handleRemoveFromParent(fileToRemove);
+    }
+
+    if (changes['generationStatus'] && changes['generationStatus'].currentValue) {
+      const statusUpdate = changes['generationStatus'].currentValue as GenerationStatus;
+      this.handleGenerationStatusChange(statusUpdate);
+    }
+
+    if (changes['newUploadFile'] && changes['newUploadFile'].currentValue) {
+      const newFile = changes['newUploadFile'].currentValue as NewUploadFile;
+      this.handleNewFileUpload(newFile);
+    }
+  }
+
+  get pendingFiles(): HistoryItem[] {
+    return this.historyItems.filter(item => !item.hasResult);
+  }
+
+  get completedFiles(): HistoryItem[] {
+    return this.historyItems.filter(item => item.hasResult);
+  }
+
+  get filteredPendingFiles(): HistoryItem[] {
+    return this.applyTextSearch(this.pendingFiles);
+  }
+
+  get filteredCompletedFiles(): HistoryItem[] {
+    return this.applyTextSearch(this.completedFiles);
+  }
+
+  onHistoryItemClick(itemId: string): void {
+    const item = this.historyItems.find(i => i.id === itemId);
+    if (item) {
+      this.selectedHistoryItem = item;
+      
+      // Emit only the required properties
+      const itemToEmit: HistoryItemSelect = {
+        id: item.id,
+        name: item.name,
+        displayDate: item.displayDate,
+        date: item.date,
+        summary_prompt: item.summary_prompt,  // Include new property
+        faq_prompt: item.faq_prompt           // Include new property
+      };
+      
+      this.onItemSelect.emit(itemToEmit);
+    }
+  }
+
+  // ... other methods ...
+
+  private mapFilesToHistoryItems(files: FileItem[]): HistoryItem[] {
+    return files.map(file => {
+      const hasResult = file.progress === 'completed';
+
+      return {
+        id: file.id.toString(),
+        name: file.original_name,
+        displayDate: `Created on ${file.inserted_at}`,
+        date: this.parseInsertedDate(file.inserted_at),
+        hasResult: hasResult,
+        summary_prompt: file.summary_prompt,  // Map new property
+        faq_prompt: file.faq_prompt           // Map new property
+      };
+    });
+  }
+
+  private handleGenerationStatusChange(statusUpdate: GenerationStatus): void {
+    const itemId = statusUpdate.id.toString();
+    const item = this.historyItems.find(i => i.id === itemId);
+
+    if (!item) {
+      console.warn('Item not found for status update:', itemId);
+      return;
+    }
+
+    console.log(`Generation status update for item ${itemId}: ${statusUpdate.status}`);
+
+    if (statusUpdate.status === 'Success') {
+      // Move to Completed Results
+      if (!item.hasResult) {
+        console.log(`Moving item ${itemId} to Completed Results`);
+        
+        // Update the item's hasResult property first
+        item.hasResult = true;
+
+        // Expand Completed section if it's collapsed
+        if (!this.isCompletedExpanded) {
+          this.isCompletedExpanded = true;
+        }
+
+        // Wait for DOM to update, then find element, animate, scroll and select
+        setTimeout(() => {
+          const historyItemElement = document.querySelector(
+            `.history-item[data-item-id="${itemId}"]`
+          ) as HTMLElement;
+
+          if (historyItemElement) {
+            // Add success animation
+            historyItemElement.classList.add('success-animation');
+            setTimeout(() => {
+              historyItemElement.classList.remove('success-animation');
+            }, 1000);
+
+            // Scroll to the card smoothly
+            historyItemElement.scrollIntoView({
+              behavior: 'smooth',
+              block: 'center',
+              inline: 'nearest'
+            });
+
+            // Select the card after scrolling
+            setTimeout(() => {
+              this.selectedHistoryItem = item;
+              
+              // Emit the correct format with new properties
+              const itemToEmit: HistoryItemSelect = {
+                id: item.id,
+                name: item.name,
+                displayDate: item.displayDate,
+                date: item.date,
+                summary_prompt: item.summary_prompt,
+                faq_prompt: item.faq_prompt
+              };
+              
+              this.onItemSelect.emit(itemToEmit);
+              console.log(`Card ${itemId} selected and scrolled into view`);
+            }, 300);
+          }
+        }, 100);
+      } else {
+        // Item was already in Completed section
+        const historyItemElement = document.querySelector(
+          `.history-item[data-item-id="${itemId}"]`
+        ) as HTMLElement;
+
+        if (historyItemElement) {
+          // Add success animation
+          historyItemElement.classList.add('success-animation');
+          setTimeout(() => {
+            historyItemElement.classList.remove('success-animation');
+          }, 1000);
+
+          // Scroll to the card smoothly
+          historyItemElement.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center',
+            inline: 'nearest'
+          });
+
+          // Select the card after scrolling
+          setTimeout(() => {
+            this.selectedHistoryItem = item;
+            
+            // Emit the correct format with new properties
+            const itemToEmit: HistoryItemSelect = {
+              id: item.id,
+              name: item.name,
+              displayDate: item.displayDate,
+              date: item.date,
+              summary_prompt: item.summary_prompt,
+              faq_prompt: item.faq_prompt
+            };
+            
+            this.onItemSelect.emit(itemToEmit);
+            console.log(`Card ${itemId} selected and scrolled into view`);
+          }, 300);
+        }
+      }
+
+      // Clear the added state (remove minus icon, restore plus icon)
+      if (this.addedToGenerationId === itemId) {
+        console.log(`Clearing added state for item ${itemId} - restoring plus icon`);
+        this.addedToGenerationId = null;
+      }
+    } else if (statusUpdate.status === 'Failure') {
+      // Move to Pending Results
+      if (item.hasResult) {
+        console.log(`Moving item ${itemId} to Pending Results`);
+        
+        // Update the item's hasResult property first
+        item.hasResult = false;
+
+        // Expand Pending section if it's collapsed
+        if (!this.isPendingExpanded) {
+          this.isPendingExpanded = true;
+        }
+
+        // Wait for DOM to update, then find element and animate
+        setTimeout(() => {
+          const historyItemElement = document.querySelector(
+            `.history-item[data-item-id="${itemId}"]`
+          ) as HTMLElement;
+
+          if (historyItemElement) {
+            // Add failure animation
+            historyItemElement.classList.add('failure-animation');
+            setTimeout(() => {
+              historyItemElement.classList.remove('failure-animation');
+            }, 1000);
+          }
+        }, 100);
+      } else {
+        // Item was already in Pending section
+        const historyItemElement = document.querySelector(
+          `.history-item[data-item-id="${itemId}"]`
+        ) as HTMLElement;
+
+        if (historyItemElement) {
+          // Add failure animation
+          historyItemElement.classList.add('failure-animation');
+          setTimeout(() => {
+            historyItemElement.classList.remove('failure-animation');
+          }, 1000);
+        }
+      }
+
+      // Clear the added state (remove minus icon, restore plus icon)
+      if (this.addedToGenerationId === itemId) {
+        console.log(`Clearing added state for item ${itemId} - restoring plus icon`);
+        this.addedToGenerationId = null;
+      }
+    }
+  }
+
+  private handleNewFileUpload(newFile: NewUploadFile): void {
+    console.log('New file uploaded:', newFile);
+
+    // Check if file already exists (prevent duplicates)
+    const existingFile = this.historyItems.find(item => item.id === newFile.id.toString());
+    if (existingFile) {
+      console.warn('File already exists in history:', newFile.id);
+      return;
+    }
+
+    // Create new history item
+    const newHistoryItem: HistoryItem = {
+      id: newFile.id.toString(),
+      name: newFile.original_name,
+      displayDate: `Created on ${newFile.created_at}`,
+      date: new Date(newFile.created_at),
+      hasResult: false, // Always add to Pending Results
+      summary_prompt: null,  // Initialize new properties as null
+      faq_prompt: null       // Initialize new properties as null
+    };
+
+    // Add to the beginning of the array (top of the list)
+    this.historyItems.unshift(newHistoryItem);
+
+    // Expand Pending section if it's collapsed
+    if (!this.isPendingExpanded) {
+      this.isPendingExpanded = true;
+    }
+
+    console.log('New file added to Pending Results:', newHistoryItem);
+
+    // Wait for DOM to update, then scroll to and highlight the new item
+    setTimeout(() => {
+      const historyItemElement = document.querySelector(
+        `.history-item[data-item-id="${newFile.id}"]`
+      ) as HTMLElement;
+
+      if (historyItemElement) {
+        // Add new item animation (slide in from top)
+        historyItemElement.classList.add('new-item-animation');
+        setTimeout(() => {
+          historyItemElement.classList.remove('new-item-animation');
+        }, 800);
+
+        // Scroll to the new card
+        historyItemElement.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+          inline: 'nearest'
+        });
+      }
+    }, 100);
+  }
+
+  // ... rest of the methods remain the same ...
 }
 
-::ng-deep .markdown-content ol li {
-    margin: 6px 0;
-}
 
-::ng-deep .markdown-content ol li::marker {
-    color: var(--primary-color);
-    font-weight: bold;
-}
 
-::ng-deep .markdown-content strong {
-    font-weight: 700;
-    color: var(--primary-color);
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(167, 139, 250, 0.05));
-    padding: 2px 4px;
-    border-radius: 3px;
-}
 
-::ng-deep .markdown-content em {
-    font-style: italic;
-    color: #a78bfa;
-}
 
-::ng-deep .markdown-content blockquote {
-    border-left: 4px solid var(--primary-color);
-    padding-left: 16px;
-    margin: 16px 0;
-    font-style: italic;
-    opacity: 0.9;
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(167, 139, 250, 0.05));
-    padding: 12px 16px;
-    border-radius: 0 6px 6px 0;
-    position: relative;
-}
 
-::ng-deep .markdown-content blockquote::before {
-    content: '"';
-    position: absolute;
-    top: 8px;
-    left: 8px;
-    font-size: 36px;
-    color: var(--primary-color);
-    opacity: 0.3;
-    font-family: Georgia, serif;
-    line-height: 0;
-}
 
-::ng-deep .markdown-content hr {
-    border: none;
-    height: 2px;
-    background: linear-gradient(90deg, transparent, var(--primary-color), transparent);
-    margin: 24px 0;
-    opacity: 0.3;
-}
 
-::ng-deep .markdown-content code {
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(167, 139, 250, 0.1));
-    padding: 3px 8px;
-    border-radius: 4px;
-    font-size: 0.9em;
-    font-family: 'Courier New', monospace;
-    color: var(--primary-color);
-    border: 1px solid rgba(139, 92, 246, 0.3);
-    font-weight: 500;
-}
 
-::ng-deep .markdown-content pre {
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(167, 139, 250, 0.05));
-    padding: 14px;
-    border-radius: 8px;
-    overflow-x: auto;
-    margin: 16px 0;
-    border: 1px solid rgba(139, 92, 246, 0.25);
-    position: relative;
-}
+// parent.component.ts
+export class ParentComponent {
+  removeGenerateFile: { id: number; name: string } | null = null;
+  generationStatus: { id: number; status: 'Success' | 'Failure' } | null = null;
+  newUploadFile: { id: number; original_name: string; created_at: string } | null = null;
 
-::ng-deep .markdown-content pre::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 4px;
-    height: 100%;
-    background: linear-gradient(180deg, var(--primary-color), #a78bfa);
-    border-radius: 8px 0 0 8px;
-}
+  // Updated handler to receive properties including new ones
+  handleItemSelect(item: { 
+    id: string; 
+    name: string; 
+    displayDate: string; 
+    date: Date;
+    summary_prompt: string | null;
+    faq_prompt: string | null;
+  }) {
+    console.log('Selected Item ID:', item.id);
+    console.log('Selected Item Name:', item.name);
+    console.log('Selected Item Display Date:', item.displayDate);
+    console.log('Selected Item Date:', item.date);
+    console.log('Summary Prompt:', item.summary_prompt);
+    console.log('FAQ Prompt:', item.faq_prompt);
+    
+    // Use the prompts if they exist
+    if (item.summary_prompt) {
+      console.log('Has summary prompt:', item.summary_prompt);
+    }
+    
+    if (item.faq_prompt) {
+      console.log('Has FAQ prompt:', item.faq_prompt);
+    }
+  }
 
-::ng-deep .markdown-content pre code {
-    background-color: transparent;
-    padding: 0;
-    border: none;
-    color: var(--text-color);
-    font-weight: normal;
-}
+  handleAddToGeneration(item: any) {
+    console.log('File added:', item);
+    console.log('Summary Prompt:', item.summary_prompt);
+    console.log('FAQ Prompt:', item.faq_prompt);
+  }
 
-::ng-deep .markdown-content a {
-    color: var(--primary-color);
-    text-decoration: none;
-    border-bottom: 1px solid transparent;
-    transition: all 0.2s ease;
-    font-weight: 500;
-    position: relative;
-}
-
-::ng-deep .markdown-content a::after {
-    content: '';
-    position: absolute;
-    bottom: -1px;
-    left: 0;
-    width: 0;
-    height: 1px;
-    background: var(--primary-color);
-    transition: width 0.3s ease;
-}
-
-::ng-deep .markdown-content a:hover::after {
-    width: 100%;
-}
-
-::ng-deep .markdown-content a:hover {
-    color: #9f7aea;
-}
-
-::ng-deep .markdown-content table {
-    width: 100%;
-    border-collapse: collapse;
-    margin: 12px 0;
-    border-radius: 6px;
-    overflow: hidden;
-}
-
-::ng-deep .markdown-content th,
-::ng-deep .markdown-content td {
-    padding: 10px 12px;
-    border: 1px solid rgba(139, 92, 246, 0.2);
-    text-align: left;
-}
-
-::ng-deep .markdown-content th {
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(167, 139, 250, 0.1));
-    font-weight: 700;
-    color: var(--primary-color);
-    border-bottom: 2px solid rgba(139, 92, 246, 0.3);
-}
-
-::ng-deep .markdown-content tr:hover {
-    background: rgba(139, 92, 246, 0.03);
-}
-
-::ng-deep .markdown-content img {
-    max-width: 100%;
-    height: auto;
-    border-radius: 8px;
-    margin: 8px 0;
-    border: 2px solid rgba(139, 92, 246, 0.2);
-    box-shadow: 0 2px 8px rgba(139, 92, 246, 0.1);
+  handleRemoveFromGeneration(itemId: string) {
+    console.log('File removed:', itemId);
+  }
 }
