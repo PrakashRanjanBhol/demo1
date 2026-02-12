@@ -1,99 +1,77 @@
-// Add new output event emitter at the top with other outputs:
-@Output() onUploadComplete = new EventEmitter<{ id: number, status: 'Success' | 'Failed' }>();
+// Update the @Output decorator section at the top of the component class:
+@Output() onGenerate = new EventEmitter<{ file: any, prompts: string, mode: 'new' }>();
+@Output() onFileRemoved = new EventEmitter<{ id: string | number, name: string }>();
+@Output() onGenerationComplete = new EventEmitter<{ id: number, status: 'Success' | 'Failed' }>();
 
-// Update the uploadFileViaService method:
-private uploadFileViaService(fileWithStatus: FileWithStatus): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const sub = this.uploadGenerateService.uploadFile(fileWithStatus.file).subscribe({
-      next: (event: any) => {
-        if (event.type === HttpEventType.UploadProgress) {
-          if (event.total) {
-            fileWithStatus.progress = Math.round((100 * event.loaded) / event.total);
-          }
-        } else if (event.type === HttpEventType.Response) {
-          const response = event.body as UploadResponse;
-          if (response.status === 'Success') {
-            fileWithStatus.uploadedFileId = response.data.id;
-            fileWithStatus.uploadedFileName = response.data.original_name;
-            fileWithStatus.uploadedAt = response.data.created_at;
-            console.log('Upload successful:', response);
-            
-            // Emit success event to parent
-            this.onUploadComplete.emit({
-              id: response.data.id,
-              status: 'Success'
-            });
-            
-            resolve();
-          } else {
-            reject(new Error('Upload failed with status: ' + response.status));
-          }
-        }
-      },
-      error: (error) => {
-        console.error('Upload error:', error);
-        
-        // Emit failure event to parent (if we have the file ID)
-        if (fileWithStatus.uploadedFileId) {
-          this.onUploadComplete.emit({
-            id: fileWithStatus.uploadedFileId,
-            status: 'Failed'
-          });
-        }
-        
-        reject(error);
-      }
-    });
-    this.subscriptions.push(sub);
+
+
+
+
+// Update the handleGenerationSuccess method:
+private handleGenerationSuccess(): void {
+  this.processingProgress = 100;
+  this.generationStatus = 'success';
+  
+  // Emit success event to parent with the new format
+  this.onGenerationComplete.emit({
+    id: Number(this.processingFileId),
+    status: 'Success'
+  });
+
+  // Emit the original onGenerate event for backward compatibility
+  this.onGenerate.emit({
+    file: {
+      fileId: this.processingFileId,
+      fileName: this.processingFileName
+    },
+    prompts: this.optionalPrompts,
+    mode: 'new'
+  });
+
+  // Wait a bit to show the success state, then complete
+  setTimeout(() => {
+    this.completeProcessing();
+  }, 2000);
+}
+
+// Update the handleGenerationError method:
+private handleGenerationError(message: string): void {
+  this.generationStatus = 'error';
+  this.generationErrorMessage = message;
+  this.isProcessing = false;
+  this.processingProgress = 0;
+
+  // Emit failure event to parent with the new format
+  this.onGenerationComplete.emit({
+    id: Number(this.processingFileId),
+    status: 'Failed'
   });
 }
 
-// Also update the uploadFilesSequentially method to emit on error:
-async uploadFilesSequentially(): Promise<void> {
-  for (let i = 0; i < this.uploadedFilesWithStatus.length; i++) {
-    const fileWithStatus = this.uploadedFilesWithStatus[i];
-
-    // Skip already uploaded files
-    if (fileWithStatus.status === 'uploaded') {
-      continue;
-    }
-
-    fileWithStatus.status = 'uploading';
-    fileWithStatus.progress = 0;
-
-    try {
-      await this.uploadFileViaService(fileWithStatus);
-      fileWithStatus.status = 'uploaded';
-      fileWithStatus.progress = 100;
-    } catch (error) {
-      fileWithStatus.status = 'error';
-      console.error(`Failed to upload ${fileWithStatus.file.name}:`, error);
-      
-      // If upload failed and we don't have an ID yet, we can't emit with ID
-      // The error emission is already handled in uploadFileViaService if ID exists
-    }
-  }
-}
 
 
 
-// In parent component template:
+
+
+
+
+// In your parent component template:
 <app-upload-generate 
   [requestFile]="selectedFile"
   (onGenerate)="handleGenerate($event)"
   (onFileRemoved)="handleFileRemoved($event)"
-  (onGenerationComplete)="handleGenerationComplete($event)"
-  (onUploadComplete)="handleUploadComplete($event)">
+  (onGenerationComplete)="handleGenerationComplete($event)">
 </app-upload-generate>
 
-// In parent component class:
-handleUploadComplete(event: { id: number, status: 'Success' | 'Failed' }): void {
-  console.log('Upload complete:', event);
+// In your parent component class:
+handleGenerationComplete(event: { id: number, status: 'Success' | 'Failed' }): void {
+  console.log('Generation completed:', event);
+  
   if (event.status === 'Success') {
-    // Handle successful upload
-    console.log(`File ${event.id} uploaded successfully`);
+    console.log(`File ${event.id} generated successfully`);
+    // Handle success - e.g., refresh file list, show success message, etc.
   } else {
-    // Handle failed upload
-    console.log(`File ${event.id} upload failed`);
+    console.log(`File ${event.id} generation failed`);
+    // Handle failure - e.g., show error message, allow retry, etc.
   }
 }
