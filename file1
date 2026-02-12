@@ -1,8 +1,12 @@
 import { Component, EventEmitter, Output, OnDestroy } from '@angular/core';
 import { HttpEventType } from '@angular/common/http';
 import { Subscription } from 'rxjs';
-import { UploadGenerateService, UploadResponse } from 'src/app/services/upload-generate.service';
-import { GenerateRequest, GenerateService } from 'src/app/services/generate.service';
+import {
+  UploadGenerateService,
+  UploadResponse,
+  GenerateRequest,
+  GenerateResponse
+} from 'src/app/services/upload-generate.service';
 
 interface FileWithStatus {
   file: File;
@@ -43,8 +47,7 @@ export class UploadGenerateComponent implements OnDestroy {
   private subscriptions: Subscription[] = [];
 
   constructor(
-    private uploadGenerateService: UploadGenerateService,
-    private generateService: GenerateService
+    private uploadGenerateService: UploadGenerateService
   ) { }
 
   ngOnDestroy(): void {
@@ -239,7 +242,7 @@ export class UploadGenerateComponent implements OnDestroy {
   }
 
   private generateAnalysis(request: GenerateRequest): void {
-    const sub = this.generateService.generateAnalysis(request).subscribe({
+    const sub = this.uploadGenerateService.generateAnalysis(request).subscribe({
       next: (response) => {
         console.log('Generation successful:', response);
         this.onGenerate.emit({
@@ -330,10 +333,6 @@ export class UploadGenerateComponent implements OnDestroy {
     return fileWithStatus.status !== 'pending';
   }
 }
-
-
-
-
 
 
 
@@ -597,7 +596,6 @@ export class UploadGenerateComponent implements OnDestroy {
         </div>
     </div>
 </div>
-
 
 
 
@@ -1563,6 +1561,11 @@ export class UploadGenerateComponent implements OnDestroy {
 
 
 
+
+
+
+
+
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpEvent } from '@angular/common/http';
 import { Observable } from 'rxjs';
@@ -1576,21 +1579,59 @@ export interface UploadResponse {
   };
 }
 
+export interface GenerateRequest {
+  fileId?: string;
+  fileName?: string;
+  prompts?: string;
+  mode: 'new' | 'previous';
+}
+
+export interface GenerateResponse {
+  success: boolean;
+  message: string;
+  results?: any;
+  analysisId?: string;
+}
+
 @Injectable({
   providedIn: 'root'
 })
 export class UploadGenerateService {
-  private apiUrl = '/content-analytics/upload'; // Adjust base URL as needed
+  private apiUrl = 'http://localhost:3000/api';  // Replace with your API base URL
 
   constructor(private http: HttpClient) { }
 
+  /**
+   * Upload file (VTT or SRT)
+   */
   uploadFile(file: File): Observable<HttpEvent<UploadResponse>> {
     const formData = new FormData();
     formData.append('file', file);
 
-    return this.http.post<UploadResponse>(this.apiUrl, formData, {
+    return this.http.post<UploadResponse>('/content-analytics/upload', formData, {
       reportProgress: true,
       observe: 'events'
     });
+  }
+
+  /**
+   * Generate analysis from uploaded file
+   */
+  generateAnalysis(request: GenerateRequest): Observable<GenerateResponse> {
+    return this.http.post<GenerateResponse>(`${this.apiUrl}/generate`, request);
+  }
+
+  /**
+   * Get analysis results
+   */
+  getAnalysisResults(analysisId: string): Observable<any> {
+    return this.http.get(`${this.apiUrl}/analysis/${analysisId}`);
+  }
+
+  /**
+   * Get analysis status
+   */
+  getAnalysisStatus(analysisId: string): Observable<any> {
+    return this.http.get(`${this.apiUrl}/analysis/${analysisId}/status`);
   }
 }
