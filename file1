@@ -1,589 +1,97 @@
-import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { Observable } from 'rxjs';
-
-export interface FAQ {
-  question: string;
-  answer: string;
-}
-
-export interface FileAnalysisData {
-  summary: string;
-  keywords: string[];
-  faq: FAQ[];
-}
-
-export interface FileAnalysisResponse {
-  status: string;
-  data: FileAnalysisData;
-}
-
-@Injectable({
-  providedIn: 'root'
-})
-export class WorkspaceResultService {
-  private apiBaseUrl = '/content_analytics/files'; // Adjust base URL as needed
-
-  constructor(private http: HttpClient) { }
-
-  /**
-   * Fetch file analysis data by file ID
-   */
-  getFileAnalysis(fileId: string): Observable<FileAnalysisResponse> {
-    return this.http.get<FileAnalysisResponse>(`${this.apiBaseUrl}/${fileId}`);
-  }
-}
-
-
-
-
-
-
-import { Component, Input, OnChanges, SimpleChanges, OnDestroy } from '@angular/core';
-import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
-import { marked } from 'marked';
-import { Subject } from 'rxjs';
-import { takeUntil } from 'rxjs/operators';
-import { WorkspaceResultService, FAQ } from './workspace-result.service';
-
-interface ResultItem {
-  id: string;
-  title: string;
-  icon: string;
-  content: string;
-  type: 'summary' | 'keywords' | 'questions' | 'custom';
-  keywords?: string[];
-  faqs?: FAQ[];
-}
-
-interface HistoryItem {
-  id: string;
-  name: string;
-  displayDate: string;
-  date: Date;
-}
-
-@Component({
-  selector: 'app-workspace',
-  templateUrl: './workspace.component.html',
-  styleUrls: ['./workspace.component.css']
-})
-export class WorkspaceComponent implements OnChanges, OnDestroy {
-  @Input() selectedHistoryItem: HistoryItem | null = null;
-  resultItems: ResultItem[] = [];
-
-  isDetailOpen = false;
-  selectedItemName = '';
-  selectedItemDate = '';
-  selectedItemContent: SafeHtml = '';
-  selectedResultItemId: string = '';
-
-  expandedItems: Set<string> = new Set();
-  private readonly CHAR_LIMIT = 200;
-
-  // Loading and error states
-  isLoading = false;
-  errorMessage = '';
-
-  // Unsubscribe subject
-  private destroy$ = new Subject<void>();
-
-  // Chip color schemes (gradient backgrounds)
-  private chipColors = [
-    { bg: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', border: '#667eea' },
-    { bg: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', border: '#f093fb' },
-    { bg: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)', border: '#4facfe' },
-    { bg: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)', border: '#43e97b' },
-    { bg: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)', border: '#fa709a' },
-    { bg: 'linear-gradient(135deg, #30cfd0 0%, #330867 100%)', border: '#30cfd0' },
-    { bg: 'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)', border: '#a8edea' },
-    { bg: 'linear-gradient(135deg, #ff9a56 0%, #ff6a88 100%)', border: '#ff9a56' },
-    { bg: 'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)', border: '#ffecd2' },
-    { bg: 'linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%)', border: '#a1c4fd' },
-  ];
-
-  sampleContent = `
-# Machine Learning Fundamentals: A Comprehensive Overview
-
-## Introduction to Machine Learning
-
-Machine learning is a subset of artificial intelligence that focuses on building systems that can **learn from data** and improve their performance over time without being explicitly programmed. This revolutionary approach has transformed various industries and continues to shape our digital future.
-
-### Key Concepts
-
-Machine learning algorithms can be broadly categorized into three main types:
-
-1. **Supervised Learning** - Learning from labeled data
-2. **Unsupervised Learning** - Finding patterns in unlabeled data
-3. **Reinforcement Learning** - Learning through interaction and feedback
-
----
-
-## Supervised Learning
-
-Supervised learning is the most common type of machine learning. In this approach, the algorithm learns from a training dataset that includes both input features and corresponding output labels.
-
-### Popular Algorithms
-
-- **Linear Regression** - For predicting continuous values
-- **Logistic Regression** - For binary classification problems
-- **Decision Trees** - For both regression and classification
-- **Random Forests** - Ensemble method using multiple decision trees
-- **Support Vector Machines (SVM)** - For classification and regression tasks
-- **Neural Networks** - Deep learning models with multiple layers
-
-### Real-World Applications
-
-> "Machine learning is the future of technology, and supervised learning forms the foundation of most practical applications we see today."
-
-Some practical applications include:
-
-- Email spam detection and filtering
-- Image recognition and classification
-- Medical diagnosis and disease prediction
-- Credit risk assessment in banking
-- Customer churn prediction
-- Fraud detection systems
-
----
-
-## Conclusion
-
-Machine learning is a powerful tool that continues to evolve and expand its capabilities. Understanding the fundamentals—from basic algorithms to advanced deep learning techniques—is crucial for developing effective solutions to real-world problems.
-
-*Last Updated: January 28, 2026*
-
-**Remember:** The journey of mastering machine learning is continuous. Keep learning, experimenting, and building!
-`;
-
-  constructor(
-    private sanitizer: DomSanitizer,
-    private workspaceResultService: WorkspaceResultService
-  ) { }
-
-  ngOnChanges(changes: SimpleChanges): void {
-    if (changes['selectedHistoryItem'] && this.selectedHistoryItem) {
-      this.loadFileAnalysis(this.selectedHistoryItem.id);
-    }
-  }
-
-  ngOnDestroy(): void {
-    this.destroy$.next();
-    this.destroy$.complete();
-  }
-
-  /**
-   * Load file analysis data from API
-   */
-  loadFileAnalysis(fileId: string): void {
-    this.isLoading = true;
-    this.errorMessage = '';
-    this.resultItems = [];
-
-    this.workspaceResultService.getFileAnalysis(fileId)
-      .pipe(takeUntil(this.destroy$))
-      .subscribe({
-        next: (response) => {
-          if (response.status === 'success' && response.data) {
-            this.mapResponseToResultItems(response.data);
-          }
-          this.isLoading = false;
-        },
-        error: (error) => {
-          console.error('Error loading file analysis:', error);
-          this.errorMessage = 'Failed to load analysis data. Please try again.';
-          this.isLoading = false;
-        }
-      });
-  }
-
-  /**
-   * Map API response to result items
-   */
-  private mapResponseToResultItems(data: any): void {
-    this.resultItems = [];
-
-    // Add Summary
-    if (data.summary) {
-      this.resultItems.push({
-        id: 'summary-1',
-        title: 'Summary',
-        icon: 'document',
-        content: data.summary,
-        type: 'summary'
-      });
-    }
-
-    // Add Keywords
-    if (data.keywords && Array.isArray(data.keywords) && data.keywords.length > 0) {
-      this.resultItems.push({
-        id: 'keywords-1',
-        title: 'Key Topics',
-        icon: 'tag',
-        content: data.keywords.map(k => `• ${k}`).join(' '),
-        type: 'keywords',
-        keywords: data.keywords
-      });
-    }
-
-    // Add FAQ
-    if (data.faq && Array.isArray(data.faq) && data.faq.length > 0) {
-      // Convert FAQ array to formatted string
-      const faqContent = data.faq
-        .map((item: FAQ, index: number) => 
-          `Q${index + 1}: ${item.question}\nA: ${item.answer}`
-        )
-        .join('\n\n');
-
-      this.resultItems.push({
-        id: 'faq-1',
-        title: 'Frequently Asked Questions',
-        icon: 'question',
-        content: faqContent,
-        type: 'questions',
-        faqs: data.faq
-      });
-    }
-  }
-
-  openDetail(item: ResultItem): void {
-    this.selectedItemName = item.title;
-    this.selectedItemDate = this.selectedHistoryItem?.displayDate || '';
-    this.selectedResultItemId = item.id;
-
-    // For FAQ items, create formatted markdown content
-    let contentToDisplay = item.content;
-    if (item.type === 'questions' && item.faqs) {
-      contentToDisplay = this.formatFAQsToMarkdown(item.faqs);
-    }
-
-    const htmlContent: any = marked(contentToDisplay);
-    this.selectedItemContent = this.sanitizer.bypassSecurityTrustHtml(htmlContent);
-
-    this.isDetailOpen = true;
-  }
-
-  /**
-   * Format FAQs to Markdown
-   */
-  private formatFAQsToMarkdown(faqs: FAQ[]): string {
-    return faqs.map((faq, index) => {
-      return `### Q${index + 1}: ${faq.question}\n\n${faq.answer}\n\n---\n`;
-    }).join('\n');
-  }
-
-  closeDetail(): void {
-    this.isDetailOpen = false;
-    this.selectedResultItemId = '';
-  }
-
-  getIconPath(iconType: string): string {
-    const icons: { [key: string]: string } = {
-      'document': 'M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z',
-      'tag': 'M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z M6 6h.008v.008H6V6z',
-      'question': 'M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z',
-      'lightbulb': 'M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.823 1.508-2.316a7.5 7.5 0 10-7.517 0c.85.493 1.509 1.333 1.509 2.316V18'
-    };
-    return icons[iconType] || icons['document'];
-  }
-
-  /**
-   * Get keywords as array from result item
-   */
-  getKeywordsArray(item: ResultItem): string[] {
-    if (item.keywords && Array.isArray(item.keywords)) {
-      return item.keywords;
-    }
-
-    if (item.content && typeof item.content === 'string') {
-      return item.content
-        .split('•')
-        .map(k => k.trim())
-        .filter(k => k.length > 0);
-    }
-
-    return [];
-  }
-
-  /**
-   * Get chip background color based on index
-   */
-  getChipBackground(index: number): string {
-    const colorIndex = index % this.chipColors.length;
-    return this.chipColors[colorIndex].bg;
-  }
-
-  /**
-   * Get chip border color based on index
-   */
-  getChipBorderColor(index: number): string {
-    const colorIndex = index % this.chipColors.length;
-    return this.chipColors[colorIndex].border;
-  }
-
-  /**
-   * Remove a keyword from the list
-   */
-  removeKeyword(itemId: string, keyword: string): void {
-    const item = this.resultItems.find(i => i.id === itemId);
-    if (!item) return;
-
-    if (item.keywords && Array.isArray(item.keywords)) {
-      item.keywords = item.keywords.filter(k => k !== keyword);
-      item.content = item.keywords.map(k => `• ${k}`).join(' ');
-    } else {
-      const keywords = this.getKeywordsArray(item);
-      const updatedKeywords = keywords.filter(k => k !== keyword);
-      item.content = updatedKeywords.map(k => `• ${k}`).join(' ');
-      item.keywords = updatedKeywords;
-    }
-  }
-
-  /**
-   * Toggle expand/collapse for long content
-   */
-  toggleExpand(itemId: string): void {
-    if (this.expandedItems.has(itemId)) {
-      this.expandedItems.delete(itemId);
-    } else {
-      this.expandedItems.add(itemId);
-    }
-  }
-
-  /**
-   * Check if item is expanded
-   */
-  isExpanded(itemId: string): boolean {
-    return this.expandedItems.has(itemId);
-  }
-
-  /**
-   * Check if content should show ellipsis
-   */
-  shouldShowEllipsis(item: ResultItem): boolean {
-    return item.type !== 'keywords';
-  }
-
-  /**
-   * Check if content is long enough to need read more
-   */
-  isContentLong(content: string): boolean {
-    return content.length > this.CHAR_LIMIT;
-  }
-
-  copyToClipboard(content: string): void {
-    navigator.clipboard.writeText(content).then(() => {
-      console.log('Content copied to clipboard');
-    });
-  }
-
-  downloadContent(item: ResultItem): void {
-    const blob = new Blob([item.content], { type: 'text/plain' });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${item.title.replace(/\s+/g, '_')}.txt`;
-    link.click();
-    window.URL.revokeObjectURL(url);
-  }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-<!-- Loading State -->
-<div class="workspace-loading-state" *ngIf="isLoading">
-    <div class="loading-spinner">
-        <svg class="spinner" viewBox="0 0 50 50">
-            <circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="4"></circle>
-        </svg>
+<div class="panel-header">
+    <div class="panel-header-content">
+        <h3 class="panel-title">Workspace Result</h3>
+        <!-- Selected File Info - Now on the right side -->
+        <div class="selected-file-info" *ngIf="selectedHistoryItem">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                stroke="currentColor" class="file-info-icon">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
+            </svg>
+            <span class="file-name">{{ selectedHistoryItem.name }}</span>
+        </div>
     </div>
-    <p class="loading-message">Loading analysis...</p>
-</div>
-
-<!-- Error State -->
-<div class="workspace-error-state" *ngIf="errorMessage && !isLoading">
-    <div class="error-icon">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-            stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round"
-                d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-        </svg>
-    </div>
-    <h3 class="error-title">Error Loading Data</h3>
-    <p class="error-message">{{ errorMessage }}</p>
-    <button class="retry-btn" (click)="loadFileAnalysis(selectedHistoryItem!.id)" *ngIf="selectedHistoryItem">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-            stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round"
-                d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-        </svg>
-        Retry
-    </button>
 </div>
 
 
 
 
 
-
-
-
-
-
-<!-- Dynamic Result Content -->
-<div class="result-content" *ngIf="selectedHistoryItem && resultItems.length > 0 && !isLoading && !errorMessage">
-    <!-- existing result items code -->
-</div>
-
-
-
-
-
-
-
-
-
-
-
-
-/* Loading State */
-.workspace-loading-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 60px 40px;
-    text-align: center;
-    flex: 1;
+.panel-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    padding: 20px;
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(167, 139, 250, 0.08));
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
 }
 
-.loading-spinner {
-    margin-bottom: 20px;
-}
-
-.spinner {
-    animation: rotate 2s linear infinite;
-    width: 50px;
-    height: 50px;
-}
-
-.spinner .path {
-    stroke: var(--primary-color);
-    stroke-linecap: round;
-    animation: dash 1.5s ease-in-out infinite;
-}
-
-@keyframes rotate {
-    100% {
-        transform: rotate(360deg);
-    }
-}
-
-@keyframes dash {
-    0% {
-        stroke-dasharray: 1, 150;
-        stroke-dashoffset: 0;
-    }
-    50% {
-        stroke-dasharray: 90, 150;
-        stroke-dashoffset: -35;
-    }
-    100% {
-        stroke-dasharray: 90, 150;
-        stroke-dashoffset: -124;
-    }
-}
-
-.loading-message {
-    font-size: 14px;
-    color: var(--text-color);
-    opacity: 0.7;
-    margin: 0;
-}
-
-/* Error State */
-.workspace-error-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 60px 40px;
-    text-align: center;
-    flex: 1;
-    max-width: 500px;
-    margin: 0 auto;
-}
-
-.error-icon {
-    width: 80px;
-    height: 80px;
-    background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(220, 38, 38, 0.1));
-    border: 2px solid rgba(239, 68, 68, 0.3);
-    border-radius: 50%;
+.panel-header-content {
     display: flex;
     align-items: center;
-    justify-content: center;
-    margin-bottom: 20px;
+    justify-content: space-between;
+    gap: 16px;
 }
 
-.error-icon svg {
-    width: 40px;
-    height: 40px;
-    stroke: #ef4444;
-}
-
-.error-title {
+.panel-title {
     font-size: 16px;
     font-weight: 700;
     color: var(--text-color);
-    margin: 0 0 10px 0;
+    margin: 0;
+    position: relative;
+    padding-left: 16px;
 }
 
-.error-message {
-    font-size: 14px;
-    color: var(--text-color);
-    opacity: 0.7;
-    margin: 0 0 20px 0;
-    line-height: 1.6;
+.panel-title::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    width: 3px;
+    height: 20px;
+    background: linear-gradient(180deg, var(--primary-color), #a78bfa);
+    border-radius: 2px;
 }
 
-.retry-btn {
-    display: inline-flex;
+/* Selected File Info - Right aligned */
+.selected-file-info {
+    display: flex;
     align-items: center;
     gap: 8px;
-    padding: 10px 20px;
-    background: linear-gradient(135deg, var(--primary-color), #a78bfa);
-    border: none;
+    font-size: 12px;
+    padding: 8px 12px;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.05), rgba(167, 139, 250, 0.05));
     border-radius: 8px;
-    color: white;
-    font-size: 14px;
+    border: 1px solid rgba(139, 92, 246, 0.2);
+    margin-left: auto;
+}
+
+.file-info-icon {
+    width: 14px;
+    height: 14px;
+    stroke: var(--primary-color);
+    flex-shrink: 0;
+}
+
+.file-name {
     font-weight: 600;
-    cursor: pointer;
-    transition: all 0.3s ease;
+    color: var(--text-color);
+    max-width: 250px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-.retry-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
-}
+/* Remove these styles - no longer needed */
+/* .file-separator and .file-date styles can be deleted */
+```
 
-.retry-btn svg {
-    width: 16px;
-    height: 16px;
-    stroke: white;
-}
+## Result
 
-
-
-
-
+Now the header will look like this:
+```
+┌─────────────────────────────────────────────────────────┐
+│ | Workspace Result          [🔊 filename.pdf]          │
+└─────────────────────────────────────────────────────────┘
