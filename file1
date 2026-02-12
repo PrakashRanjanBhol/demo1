@@ -1,137 +1,49 @@
-private handleGenerationStatusChange(statusUpdate: GenerationStatus): void {
-  const itemId = statusUpdate.id.toString();
-  const item = this.historyItems.find(i => i.id === itemId);
+// Update the @Output decorator section at the top of the component class:
+@Output() onGenerate = new EventEmitter<{ file: any, prompts: string, mode: 'new' }>();
+@Output() onFileRemoved = new EventEmitter<{ id: string | number, name: string }>();
+@Output() onGenerationComplete = new EventEmitter<{ id: number, status: 'Success' | 'Failed' }>();
+@Output() onFileUploaded = new EventEmitter<{ id: number, original_name: string, created_at: string }>();
 
-  if (!item) {
-    console.warn('Item not found for status update:', itemId);
-    return;
-  }
 
-  console.log(`Generation status update for item ${itemId}: ${statusUpdate.status}`);
 
-  if (statusUpdate.status === 'Success') {
-    // Move to Completed Results
-    if (!item.hasResult) {
-      console.log(`Moving item ${itemId} to Completed Results`);
-      
-      // Update the item's hasResult property first
-      item.hasResult = true;
 
-      // Expand Completed section if it's collapsed
-      if (!this.isCompletedExpanded) {
-        this.isCompletedExpanded = true;
-      }
-
-      // Wait for DOM to update, then find element, animate, scroll and select
-      setTimeout(() => {
-        const historyItemElement = document.querySelector(
-          `.history-item[data-item-id="${itemId}"]`
-        ) as HTMLElement;
-
-        if (historyItemElement) {
-          // Add success animation
-          historyItemElement.classList.add('success-animation');
-          setTimeout(() => {
-            historyItemElement.classList.remove('success-animation');
-          }, 1000);
-
-          // Scroll to the card smoothly
-          historyItemElement.scrollIntoView({
-            behavior: 'smooth',
-            block: 'center',
-            inline: 'nearest'
-          });
-
-          // Select the card after scrolling
-          setTimeout(() => {
-            this.selectedHistoryItem = item;
-            this.onItemSelect.emit(itemId);
-            console.log(`Card ${itemId} selected and scrolled into view`);
-          }, 300); // Wait for scroll to complete
+// Update the uploadFileViaService method:
+private uploadFileViaService(fileWithStatus: FileWithStatus): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const sub = this.uploadGenerateService.uploadFile(fileWithStatus.file).subscribe({
+      next: (event: any) => {
+        if (event.type === HttpEventType.UploadProgress) {
+          if (event.total) {
+            fileWithStatus.progress = Math.round((100 * event.loaded) / event.total);
+          }
+        } else if (event.type === HttpEventType.Response) {
+          const response = event.body as UploadResponse;
+          if (response.status === 'Success') {
+            fileWithStatus.uploadedFileId = response.data.id;
+            fileWithStatus.uploadedFileName = response.data.original_name;
+            fileWithStatus.uploadedAt = response.data.created_at;
+            console.log('Upload successful:', response);
+            
+            // Emit upload success event to parent
+            this.onFileUploaded.emit({
+              id: response.data.id,
+              original_name: response.data.original_name,
+              created_at: response.data.created_at
+            });
+            
+            resolve();
+          } else {
+            reject(new Error('Upload failed with status: ' + response.status));
+          }
         }
-      }, 100); // Wait for Angular to re-render the lists
-    } else {
-      // Item was already in Completed section
-      const historyItemElement = document.querySelector(
-        `.history-item[data-item-id="${itemId}"]`
-      ) as HTMLElement;
-
-      if (historyItemElement) {
-        // Add success animation
-        historyItemElement.classList.add('success-animation');
-        setTimeout(() => {
-          historyItemElement.classList.remove('success-animation');
-        }, 1000);
-
-        // Scroll to the card smoothly
-        historyItemElement.scrollIntoView({
-          behavior: 'smooth',
-          block: 'center',
-          inline: 'nearest'
-        });
-
-        // Select the card after scrolling
-        setTimeout(() => {
-          this.selectedHistoryItem = item;
-          this.onItemSelect.emit(itemId);
-          console.log(`Card ${itemId} selected and scrolled into view`);
-        }, 300);
+      },
+      error: (error) => {
+        console.error('Upload error:', error);
+        reject(error);
       }
-    }
-
-    // Clear the added state (remove minus icon, restore plus icon)
-    if (this.addedToGenerationId === itemId) {
-      console.log(`Clearing added state for item ${itemId} - restoring plus icon`);
-      this.addedToGenerationId = null;
-    }
-  } else if (statusUpdate.status === 'Failure') {
-    // Move to Pending Results
-    if (item.hasResult) {
-      console.log(`Moving item ${itemId} to Pending Results`);
-      
-      // Update the item's hasResult property first
-      item.hasResult = false;
-
-      // Expand Pending section if it's collapsed
-      if (!this.isPendingExpanded) {
-        this.isPendingExpanded = true;
-      }
-
-      // Wait for DOM to update, then find element and animate
-      setTimeout(() => {
-        const historyItemElement = document.querySelector(
-          `.history-item[data-item-id="${itemId}"]`
-        ) as HTMLElement;
-
-        if (historyItemElement) {
-          // Add failure animation
-          historyItemElement.classList.add('failure-animation');
-          setTimeout(() => {
-            historyItemElement.classList.remove('failure-animation');
-          }, 1000);
-        }
-      }, 100);
-    } else {
-      // Item was already in Pending section
-      const historyItemElement = document.querySelector(
-        `.history-item[data-item-id="${itemId}"]`
-      ) as HTMLElement;
-
-      if (historyItemElement) {
-        // Add failure animation
-        historyItemElement.classList.add('failure-animation');
-        setTimeout(() => {
-          historyItemElement.classList.remove('failure-animation');
-        }, 1000);
-      }
-    }
-
-    // Clear the added state (remove minus icon, restore plus icon)
-    if (this.addedToGenerationId === itemId) {
-      console.log(`Clearing added state for item ${itemId} - restoring plus icon`);
-      this.addedToGenerationId = null;
-    }
-  }
+    });
+    this.subscriptions.push(sub);
+  });
 }
 
 
@@ -142,23 +54,39 @@ private handleGenerationStatusChange(statusUpdate: GenerationStatus): void {
 
 
 
-/* Scroll highlight animation */
-@keyframes scrollHighlight {
-    0% {
-        box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.7);
-    }
-    50% {
-        box-shadow: 0 0 0 10px rgba(139, 92, 246, 0);
-    }
-    100% {
-        box-shadow: 0 0 0 0 rgba(139, 92, 246, 0);
-    }
+
+
+
+// In your parent component template:
+<app-upload-generate 
+  [requestFile]="selectedFile"
+  (onGenerate)="handleGenerate($event)"
+  (onFileRemoved)="handleFileRemoved($event)"
+  (onGenerationComplete)="handleGenerationComplete($event)"
+  (onFileUploaded)="handleFileUploaded($event)">
+</app-upload-generate>
+
+// In your parent component class:
+handleFileUploaded(event: { id: number, original_name: string, created_at: string }): void {
+  console.log('File uploaded successfully:', event);
+  // Handle the uploaded file - e.g., add to file list, update UI, etc.
+  // This will be called for each file that uploads successfully
 }
 
-.history-item.selected {
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.12), rgba(167, 139, 250, 0.12));
-    border-color: var(--primary-color);
-    box-shadow: 0 4px 16px rgba(139, 92, 246, 0.2);
-    transform: translateX(4px);
-    animation: scrollHighlight 1s ease-out;
+handleGenerationComplete(event: { id: number, status: 'Success' | 'Failed' }): void {
+  console.log('Generation completed:', event);
+  
+  if (event.status === 'Success') {
+    console.log(`File ${event.id} generated successfully`);
+  } else {
+    console.log(`File ${event.id} generation failed`);
+  }
+}
+
+handleFileRemoved(event: { id: string | number, name: string }): void {
+  console.log('File removed:', event);
+}
+
+handleGenerate(event: { file: any, prompts: string, mode: 'new' }): void {
+  console.log('Generate requested:', event);
 }
