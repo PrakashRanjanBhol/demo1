@@ -1,102 +1,153 @@
-// Add this interface at the top with other interfaces
-export interface HistoryItemSelect {
-  id: string;
-  name: string;
-  displayDate: string;
-  date: Date;
-}
+private handleGenerationStatusChange(statusUpdate: GenerationStatus): void {
+  const itemId = statusUpdate.id.toString();
+  const item = this.historyItems.find(i => i.id === itemId);
 
-@Component({
-  selector: 'app-history',
-  templateUrl: './history.component.html',
-  styleUrls: ['./history.component.css']
-})
-export class HistoryComponent implements OnInit, OnChanges {
-  @Input() removeGenerateFile: RemoveGenerateFile | null = null;
-  @Input() generationStatus: GenerationStatus | null = null;
-  @Input() newUploadFile: NewUploadFile | null = null;
-  
-  // Use the new interface
-  @Output() onItemSelect = new EventEmitter<HistoryItemSelect>();
-  @Output() onAddToContentGeneration = new EventEmitter<HistoryItem>();
-  @Output() onRemoveFromContentGeneration = new EventEmitter<string>();
+  if (!item) {
+    console.warn('Item not found for status update:', itemId);
+    return;
+  }
 
-  // ... rest of the properties ...
+  console.log(`Generation status update for item ${itemId}: ${statusUpdate.status}`);
 
-  onHistoryItemClick(itemId: string): void {
-    const item = this.historyItems.find(i => i.id === itemId);
-    if (item) {
-      this.selectedHistoryItem = item;
+  if (statusUpdate.status === 'Success') {
+    // Move to Completed Results
+    if (!item.hasResult) {
+      console.log(`Moving item ${itemId} to Completed Results`);
       
-      // Emit only the required properties
-      const itemToEmit: HistoryItemSelect = {
-        id: item.id,
-        name: item.name,
-        displayDate: item.displayDate,
-        date: item.date
-      };
+      // Update the item's hasResult property first
+      item.hasResult = true;
+
+      // Expand Completed section if it's collapsed
+      if (!this.isCompletedExpanded) {
+        this.isCompletedExpanded = true;
+      }
+
+      // Wait for DOM to update, then find element, animate, scroll and select
+      setTimeout(() => {
+        const historyItemElement = document.querySelector(
+          `.history-item[data-item-id="${itemId}"]`
+        ) as HTMLElement;
+
+        if (historyItemElement) {
+          // Add success animation
+          historyItemElement.classList.add('success-animation');
+          setTimeout(() => {
+            historyItemElement.classList.remove('success-animation');
+          }, 1000);
+
+          // Scroll to the card smoothly
+          historyItemElement.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center',
+            inline: 'nearest'
+          });
+
+          // Select the card after scrolling
+          setTimeout(() => {
+            this.selectedHistoryItem = item;
+            
+            // Emit the correct format (without hasResult if using HistoryItemSelect)
+            const itemToEmit: HistoryItemSelect = {
+              id: item.id,
+              name: item.name,
+              displayDate: item.displayDate,
+              date: item.date
+            };
+            
+            this.onItemSelect.emit(itemToEmit);
+            console.log(`Card ${itemId} selected and scrolled into view`);
+          }, 300);
+        }
+      }, 100);
+    } else {
+      // Item was already in Completed section
+      const historyItemElement = document.querySelector(
+        `.history-item[data-item-id="${itemId}"]`
+      ) as HTMLElement;
+
+      if (historyItemElement) {
+        // Add success animation
+        historyItemElement.classList.add('success-animation');
+        setTimeout(() => {
+          historyItemElement.classList.remove('success-animation');
+        }, 1000);
+
+        // Scroll to the card smoothly
+        historyItemElement.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+          inline: 'nearest'
+        });
+
+        // Select the card after scrolling
+        setTimeout(() => {
+          this.selectedHistoryItem = item;
+          
+          // Emit the correct format (without hasResult if using HistoryItemSelect)
+          const itemToEmit: HistoryItemSelect = {
+            id: item.id,
+            name: item.name,
+            displayDate: item.displayDate,
+            date: item.date
+          };
+          
+          this.onItemSelect.emit(itemToEmit);
+          console.log(`Card ${itemId} selected and scrolled into view`);
+        }, 300);
+      }
+    }
+
+    // Clear the added state (remove minus icon, restore plus icon)
+    if (this.addedToGenerationId === itemId) {
+      console.log(`Clearing added state for item ${itemId} - restoring plus icon`);
+      this.addedToGenerationId = null;
+    }
+  } else if (statusUpdate.status === 'Failure') {
+    // Move to Pending Results
+    if (item.hasResult) {
+      console.log(`Moving item ${itemId} to Pending Results`);
       
-      this.onItemSelect.emit(itemToEmit);
+      // Update the item's hasResult property first
+      item.hasResult = false;
+
+      // Expand Pending section if it's collapsed
+      if (!this.isPendingExpanded) {
+        this.isPendingExpanded = true;
+      }
+
+      // Wait for DOM to update, then find element and animate
+      setTimeout(() => {
+        const historyItemElement = document.querySelector(
+          `.history-item[data-item-id="${itemId}"]`
+        ) as HTMLElement;
+
+        if (historyItemElement) {
+          // Add failure animation
+          historyItemElement.classList.add('failure-animation');
+          setTimeout(() => {
+            historyItemElement.classList.remove('failure-animation');
+          }, 1000);
+        }
+      }, 100);
+    } else {
+      // Item was already in Pending section
+      const historyItemElement = document.querySelector(
+        `.history-item[data-item-id="${itemId}"]`
+      ) as HTMLElement;
+
+      if (historyItemElement) {
+        // Add failure animation
+        historyItemElement.classList.add('failure-animation');
+        setTimeout(() => {
+          historyItemElement.classList.remove('failure-animation');
+        }, 1000);
+      }
+    }
+
+    // Clear the added state (remove minus icon, restore plus icon)
+    if (this.addedToGenerationId === itemId) {
+      console.log(`Clearing added state for item ${itemId} - restoring plus icon`);
+      this.addedToGenerationId = null;
     }
   }
-
-  // ... rest of the methods ...
 }
-
-
-
-
-
-
-
-
-
-// parent.component.ts
-export class ParentComponent {
-  removeGenerateFile: { id: number; name: string } | null = null;
-  generationStatus: { id: number; status: 'Success' | 'Failure' } | null = null;
-  newUploadFile: { id: number; original_name: string; created_at: string } | null = null;
-
-  // Updated handler to receive full object
-  handleItemSelect(item: { id: string; name: string; displayDate: string; date: Date }) {
-    console.log('Selected Item ID:', item.id);
-    console.log('Selected Item Name:', item.name);
-    console.log('Selected Item Display Date:', item.displayDate);
-    console.log('Selected Item Date Object:', item.date);
-    
-    // You can now use all the properties
-    // For example, format the date differently
-    const formattedDate = item.date.toLocaleDateString();
-    console.log('Formatted Date:', formattedDate);
-  }
-
-  handleAddToGeneration(item: any) {
-    console.log('File added:', item);
-  }
-
-  handleRemoveFromGeneration(itemId: string) {
-    console.log('File removed:', itemId);
-  }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-<!-- parent.component.html -->
-<app-history 
-  [removeGenerateFile]="removeGenerateFile"
-  [generationStatus]="generationStatus"
-  [newUploadFile]="newUploadFile"
-  (onItemSelect)="handleItemSelect($event)"
-  (onAddToContentGeneration)="handleAddToGeneration($event)"
-  (onRemoveFromContentGeneration)="handleRemoveFromGeneration($event)">
-</app-history>
