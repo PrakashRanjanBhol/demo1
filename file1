@@ -1,189 +1,3 @@
-import { Component, EventEmitter, Output, OnInit } from '@angular/core';
-import { HistoryService, FileItem } from './history.service';
-
-interface HistoryItem {
-  id: string;
-  name: string;
-  displayDate: string;
-  date: Date;
-  hasResult: boolean;
-}
-
-@Component({
-  selector: 'app-history',
-  templateUrl: './history.component.html',
-  styleUrls: ['./history.component.css']
-})
-export class HistoryComponent implements OnInit {
-  @Output() onItemSelect = new EventEmitter<string>();
-  @Output() onAddToContentGeneration = new EventEmitter<HistoryItem>();
-  @Output() onRemoveFromContentGeneration = new EventEmitter<string>();
-
-  selectedHistoryItem: HistoryItem | null = null;
-  addedToGenerationId: string | null = null; // Track which item is added
-  isPendingExpanded: boolean = true;
-  isCompletedExpanded: boolean = true;
-
-  startDate: string = '';
-  endDate: string = '';
-
-  historyItems: HistoryItem[] = [];
-  isLoading: boolean = false;
-  errorMessage: string = '';
-
-  constructor(private historyService: HistoryService) {}
-
-  ngOnInit(): void {
-    this.initializeDateRange();
-    this.fetchHistoryData();
-  }
-
-  get pendingFiles(): HistoryItem[] {
-    return this.historyItems.filter(item => !item.hasResult);
-  }
-
-  get completedFiles(): HistoryItem[] {
-    return this.historyItems.filter(item => item.hasResult);
-  }
-
-  onHistoryItemClick(itemId: string): void {
-    const item = this.historyItems.find(i => i.id === itemId);
-    if (item) {
-      this.selectedHistoryItem = item;
-      this.onItemSelect.emit(itemId);
-    }
-  }
-
-  onAddToGeneration(event: Event, item: HistoryItem): void {
-    event.stopPropagation();
-    
-    // Check if this item is already added
-    if (this.addedToGenerationId === item.id) {
-      // Remove from generation
-      this.addedToGenerationId = null;
-      this.onRemoveFromContentGeneration.emit(item.id);
-      console.log('Removed from content generation:', item.name);
-    } else {
-      // Add to generation (and remove previous if exists)
-      const previousId = this.addedToGenerationId;
-      this.addedToGenerationId = item.id;
-      this.onAddToContentGeneration.emit(item);
-      console.log('Added to content generation:', item.name);
-      
-      if (previousId) {
-        console.log('Previous item removed automatically');
-      }
-    }
-  }
-
-  isAddedToGeneration(itemId: string): boolean {
-    return this.addedToGenerationId === itemId;
-  }
-
-  togglePendingSection(): void {
-    this.isPendingExpanded = !this.isPendingExpanded;
-  }
-
-  toggleCompletedSection(): void {
-    this.isCompletedExpanded = !this.isCompletedExpanded;
-  }
-
-  clearSelection(): void {
-    this.selectedHistoryItem = null;
-  }
-
-  clearAddedToGeneration(): void {
-    this.addedToGenerationId = null;
-  }
-
-  addHistoryItem(item: HistoryItem): void {
-    this.historyItems.unshift(item);
-  }
-
-  private initializeDateRange(): void {
-    const today = new Date();
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(today.getDate() - 30);
-
-    this.startDate = this.formatDateForDisplay(thirtyDaysAgo);
-    this.endDate = this.formatDateForDisplay(today);
-  }
-
-  private fetchHistoryData(): void {
-    this.isLoading = true;
-    this.errorMessage = '';
-
-    const today = new Date();
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(today.getDate() - 30);
-
-    const startDateForApi = this.formatDateForApi(thirtyDaysAgo);
-    const endDateForApi = this.formatDateForApi(today);
-
-    this.historyService.getFilesByDateRange(startDateForApi, endDateForApi)
-      .subscribe({
-        next: (response) => {
-          if (response.status === 'success' && response.data.files) {
-            this.historyItems = this.mapFilesToHistoryItems(response.data.files);
-          }
-          this.isLoading = false;
-        },
-        error: (error) => {
-          console.error('Error fetching history data:', error);
-          this.errorMessage = 'Failed to load history data. Please try again.';
-          this.isLoading = false;
-        }
-      });
-  }
-
-  private mapFilesToHistoryItems(files: FileItem[]): HistoryItem[] {
-    return files.map(file => {
-      const hasResult = file.progress === 'completed';
-
-      return {
-        id: file.id.toString(),
-        name: file.original_name,
-        displayDate: `Created on ${file.inserted_at}`,
-        date: this.parseInsertedDate(file.inserted_at),
-        hasResult: hasResult
-      };
-    });
-  }
-
-  private parseInsertedDate(dateString: string): Date {
-    return new Date(dateString);
-  }
-
-  private formatDateForDisplay(date: Date): string {
-    const options: Intl.DateTimeFormatOptions = { 
-      month: 'short', 
-      day: 'numeric', 
-      year: 'numeric' 
-    };
-    return date.toLocaleDateString('en-US', options);
-  }
-
-  private formatDateForApi(date: Date): string {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 <div class="panel">
     <div class="panel-header">
         <h3 class="panel-title">History</h3>
@@ -249,40 +63,41 @@ export class HistoryComponent implements OnInit {
                     <h4 class="history-item-name">{{ item.name }}</h4>
                     <p class="history-item-date">{{ item.displayDate }}</p>
                 </div>
-                <div class="history-item-checkmark" *ngIf="selectedHistoryItem?.id === item.id">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5"
-                        stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                    </svg>
-                </div>
-                <button class="add-to-generation-btn" 
-                        *ngIf="selectedHistoryItem?.id !== item.id"
-                        [class.added]="isAddedToGeneration(item.id)"
-                        (click)="onAddToGeneration($event, item)"
-                        [title]="isAddedToGeneration(item.id) ? 'Remove from content generation' : 'Add to content generation'">
-                    <div class="btn-icon-wrapper">
-                        <!-- Plus Icon (default state) -->
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
-                            stroke="currentColor" class="plus-icon" *ngIf="!isAddedToGeneration(item.id)">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                        </svg>
-                        <!-- Minus Icon (added state) -->
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
-                            stroke="currentColor" class="minus-icon" *ngIf="isAddedToGeneration(item.id)">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 12h-15" />
-                        </svg>
-                        <!-- Arrow Left Icon (hover state for plus) -->
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                            stroke="currentColor" class="arrow-left-icon" *ngIf="!isAddedToGeneration(item.id)">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
-                        </svg>
-                        <!-- Arrow Right Icon (hover state for minus) -->
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                            stroke="currentColor" class="arrow-right-icon" *ngIf="isAddedToGeneration(item.id)">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+                <div class="history-item-actions">
+                    <div class="history-item-checkmark" *ngIf="selectedHistoryItem?.id === item.id">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
                         </svg>
                     </div>
-                </button>
+                    <button class="add-to-generation-btn" 
+                            [class.added]="isAddedToGeneration(item.id)"
+                            (click)="onAddToGeneration($event, item)"
+                            [title]="isAddedToGeneration(item.id) ? 'Remove from content generation' : 'Add to content generation'">
+                        <div class="btn-icon-wrapper">
+                            <!-- Plus Icon (default state) -->
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
+                                stroke="currentColor" class="plus-icon" *ngIf="!isAddedToGeneration(item.id)">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                            </svg>
+                            <!-- Minus Icon (added state) -->
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
+                                stroke="currentColor" class="minus-icon" *ngIf="isAddedToGeneration(item.id)">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 12h-15" />
+                            </svg>
+                            <!-- Arrow Left Icon (hover state for plus) -->
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                                stroke="currentColor" class="arrow-left-icon" *ngIf="!isAddedToGeneration(item.id)">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+                            </svg>
+                            <!-- Arrow Right Icon (hover state for minus) -->
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                                stroke="currentColor" class="arrow-right-icon" *ngIf="isAddedToGeneration(item.id)">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+                            </svg>
+                        </div>
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -328,44 +143,47 @@ export class HistoryComponent implements OnInit {
                     <h4 class="history-item-name">{{ item.name }}</h4>
                     <p class="history-item-date">{{ item.displayDate }}</p>
                 </div>
-                <div class="history-item-checkmark" *ngIf="selectedHistoryItem?.id === item.id">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5"
-                        stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                    </svg>
-                </div>
-                <button class="add-to-generation-btn" 
-                        *ngIf="selectedHistoryItem?.id !== item.id"
-                        [class.added]="isAddedToGeneration(item.id)"
-                        (click)="onAddToGeneration($event, item)"
-                        [title]="isAddedToGeneration(item.id) ? 'Remove from content generation' : 'Add to content generation'">
-                    <div class="btn-icon-wrapper">
-                        <!-- Plus Icon (default state) -->
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
-                            stroke="currentColor" class="plus-icon" *ngIf="!isAddedToGeneration(item.id)">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                        </svg>
-                        <!-- Minus Icon (added state) -->
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
-                            stroke="currentColor" class="minus-icon" *ngIf="isAddedToGeneration(item.id)">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 12h-15" />
-                        </svg>
-                        <!-- Arrow Left Icon (hover state for plus) -->
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                            stroke="currentColor" class="arrow-left-icon" *ngIf="!isAddedToGeneration(item.id)">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
-                        </svg>
-                        <!-- Arrow Right Icon (hover state for minus) -->
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                            stroke="currentColor" class="arrow-right-icon" *ngIf="isAddedToGeneration(item.id)">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+                <div class="history-item-actions">
+                    <div class="history-item-checkmark" *ngIf="selectedHistoryItem?.id === item.id">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
                         </svg>
                     </div>
-                </button>
+                    <button class="add-to-generation-btn" 
+                            [class.added]="isAddedToGeneration(item.id)"
+                            (click)="onAddToGeneration($event, item)"
+                            [title]="isAddedToGeneration(item.id) ? 'Remove from content generation' : 'Add to content generation'">
+                        <div class="btn-icon-wrapper">
+                            <!-- Plus Icon (default state) -->
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
+                                stroke="currentColor" class="plus-icon" *ngIf="!isAddedToGeneration(item.id)">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                            </svg>
+                            <!-- Minus Icon (added state) -->
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
+                                stroke="currentColor" class="minus-icon" *ngIf="isAddedToGeneration(item.id)">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 12h-15" />
+                            </svg>
+                            <!-- Arrow Left Icon (hover state for plus) -->
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                                stroke="currentColor" class="arrow-left-icon" *ngIf="!isAddedToGeneration(item.id)">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+                            </svg>
+                            <!-- Arrow Right Icon (hover state for minus) -->
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                                stroke="currentColor" class="arrow-right-icon" *ngIf="isAddedToGeneration(item.id)">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+                            </svg>
+                        </div>
+                    </button>
+                </div>
             </div>
         </div>
     </div>
 </div>
+
+
 
 
 
@@ -705,6 +523,14 @@ export class HistoryComponent implements OnInit {
     margin: 0;
 }
 
+/* History Item Actions Container */
+.history-item-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
 .history-item-checkmark {
     width: 32px;
     height: 32px;
@@ -982,6 +808,10 @@ export class HistoryComponent implements OnInit {
         font-size: 11px;
     }
 
+    .history-item-actions {
+        gap: 6px;
+    }
+
     .history-item-checkmark {
         width: 28px;
         height: 28px;
@@ -1031,33 +861,3 @@ export class HistoryComponent implements OnInit {
         font-size: 13px;
     }
 }
-
-
-
-
-
-
-
-
-
-// In parent component
-handleAddToGeneration(item: HistoryItem): void {
-  console.log('File added to content generation:', item);
-  // Add your logic to add the file to the left panel
-}
-
-handleRemoveFromGeneration(itemId: string): void {
-  console.log('File removed from content generation:', itemId);
-  // Add your logic to remove the file from the left panel
-}
-
-
-
-
-
-<!-- In parent template -->
-<app-history 
-  (onItemSelect)="handleItemSelect($event)"
-  (onAddToContentGeneration)="handleAddToGeneration($event)"
-  (onRemoveFromContentGeneration)="handleRemoveFromGeneration($event)">
-</app-history>
