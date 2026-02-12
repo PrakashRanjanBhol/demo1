@@ -1,92 +1,571 @@
-// Update the @Output decorator section at the top of the component class:
-@Output() onGenerate = new EventEmitter<{ file: any, prompts: string, mode: 'new' }>();
-@Output() onFileRemoved = new EventEmitter<{ id: string | number, name: string }>();
-@Output() onGenerationComplete = new EventEmitter<{ id: number, status: 'Success' | 'Failed' }>();
-@Output() onFileUploaded = new EventEmitter<{ id: number, original_name: string, created_at: string }>();
+import { Component, EventEmitter, Output, Input, OnInit, OnChanges, SimpleChanges } from '@angular/core';
+import { HistoryService, FileItem } from './history.service';
 
+interface HistoryItem {
+  id: string;
+  name: string;
+  displayDate: string;
+  date: Date;
+  hasResult: boolean;
+}
 
+interface RemoveGenerateFile {
+  id: number;
+  name: string;
+}
 
+interface GenerationStatus {
+  id: number;
+  status: 'Success' | 'Failure';
+}
 
-// Update the uploadFileViaService method:
-private uploadFileViaService(fileWithStatus: FileWithStatus): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const sub = this.uploadGenerateService.uploadFile(fileWithStatus.file).subscribe({
-      next: (event: any) => {
-        if (event.type === HttpEventType.UploadProgress) {
-          if (event.total) {
-            fileWithStatus.progress = Math.round((100 * event.loaded) / event.total);
-          }
-        } else if (event.type === HttpEventType.Response) {
-          const response = event.body as UploadResponse;
-          if (response.status === 'Success') {
-            fileWithStatus.uploadedFileId = response.data.id;
-            fileWithStatus.uploadedFileName = response.data.original_name;
-            fileWithStatus.uploadedAt = response.data.created_at;
-            console.log('Upload successful:', response);
-            
-            // Emit upload success event to parent
-            this.onFileUploaded.emit({
-              id: response.data.id,
-              original_name: response.data.original_name,
-              created_at: response.data.created_at
-            });
-            
-            resolve();
-          } else {
-            reject(new Error('Upload failed with status: ' + response.status));
-          }
-        }
-      },
-      error: (error) => {
-        console.error('Upload error:', error);
-        reject(error);
+interface NewUploadFile {
+  id: number;
+  original_name: string;
+  created_at: string;
+}
+
+@Component({
+  selector: 'app-history',
+  templateUrl: './history.component.html',
+  styleUrls: ['./history.component.css']
+})
+export class HistoryComponent implements OnInit, OnChanges {
+  @Input() removeGenerateFile: RemoveGenerateFile | null = null;
+  @Input() generationStatus: GenerationStatus | null = null;
+  @Input() newUploadFile: NewUploadFile | null = null;
+  @Output() onItemSelect = new EventEmitter<string>();
+  @Output() onAddToContentGeneration = new EventEmitter<HistoryItem>();
+  @Output() onRemoveFromContentGeneration = new EventEmitter<string>();
+
+  selectedHistoryItem: HistoryItem | null = null;
+  addedToGenerationId: string | null = null;
+  isPendingExpanded: boolean = true;
+  isCompletedExpanded: boolean = true;
+
+  startDate: string = '';
+  endDate: string = '';
+
+  historyItems: HistoryItem[] = [];
+  isLoading: boolean = false;
+  errorMessage: string = '';
+
+  constructor(private historyService: HistoryService) {}
+
+  ngOnInit(): void {
+    this.initializeDateRange();
+    this.fetchHistoryData();
+  }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['removeGenerateFile'] && changes['removeGenerateFile'].currentValue) {
+      const fileToRemove = changes['removeGenerateFile'].currentValue as RemoveGenerateFile;
+      this.handleRemoveFromParent(fileToRemove);
+    }
+
+    if (changes['generationStatus'] && changes['generationStatus'].currentValue) {
+      const statusUpdate = changes['generationStatus'].currentValue as GenerationStatus;
+      this.handleGenerationStatusChange(statusUpdate);
+    }
+
+    if (changes['newUploadFile'] && changes['newUploadFile'].currentValue) {
+      const newFile = changes['newUploadFile'].currentValue as NewUploadFile;
+      this.handleNewFileUpload(newFile);
+    }
+  }
+
+  get pendingFiles(): HistoryItem[] {
+    return this.historyItems.filter(item => !item.hasResult);
+  }
+
+  get completedFiles(): HistoryItem[] {
+    return this.historyItems.filter(item => item.hasResult);
+  }
+
+  onHistoryItemClick(itemId: string): void {
+    const item = this.historyItems.find(i => i.id === itemId);
+    if (item) {
+      this.selectedHistoryItem = item;
+      this.onItemSelect.emit(itemId);
+    }
+  }
+
+  onAddToGeneration(event: Event, item: HistoryItem): void {
+    event.stopPropagation();
+    
+    const button = (event.currentTarget as HTMLElement);
+    const historyItem = button.closest('.history-item') as HTMLElement;
+    
+    // Check if this item is already added
+    if (this.addedToGenerationId === item.id) {
+      // Remove from generation - Left to Right animation (Red)
+      this.removeItemWithAnimation(historyItem, button, item.id);
+    } else {
+      // Add to generation - Right to Left animation (Purple)
+      this.addItemWithAnimation(historyItem, button, item);
+    }
+  }
+
+  private addItemWithAnimation(historyItem: HTMLElement | null, button: HTMLElement, item: HistoryItem): void {
+    if (historyItem) {
+      historyItem.classList.add('adding-animation');
+      setTimeout(() => {
+        historyItem.classList.remove('adding-animation');
+      }, 800);
+    }
+    
+    // Add button pulse
+    button.classList.add('pulse-animation');
+    setTimeout(() => {
+      button.classList.remove('pulse-animation');
+    }, 400);
+    
+    const previousId = this.addedToGenerationId;
+    this.addedToGenerationId = item.id;
+    this.onAddToContentGeneration.emit(item);
+    console.log('Added to content generation:', item.name);
+    
+    if (previousId) {
+      console.log('Previous item removed automatically');
+    }
+  }
+
+  private removeItemWithAnimation(historyItem: HTMLElement | null, button: HTMLElement, itemId: string): void {
+    if (historyItem) {
+      historyItem.classList.add('removing-animation');
+      setTimeout(() => {
+        historyItem.classList.remove('removing-animation');
+      }, 800);
+    }
+    
+    // Add button pulse
+    button.classList.add('pulse-animation');
+    setTimeout(() => {
+      button.classList.remove('pulse-animation');
+    }, 400);
+    
+    this.addedToGenerationId = null;
+    this.onRemoveFromContentGeneration.emit(itemId);
+    console.log('Removed from content generation:', itemId);
+  }
+
+  private handleRemoveFromParent(fileToRemove: RemoveGenerateFile): void {
+    const itemId = fileToRemove.id.toString();
+    
+    // Check if this item is currently added
+    if (this.addedToGenerationId === itemId) {
+      console.log('Removing file from parent:', fileToRemove.name);
+      
+      // Find the history item element by ID
+      const historyItemElement = document.querySelector(
+        `.history-item[data-item-id="${itemId}"]`
+      ) as HTMLElement;
+      
+      if (historyItemElement) {
+        // Add removing animation
+        historyItemElement.classList.add('removing-animation');
+        setTimeout(() => {
+          historyItemElement.classList.remove('removing-animation');
+        }, 800);
       }
+      
+      // Clear the added state
+      this.addedToGenerationId = null;
+      console.log('File removed successfully:', fileToRemove.name);
+    }
+  }
+
+  private handleGenerationStatusChange(statusUpdate: GenerationStatus): void {
+    const itemId = statusUpdate.id.toString();
+    const item = this.historyItems.find(i => i.id === itemId);
+
+    if (!item) {
+      console.warn('Item not found for status update:', itemId);
+      return;
+    }
+
+    console.log(`Generation status update for item ${itemId}: ${statusUpdate.status}`);
+
+    if (statusUpdate.status === 'Success') {
+      // Move to Completed Results
+      if (!item.hasResult) {
+        console.log(`Moving item ${itemId} to Completed Results`);
+        
+        // Update the item's hasResult property first
+        item.hasResult = true;
+
+        // Expand Completed section if it's collapsed
+        if (!this.isCompletedExpanded) {
+          this.isCompletedExpanded = true;
+        }
+
+        // Wait for DOM to update, then find element, animate, scroll and select
+        setTimeout(() => {
+          const historyItemElement = document.querySelector(
+            `.history-item[data-item-id="${itemId}"]`
+          ) as HTMLElement;
+
+          if (historyItemElement) {
+            // Add success animation
+            historyItemElement.classList.add('success-animation');
+            setTimeout(() => {
+              historyItemElement.classList.remove('success-animation');
+            }, 1000);
+
+            // Scroll to the card smoothly
+            historyItemElement.scrollIntoView({
+              behavior: 'smooth',
+              block: 'center',
+              inline: 'nearest'
+            });
+
+            // Select the card after scrolling
+            setTimeout(() => {
+              this.selectedHistoryItem = item;
+              this.onItemSelect.emit(itemId);
+              console.log(`Card ${itemId} selected and scrolled into view`);
+            }, 300);
+          }
+        }, 100);
+      } else {
+        // Item was already in Completed section
+        const historyItemElement = document.querySelector(
+          `.history-item[data-item-id="${itemId}"]`
+        ) as HTMLElement;
+
+        if (historyItemElement) {
+          // Add success animation
+          historyItemElement.classList.add('success-animation');
+          setTimeout(() => {
+            historyItemElement.classList.remove('success-animation');
+          }, 1000);
+
+          // Scroll to the card smoothly
+          historyItemElement.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center',
+            inline: 'nearest'
+          });
+
+          // Select the card after scrolling
+          setTimeout(() => {
+            this.selectedHistoryItem = item;
+            this.onItemSelect.emit(itemId);
+            console.log(`Card ${itemId} selected and scrolled into view`);
+          }, 300);
+        }
+      }
+
+      // Clear the added state (remove minus icon, restore plus icon)
+      if (this.addedToGenerationId === itemId) {
+        console.log(`Clearing added state for item ${itemId} - restoring plus icon`);
+        this.addedToGenerationId = null;
+      }
+    } else if (statusUpdate.status === 'Failure') {
+      // Move to Pending Results
+      if (item.hasResult) {
+        console.log(`Moving item ${itemId} to Pending Results`);
+        
+        // Update the item's hasResult property first
+        item.hasResult = false;
+
+        // Expand Pending section if it's collapsed
+        if (!this.isPendingExpanded) {
+          this.isPendingExpanded = true;
+        }
+
+        // Wait for DOM to update, then find element and animate
+        setTimeout(() => {
+          const historyItemElement = document.querySelector(
+            `.history-item[data-item-id="${itemId}"]`
+          ) as HTMLElement;
+
+          if (historyItemElement) {
+            // Add failure animation
+            historyItemElement.classList.add('failure-animation');
+            setTimeout(() => {
+              historyItemElement.classList.remove('failure-animation');
+            }, 1000);
+          }
+        }, 100);
+      } else {
+        // Item was already in Pending section
+        const historyItemElement = document.querySelector(
+          `.history-item[data-item-id="${itemId}"]`
+        ) as HTMLElement;
+
+        if (historyItemElement) {
+          // Add failure animation
+          historyItemElement.classList.add('failure-animation');
+          setTimeout(() => {
+            historyItemElement.classList.remove('failure-animation');
+          }, 1000);
+        }
+      }
+
+      // Clear the added state (remove minus icon, restore plus icon)
+      if (this.addedToGenerationId === itemId) {
+        console.log(`Clearing added state for item ${itemId} - restoring plus icon`);
+        this.addedToGenerationId = null;
+      }
+    }
+  }
+
+  private handleNewFileUpload(newFile: NewUploadFile): void {
+    console.log('New file uploaded:', newFile);
+
+    // Check if file already exists (prevent duplicates)
+    const existingFile = this.historyItems.find(item => item.id === newFile.id.toString());
+    if (existingFile) {
+      console.warn('File already exists in history:', newFile.id);
+      return;
+    }
+
+    // Create new history item
+    const newHistoryItem: HistoryItem = {
+      id: newFile.id.toString(),
+      name: newFile.original_name,
+      displayDate: `Created on ${newFile.created_at}`,
+      date: new Date(newFile.created_at),
+      hasResult: false // Always add to Pending Results
+    };
+
+    // Add to the beginning of the array (top of the list)
+    this.historyItems.unshift(newHistoryItem);
+
+    // Expand Pending section if it's collapsed
+    if (!this.isPendingExpanded) {
+      this.isPendingExpanded = true;
+    }
+
+    console.log('New file added to Pending Results:', newHistoryItem);
+
+    // Wait for DOM to update, then scroll to and highlight the new item
+    setTimeout(() => {
+      const historyItemElement = document.querySelector(
+        `.history-item[data-item-id="${newFile.id}"]`
+      ) as HTMLElement;
+
+      if (historyItemElement) {
+        // Add new item animation (slide in from top)
+        historyItemElement.classList.add('new-item-animation');
+        setTimeout(() => {
+          historyItemElement.classList.remove('new-item-animation');
+        }, 800);
+
+        // Scroll to the new card
+        historyItemElement.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+          inline: 'nearest'
+        });
+      }
+    }, 100);
+  }
+
+  isAddedToGeneration(itemId: string): boolean {
+    return this.addedToGenerationId === itemId;
+  }
+
+  togglePendingSection(): void {
+    this.isPendingExpanded = !this.isPendingExpanded;
+  }
+
+  toggleCompletedSection(): void {
+    this.isCompletedExpanded = !this.isCompletedExpanded;
+  }
+
+  clearSelection(): void {
+    this.selectedHistoryItem = null;
+  }
+
+  clearAddedToGeneration(): void {
+    this.addedToGenerationId = null;
+  }
+
+  addHistoryItem(item: HistoryItem): void {
+    this.historyItems.unshift(item);
+  }
+
+  private initializeDateRange(): void {
+    const today = new Date();
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(today.getDate() - 30);
+
+    this.startDate = this.formatDateForDisplay(thirtyDaysAgo);
+    this.endDate = this.formatDateForDisplay(today);
+  }
+
+  private fetchHistoryData(): void {
+    this.isLoading = true;
+    this.errorMessage = '';
+
+    const today = new Date();
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(today.getDate() - 30);
+
+    const startDateForApi = this.formatDateForApi(thirtyDaysAgo);
+    const endDateForApi = this.formatDateForApi(today);
+
+    this.historyService.getFilesByDateRange(startDateForApi, endDateForApi)
+      .subscribe({
+        next: (response) => {
+          if (response.status === 'success' && response.data.files) {
+            this.historyItems = this.mapFilesToHistoryItems(response.data.files);
+          }
+          this.isLoading = false;
+        },
+        error: (error) => {
+          console.error('Error fetching history data:', error);
+          this.errorMessage = 'Failed to load history data. Please try again.';
+          this.isLoading = false;
+        }
+      });
+  }
+
+  private mapFilesToHistoryItems(files: FileItem[]): HistoryItem[] {
+    return files.map(file => {
+      const hasResult = file.progress === 'completed';
+
+      return {
+        id: file.id.toString(),
+        name: file.original_name,
+        displayDate: `Created on ${file.inserted_at}`,
+        date: this.parseInsertedDate(file.inserted_at),
+        hasResult: hasResult
+      };
     });
-    this.subscriptions.push(sub);
-  });
-}
+  }
 
+  private parseInsertedDate(dateString: string): Date {
+    return new Date(dateString);
+  }
 
+  private formatDateForDisplay(date: Date): string {
+    const options: Intl.DateTimeFormatOptions = { 
+      month: 'short', 
+      day: 'numeric', 
+      year: 'numeric' 
+    };
+    return date.toLocaleDateString('en-US', options);
+  }
 
-
-
-
-
-
-
-
-
-
-// In your parent component template:
-<app-upload-generate 
-  [requestFile]="selectedFile"
-  (onGenerate)="handleGenerate($event)"
-  (onFileRemoved)="handleFileRemoved($event)"
-  (onGenerationComplete)="handleGenerationComplete($event)"
-  (onFileUploaded)="handleFileUploaded($event)">
-</app-upload-generate>
-
-// In your parent component class:
-handleFileUploaded(event: { id: number, original_name: string, created_at: string }): void {
-  console.log('File uploaded successfully:', event);
-  // Handle the uploaded file - e.g., add to file list, update UI, etc.
-  // This will be called for each file that uploads successfully
-}
-
-handleGenerationComplete(event: { id: number, status: 'Success' | 'Failed' }): void {
-  console.log('Generation completed:', event);
-  
-  if (event.status === 'Success') {
-    console.log(`File ${event.id} generated successfully`);
-  } else {
-    console.log(`File ${event.id} generation failed`);
+  private formatDateForApi(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   }
 }
 
-handleFileRemoved(event: { id: string | number, name: string }): void {
-  console.log('File removed:', event);
+
+
+
+
+
+
+
+
+
+/* New Item Animation - Slide in from top with highlight */
+@keyframes slideInFromTop {
+    0% {
+        transform: translateY(-20px);
+        opacity: 0;
+    }
+    50% {
+        transform: translateY(0);
+        opacity: 1;
+    }
+    100% {
+        transform: translateY(0);
+        opacity: 1;
+    }
 }
 
-handleGenerate(event: { file: any, prompts: string, mode: 'new' }): void {
-  console.log('Generate requested:', event);
+@keyframes newItemHighlight {
+    0% {
+        background: linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(167, 139, 250, 0.25));
+    }
+    100% {
+        background: var(--bg-color);
+    }
 }
+
+.history-item.new-item-animation {
+    animation: slideInFromTop 0.5s ease-out, newItemHighlight 0.8s ease-out;
+}
+
+
+
+
+
+
+
+// parent.component.ts
+export class ParentComponent {
+  removeGenerateFile: { id: number; name: string } | null = null;
+  generationStatus: { id: number; status: 'Success' | 'Failure' } | null = null;
+  newUploadFile: { id: number; original_name: string; created_at: string } | null = null;
+
+  // When a new file is uploaded
+  onFileUploaded(fileData: any) {
+    this.newUploadFile = {
+      id: fileData.id,
+      original_name: fileData.original_name,
+      created_at: fileData.created_at // e.g., "Jan 20, 2026"
+    };
+    
+    // Reset after a short delay
+    setTimeout(() => {
+      this.newUploadFile = null;
+    }, 100);
+  }
+
+  // Other methods...
+  markGenerationSuccess(fileId: number) {
+    this.generationStatus = { id: fileId, status: 'Success' };
+    setTimeout(() => {
+      this.generationStatus = null;
+    }, 100);
+  }
+
+  markGenerationFailure(fileId: number) {
+    this.generationStatus = { id: fileId, status: 'Failure' };
+    setTimeout(() => {
+      this.generationStatus = null;
+    }, 100);
+  }
+
+  removeFileFromHistory(fileId: number, fileName: string) {
+    this.removeGenerateFile = { id: fileId, name: fileName };
+    setTimeout(() => {
+      this.removeGenerateFile = null;
+    }, 100);
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+<!-- parent.component.html -->
+<app-history 
+  [removeGenerateFile]="removeGenerateFile"
+  [generationStatus]="generationStatus"
+  [newUploadFile]="newUploadFile"
+  (onItemSelect)="handleItemSelect($event)"
+  (onAddToContentGeneration)="handleAddToGeneration($event)"
+  (onRemoveFromContentGeneration)="handleRemoveFromGeneration($event)">
+</app-history>
+
+<!-- Example button for testing -->
+<button (click)="onFileUploaded({id: 5, original_name: 'new-file.vtt', created_at: 'Jan 20, 2026'})">
+  Upload New File
+</button>
