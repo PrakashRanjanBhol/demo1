@@ -1,498 +1,72 @@
-import { Component, EventEmitter, Output, Input, OnInit, OnChanges, SimpleChanges } from '@angular/core';
-import { HistoryService, FileItem } from './history.service';
+private handleGenerationStatusChange(statusUpdate: GenerationStatus): void {
+  const itemId = statusUpdate.id.toString();
+  const item = this.historyItems.find(i => i.id === itemId);
 
-interface HistoryItem {
-  id: string;
-  name: string;
-  displayDate: string;
-  date: Date;
-  hasResult: boolean;
-}
-
-interface RemoveGenerateFile {
-  id: number;
-  name: string;
-}
-
-interface GenerationStatus {
-  id: number;
-  status: 'Success' | 'Failure';
-}
-
-@Component({
-  selector: 'app-history',
-  templateUrl: './history.component.html',
-  styleUrls: ['./history.component.css']
-})
-export class HistoryComponent implements OnInit, OnChanges {
-  @Input() removeGenerateFile: RemoveGenerateFile | null = null;
-  @Input() generationStatus: GenerationStatus | null = null;
-  @Output() onItemSelect = new EventEmitter<string>();
-  @Output() onAddToContentGeneration = new EventEmitter<HistoryItem>();
-  @Output() onRemoveFromContentGeneration = new EventEmitter<string>();
-
-  selectedHistoryItem: HistoryItem | null = null;
-  addedToGenerationId: string | null = null; // Track which item is added
-  isPendingExpanded: boolean = true;
-  isCompletedExpanded: boolean = true;
-
-  startDate: string = '';
-  endDate: string = '';
-
-  historyItems: HistoryItem[] = [];
-  isLoading: boolean = false;
-  errorMessage: string = '';
-
-  constructor(private historyService: HistoryService) {}
-
-  ngOnInit(): void {
-    this.initializeDateRange();
-    this.fetchHistoryData();
+  if (!item) {
+    console.warn('Item not found for status update:', itemId);
+    return;
   }
 
-  ngOnChanges(changes: SimpleChanges): void {
-    if (changes['removeGenerateFile'] && changes['removeGenerateFile'].currentValue) {
-      const fileToRemove = changes['removeGenerateFile'].currentValue as RemoveGenerateFile;
-      this.handleRemoveFromParent(fileToRemove);
-    }
+  console.log(`Generation status update for item ${itemId}: ${statusUpdate.status}`);
 
-    if (changes['generationStatus'] && changes['generationStatus'].currentValue) {
-      const statusUpdate = changes['generationStatus'].currentValue as GenerationStatus;
-      this.handleGenerationStatusChange(statusUpdate);
-    }
-  }
+  // Find the history item element
+  const historyItemElement = document.querySelector(
+    `.history-item[data-item-id="${itemId}"]`
+  ) as HTMLElement;
 
-  get pendingFiles(): HistoryItem[] {
-    return this.historyItems.filter(item => !item.hasResult);
-  }
-
-  get completedFiles(): HistoryItem[] {
-    return this.historyItems.filter(item => item.hasResult);
-  }
-
-  onHistoryItemClick(itemId: string): void {
-    const item = this.historyItems.find(i => i.id === itemId);
-    if (item) {
-      this.selectedHistoryItem = item;
-      this.onItemSelect.emit(itemId);
-    }
-  }
-
-  onAddToGeneration(event: Event, item: HistoryItem): void {
-    event.stopPropagation();
-    
-    const button = (event.currentTarget as HTMLElement);
-    const historyItem = button.closest('.history-item') as HTMLElement;
-    
-    // Check if this item is already added
-    if (this.addedToGenerationId === item.id) {
-      // Remove from generation - Left to Right animation (Red)
-      this.removeItemWithAnimation(historyItem, button, item.id);
-    } else {
-      // Add to generation - Right to Left animation (Purple)
-      this.addItemWithAnimation(historyItem, button, item);
-    }
-  }
-
-  private addItemWithAnimation(historyItem: HTMLElement | null, button: HTMLElement, item: HistoryItem): void {
-    if (historyItem) {
-      historyItem.classList.add('adding-animation');
-      setTimeout(() => {
-        historyItem.classList.remove('adding-animation');
-      }, 800);
-    }
-    
-    // Add button pulse
-    button.classList.add('pulse-animation');
-    setTimeout(() => {
-      button.classList.remove('pulse-animation');
-    }, 400);
-    
-    const previousId = this.addedToGenerationId;
-    this.addedToGenerationId = item.id;
-    this.onAddToContentGeneration.emit(item);
-    console.log('Added to content generation:', item.name);
-    
-    if (previousId) {
-      console.log('Previous item removed automatically');
-    }
-  }
-
-  private removeItemWithAnimation(historyItem: HTMLElement | null, button: HTMLElement, itemId: string): void {
-    if (historyItem) {
-      historyItem.classList.add('removing-animation');
-      setTimeout(() => {
-        historyItem.classList.remove('removing-animation');
-      }, 800);
-    }
-    
-    // Add button pulse
-    button.classList.add('pulse-animation');
-    setTimeout(() => {
-      button.classList.remove('pulse-animation');
-    }, 400);
-    
-    this.addedToGenerationId = null;
-    this.onRemoveFromContentGeneration.emit(itemId);
-    console.log('Removed from content generation:', itemId);
-  }
-
-  private handleRemoveFromParent(fileToRemove: RemoveGenerateFile): void {
-    const itemId = fileToRemove.id.toString();
-    
-    // Check if this item is currently added
-    if (this.addedToGenerationId === itemId) {
-      console.log('Removing file from parent:', fileToRemove.name);
+  if (statusUpdate.status === 'Success') {
+    // Move to Completed Results
+    if (!item.hasResult) {
+      console.log(`Moving item ${itemId} to Completed Results`);
       
-      // Find the history item element by ID
-      const historyItemElement = document.querySelector(
-        `.history-item[data-item-id="${itemId}"]`
-      ) as HTMLElement;
-      
+      // Add success animation
       if (historyItemElement) {
-        // Add removing animation
-        historyItemElement.classList.add('removing-animation');
+        historyItemElement.classList.add('success-animation');
         setTimeout(() => {
-          historyItemElement.classList.remove('removing-animation');
-        }, 800);
+          historyItemElement.classList.remove('success-animation');
+        }, 1000);
       }
-      
-      // Clear the added state
+
+      // Update the item's hasResult property
+      item.hasResult = true;
+
+      // Expand Completed section if it's collapsed
+      if (!this.isCompletedExpanded) {
+        this.isCompletedExpanded = true;
+      }
+    }
+
+    // Clear the added state (remove minus icon, restore plus icon)
+    if (this.addedToGenerationId === itemId) {
+      console.log(`Clearing added state for item ${itemId} - restoring plus icon`);
       this.addedToGenerationId = null;
-      console.log('File removed successfully:', fileToRemove.name);
     }
-  }
-
-  private handleGenerationStatusChange(statusUpdate: GenerationStatus): void {
-    const itemId = statusUpdate.id.toString();
-    const item = this.historyItems.find(i => i.id === itemId);
-
-    if (!item) {
-      console.warn('Item not found for status update:', itemId);
-      return;
-    }
-
-    console.log(`Generation status update for item ${itemId}: ${statusUpdate.status}`);
-
-    // Find the history item element
-    const historyItemElement = document.querySelector(
-      `.history-item[data-item-id="${itemId}"]`
-    ) as HTMLElement;
-
-    if (statusUpdate.status === 'Success') {
-      // Move to Completed Results
-      if (!item.hasResult) {
-        console.log(`Moving item ${itemId} to Completed Results`);
-        
-        // Add success animation
-        if (historyItemElement) {
-          historyItemElement.classList.add('success-animation');
-          setTimeout(() => {
-            historyItemElement.classList.remove('success-animation');
-          }, 1000);
-        }
-
-        // Update the item's hasResult property
-        item.hasResult = true;
-
-        // Expand Completed section if it's collapsed
-        if (!this.isCompletedExpanded) {
-          this.isCompletedExpanded = true;
-        }
-
-        // Clear the added state since generation is complete
-        if (this.addedToGenerationId === itemId) {
-          this.addedToGenerationId = null;
-        }
+  } else if (statusUpdate.status === 'Failure') {
+    // Move to Pending Results
+    if (item.hasResult) {
+      console.log(`Moving item ${itemId} to Pending Results`);
+      
+      // Add failure animation
+      if (historyItemElement) {
+        historyItemElement.classList.add('failure-animation');
+        setTimeout(() => {
+          historyItemElement.classList.remove('failure-animation');
+        }, 1000);
       }
-    } else if (statusUpdate.status === 'Failure') {
-      // Move to Pending Results
-      if (item.hasResult) {
-        console.log(`Moving item ${itemId} to Pending Results`);
-        
-        // Add failure animation
-        if (historyItemElement) {
-          historyItemElement.classList.add('failure-animation');
-          setTimeout(() => {
-            historyItemElement.classList.remove('failure-animation');
-          }, 1000);
-        }
 
-        // Update the item's hasResult property
-        item.hasResult = false;
+      // Update the item's hasResult property
+      item.hasResult = false;
 
-        // Expand Pending section if it's collapsed
-        if (!this.isPendingExpanded) {
-          this.isPendingExpanded = true;
-        }
-
-        // Clear the added state since generation failed
-        if (this.addedToGenerationId === itemId) {
-          this.addedToGenerationId = null;
-        }
+      // Expand Pending section if it's collapsed
+      if (!this.isPendingExpanded) {
+        this.isPendingExpanded = true;
       }
     }
-  }
 
-  isAddedToGeneration(itemId: string): boolean {
-    return this.addedToGenerationId === itemId;
-  }
-
-  togglePendingSection(): void {
-    this.isPendingExpanded = !this.isPendingExpanded;
-  }
-
-  toggleCompletedSection(): void {
-    this.isCompletedExpanded = !this.isCompletedExpanded;
-  }
-
-  clearSelection(): void {
-    this.selectedHistoryItem = null;
-  }
-
-  clearAddedToGeneration(): void {
-    this.addedToGenerationId = null;
-  }
-
-  addHistoryItem(item: HistoryItem): void {
-    this.historyItems.unshift(item);
-  }
-
-  private initializeDateRange(): void {
-    const today = new Date();
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(today.getDate() - 30);
-
-    this.startDate = this.formatDateForDisplay(thirtyDaysAgo);
-    this.endDate = this.formatDateForDisplay(today);
-  }
-
-  private fetchHistoryData(): void {
-    this.isLoading = true;
-    this.errorMessage = '';
-
-    const today = new Date();
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(today.getDate() - 30);
-
-    const startDateForApi = this.formatDateForApi(thirtyDaysAgo);
-    const endDateForApi = this.formatDateForApi(today);
-
-    this.historyService.getFilesByDateRange(startDateForApi, endDateForApi)
-      .subscribe({
-        next: (response) => {
-          if (response.status === 'success' && response.data.files) {
-            this.historyItems = this.mapFilesToHistoryItems(response.data.files);
-          }
-          this.isLoading = false;
-        },
-        error: (error) => {
-          console.error('Error fetching history data:', error);
-          this.errorMessage = 'Failed to load history data. Please try again.';
-          this.isLoading = false;
-        }
-      });
-  }
-
-  private mapFilesToHistoryItems(files: FileItem[]): HistoryItem[] {
-    return files.map(file => {
-      const hasResult = file.progress === 'completed';
-
-      return {
-        id: file.id.toString(),
-        name: file.original_name,
-        displayDate: `Created on ${file.inserted_at}`,
-        date: this.parseInsertedDate(file.inserted_at),
-        hasResult: hasResult
-      };
-    });
-  }
-
-  private parseInsertedDate(dateString: string): Date {
-    return new Date(dateString);
-  }
-
-  private formatDateForDisplay(date: Date): string {
-    const options: Intl.DateTimeFormatOptions = { 
-      month: 'short', 
-      day: 'numeric', 
-      year: 'numeric' 
-    };
-    return date.toLocaleDateString('en-US', options);
-  }
-
-  private formatDateForApi(date: Date): string {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  }
-}
-
-
-
-
-
-
-
-
-
-/* Success Animation - Green gradient flow */
-@keyframes successFlow {
-    0% {
-        transform: translateX(100%) scale(1.2);
-        opacity: 0;
+    // Clear the added state (remove minus icon, restore plus icon)
+    if (this.addedToGenerationId === itemId) {
+      console.log(`Clearing added state for item ${itemId} - restoring plus icon`);
+      this.addedToGenerationId = null;
     }
-    50% {
-        opacity: 1;
-    }
-    100% {
-        transform: translateX(-100%) scale(1);
-        opacity: 0;
-    }
-}
-
-/* Failure Animation - Red pulse */
-@keyframes failureFlow {
-    0% {
-        transform: translateX(-100%) scale(1.2);
-        opacity: 0;
-    }
-    50% {
-        opacity: 1;
-    }
-    100% {
-        transform: translateX(100%) scale(1);
-        opacity: 0;
-    }
-}
-
-/* Success Animation Class */
-.history-item.success-animation {
-    position: relative;
-    overflow: hidden;
-}
-
-.history-item.success-animation::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(
-        90deg,
-        transparent 0%,
-        rgba(34, 197, 94, 0.3) 25%,
-        rgba(74, 222, 128, 0.5) 50%,
-        rgba(34, 197, 94, 0.3) 75%,
-        transparent 100%
-    );
-    animation: successFlow 1s ease-out;
-    pointer-events: none;
-    z-index: 1;
-}
-
-/* Failure Animation Class */
-.history-item.failure-animation {
-    position: relative;
-    overflow: hidden;
-}
-
-.history-item.failure-animation::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(
-        90deg,
-        transparent 0%,
-        rgba(239, 68, 68, 0.4) 25%,
-        rgba(248, 113, 113, 0.5) 50%,
-        rgba(239, 68, 68, 0.4) 75%,
-        transparent 100%
-    );
-    animation: failureFlow 1s ease-out;
-    pointer-events: none;
-    z-index: 1;
-}
-
-
-
-
-
-
-
-
-
-
-// parent.component.ts
-export class ParentComponent {
-  removeGenerateFile: { id: number; name: string } | null = null;
-  generationStatus: { id: number; status: 'Success' | 'Failure' } | null = null;
-
-  // Simulate successful generation
-  markGenerationSuccess(fileId: number) {
-    this.generationStatus = { id: fileId, status: 'Success' };
-    
-    // Reset after a short delay
-    setTimeout(() => {
-      this.generationStatus = null;
-    }, 100);
-  }
-
-  // Simulate failed generation
-  markGenerationFailure(fileId: number) {
-    this.generationStatus = { id: fileId, status: 'Failure' };
-    
-    // Reset after a short delay
-    setTimeout(() => {
-      this.generationStatus = null;
-    }, 100);
-  }
-
-  // Remove file from history
-  removeFileFromHistory(fileId: number, fileName: string) {
-    this.removeGenerateFile = { id: fileId, name: fileName };
-    
-    setTimeout(() => {
-      this.removeGenerateFile = null;
-    }, 100);
-  }
-
-  handleAddToGeneration(item: any) {
-    console.log('File added:', item);
-  }
-
-  handleRemoveFromGeneration(itemId: string) {
-    console.log('File removed:', itemId);
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-<!-- parent.component.html -->
-<app-history 
-  [removeGenerateFile]="removeGenerateFile"
-  [generationStatus]="generationStatus"
-  (onItemSelect)="handleItemSelect($event)"
-  (onAddToContentGeneration)="handleAddToGeneration($event)"
-  (onRemoveFromContentGeneration)="handleRemoveFromGeneration($event)">
-</app-history>
-
-<!-- Example buttons for testing -->
-<button (click)="markGenerationSuccess(1)">Mark File #1 as Success</button>
-<button (click)="markGenerationFailure(1)">Mark File #1 as Failed</button>
-<button (click)="removeFileFromHistory(1, 'test.vtt')">Remove File #1</button>
