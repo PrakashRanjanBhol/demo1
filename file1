@@ -1,14 +1,25 @@
-// Update the selectedGenerateFile type:
-selectedGenerateFile: { 
-  name: string, 
-  size: number, 
-  id: string | number, 
-  displayDate?: string, 
-  hasResult?: boolean,
-  summary_prompt?: string | null,
-  faq_prompt?: string | null
-} | null = null;
+export interface GenerateRequest {
+  fileID: number;
+  model_name: string;
+  optional_prompt?: string;
+  summary_prompt?: string;
+  faq_prompt?: string;
+}
 
+
+
+
+
+
+
+// Update component properties - remove optionalPrompts and add separate prompts:
+isDragging: boolean = false;
+summaryPrompt: string = '';
+faqPrompt: string = '';
+isProcessing: boolean = false;
+processingProgress: number = 0;
+processingFileName: string = '';
+processingFileId: string = '';
 
 
 
@@ -32,28 +43,18 @@ private handleRequestFileChange(requestFile: RequestFile | null): void {
       faq_prompt: requestFile.faq_prompt
     };
 
-    // Set optional prompts if provided from parent
-    if (requestFile.summary_prompt || requestFile.faq_prompt) {
-      const prompts: string[] = [];
-      
-      if (requestFile.summary_prompt) {
-        prompts.push(requestFile.summary_prompt);
-      }
-      
-      if (requestFile.faq_prompt) {
-        prompts.push(requestFile.faq_prompt);
-      }
-      
-      this.optionalPrompts = prompts.join('\n\n');
-    } else {
-      this.optionalPrompts = '';
-    }
+    // Set prompts from the file
+    this.summaryPrompt = requestFile.summary_prompt || '';
+    this.faqPrompt = requestFile.faq_prompt || '';
 
     // Trigger highlight animation
     this.triggerFileHighlight();
   } else {
     // Clear the selected file
     this.selectedGenerateFile = null;
+    // Clear prompts
+    this.summaryPrompt = '';
+    this.faqPrompt = '';
     // Clear any existing highlight
     this.isFileHighlighted = false;
     if (this.highlightTimeout) {
@@ -61,3 +62,293 @@ private handleRequestFileChange(requestFile: RequestFile | null): void {
     }
   }
 }
+
+
+
+
+
+
+// Update the removeGenerateFile method:
+removeGenerateFile(): void {
+  if (this.selectedGenerateFile) {
+    // Emit the file removed event to parent
+    this.onFileRemoved.emit({
+      id: this.selectedGenerateFile.id,
+      name: this.selectedGenerateFile.name
+    });
+  }
+
+  // Clear the selected file
+  this.selectedGenerateFile = null;
+  
+  // Clear prompts
+  this.summaryPrompt = '';
+  this.faqPrompt = '';
+  
+  // Clear highlight when file is removed
+  this.isFileHighlighted = false;
+  if (this.highlightTimeout) {
+    clearTimeout(this.highlightTimeout);
+  }
+
+  // Stop any ongoing generation
+  this.stopProgressPolling();
+  this.isProcessing = false;
+  this.generationStatus = 'idle';
+}
+
+
+
+
+
+
+// Update the startGeneration method:
+private startGeneration(): void {
+  if (!this.selectedGenerateFile) return;
+
+  this.isProcessing = true;
+  this.processingProgress = 0;
+  this.processingFileName = this.selectedGenerateFile.name;
+  this.processingFileId = String(this.selectedGenerateFile.id);
+  this.generationStatus = 'generating';
+  this.generationErrorMessage = '';
+
+  const request: GenerateRequest = {
+    fileID: Number(this.selectedGenerateFile.id),
+    model_name: this.selectedModel,
+    optional_prompt: '', // Keep for backward compatibility if needed
+    summary_prompt: this.summaryPrompt || '',
+    faq_prompt: this.faqPrompt || ''
+  };
+
+  const sub = this.uploadGenerateService.generateAnalysis(request).subscribe({
+    next: (response: GenerateResponse) => {
+      console.log('Generation API response:', response);
+      
+      if (response.status === 'Success') {
+        // Start progress polling
+        this.startProgressPolling(Number(this.selectedGenerateFile!.id));
+      } else {
+        // Generation failed to start
+        this.handleGenerationError('Failed to start generation');
+      }
+    },
+    error: (error) => {
+      console.error('Generation error:', error);
+      this.handleGenerationError('Failed to initiate generation: ' + (error.message || 'Unknown error'));
+    }
+  });
+  this.subscriptions.push(sub);
+}
+
+
+
+
+
+
+
+
+
+// Update the handleGenerationSuccess method:
+private handleGenerationSuccess(): void {
+  this.processingProgress = 100;
+  this.generationStatus = 'success';
+  
+  // Emit success event to parent with the new format
+  this.onGenerationComplete.emit({
+    id: Number(this.processingFileId),
+    status: 'Success'
+  });
+
+  // Emit the original onGenerate event for backward compatibility
+  this.onGenerate.emit({
+    file: {
+      fileId: this.processingFileId,
+      fileName: this.processingFileName
+    },
+    prompts: this.summaryPrompt + '\n\n' + this.faqPrompt,
+    mode: 'new'
+  });
+
+  // Wait a bit to show the success state, then complete
+  setTimeout(() => {
+    this.completeProcessing();
+  }, 2000);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+// Update the completeProcessing method:
+completeProcessing(): void {
+  this.isProcessing = false;
+  this.processingProgress = 0;
+  this.processingFileName = '';
+  this.processingFileId = '';
+  this.selectedGenerateFile = null;
+  this.summaryPrompt = '';
+  this.faqPrompt = '';
+  this.generationStatus = 'idle';
+  this.generationErrorMessage = '';
+  
+  // Clear highlight
+  this.isFileHighlighted = false;
+  if (this.highlightTimeout) {
+    clearTimeout(this.highlightTimeout);
+  }
+
+  // Stop polling
+  this.stopProgressPolling();
+}
+
+
+
+
+
+
+
+
+// Update the onCancel method:
+onCancel(): void {
+  // Stop any ongoing generation
+  this.stopProgressPolling();
+  
+  this.selectedGenerateFile = null;
+  this.summaryPrompt = '';
+  this.faqPrompt = '';
+  this.isProcessing = false;
+  this.processingProgress = 0;
+  this.generationStatus = 'idle';
+  this.generationErrorMessage = '';
+  
+  // Clear highlight
+  this.isFileHighlighted = false;
+  if (this.highlightTimeout) {
+    clearTimeout(this.highlightTimeout);
+  }
+}
+
+
+
+
+
+
+
+// Update the onReset method:
+onReset(): void {
+  if (this.isUploading) return;
+  this.uploadedFilesWithStatus = [];
+  this.selectedUploadFile = null;
+  this.summaryPrompt = '';
+  this.faqPrompt = '';
+  this.isDragging = false;
+}
+
+
+
+
+
+
+// Update the switchToTab method:
+switchToTab(tab: 'upload' | 'generate'): void {
+  if (this.isUploading && tab === 'generate') return;
+  if (this.isProcessing && tab === 'upload') return; // Prevent switching during generation
+
+  // Don't reset if switching to generate tab with a requestFile
+  if (tab === 'generate' && this.requestFile) {
+    this.currentTab = tab;
+    return;
+  }
+
+  // Reset all data when switching tabs manually
+  this.uploadedFilesWithStatus = [];
+  this.selectedUploadFile = null;
+  
+  // Only reset selectedGenerateFile if not coming from parent
+  if (!this.requestFile) {
+    this.selectedGenerateFile = null;
+  }
+  
+  this.summaryPrompt = '';
+  this.faqPrompt = '';
+  this.isDragging = false;
+  this.isDraggingGenerate = false;
+  this.isProcessing = false;
+  this.processingProgress = 0;
+  this.processingFileName = '';
+  this.generationStatus = 'idle';
+  this.generationErrorMessage = '';
+
+  this.currentTab = tab;
+}
+
+
+
+
+
+
+
+
+
+
+<!-- Optional Summary Prompts -->
+<div class="prompts-area">
+    <label class="prompts-label">Optional Summary Prompts</label>
+    <textarea class="prompts-textarea" [(ngModel)]="summaryPrompt" name="summaryPrompt"
+        [disabled]="isProcessing"
+        placeholder="Enter any specific instructions for summary generation...&#10;&#10;Example:&#10;- Focus on key findings&#10;- Include main topics&#10;- Highlight important insights"
+        rows="6"></textarea>
+    <p class="prompts-hint">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+            stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round"
+                d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+        </svg>
+        Add custom instructions to guide the summary generation
+    </p>
+</div>
+
+<!-- Optional FAQ Prompts -->
+<div class="prompts-area">
+    <label class="prompts-label">Optional FAQ Prompts</label>
+    <textarea class="prompts-textarea" [(ngModel)]="faqPrompt" name="faqPrompt"
+        [disabled]="isProcessing"
+        placeholder="Enter any specific instructions for FAQ generation...&#10;&#10;Example:&#10;- Generate 5-10 questions&#10;- Focus on common queries&#10;- Include technical details"
+        rows="6"></textarea>
+    <p class="prompts-hint">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+            stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round"
+                d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+        </svg>
+        Add custom instructions to guide the FAQ generation
+    </p>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
