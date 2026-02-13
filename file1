@@ -1,75 +1,295 @@
-/* History Item */
-.history-item {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    padding: 14px 16px;
-    background-color: var(--bg-color);
-    border: 1px solid var(--border-color);
-    border-radius: 10px;
-    transition: all 0.2s ease;
-    cursor: pointer;
-    position: relative; /* For the ::before pseudo-element */
-}
+// Add new @Output decorator:
+@Output() onProcessingStatusChange = new EventEmitter<{ 
+  isProcessing: boolean, 
+  id: number | null 
+}>();
 
-.history-item:hover {
-    border-color: var(--primary-color);
-    box-shadow: 0 2px 8px rgba(139, 92, 246, 0.1);
-}
 
-.history-item.selected {
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.12), rgba(167, 139, 250, 0.12));
-    border-color: var(--primary-color);
-    box-shadow: 0 4px 16px rgba(139, 92, 246, 0.2);
-    /* Removed: transform: translateX(4px); */
-    /* Removed: border-width: 2px; */
-    animation: scrollHighlight 1s ease-out;
-}
 
-/* Left border accent when selected */
-.history-item.selected::before {
-    content: '';
-    position: absolute;
-    left: -1px;
-    top: 0;
-    bottom: 0;
-    width: 4px;
-    background: linear-gradient(180deg, var(--primary-color), #a78bfa);
-    border-radius: 10px 0 0 10px;
-    animation: slideInLeft 0.3s ease;
-}
 
-@keyframes slideInLeft {
-    from {
-        width: 0;
-        opacity: 0;
+
+// Update the startGeneration method to emit when processing starts:
+private startGeneration(): void {
+  if (!this.selectedGenerateFile) return;
+
+  this.isProcessing = true;
+  this.processingProgress = 0;
+  this.processingFileName = this.selectedGenerateFile.name;
+  this.processingFileId = String(this.selectedGenerateFile.id);
+  this.generationStatus = 'generating';
+  this.generationErrorMessage = '';
+
+  // Emit processing started
+  this.onProcessingStatusChange.emit({
+    isProcessing: true,
+    id: Number(this.selectedGenerateFile.id)
+  });
+
+  const request: GenerateRequest = {
+    fileID: Number(this.selectedGenerateFile.id),
+    model_name: this.selectedModel,
+    optional_prompt: '',
+    summary_prompt: this.summaryPrompt || '',
+    faq_prompt: this.faqPrompt || ''
+  };
+
+  const sub = this.uploadGenerateService.generateAnalysis(request).subscribe({
+    next: (response: GenerateResponse) => {
+      console.log('Generation API response:', response);
+      
+      if (response.status === 'Success') {
+        // Start progress polling
+        this.startProgressPolling(Number(this.selectedGenerateFile!.id));
+      } else {
+        // Generation failed to start
+        this.handleGenerationError('Failed to start generation');
+      }
+    },
+    error: (error) => {
+      console.error('Generation error:', error);
+      this.handleGenerationError('Failed to initiate generation: ' + (error.message || 'Unknown error'));
     }
-    to {
-        width: 4px;
-        opacity: 1;
-    }
+  });
+  this.subscriptions.push(sub);
 }
 
-/* Scroll highlight animation */
-@keyframes scrollHighlight {
-    0% {
-        box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.7);
-    }
-    50% {
-        box-shadow: 0 0 0 10px rgba(139, 92, 246, 0);
-    }
-    100% {
-        box-shadow: 0 0 0 0 rgba(139, 92, 246, 0);
-    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// Update the handleGenerationSuccess method to emit when processing completes:
+private handleGenerationSuccess(): void {
+  this.processingProgress = 100;
+  this.generationStatus = 'success';
+  
+  // Emit success event to parent with the new format including prompts
+  this.onGenerationComplete.emit({
+    id: Number(this.processingFileId),
+    status: 'Success',
+    summary_prompt: this.summaryPrompt || undefined,
+    faq_prompt: this.faqPrompt || undefined
+  });
+
+  // Emit the original onGenerate event for backward compatibility
+  this.onGenerate.emit({
+    file: {
+      fileId: this.processingFileId,
+      fileName: this.processingFileName
+    },
+    prompts: this.summaryPrompt + '\n\n' + this.faqPrompt,
+    mode: 'new'
+  });
+
+  // Wait a bit to show the success state, then complete
+  setTimeout(() => {
+    this.completeProcessing();
+  }, 2000);
 }
 
-/* History Item Actions Container */
-.history-item-actions {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-shrink: 0;
+
+
+
+
+
+
+
+
+
+
+
+
+
+// Update the handleGenerationError method to emit when processing fails:
+private handleGenerationError(message: string): void {
+  this.generationStatus = 'error';
+  this.generationErrorMessage = message;
+  this.isProcessing = false;
+  this.processingProgress = 0;
+
+  // Emit processing stopped with error
+  this.onProcessingStatusChange.emit({
+    isProcessing: false,
+    id: null
+  });
+
+  // Emit failure event to parent with the new format including prompts
+  this.onGenerationComplete.emit({
+    id: Number(this.processingFileId),
+    status: 'Failure',
+    summary_prompt: this.summaryPrompt || undefined,
+    faq_prompt: this.faqPrompt || undefined
+  });
 }
 
-/* Remove all checkmark styles */
-/* All .history-item-checkmark styles removed */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// Update the completeProcessing method to emit when processing completes:
+completeProcessing(): void {
+  // Emit processing stopped
+  this.onProcessingStatusChange.emit({
+    isProcessing: false,
+    id: null
+  });
+
+  this.isProcessing = false;
+  this.processingProgress = 0;
+  this.processingFileName = '';
+  this.processingFileId = '';
+  this.selectedGenerateFile = null;
+  this.summaryPrompt = '';
+  this.faqPrompt = '';
+  this.generationStatus = 'idle';
+  this.generationErrorMessage = '';
+  
+  // Clear highlight
+  this.isFileHighlighted = false;
+  if (this.highlightTimeout) {
+    clearTimeout(this.highlightTimeout);
+  }
+
+  // Stop polling
+  this.stopProgressPolling();
+}
+
+
+
+
+
+
+
+
+
+
+
+// Update the onCancel method to emit when processing is cancelled:
+onCancel(): void {
+  // Stop any ongoing generation
+  this.stopProgressPolling();
+  
+  // Emit processing stopped if it was running
+  if (this.isProcessing) {
+    this.onProcessingStatusChange.emit({
+      isProcessing: false,
+      id: null
+    });
+  }
+  
+  this.selectedGenerateFile = null;
+  this.summaryPrompt = '';
+  this.faqPrompt = '';
+  this.isProcessing = false;
+  this.processingProgress = 0;
+  this.generationStatus = 'idle';
+  this.generationErrorMessage = '';
+  
+  // Clear highlight
+  this.isFileHighlighted = false;
+  if (this.highlightTimeout) {
+    clearTimeout(this.highlightTimeout);
+  }
+}
+
+
+
+
+
+
+
+// Update the removeGenerateFile method to emit if processing was active:
+removeGenerateFile(): void {
+  if (this.selectedGenerateFile) {
+    // Emit the file removed event to parent
+    this.onFileRemoved.emit({
+      id: this.selectedGenerateFile.id,
+      name: this.selectedGenerateFile.name
+    });
+  }
+
+  // Emit processing stopped if it was running
+  if (this.isProcessing) {
+    this.onProcessingStatusChange.emit({
+      isProcessing: false,
+      id: null
+    });
+  }
+
+  // Clear the selected file
+  this.selectedGenerateFile = null;
+  
+  // Clear prompts
+  this.summaryPrompt = '';
+  this.faqPrompt = '';
+  
+  // Clear highlight when file is removed
+  this.isFileHighlighted = false;
+  if (this.highlightTimeout) {
+    clearTimeout(this.highlightTimeout);
+  }
+
+  // Stop any ongoing generation
+  this.stopProgressPolling();
+  this.isProcessing = false;
+  this.generationStatus = 'idle';
+}
+
+
+
+
+
+
+
+
+// In your parent component template:
+<app-upload-generate 
+  [requestFile]="selectedFile"
+  (onGenerate)="handleGenerate($event)"
+  (onFileRemoved)="handleFileRemoved($event)"
+  (onGenerationComplete)="handleGenerationComplete($event)"
+  (onFileUploaded)="handleFileUploaded($event)"
+  (onProcessingStatusChange)="handleProcessingStatusChange($event)">
+</app-upload-generate>
+
+// In your parent component class:
+handleProcessingStatusChange(event: { isProcessing: boolean, id: number | null }): void {
+  console.log('Processing status changed:', event);
+  
+  if (event.isProcessing) {
+    console.log(`Processing started for file ID: ${event.id}`);
+    // Handle processing started - e.g., disable actions, show loading indicator
+    // You can use event.id to identify which file is being processed
+  } else {
+    console.log('Processing stopped');
+    // Handle processing stopped - e.g., re-enable actions, hide loading indicator
+  }
+}
+
+
+
+
+
+
+
+
+
