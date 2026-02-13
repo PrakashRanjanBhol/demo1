@@ -1,23 +1,192 @@
-onAddToGeneration(event: Event, item: HistoryItem): void {
-  event.stopPropagation();
+import { Component, EventEmitter, Output, Input, OnInit, OnChanges, SimpleChanges } from '@angular/core';
+import { HistoryService, FileItem } from './history.service';
+
+interface HistoryItem {
+  id: string;
+  name: string;
+  displayDate: string;
+  date: Date;
+  hasResult: boolean;
+  summary_prompt: string | null;
+  faq_prompt: string | null;
+}
+
+export interface HistoryItemSelect {
+  id: string;
+  name: string;
+  displayDate: string;
+  date: Date;
+  summary_prompt: string | null;
+  faq_prompt: string | null;
+}
+
+interface RemoveGenerateFile {
+  id: number;
+  name: string;
+}
+
+interface GenerationStatus {
+  id: number;
+  status: 'Success' | 'Failure';
+  summary_prompt?: string;
+  faq_prompt?: string;
+}
+
+interface NewUploadFile {
+  id: number;
+  original_name: string;
+  created_at: string;
+  summary_prompt: string | null;
+  faq_prompt: string | null;
+}
+
+interface ProcessStatus {
+  id: number | null;
+  isProcessing: boolean;
+}
+
+@Component({
+  selector: 'app-history',
+  templateUrl: './history.component.html',
+  styleUrls: ['./history.component.css']
+})
+export class HistoryComponent implements OnInit, OnChanges {
+  @Input() removeGenerateFile: RemoveGenerateFile | null = null;
+  @Input() generationStatus: GenerationStatus | null = null;
+  @Input() newUploadFile: NewUploadFile | null = null;
+  @Input() processStatus: ProcessStatus | null = null;
   
-  // Check if item is currently processing
-  if (this.isProcessing(item.id)) {
-    alert('This file is currently being processed. Please wait until processing is complete.');
-    return;
+  @Output() onItemSelect = new EventEmitter<HistoryItemSelect>();
+  @Output() onAddToContentGeneration = new EventEmitter<HistoryItem>();
+  @Output() onRemoveFromContentGeneration = new EventEmitter<string>();
+
+  selectedHistoryItem: HistoryItem | null = null;
+  addedToGenerationId: string | null = null;
+  processingItemId: string | null = null;
+  isPendingExpanded: boolean = true;
+  isCompletedExpanded: boolean = true;
+
+  startDate: string = '';
+  endDate: string = '';
+
+  historyItems: HistoryItem[] = [];
+  isLoading: boolean = false;
+  isRefreshing: boolean = false;
+  errorMessage: string = '';
+
+  // Filter properties
+  isFilterVisible: boolean = false;
+  filterFromDate: string = '';
+  filterToDate: string = '';
+  searchText: string = '';
+
+  constructor(private historyService: HistoryService) {}
+
+  ngOnInit(): void {
+    this.initializeDateRange();
+    this.fetchHistoryData();
   }
-  
-  const button = (event.currentTarget as HTMLElement);
-  const historyItem = button.closest('.history-item') as HTMLElement;
-  
-  // Check if this item is already added
-  if (this.addedToGenerationId === item.id) {
-    // Remove from generation - Left to Right animation (Red)
-    this.removeItemWithAnimation(historyItem, button, item.id);
-  } else {
-    // Add to generation - Right to Left animation (Purple)
-    this.addItemWithAnimation(historyItem, button, item);
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['removeGenerateFile'] && changes['removeGenerateFile'].currentValue) {
+      const fileToRemove = changes['removeGenerateFile'].currentValue as RemoveGenerateFile;
+      this.handleRemoveFromParent(fileToRemove);
+    }
+
+    if (changes['generationStatus'] && changes['generationStatus'].currentValue) {
+      const statusUpdate = changes['generationStatus'].currentValue as GenerationStatus;
+      this.handleGenerationStatusChange(statusUpdate);
+    }
+
+    if (changes['newUploadFile'] && changes['newUploadFile'].currentValue) {
+      const newFile = changes['newUploadFile'].currentValue as NewUploadFile;
+      this.handleNewFileUpload(newFile);
+    }
+
+    if (changes['processStatus'] && changes['processStatus'].currentValue) {
+      const status = changes['processStatus'].currentValue as ProcessStatus;
+      this.handleProcessStatusChange(status);
+    }
   }
+
+  get pendingFiles(): HistoryItem[] {
+    return this.historyItems.filter(item => !item.hasResult);
+  }
+
+  get completedFiles(): HistoryItem[] {
+    return this.historyItems.filter(item => item.hasResult);
+  }
+
+  get filteredPendingFiles(): HistoryItem[] {
+    return this.applyTextSearch(this.pendingFiles);
+  }
+
+  get filteredCompletedFiles(): HistoryItem[] {
+    return this.applyTextSearch(this.completedFiles);
+  }
+
+  isProcessing(itemId: string): boolean {
+    return this.processingItemId === itemId;
+  }
+
+  isAnyProcessing(): boolean {
+    return this.processingItemId !== null;
+  }
+
+  onAddToGeneration(event: Event, item: HistoryItem): void {
+    event.stopPropagation();
+    
+    // Check if any file is currently processing
+    if (this.isAnyProcessing()) {
+      const processingItem = this.historyItems.find(i => i.id === this.processingItemId);
+      const processingFileName = processingItem ? processingItem.name : 'A file';
+      alert(`Cannot perform this action. ${processingFileName} is currently being processed. Please wait until processing is complete.`);
+      return;
+    }
+
+    const button = (event.currentTarget as HTMLElement);
+    const historyItem = button.closest('.history-item') as HTMLElement;
+    
+    // Check if this item is already added
+    if (this.addedToGenerationId === item.id) {
+      // Remove from generation - Left to Right animation (Red)
+      this.removeItemWithAnimation(historyItem, button, item.id);
+    } else {
+      // Add to generation - Right to Left animation (Purple)
+      this.addItemWithAnimation(historyItem, button, item);
+    }
+  }
+
+  private handleProcessStatusChange(status: ProcessStatus): void {
+    if (status.id === null) {
+      // Clear processing state for all items
+      console.log('Clearing all processing states');
+      this.processingItemId = null;
+      return;
+    }
+
+    const itemId = status.id.toString();
+    const item = this.historyItems.find(i => i.id === itemId);
+
+    if (!item) {
+      console.warn('Item not found for process status update:', itemId);
+      return;
+    }
+
+    if (status.isProcessing) {
+      // Set processing state
+      console.log(`Setting processing state for item ${itemId}`);
+      this.processingItemId = itemId;
+    } else {
+      // Clear processing state
+      console.log(`Clearing processing state for item ${itemId}`);
+      if (this.processingItemId === itemId) {
+        this.processingItemId = null;
+      }
+    }
+  }
+
+  // ... rest of the methods remain the same ...
 }
 
 
@@ -59,9 +228,9 @@ onAddToGeneration(event: Event, item: HistoryItem): void {
     <div class="history-item-actions">
         <button class="add-to-generation-btn" 
                 [class.added]="isAddedToGeneration(item.id)"
-                [class.disabled]="isProcessing(item.id)"
+                [class.disabled-by-processing]="isAnyProcessing()"
                 (click)="onAddToGeneration($event, item)"
-                [title]="isProcessing(item.id) ? 'Processing - please wait' : (isAddedToGeneration(item.id) ? 'Remove from content generation' : 'Add to content generation')">
+                [title]="isAnyProcessing() ? 'Please wait, a file is being processed' : (isAddedToGeneration(item.id) ? 'Remove from content generation' : 'Add to content generation')">
             <div class="btn-icon-wrapper">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
                     stroke="currentColor" class="plus-icon" *ngIf="!isAddedToGeneration(item.id)">
@@ -116,9 +285,9 @@ onAddToGeneration(event: Event, item: HistoryItem): void {
     <div class="history-item-actions">
         <button class="add-to-generation-btn" 
                 [class.added]="isAddedToGeneration(item.id)"
-                [class.disabled]="isProcessing(item.id)"
+                [class.disabled-by-processing]="isAnyProcessing()"
                 (click)="onAddToGeneration($event, item)"
-                [title]="isProcessing(item.id) ? 'Processing - please wait' : (isAddedToGeneration(item.id) ? 'Remove from content generation' : 'Add to content generation')">
+                [title]="isAnyProcessing() ? 'Please wait, a file is being processed' : (isAddedToGeneration(item.id) ? 'Remove from content generation' : 'Add to content generation')">
             <div class="btn-icon-wrapper">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
                     stroke="currentColor" class="plus-icon" *ngIf="!isAddedToGeneration(item.id)">
@@ -148,20 +317,32 @@ onAddToGeneration(event: Event, item: HistoryItem): void {
 
 
 
-
-
-
-/* Disable button when processing - visual indication */
-.add-to-generation-btn.disabled {
-    opacity: 0.5;
+/* Disable button when any processing is happening */
+.add-to-generation-btn.disabled-by-processing {
+    opacity: 0.4;
     cursor: not-allowed;
 }
 
-.add-to-generation-btn.disabled:hover {
+.add-to-generation-btn.disabled-by-processing:hover {
     transform: none;
     box-shadow: none;
+    border-color: rgba(139, 92, 246, 0.3);
 }
 
-.add-to-generation-btn.disabled::before {
+.add-to-generation-btn.disabled-by-processing::before {
     display: none;
 }
+
+.add-to-generation-btn.disabled-by-processing .plus-icon,
+.add-to-generation-btn.disabled-by-processing .minus-icon {
+    opacity: 0.5;
+}
+
+/* Keep existing disabled state */
+.add-to-generation-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+
