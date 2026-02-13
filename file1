@@ -1,99 +1,274 @@
-export interface UploadResponse {
-  status: string;
-  data: {
-    id: number;
-    original_name: string;
+import { Component, EventEmitter, Output, Input, OnInit, OnChanges, SimpleChanges } from '@angular/core';
+import { HistoryService, FileItem } from './history.service';
+
+interface HistoryItem {
+  id: string;
+  name: string;
+  displayDate: string;
+  date: Date;
+  hasResult: boolean;
+  summary_prompt: string | null;
+  faq_prompt: string | null;
+}
+
+export interface HistoryItemSelect {
+  id: string;
+  name: string;
+  displayDate: string;
+  date: Date;
+  summary_prompt: string | null;
+  faq_prompt: string | null;
+}
+
+interface RemoveGenerateFile {
+  id: number;
+  name: string;
+}
+
+interface GenerationStatus {
+  id: number;
+  status: 'Success' | 'Failure';
+  summary_prompt?: string;
+  faq_prompt?: string;
+}
+
+interface NewUploadFile {
+  id: number;
+  original_name: string;
+  created_at: string;
+  summary_prompt: string | null;  // New property
+  faq_prompt: string | null;      // New property
+}
+
+@Component({
+  selector: 'app-history',
+  templateUrl: './history.component.html',
+  styleUrls: ['./history.component.css']
+})
+export class HistoryComponent implements OnInit, OnChanges {
+  @Input() removeGenerateFile: RemoveGenerateFile | null = null;
+  @Input() generationStatus: GenerationStatus | null = null;
+  @Input() newUploadFile: NewUploadFile | null = null;
+  
+  @Output() onItemSelect = new EventEmitter<HistoryItemSelect>();
+  @Output() onAddToContentGeneration = new EventEmitter<HistoryItem>();
+  @Output() onRemoveFromContentGeneration = new EventEmitter<string>();
+
+  selectedHistoryItem: HistoryItem | null = null;
+  addedToGenerationId: string | null = null;
+  isPendingExpanded: boolean = true;
+  isCompletedExpanded: boolean = true;
+
+  startDate: string = '';
+  endDate: string = '';
+
+  historyItems: HistoryItem[] = [];
+  isLoading: boolean = false;
+  isRefreshing: boolean = false;
+  errorMessage: string = '';
+
+  // Filter properties
+  isFilterVisible: boolean = false;
+  filterFromDate: string = '';
+  filterToDate: string = '';
+  searchText: string = '';
+
+  constructor(private historyService: HistoryService) {}
+
+  ngOnInit(): void {
+    this.initializeDateRange();
+    this.fetchHistoryData();
+  }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['removeGenerateFile'] && changes['removeGenerateFile'].currentValue) {
+      const fileToRemove = changes['removeGenerateFile'].currentValue as RemoveGenerateFile;
+      this.handleRemoveFromParent(fileToRemove);
+    }
+
+    if (changes['generationStatus'] && changes['generationStatus'].currentValue) {
+      const statusUpdate = changes['generationStatus'].currentValue as GenerationStatus;
+      this.handleGenerationStatusChange(statusUpdate);
+    }
+
+    if (changes['newUploadFile'] && changes['newUploadFile'].currentValue) {
+      const newFile = changes['newUploadFile'].currentValue as NewUploadFile;
+      this.handleNewFileUpload(newFile);
+    }
+  }
+
+  // ... other methods ...
+
+  private handleNewFileUpload(newFile: NewUploadFile): void {
+    console.log('New file uploaded:', newFile);
+
+    // Check if file already exists (prevent duplicates)
+    const existingFile = this.historyItems.find(item => item.id === newFile.id.toString());
+    if (existingFile) {
+      console.warn('File already exists in history:', newFile.id);
+      return;
+    }
+
+    // Create new history item
+    const newHistoryItem: HistoryItem = {
+      id: newFile.id.toString(),
+      name: newFile.original_name,
+      displayDate: `Created on ${newFile.created_at}`,
+      date: new Date(newFile.created_at),
+      hasResult: false, // Always add to Pending Results
+      summary_prompt: newFile.summary_prompt,  // Map from new upload
+      faq_prompt: newFile.faq_prompt           // Map from new upload
+    };
+
+    // Add to the beginning of the array (top of the list)
+    this.historyItems.unshift(newHistoryItem);
+
+    // Expand Pending section if it's collapsed
+    if (!this.isPendingExpanded) {
+      this.isPendingExpanded = true;
+    }
+
+    console.log('New file added to Pending Results:', newHistoryItem);
+    if (newFile.summary_prompt) {
+      console.log('With summary_prompt:', newFile.summary_prompt);
+    }
+    if (newFile.faq_prompt) {
+      console.log('With faq_prompt:', newFile.faq_prompt);
+    }
+
+    // Wait for DOM to update, then scroll to and highlight the new item
+    setTimeout(() => {
+      const historyItemElement = document.querySelector(
+        `.history-item[data-item-id="${newFile.id}"]`
+      ) as HTMLElement;
+
+      if (historyItemElement) {
+        // Add new item animation (slide in from top)
+        historyItemElement.classList.add('new-item-animation');
+        setTimeout(() => {
+          historyItemElement.classList.remove('new-item-animation');
+        }, 800);
+
+        // Scroll to the new card
+        historyItemElement.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+          inline: 'nearest'
+        });
+      }
+    }, 100);
+  }
+
+  // ... rest of the methods remain the same ...
+}
+
+
+
+
+
+
+
+
+
+// parent.component.ts
+export class ParentComponent {
+  removeGenerateFile: { id: number; name: string } | null = null;
+  generationStatus: { 
+    id: number; 
+    status: 'Success' | 'Failure';
+    summary_prompt?: string;
+    faq_prompt?: string;
+  } | null = null;
+  newUploadFile: { 
+    id: number; 
+    original_name: string; 
     created_at: string;
     summary_prompt: string | null;
     faq_prompt: string | null;
-  };
-}
+  } | null = null;
 
-
-
-
-// Update the @Output decorator:
-@Output() onFileUploaded = new EventEmitter<{ 
-  id: number, 
-  original_name: string, 
-  created_at: string,
-  summary_prompt: string | null,
-  faq_prompt: string | null
-}>();
-
-
-
-
-
-
-
-// Update the uploadFileViaService method:
-private uploadFileViaService(fileWithStatus: FileWithStatus): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const sub = this.uploadGenerateService.uploadFile(fileWithStatus.file).subscribe({
-      next: (event: any) => {
-        if (event.type === HttpEventType.UploadProgress) {
-          if (event.total) {
-            fileWithStatus.progress = Math.round((100 * event.loaded) / event.total);
-          }
-        } else if (event.type === HttpEventType.Response) {
-          const response = event.body as UploadResponse;
-          if (response.status === 'Success') {
-            fileWithStatus.uploadedFileId = response.data.id;
-            fileWithStatus.uploadedFileName = response.data.original_name;
-            fileWithStatus.uploadedAt = response.data.created_at;
-            console.log('Upload successful:', response);
-            
-            // Emit upload success event to parent
-            this.onFileUploaded.emit({
-              id: response.data.id,
-              original_name: response.data.original_name,
-              created_at: response.data.created_at,
-              summary_prompt: response.data.summary_prompt,
-              faq_prompt: response.data.faq_prompt
-            });
-            
-            resolve();
-          } else {
-            reject(new Error('Upload failed with status: ' + response.status));
-          }
-        }
-      },
-      error: (error) => {
-        console.error('Upload error:', error);
-        reject(error);
-      }
-    });
-    this.subscriptions.push(sub);
-  });
-}
-
-
-
-
-
-
-
-
-
-// In your parent component class:
-handleFileUploaded(event: { 
-  id: number, 
-  original_name: string, 
-  created_at: string,
-  summary_prompt: string | null,
-  faq_prompt: string | null
-}): void {
-  console.log('File uploaded successfully:', event);
-  
-  // Handle the uploaded file
-  if (event.summary_prompt) {
-    console.log('Summary prompt from upload:', event.summary_prompt);
+  // Upload new file with prompts
+  onFileUploadedWithPrompts(fileData: any) {
+    this.newUploadFile = {
+      id: fileData.id,
+      original_name: fileData.original_name,
+      created_at: fileData.created_at, // e.g., "Jan 20, 2026"
+      summary_prompt: fileData.summary_prompt || null,
+      faq_prompt: fileData.faq_prompt || null
+    };
+    
+    // Reset after a short delay
+    setTimeout(() => {
+      this.newUploadFile = null;
+    }, 100);
   }
-  
-  if (event.faq_prompt) {
-    console.log('FAQ prompt from upload:', event.faq_prompt);
+
+  // Upload new file without prompts
+  onFileUploadedWithoutPrompts(fileData: any) {
+    this.newUploadFile = {
+      id: fileData.id,
+      original_name: fileData.original_name,
+      created_at: fileData.created_at,
+      summary_prompt: null,
+      faq_prompt: null
+    };
+    
+    setTimeout(() => {
+      this.newUploadFile = null;
+    }, 100);
   }
-  
-  // Add to file list, update UI, etc.
+
+  // Other methods...
+  markGenerationSuccess(fileId: number, summaryPrompt: string, faqPrompt: string) {
+    this.generationStatus = { 
+      id: fileId, 
+      status: 'Success',
+      summary_prompt: summaryPrompt,
+      faq_prompt: faqPrompt
+    };
+    
+    setTimeout(() => {
+      this.generationStatus = null;
+    }, 100);
+  }
+
+  markGenerationFailure(fileId: number) {
+    this.generationStatus = { 
+      id: fileId, 
+      status: 'Failure' 
+    };
+    
+    setTimeout(() => {
+      this.generationStatus = null;
+    }, 100);
+  }
+
+  removeFileFromHistory(fileId: number, fileName: string) {
+    this.removeGenerateFile = { id: fileId, name: fileName };
+    
+    setTimeout(() => {
+      this.removeGenerateFile = null;
+    }, 100);
+  }
+
+  handleItemSelect(item: { 
+    id: string; 
+    name: string; 
+    displayDate: string; 
+    date: Date;
+    summary_prompt: string | null;
+    faq_prompt: string | null;
+  }) {
+    console.log('Selected Item:', item);
+    console.log('Summary Prompt:', item.summary_prompt);
+    console.log('FAQ Prompt:', item.faq_prompt);
+  }
+
+  handleAddToGeneration(item: any) {
+    console.log('File added:', item);
+  }
+
+  handleRemoveFromGeneration(itemId: string) {
+    console.log('File removed:', itemId);
+  }
 }
