@@ -1,117 +1,77 @@
-import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { Observable } from 'rxjs';
+import { Component, Input, OnChanges, SimpleChanges, OnDestroy, ViewChild, ElementRef } from '@angular/core';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import { marked } from 'marked';
+import { Subject } from 'rxjs';
+import { takeUntil } from 'rxjs/operators';
+import { WorkspaceResultService, AssessmentQuestion, MCQOption } from './workspace-result.service';
 
-export interface FAQ {
-  question: string;
-  answer: string;
-}
+// ... keep all existing interfaces
 
-export interface MCQOption {
-  [key: string]: string;  // Index signature for dynamic access
-  A: string;
-  B: string;
-  C: string;
-  D: string;
-}
-
-export interface AssessmentQuestion {
-  question: string;
-  options: MCQOption;
-  correct_answer: string;
-  explanation: string;  // Changed from 'explaination' to 'explanation'
-}
-
-export interface FileAnalysisData {
-  summary: string;
-  keywords: string[];
-  faq: string; // This will be a JSON string
-}
-
-export interface FileAnalysisResponse {
-  status: string;
-  data: FileAnalysisData;
-}
-
-@Injectable({
-  providedIn: 'root'
+@Component({
+  selector: 'app-workspace',
+  templateUrl: './workspace.component.html',
+  styleUrls: ['./workspace.component.css']
 })
-export class WorkspaceResultService {
-  private apiBaseUrl = '/content_analytics/files';
+export class WorkspaceComponent implements OnChanges, OnDestroy {
+  @Input() selectedHistoryItem: HistoryItem | null = null;
+  @ViewChild('assessmentComplete', { read: ElementRef }) assessmentCompleteRef!: ElementRef;
+  
+  // ... keep all existing properties
 
-  constructor(private http: HttpClient) { }
+  constructor(
+    private sanitizer: DomSanitizer,
+    private workspaceResultService: WorkspaceResultService
+  ) { }
+
+  // ... keep all existing methods
 
   /**
-   * Fetch file analysis data by file ID
+   * Go to next question
    */
-  getFileAnalysis(fileId: string): Observable<FileAnalysisResponse> {
-    return this.http.get<FileAnalysisResponse>(`${this.apiBaseUrl}/${fileId}`);
-  }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-/**
- * Map API response to result items
- */
-private mapResponseToResultItems(data: any): void {
-  this.resultItems = [];
-
-  // Add Summary with markdown rendering
-  if (data.summary) {
-    const htmlContent: any = marked(data.summary);
-    this.resultItems.push({
-      id: 'summary-1',
-      title: 'Summary',
-      icon: 'document',
-      content: data.summary,
-      type: 'summary',
-      htmlContent: this.sanitizer.bypassSecurityTrustHtml(htmlContent)
-    });
-  }
-
-  // Add Keywords
-  if (data.keywords && Array.isArray(data.keywords) && data.keywords.length > 0) {
-    this.resultItems.push({
-      id: 'keywords-1',
-      title: 'Key Topics',
-      icon: 'tag',
-      content: data.keywords.map((k: string) => `• ${k}`).join(' '),
-      type: 'keywords',
-      keywords: data.keywords
-    });
-  }
-
-  // Add Assessment Questions (FAQ as MCQ)
-  if (data.faq) {
-    try {
-      // Changed JSON.parse to eval
-      const parsedFaq = typeof data.faq === 'string' ? eval(data.faq) : data.faq;
-      
-      if (Array.isArray(parsedFaq) && parsedFaq.length > 0) {
-        this.resultItems.push({
-          id: 'assessment-1',
-          title: 'Assessment Questions',
-          icon: 'question',
-          content: `${parsedFaq.length} questions`,
-          type: 'questions',
-          assessmentQuestions: parsedFaq
-        });
-      }
-    } catch (error) {
-      console.error('Error parsing FAQ:', error);
+  nextQuestion(): void {
+    const questions = this.getCurrentAssessment();
+    
+    if (this.currentQuestionIndex < questions.length - 1) {
+      this.currentQuestionIndex++;
+    } else {
+      this.assessmentComplete = true;
+      // Scroll to assessment complete section after view updates
+      setTimeout(() => {
+        this.scrollToAssessmentComplete();
+      }, 100);
     }
   }
+
+  /**
+   * Scroll to assessment complete section
+   */
+  private scrollToAssessmentComplete(): void {
+    if (this.assessmentCompleteRef && this.assessmentCompleteRef.nativeElement) {
+      this.assessmentCompleteRef.nativeElement.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center'
+      });
+    }
+  }
+
+  /**
+   * Restart assessment
+   */
+  restartAssessment(): void {
+    this.resetAssessment();
+    // Optional: Scroll back to top of assessment
+    setTimeout(() => {
+      const assessmentContainer = document.querySelector('.assessment-container');
+      if (assessmentContainer) {
+        assessmentContainer.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start'
+        });
+      }
+    }, 100);
+  }
+
+  // ... keep all other existing methods
 }
 
 
@@ -122,15 +82,21 @@ private mapResponseToResultItems(data: any): void {
 
 
 
-
-
-<!-- Explanation Section -->
-<div class="explanation-section" *ngIf="shouldShowExplanation()">
-    <div class="explanation-header">
+<!-- Assessment Complete Screen -->
+<div class="assessment-complete" *ngIf="assessmentComplete" #assessmentComplete>
+    <div class="complete-icon">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.823 1.508-2.316a7.5 7.5 0 10-7.517 0c.85.493 1.509 1.333 1.509 2.316V18" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
-        <span>Explanation</span>
     </div>
-    <p class="explanation-text">{{ question.explanation }}</p>
+    <h3 class="complete-title">Assessment Complete!</h3>
+    <p class="complete-message">You've completed all {{ getCurrentAssessment().length }} questions.</p>
+    <button class="restart-btn" (click)="restartAssessment()">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+        </svg>
+        Restart Assessment
+    </button>
 </div>
+
+
