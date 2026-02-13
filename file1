@@ -1,166 +1,24 @@
-import { Component, EventEmitter, Output, Input, OnInit, OnChanges, SimpleChanges } from '@angular/core';
-import { HistoryService, FileItem } from './history.service';
-
-interface HistoryItem {
-  id: string;
-  name: string;
-  displayDate: string;
-  date: Date;
-  hasResult: boolean;
-  summary_prompt: string | null;
-  faq_prompt: string | null;
-}
-
-export interface HistoryItemSelect {
-  id: string;
-  name: string;
-  displayDate: string;
-  date: Date;
-  summary_prompt: string | null;
-  faq_prompt: string | null;
-}
-
-interface RemoveGenerateFile {
-  id: number;
-  name: string;
-}
-
-interface GenerationStatus {
-  id: number;
-  status: 'Success' | 'Failure';
-  summary_prompt?: string;
-  faq_prompt?: string;
-}
-
-interface NewUploadFile {
-  id: number;
-  original_name: string;
-  created_at: string;
-  summary_prompt: string | null;
-  faq_prompt: string | null;
-}
-
-interface ProcessStatus {
-  id: number | null;
-  isProcessing: boolean;
-}
-
-@Component({
-  selector: 'app-history',
-  templateUrl: './history.component.html',
-  styleUrls: ['./history.component.css']
-})
-export class HistoryComponent implements OnInit, OnChanges {
-  @Input() removeGenerateFile: RemoveGenerateFile | null = null;
-  @Input() generationStatus: GenerationStatus | null = null;
-  @Input() newUploadFile: NewUploadFile | null = null;
-  @Input() processStatus: ProcessStatus | null = null;  // New input
+onAddToGeneration(event: Event, item: HistoryItem): void {
+  event.stopPropagation();
   
-  @Output() onItemSelect = new EventEmitter<HistoryItemSelect>();
-  @Output() onAddToContentGeneration = new EventEmitter<HistoryItem>();
-  @Output() onRemoveFromContentGeneration = new EventEmitter<string>();
-
-  selectedHistoryItem: HistoryItem | null = null;
-  addedToGenerationId: string | null = null;
-  processingItemId: string | null = null;  // Track which item is processing
-  isPendingExpanded: boolean = true;
-  isCompletedExpanded: boolean = true;
-
-  startDate: string = '';
-  endDate: string = '';
-
-  historyItems: HistoryItem[] = [];
-  isLoading: boolean = false;
-  isRefreshing: boolean = false;
-  errorMessage: string = '';
-
-  // Filter properties
-  isFilterVisible: boolean = false;
-  filterFromDate: string = '';
-  filterToDate: string = '';
-  searchText: string = '';
-
-  constructor(private historyService: HistoryService) {}
-
-  ngOnInit(): void {
-    this.initializeDateRange();
-    this.fetchHistoryData();
+  // Check if item is currently processing
+  if (this.isProcessing(item.id)) {
+    alert('This file is currently being processed. Please wait until processing is complete.');
+    return;
   }
-
-  ngOnChanges(changes: SimpleChanges): void {
-    if (changes['removeGenerateFile'] && changes['removeGenerateFile'].currentValue) {
-      const fileToRemove = changes['removeGenerateFile'].currentValue as RemoveGenerateFile;
-      this.handleRemoveFromParent(fileToRemove);
-    }
-
-    if (changes['generationStatus'] && changes['generationStatus'].currentValue) {
-      const statusUpdate = changes['generationStatus'].currentValue as GenerationStatus;
-      this.handleGenerationStatusChange(statusUpdate);
-    }
-
-    if (changes['newUploadFile'] && changes['newUploadFile'].currentValue) {
-      const newFile = changes['newUploadFile'].currentValue as NewUploadFile;
-      this.handleNewFileUpload(newFile);
-    }
-
-    if (changes['processStatus'] && changes['processStatus'].currentValue) {
-      const status = changes['processStatus'].currentValue as ProcessStatus;
-      this.handleProcessStatusChange(status);
-    }
+  
+  const button = (event.currentTarget as HTMLElement);
+  const historyItem = button.closest('.history-item') as HTMLElement;
+  
+  // Check if this item is already added
+  if (this.addedToGenerationId === item.id) {
+    // Remove from generation - Left to Right animation (Red)
+    this.removeItemWithAnimation(historyItem, button, item.id);
+  } else {
+    // Add to generation - Right to Left animation (Purple)
+    this.addItemWithAnimation(historyItem, button, item);
   }
-
-  get pendingFiles(): HistoryItem[] {
-    return this.historyItems.filter(item => !item.hasResult);
-  }
-
-  get completedFiles(): HistoryItem[] {
-    return this.historyItems.filter(item => item.hasResult);
-  }
-
-  get filteredPendingFiles(): HistoryItem[] {
-    return this.applyTextSearch(this.pendingFiles);
-  }
-
-  get filteredCompletedFiles(): HistoryItem[] {
-    return this.applyTextSearch(this.completedFiles);
-  }
-
-  isProcessing(itemId: string): boolean {
-    return this.processingItemId === itemId;
-  }
-
-  private handleProcessStatusChange(status: ProcessStatus): void {
-    if (status.id === null) {
-      // Clear processing state for all items
-      console.log('Clearing all processing states');
-      this.processingItemId = null;
-      return;
-    }
-
-    const itemId = status.id.toString();
-    const item = this.historyItems.find(i => i.id === itemId);
-
-    if (!item) {
-      console.warn('Item not found for process status update:', itemId);
-      return;
-    }
-
-    if (status.isProcessing) {
-      // Set processing state
-      console.log(`Setting processing state for item ${itemId}`);
-      this.processingItemId = itemId;
-    } else {
-      // Clear processing state
-      console.log(`Clearing processing state for item ${itemId}`);
-      if (this.processingItemId === itemId) {
-        this.processingItemId = null;
-      }
-    }
-  }
-
-  // ... rest of the methods remain the same ...
 }
-
 
 
 
@@ -201,9 +59,9 @@ export class HistoryComponent implements OnInit, OnChanges {
     <div class="history-item-actions">
         <button class="add-to-generation-btn" 
                 [class.added]="isAddedToGeneration(item.id)"
-                [disabled]="isProcessing(item.id)"
+                [class.disabled]="isProcessing(item.id)"
                 (click)="onAddToGeneration($event, item)"
-                [title]="isProcessing(item.id) ? 'Processing...' : (isAddedToGeneration(item.id) ? 'Remove from content generation' : 'Add to content generation')">
+                [title]="isProcessing(item.id) ? 'Processing - please wait' : (isAddedToGeneration(item.id) ? 'Remove from content generation' : 'Add to content generation')">
             <div class="btn-icon-wrapper">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
                     stroke="currentColor" class="plus-icon" *ngIf="!isAddedToGeneration(item.id)">
@@ -258,9 +116,9 @@ export class HistoryComponent implements OnInit, OnChanges {
     <div class="history-item-actions">
         <button class="add-to-generation-btn" 
                 [class.added]="isAddedToGeneration(item.id)"
-                [disabled]="isProcessing(item.id)"
+                [class.disabled]="isProcessing(item.id)"
                 (click)="onAddToGeneration($event, item)"
-                [title]="isProcessing(item.id) ? 'Processing...' : (isAddedToGeneration(item.id) ? 'Remove from content generation' : 'Add to content generation')">
+                [title]="isProcessing(item.id) ? 'Processing - please wait' : (isAddedToGeneration(item.id) ? 'Remove from content generation' : 'Add to content generation')">
             <div class="btn-icon-wrapper">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
                     stroke="currentColor" class="plus-icon" *ngIf="!isAddedToGeneration(item.id)">
@@ -292,97 +150,18 @@ export class HistoryComponent implements OnInit, OnChanges {
 
 
 
-/* Processing Badge */
-.processing-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 3px 10px;
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(96, 165, 250, 0.15));
-    border: 1px solid rgba(59, 130, 246, 0.4);
-    border-radius: 12px;
-    font-size: 11px;
-    font-weight: 600;
-    color: #3b82f6;
-    animation: fadeInBadge 0.3s ease;
-    flex-shrink: 0;
-}
 
-.processing-spinner {
-    width: 14px;
-    height: 14px;
-    animation: spin 1s linear infinite;
-}
-
-@keyframes fadeInBadge {
-    from {
-        opacity: 0;
-        transform: scale(0.8);
-    }
-    to {
-        opacity: 1;
-        transform: scale(1);
-    }
-}
-
-@keyframes spin {
-    from {
-        transform: rotate(0deg);
-    }
-    to {
-        transform: rotate(360deg);
-    }
-}
-
-/* Processing state for history item */
-.history-item.processing {
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(96, 165, 250, 0.08));
-    border-color: rgba(59, 130, 246, 0.3);
-}
-
-.history-item.processing .history-item-icon {
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(96, 165, 250, 0.15));
-    border-color: rgba(59, 130, 246, 0.3);
-}
-
-.history-item.processing .history-item-icon svg {
-    stroke: #3b82f6;
-}
-
-.history-item.processing .file-id {
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(96, 165, 250, 0.2));
-    color: #3b82f6;
-    border-color: rgba(59, 130, 246, 0.4);
-}
-
-/* Disable button when processing */
-.add-to-generation-btn:disabled {
+/* Disable button when processing - visual indication */
+.add-to-generation-btn.disabled {
     opacity: 0.5;
     cursor: not-allowed;
-    pointer-events: none;
 }
 
-/* Responsive Processing Badge */
-@media screen and (max-width: 1400px) {
-    .processing-badge {
-        gap: 4px;
-        padding: 2px 8px;
-        font-size: 10px;
-        border-radius: 10px;
-    }
-
-    .processing-spinner {
-        width: 12px;
-        height: 12px;
-    }
+.add-to-generation-btn.disabled:hover {
+    transform: none;
+    box-shadow: none;
 }
 
-
-
-
-
-processStatus: { 
-    id: number | null; 
-    isProcessing: boolean 
-  } | null = null;
-
+.add-to-generation-btn.disabled::before {
+    display: none;
+}
