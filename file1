@@ -1,25 +1,4 @@
 /**
- * Update file analysis (summary or keywords)
- */
-updateFileAnalysis(fileId: string, data: { summary?: string; keywords?: string[] }): Observable<any> {
-  return this.http.post(`${this.apiUrl}/update-analysis/${fileId}`, data);
-}
-
-
-
-
-
-
-
-// Save state
-isSaving = false;
-saveError = '';
-
-
-
-
-
-/**
  * Save edited content
  */
 saveEditedContent(): void {
@@ -32,17 +11,19 @@ saveEditedContent(): void {
     return;
   }
 
-  // Prepare API payload
+  // Prepare API payload with fileID
   const fileId = this.selectedHistoryItem.id;
-  let payload: { summary?: string; keywords?: string[] } = {};
+  let payload: { fileID: string; summary?: string; keywords?: string[] } = {
+    fileID: fileId
+  };
 
   if (this.editingItemType === 'summary') {
-    payload = { summary: this.editedContent };
+    payload.summary = this.editedContent;
   } else if (this.editingItemType === 'keywords') {
     const keywords = this.editedContent.split('\n')
       .map(k => k.trim())
       .filter(k => k.length > 0);
-    payload = { keywords: keywords };
+    payload.keywords = keywords;
   }
 
   // Set saving state
@@ -50,7 +31,7 @@ saveEditedContent(): void {
   this.saveError = '';
 
   // Make API call
-  this.workspaceResultService.updateFileAnalysis(fileId, payload)
+  this.workspaceResultService.updateFileAnalysis(payload)
     .pipe(takeUntil(this.destroy$))
     .subscribe({
       next: (response) => {
@@ -88,279 +69,3 @@ saveEditedContent(): void {
       }
     });
 }
-
-
-
-
-closeDetail(): void {
-  // Prevent closing while saving
-  if (this.isSaving) {
-    return;
-  }
-  
-  if (this.isEditMode) {
-    this.closeEditMode();
-  } else {
-    this.isDetailOpen = false;
-    this.selectedResultItemId = '';
-    this.selectedDetailItem = null;
-    this.selectedItemFileName = '';
-  }
-}
-
-
-
-
-
-
-/**
- * Close edit mode
- */
-closeEditMode(): void {
-  this.isEditMode = false;
-  this.editingItemId = '';
-  this.editingItemType = '';
-  this.editedContent = '';
-  this.originalContent = '';
-  this.isDetailOpen = false;
-  this.selectedDetailItem = null;
-  this.selectedResultItemId = '';
-  this.isSaving = false;
-  this.saveError = '';
-}
-
-
-
-
-
-<div class="detail-overlay" 
-     [class.active]="isDetailOpen" 
-     (click)="!isSaving && closeDetail()">
-</div>
-
-
-
-
-
-
-
-<div class="detail-sidebar-header">
-    <div class="detail-sidebar-title-section">
-        <h3 class="detail-sidebar-title">{{ selectedItemName }}</h3>
-        <div class="detail-sidebar-meta-wrapper">
-            <p class="detail-sidebar-meta" *ngIf="selectedItemFileName">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                    stroke="currentColor" class="meta-icon">
-                    <path stroke-linecap="round" stroke-linejoin="round"
-                        d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                </svg>
-                {{ selectedItemFileName }}
-            </p>
-            <p class="detail-sidebar-meta" *ngIf="selectedItemDate">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                    stroke="currentColor" class="meta-icon">
-                    <path stroke-linecap="round" stroke-linejoin="round"
-                        d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
-                </svg>
-                {{ selectedItemDate }}
-            </p>
-        </div>
-    </div>
-    <button class="detail-close-btn" 
-            (click)="closeDetail()"
-            [disabled]="isSaving"
-            [class.disabled]="isSaving">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-            stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-        </svg>
-    </button>
-</div>
-
-
-
-
-
-
-
-
-
-
-<div class="column-content">
-    <textarea 
-        class="content-editor"
-        [(ngModel)]="editedContent"
-        (ngModelChange)="onContentChange($event)"
-        [placeholder]="editingItemType === 'summary' ? 'Enter markdown content...' : 'Enter keywords (one per line)...'"
-        [disabled]="isSaving"
-        spellcheck="false">
-    </textarea>
-    
-    <!-- Keyword count indicator -->
-    <div class="editor-info" *ngIf="editingItemType === 'keywords' && !saveError">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z M6 6h.008v.008H6V6z" />
-        </svg>
-        <span>{{ getPreviewKeywords().length }} keyword{{ getPreviewKeywords().length !== 1 ? 's' : '' }}</span>
-    </div>
-    
-    <!-- Error message -->
-    <div class="editor-error" *ngIf="saveError">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-        </svg>
-        <span>{{ saveError }}</span>
-    </div>
-    
-    <div class="editor-actions">
-        <button class="cancel-btn" 
-                (click)="cancelEdit()"
-                [disabled]="isSaving"
-                [class.disabled]="isSaving">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-            Cancel
-        </button>
-        <button class="save-btn" 
-                (click)="saveEditedContent()"
-                [disabled]="isSaving"
-                [class.loading]="isSaving">
-            <!-- Spinner (shown when saving) -->
-            <svg *ngIf="isSaving" class="button-spinner" viewBox="0 0 50 50">
-                <circle class="spinner-path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle>
-            </svg>
-            <!-- Check icon (shown when not saving) -->
-            <svg *ngIf="!isSaving" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-            </svg>
-            {{ isSaving ? 'Saving Changes' : 'Save Changes' }}
-        </button>
-    </div>
-</div>
-
-
-
-
-
-
-
-/* Disabled state for buttons */
-.cancel-btn.disabled,
-.save-btn.disabled,
-.detail-close-btn.disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-    pointer-events: none;
-}
-
-/* Save button loading state */
-.save-btn.loading {
-    position: relative;
-    cursor: wait;
-}
-
-/* Button Spinner */
-.button-spinner {
-    width: 16px;
-    height: 16px;
-    animation: buttonSpinnerRotate 2s linear infinite;
-}
-
-.spinner-path {
-    stroke: white;
-    stroke-linecap: round;
-    animation: buttonSpinnerDash 1.5s ease-in-out infinite;
-}
-
-@keyframes buttonSpinnerRotate {
-    100% {
-        transform: rotate(360deg);
-    }
-}
-
-@keyframes buttonSpinnerDash {
-    0% {
-        stroke-dasharray: 1, 150;
-        stroke-dashoffset: 0;
-    }
-    50% {
-        stroke-dasharray: 90, 150;
-        stroke-dashoffset: -35;
-    }
-    100% {
-        stroke-dasharray: 90, 150;
-        stroke-dashoffset: -124;
-    }
-}
-
-/* Editor Error Message */
-.editor-error {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 12px;
-    background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(220, 38, 38, 0.05));
-    border: 1px solid rgba(239, 68, 68, 0.3);
-    border-radius: 6px;
-    margin-bottom: 12px;
-    font-size: 12px;
-    color: #ef4444;
-    font-weight: 600;
-    animation: errorSlideIn 0.3s ease-out;
-}
-
-@keyframes errorSlideIn {
-    from {
-        opacity: 0;
-        transform: translateY(-10px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-.editor-error svg {
-    width: 16px;
-    height: 16px;
-    stroke: #ef4444;
-    flex-shrink: 0;
-}
-
-/* Disabled textarea */
-.content-editor:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-    background: rgba(107, 114, 128, 0.05);
-}
-
-/* Prevent overlay click during save */
-.detail-overlay.active {
-    cursor: pointer;
-}
-
-.detail-overlay.active.saving {
-    cursor: not-allowed;
-}
-
-/* Close button disabled state */
-.detail-close-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-}
-
-.detail-close-btn:disabled:hover {
-    background-color: transparent;
-    border-color: var(--border-color);
-    transform: none;
-}
-
-
-
-
-<div class="detail-overlay" 
-     [class.active]="isDetailOpen"
-     [class.saving]="isSaving"
-     (click)="!isSaving && closeDetail()">
-</div>
