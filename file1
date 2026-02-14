@@ -1,47 +1,142 @@
-selectedItemFileName = '';
+// Edit mode state
+isEditMode = false;
+editingItemId: string = '';
+editingItemType: 'summary' | 'keywords' | '' = '';
+editedContent: string = '';
+originalContent: string = '';
+previewContent: SafeHtml = '';
 
 
 
-openDetail(item: ResultItem): void {
+
+/**
+ * Open edit mode for summary or keywords
+ */
+openEditMode(item: ResultItem): void {
+  if (item.type !== 'summary' && item.type !== 'keywords') {
+    return;
+  }
+
   this.selectedItemName = item.title;
   this.selectedItemDate = this.selectedHistoryItem?.displayDate || '';
   this.selectedItemFileName = this.selectedHistoryItem?.name || '';
   this.selectedResultItemId = item.id;
   this.selectedDetailItem = item;
   
-  // Set content based on item type
-  if (item.type === 'summary' && item.htmlContent) {
-    this.selectedItemContent = item.htmlContent;
+  this.isEditMode = true;
+  this.editingItemId = item.id;
+  this.editingItemType = item.type;
+  
+  // Store original content
+  if (item.type === 'summary') {
+    this.originalContent = item.content || '';
+    this.editedContent = item.content || '';
+    this.updatePreview(this.editedContent);
   } else if (item.type === 'keywords') {
-    this.selectedItemContent = '';
-  } else if (item.type === 'questions') {
-    this.selectedItemContent = '';
-  } else {
-    // Handle dynamic content - convert markdown to HTML if content exists
-    const contentToRender = item.content || '';
-    if (contentToRender) {
-      const htmlContent: any = marked(contentToRender);
-      this.selectedItemContent = this.sanitizer.bypassSecurityTrustHtml(htmlContent);
-    } else {
-      // If no content available, show empty or a placeholder
-      this.selectedItemContent = this.sanitizer.bypassSecurityTrustHtml(
-        '<p style="color: #888; font-style: italic;">No content available</p>'
-      );
-    }
+    this.originalContent = item.keywords?.join('\n') || '';
+    this.editedContent = item.keywords?.join('\n') || '';
+    this.updatePreview(this.editedContent);
   }
   
   this.isDetailOpen = true;
 }
+
+/**
+ * Update preview content as user types
+ */
+onContentChange(newContent: string): void {
+  this.editedContent = newContent;
+  this.updatePreview(newContent);
+}
+
+/**
+ * Update markdown preview
+ */
+private updatePreview(content: string): void {
+  if (this.editingItemType === 'summary') {
+    const htmlContent: any = marked(content || '');
+    this.previewContent = this.sanitizer.bypassSecurityTrustHtml(htmlContent);
+  } else if (this.editingItemType === 'keywords') {
+    // For keywords, show as a list
+    const keywords = content.split('\n').filter(k => k.trim());
+    const listHtml = keywords.map(k => `<li>${k.trim()}</li>`).join('');
+    const htmlContent = `<ul>${listHtml}</ul>`;
+    this.previewContent = this.sanitizer.bypassSecurityTrustHtml(htmlContent);
+  }
+}
+
+/**
+ * Save edited content
+ */
+saveEditedContent(): void {
+  if (!this.selectedDetailItem) {
+    return;
+  }
+
+  const item = this.resultItems.find(i => i.id === this.editingItemId);
+  if (!item) {
+    return;
+  }
+
+  if (this.editingItemType === 'summary') {
+    item.content = this.editedContent;
+    const htmlContent: any = marked(this.editedContent);
+    item.htmlContent = this.sanitizer.bypassSecurityTrustHtml(htmlContent);
+  } else if (this.editingItemType === 'keywords') {
+    const keywords = this.editedContent.split('\n')
+      .map(k => k.trim())
+      .filter(k => k.length > 0);
+    item.keywords = keywords;
+    item.content = keywords.map(k => `• ${k}`).join(' ');
+  }
+
+  // Update the selected detail item
+  this.selectedDetailItem = { ...item };
+
+  // Close edit mode and show normal view
+  this.closeEditMode();
+  
+  // Reopen in view mode
+  this.openDetail(item);
+}
+
+/**
+ * Cancel editing and restore original content
+ */
+cancelEdit(): void {
+  this.editedContent = this.originalContent;
+  this.closeEditMode();
+}
+
+/**
+ * Close edit mode
+ */
+closeEditMode(): void {
+  this.isEditMode = false;
+  this.editingItemId = '';
+  this.editingItemType = '';
+  this.editedContent = '';
+  this.originalContent = '';
+  this.isDetailOpen = false;
+  this.selectedDetailItem = null;
+  this.selectedResultItemId = '';
+}
+
+
 
 
 
 
 
 closeDetail(): void {
-  this.isDetailOpen = false;
-  this.selectedResultItemId = '';
-  this.selectedDetailItem = null;
-  this.selectedItemFileName = '';
+  if (this.isEditMode) {
+    this.closeEditMode();
+  } else {
+    this.isDetailOpen = false;
+    this.selectedResultItemId = '';
+    this.selectedDetailItem = null;
+    this.selectedItemFileName = '';
+  }
 }
 
 
@@ -50,32 +145,37 @@ closeDetail(): void {
 
 
 
-<div class="detail-sidebar-header">
-    <div class="detail-sidebar-title-section">
-        <h3 class="detail-sidebar-title">{{ selectedItemName }}</h3>
-        <div class="detail-sidebar-meta-wrapper">
-            <p class="detail-sidebar-meta" *ngIf="selectedItemFileName">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                    stroke="currentColor" class="meta-icon">
-                    <path stroke-linecap="round" stroke-linejoin="round"
-                        d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                </svg>
-                {{ selectedItemFileName }}
-            </p>
-            <p class="detail-sidebar-meta" *ngIf="selectedItemDate">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                    stroke="currentColor" class="meta-icon">
-                    <path stroke-linecap="round" stroke-linejoin="round"
-                        d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
-                </svg>
-                {{ selectedItemDate }}
-            </p>
-        </div>
-    </div>
-    <button class="detail-close-btn" (click)="closeDetail()">
+<div class="result-actions">
+    <!-- Edit Button - Only for Summary and Keywords -->
+    <button class="result-action-icon-btn" 
+            title="Edit" 
+            (click)="openEditMode(item)"
+            *ngIf="item.type === 'summary' || item.type === 'keywords'">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
             stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+            <path stroke-linecap="round" stroke-linejoin="round"
+                d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+        </svg>
+    </button>
+    <button class="result-action-icon-btn" title="Expand" (click)="openDetail(item)">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+            stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round"
+                d="M15.75 4.5H19.5v3.75M19.5 4.5l-5.25 5.25M8.25 19.5H4.5v-3.75M4.5 19.5l5.25-5.25" />
+        </svg>
+    </button>
+    <button class="result-action-icon-btn" title="Copy" (click)="copyToClipboard(item.content)">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+            stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round"
+                d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 00-3.375-3.375h-1.5a1.125 1.125 0 01-1.125-1.125v-1.5a3.375 3.375 0 00-3.375-3.375H9.75" />
+        </svg>
+    </button>
+    <button class="result-action-icon-btn" title="Download" (click)="downloadContent(item)">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+            stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round"
+                d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
         </svg>
     </button>
 </div>
@@ -88,42 +188,342 @@ closeDetail(): void {
 
 
 
-.detail-sidebar-title-section {
-    flex: 1;
-    min-width: 0;
-    padding-right: 16px;
-}
 
-.detail-sidebar-title {
-    font-size: 16px;
-    font-weight: 700;
-    color: var(--text-color);
-    margin: 0 0 8px 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
 
-.detail-sidebar-meta-wrapper {
+
+
+
+<div class="detail-sidebar-content">
+    <!-- EDIT MODE -->
+    <div *ngIf="isEditMode" class="edit-mode-container">
+        <div class="edit-columns">
+            <!-- Column 1: Preview -->
+            <div class="edit-column preview-column">
+                <div class="column-header">
+                    <h4 class="column-title">Preview</h4>
+                    <span class="column-badge">Markdown Rendered</span>
+                </div>
+                <div class="column-content">
+                    <div class="markdown-content" [innerHTML]="previewContent"></div>
+                </div>
+            </div>
+
+            <!-- Column 2: Editor -->
+            <div class="edit-column editor-column">
+                <div class="column-header">
+                    <h4 class="column-title">Edit Content</h4>
+                    <span class="column-badge">
+                        {{ editingItemType === 'summary' ? 'Markdown' : 'One per line' }}
+                    </span>
+                </div>
+                <div class="column-content">
+                    <textarea 
+                        class="content-editor"
+                        [(ngModel)]="editedContent"
+                        (ngModelChange)="onContentChange($event)"
+                        [placeholder]="editingItemType === 'summary' ? 'Enter markdown content...' : 'Enter keywords (one per line)...'"
+                        spellcheck="false">
+                    </textarea>
+                    <div class="editor-actions">
+                        <button class="cancel-btn" (click)="cancelEdit()">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                            Cancel
+                        </button>
+                        <button class="save-btn" (click)="saveEditedContent()">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                            </svg>
+                            Save Changes
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- VIEW MODE (Existing content) -->
+    <ng-container *ngIf="!isEditMode">
+        <!-- SUMMARY Content -->
+        <div *ngIf="selectedDetailItem?.type === 'summary'" class="detail-markdown-wrapper">
+            <div class="markdown-content" [innerHTML]="selectedItemContent"></div>
+        </div>
+
+        <!-- KEYWORDS Content -->
+        <div *ngIf="selectedDetailItem?.type === 'keywords'" class="detail-keywords-wrapper">
+            <div class="keywords-chips-container">
+                <div class="keyword-chip" 
+                     *ngFor="let keyword of getDetailKeywordsArray(); let i = index"
+                     [style.background]="getChipBackground(i)" 
+                     [style.border-color]="getChipBorderColor(i)">
+                    <span class="chip-text">{{ keyword }}</span>
+                    <button class="chip-remove-btn" 
+                            (click)="removeDetailKeyword(keyword)"
+                            title="Remove keyword">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+                <p class="no-keywords-message" *ngIf="getDetailKeywordsArray().length === 0">
+                    No keywords available
+                </p>
+            </div>
+        </div>
+
+        <!-- ASSESSMENT QUESTIONS Content -->
+        <div *ngIf="selectedDetailItem?.type === 'questions' && getDetailAssessmentQuestions().length > 0" 
+             class="detail-assessment-wrapper">
+            <!-- (Keep existing assessment code) -->
+        </div>
+
+        <!-- DEFAULT/OTHER Content -->
+        <div *ngIf="!selectedDetailItem || (selectedDetailItem.type !== 'summary' && selectedDetailItem.type !== 'keywords' && selectedDetailItem.type !== 'questions')" 
+             class="detail-markdown-wrapper">
+            <div class="markdown-content" [innerHTML]="selectedItemContent"></div>
+        </div>
+    </ng-container>
+</div>
+
+
+
+
+
+
+
+
+/* Edit Mode Styles */
+.edit-mode-container {
+    width: 100%;
+    height: 100%;
     display: flex;
     flex-direction: column;
-    gap: 4px;
 }
 
-.detail-sidebar-meta {
-    font-size: 12px;
-    color: var(--text-color);
-    opacity: 0.6;
-    margin: 0;
+.edit-columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    height: 100%;
+    min-height: 0;
+}
+
+.edit-column {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    background: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.preview-column {
+    border-left: 3px solid var(--primary-color);
+}
+
+.editor-column {
+    border-left: 3px solid #10b981;
+}
+
+.column-header {
+    padding: 12px 16px;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(167, 139, 250, 0.08));
+    border-bottom: 1px solid var(--border-color);
     display: flex;
     align-items: center;
-    gap: 6px;
+    justify-content: space-between;
+    flex-shrink: 0;
 }
 
-.detail-sidebar-meta .meta-icon {
-    width: 14px;
-    height: 14px;
-    stroke: var(--primary-color);
+.editor-column .column-header {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(52, 211, 153, 0.08));
+}
+
+.column-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-color);
+    margin: 0;
+}
+
+.column-badge {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--primary-color);
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(167, 139, 250, 0.1));
+    padding: 3px 8px;
+    border-radius: 10px;
+    border: 1px solid rgba(139, 92, 246, 0.3);
+}
+
+.editor-column .column-badge {
+    color: #10b981;
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(52, 211, 153, 0.1));
+    border-color: rgba(16, 185, 129, 0.3);
+}
+
+.column-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.preview-column .column-content {
+    padding: 20px;
+}
+
+/* Content Editor Textarea */
+.content-editor {
+    flex: 1;
+    width: 100%;
+    min-height: 300px;
+    padding: 12px;
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-color);
+    background: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    resize: none;
+    outline: none;
+    transition: all 0.2s ease;
+    margin-bottom: 12px;
+}
+
+.content-editor:focus {
+    border-color: #10b981;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+}
+
+.content-editor::placeholder {
+    color: var(--text-color);
+    opacity: 0.4;
+}
+
+/* Editor Actions */
+.editor-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    padding-top: 8px;
     flex-shrink: 0;
-    opacity: 0.8;
+}
+
+.cancel-btn,
+.save-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 18px;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.cancel-btn {
+    background: linear-gradient(135deg, #6b7280, #9ca3af);
+    color: white;
+}
+
+.cancel-btn:hover {
+    background: linear-gradient(135deg, #4b5563, #6b7280);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+}
+
+.save-btn {
+    background: linear-gradient(135deg, #10b981, #34d399);
+    color: white;
+}
+
+.save-btn:hover {
+    background: linear-gradient(135deg, #059669, #10b981);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(16, 185, 129, 0.3);
+}
+
+.cancel-btn svg,
+.save-btn svg {
+    width: 16px;
+    height: 16px;
+    stroke: white;
+}
+
+/* Update existing result action button hover colors to include edit button */
+.result-action-icon-btn:nth-child(1):hover {
+    border-color: #f59e0b;
+}
+
+.result-action-icon-btn:nth-child(1):hover svg {
+    stroke: #f59e0b;
+}
+
+.result-action-icon-btn:nth-child(2):hover {
+    border-color: #3b82f6;
+}
+
+.result-action-icon-btn:nth-child(2):hover svg {
+    stroke: #3b82f6;
+}
+
+.result-action-icon-btn:nth-child(3):hover {
+    border-color: #8b5cf6;
+}
+
+.result-action-icon-btn:nth-child(3):hover svg {
+    stroke: #8b5cf6;
+}
+
+.result-action-icon-btn:nth-child(4):hover {
+    border-color: #10b981;
+}
+
+.result-action-icon-btn:nth-child(4):hover svg {
+    stroke: #10b981;
+}
+
+/* Scrollbar for columns */
+.column-content::-webkit-scrollbar {
+    width: 6px;
+}
+
+.column-content::-webkit-scrollbar-track {
+    background: rgba(139, 92, 246, 0.05);
+    border-radius: 3px;
+}
+
+.column-content::-webkit-scrollbar-thumb {
+    background-color: rgba(139, 92, 246, 0.3);
+    border-radius: 3px;
+}
+
+.column-content::-webkit-scrollbar-thumb:hover {
+    background-color: var(--primary-color);
+}
+
+/* Responsive adjustments */
+@media (max-width: 1200px) {
+    .edit-columns {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+    
+    .preview-column {
+        order: 2;
+    }
+    
+    .editor-column {
+        order: 1;
+    }
 }
