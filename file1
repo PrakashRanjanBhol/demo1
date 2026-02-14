@@ -1,101 +1,10 @@
-/**
- * Download content via API endpoint
- */
-downloadContent(item: ResultItem): void {
-  if (!this.selectedHistoryItem) {
-    console.error('No file selected');
-    return;
-  }
-
-  const fileId = this.selectedHistoryItem.id;
-  const downloadUrl = `${environment.apiUrl}/content_analytics/files/export/${fileId}`;
-  
-  // Open download URL in new window/tab to trigger download
-  window.open(downloadUrl, '_blank');
-  
-  // Alternative method: Create invisible link and click it
-  // const link = document.createElement('a');
-  // link.href = downloadUrl;
-  // link.download = ''; // Browser will use filename from Content-Disposition header
-  // document.body.appendChild(link);
-  // link.click();
-  // document.body.removeChild(link);
-}
-
-
-
-
-
-private faqRawData: any = null;
-
-
-
-
-/**
- * Map API response to result items
- */
-private mapResponseToResultItems(data: any): void {
-  this.resultItems = [];
-
-  // Add Summary with markdown rendering
-  if (data.summary) {
-    const htmlContent: any = marked(data.summary);
-    this.resultItems.push({
-      id: 'summary-1',
-      title: 'Summary',
-      icon: 'document',
-      content: data.summary,
-      type: 'summary',
-      htmlContent: this.sanitizer.bypassSecurityTrustHtml(htmlContent)
-    });
-  }
-
-  // Add Keywords
-  if (data.keywords && Array.isArray(data.keywords) && data.keywords.length > 0) {
-    this.resultItems.push({
-      id: 'keywords-1',
-      title: 'Key Topics',
-      icon: 'tag',
-      content: data.keywords.map((k: string) => `• ${k}`).join(' '),
-      type: 'keywords',
-      keywords: data.keywords
-    });
-  }
-
-  // Add Assessment Questions (FAQ as MCQ)
-  if (data.faq) {
-    try {
-      const parsedFaq = typeof data.faq === 'string' ? eval(data.faq) : data.faq;
-      
-      // Store raw FAQ data for copying
-      this.faqRawData = data.faq;
-      
-      if (Array.isArray(parsedFaq) && parsedFaq.length > 0) {
-        this.resultItems.push({
-          id: 'assessment-1',
-          title: 'Assessment Questions',
-          icon: 'question',
-          content: `${parsedFaq.length} questions`,
-          type: 'questions',
-          assessmentQuestions: parsedFaq
-        });
-      }
-    } catch (error) {
-      console.error('Error parsing FAQ:', error);
-    }
-  }
-}
-
-
-
-
-
+copiedItemId: string = '';
 
 
 /**
  * Copy content to clipboard
  */
-copyToClipboard(content: string, itemType?: string): void {
+copyToClipboard(content: string, itemType?: string, itemId?: string): void {
   let contentToCopy = content;
   
   // For assessment questions, copy the raw FAQ data
@@ -107,60 +16,101 @@ copyToClipboard(content: string, itemType?: string): void {
   
   navigator.clipboard.writeText(contentToCopy).then(() => {
     console.log('Content copied to clipboard');
-    // Optional: Show success toast/notification
-    this.showCopySuccess();
+    
+    // Show tick icon for this item
+    if (itemId) {
+      this.copiedItemId = itemId;
+      
+      // Reset back to copy icon after 1.5 seconds
+      setTimeout(() => {
+        this.copiedItemId = '';
+      }, 1500);
+    }
   }).catch(err => {
     console.error('Failed to copy content:', err);
-    // Optional: Show error toast/notification
   });
 }
 
-/**
- * Show copy success feedback (optional)
- */
-private showCopySuccess(): void {
-  // You can implement a toast notification here
-  // For now, just log to console
-  console.log('✓ Copied to clipboard');
+
+
+
+<button class="result-action-icon-btn" 
+        title="Copy" 
+        (click)="copyToClipboard(item.content, item.type, item.id)"
+        [class.copy-success]="copiedItemId === item.id">
+    <!-- Show tick icon when copied -->
+    <svg *ngIf="copiedItemId === item.id" 
+         xmlns="http://www.w3.org/2000/svg" 
+         fill="none" 
+         viewBox="0 0 24 24" 
+         stroke-width="2" 
+         stroke="currentColor"
+         class="copy-success-icon">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+    </svg>
+    <!-- Show copy icon normally -->
+    <svg *ngIf="copiedItemId !== item.id" 
+         xmlns="http://www.w3.org/2000/svg" 
+         fill="none" 
+         viewBox="0 0 24 24" 
+         stroke-width="1.5"
+         stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round"
+            d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 00-3.375-3.375h-1.5a1.125 1.125 0 01-1.125-1.125v-1.5a3.375 3.375 0 00-3.375-3.375H9.75" />
+    </svg>
+</button>
+
+
+
+
+
+
+
+
+
+/* Copy Success State */
+.result-action-icon-btn.copy-success {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(52, 211, 153, 0.1));
+    border-color: #10b981;
+    animation: copySuccessPulse 0.4s ease-out;
 }
 
+@keyframes copySuccessPulse {
+    0% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.1);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
 
+.copy-success-icon {
+    stroke: #10b981 !important;
+    opacity: 1 !important;
+    animation: checkmarkDraw 0.4s ease-out;
+}
 
+@keyframes checkmarkDraw {
+    0% {
+        stroke-dasharray: 0, 100;
+        opacity: 0;
+        transform: scale(0.8);
+    }
+    50% {
+        opacity: 1;
+        transform: scale(1.1);
+    }
+    100% {
+        stroke-dasharray: 100, 0;
+        opacity: 1;
+        transform: scale(1);
+    }
+}
 
-
-<div class="result-actions">
-    <!-- Edit Button - Only for Summary and Keywords -->
-    <button class="result-action-icon-btn" 
-            title="Edit" 
-            (click)="openEditMode(item)"
-            *ngIf="item.type === 'summary' || item.type === 'keywords'">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-            stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round"
-                d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
-        </svg>
-    </button>
-    <button class="result-action-icon-btn" title="Expand" (click)="openDetail(item)">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-            stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round"
-                d="M15.75 4.5H19.5v3.75M19.5 4.5l-5.25 5.25M8.25 19.5H4.5v-3.75M4.5 19.5l5.25-5.25" />
-        </svg>
-    </button>
-    <button class="result-action-icon-btn" 
-            title="Copy" 
-            (click)="copyToClipboard(item.content, item.type)">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-            stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round"
-                d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 00-3.375-3.375h-1.5a1.125 1.125 0 01-1.125-1.125v-1.5a3.375 3.375 0 00-3.375-3.375H9.75" />
-        </svg>
-    </button>
-    <button class="result-action-icon-btn" title="Download" (click)="downloadContent(item)">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-            stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round"
-                d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-        </svg>
-    </button>
-</div>
+/* Smooth transition between icons */
+.result-action-icon-btn svg {
+    transition: all 0.2s ease;
+}
