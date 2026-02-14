@@ -1,71 +1,166 @@
 /**
- * Save edited content
+ * Download content via API endpoint
  */
-saveEditedContent(): void {
-  if (!this.selectedDetailItem || !this.selectedHistoryItem) {
+downloadContent(item: ResultItem): void {
+  if (!this.selectedHistoryItem) {
+    console.error('No file selected');
     return;
   }
 
-  const item = this.resultItems.find(i => i.id === this.editingItemId);
-  if (!item) {
-    return;
-  }
-
-  // Prepare API payload with fileID
   const fileId = this.selectedHistoryItem.id;
-  let payload: { fileID: string; summary?: string; keywords?: string[] } = {
-    fileID: fileId
-  };
+  const downloadUrl = `${environment.apiUrl}/content_analytics/files/export/${fileId}`;
+  
+  // Open download URL in new window/tab to trigger download
+  window.open(downloadUrl, '_blank');
+  
+  // Alternative method: Create invisible link and click it
+  // const link = document.createElement('a');
+  // link.href = downloadUrl;
+  // link.download = ''; // Browser will use filename from Content-Disposition header
+  // document.body.appendChild(link);
+  // link.click();
+  // document.body.removeChild(link);
+}
 
-  if (this.editingItemType === 'summary') {
-    payload.summary = this.editedContent;
-  } else if (this.editingItemType === 'keywords') {
-    const keywords = this.editedContent.split('\n')
-      .map(k => k.trim())
-      .filter(k => k.length > 0);
-    payload.keywords = keywords;
+
+
+
+
+private faqRawData: any = null;
+
+
+
+
+/**
+ * Map API response to result items
+ */
+private mapResponseToResultItems(data: any): void {
+  this.resultItems = [];
+
+  // Add Summary with markdown rendering
+  if (data.summary) {
+    const htmlContent: any = marked(data.summary);
+    this.resultItems.push({
+      id: 'summary-1',
+      title: 'Summary',
+      icon: 'document',
+      content: data.summary,
+      type: 'summary',
+      htmlContent: this.sanitizer.bypassSecurityTrustHtml(htmlContent)
+    });
   }
 
-  // Set saving state
-  this.isSaving = true;
-  this.saveError = '';
-
-  // Make API call
-  this.workspaceResultService.updateFileAnalysis(payload)
-    .pipe(takeUntil(this.destroy$))
-    .subscribe({
-      next: (response) => {
-        console.log('Update successful:', response);
-        
-        // Update local data
-        if (this.editingItemType === 'summary') {
-          item.content = this.editedContent;
-          const htmlContent: any = marked(this.editedContent);
-          item.htmlContent = this.sanitizer.bypassSecurityTrustHtml(htmlContent);
-        } else if (this.editingItemType === 'keywords') {
-          const keywords = this.editedContent.split('\n')
-            .map(k => k.trim())
-            .filter(k => k.length > 0);
-          item.keywords = keywords;
-          item.content = keywords.map(k => `• ${k}`).join(' ');
-        }
-
-        // Update the selected detail item
-        this.selectedDetailItem = { ...item };
-
-        // Reset saving state
-        this.isSaving = false;
-
-        // Close edit mode and show normal view
-        this.closeEditMode();
-        
-        // Reopen in view mode
-        this.openDetail(item);
-      },
-      error: (error) => {
-        console.error('Error updating analysis:', error);
-        this.saveError = 'Failed to save changes. Please try again.';
-        this.isSaving = false;
-      }
+  // Add Keywords
+  if (data.keywords && Array.isArray(data.keywords) && data.keywords.length > 0) {
+    this.resultItems.push({
+      id: 'keywords-1',
+      title: 'Key Topics',
+      icon: 'tag',
+      content: data.keywords.map((k: string) => `• ${k}`).join(' '),
+      type: 'keywords',
+      keywords: data.keywords
     });
+  }
+
+  // Add Assessment Questions (FAQ as MCQ)
+  if (data.faq) {
+    try {
+      const parsedFaq = typeof data.faq === 'string' ? eval(data.faq) : data.faq;
+      
+      // Store raw FAQ data for copying
+      this.faqRawData = data.faq;
+      
+      if (Array.isArray(parsedFaq) && parsedFaq.length > 0) {
+        this.resultItems.push({
+          id: 'assessment-1',
+          title: 'Assessment Questions',
+          icon: 'question',
+          content: `${parsedFaq.length} questions`,
+          type: 'questions',
+          assessmentQuestions: parsedFaq
+        });
+      }
+    } catch (error) {
+      console.error('Error parsing FAQ:', error);
+    }
+  }
 }
+
+
+
+
+
+
+
+/**
+ * Copy content to clipboard
+ */
+copyToClipboard(content: string, itemType?: string): void {
+  let contentToCopy = content;
+  
+  // For assessment questions, copy the raw FAQ data
+  if (itemType === 'questions' && this.faqRawData) {
+    contentToCopy = typeof this.faqRawData === 'string' 
+      ? this.faqRawData 
+      : JSON.stringify(this.faqRawData, null, 2);
+  }
+  
+  navigator.clipboard.writeText(contentToCopy).then(() => {
+    console.log('Content copied to clipboard');
+    // Optional: Show success toast/notification
+    this.showCopySuccess();
+  }).catch(err => {
+    console.error('Failed to copy content:', err);
+    // Optional: Show error toast/notification
+  });
+}
+
+/**
+ * Show copy success feedback (optional)
+ */
+private showCopySuccess(): void {
+  // You can implement a toast notification here
+  // For now, just log to console
+  console.log('✓ Copied to clipboard');
+}
+
+
+
+
+
+<div class="result-actions">
+    <!-- Edit Button - Only for Summary and Keywords -->
+    <button class="result-action-icon-btn" 
+            title="Edit" 
+            (click)="openEditMode(item)"
+            *ngIf="item.type === 'summary' || item.type === 'keywords'">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+            stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round"
+                d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+        </svg>
+    </button>
+    <button class="result-action-icon-btn" title="Expand" (click)="openDetail(item)">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+            stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round"
+                d="M15.75 4.5H19.5v3.75M19.5 4.5l-5.25 5.25M8.25 19.5H4.5v-3.75M4.5 19.5l5.25-5.25" />
+        </svg>
+    </button>
+    <button class="result-action-icon-btn" 
+            title="Copy" 
+            (click)="copyToClipboard(item.content, item.type)">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+            stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round"
+                d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 00-3.375-3.375h-1.5a1.125 1.125 0 01-1.125-1.125v-1.5a3.375 3.375 0 00-3.375-3.375H9.75" />
+        </svg>
+    </button>
+    <button class="result-action-icon-btn" title="Download" (click)="downloadContent(item)">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+            stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round"
+                d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+        </svg>
+    </button>
+</div>
