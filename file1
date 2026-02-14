@@ -1,33 +1,50 @@
-selectedDetailItem: ResultItem | null = null;
+/**
+ * Get selected detail item safely
+ */
+getSelectedDetailItem(): ResultItem | null {
+  return this.selectedDetailItem;
+}
 
-openDetail(item: ResultItem): void {
-  this.selectedItemName = item.title;
-  this.selectedItemDate = this.selectedHistoryItem?.displayDate || '';
-  this.selectedResultItemId = item.id;
-  this.selectedDetailItem = item;
+/**
+ * Check if selected detail item exists
+ */
+hasSelectedDetailItem(): boolean {
+  return this.selectedDetailItem !== null;
+}
 
-  // Set content based on item type
-  if (item.type === 'summary' && item.htmlContent) {
-    this.selectedItemContent = item.htmlContent;
-  } else if (item.type === 'keywords') {
-    this.selectedItemContent = '';
-  } else if (item.type === 'questions') {
-    this.selectedItemContent = '';
-  } else {
-    const htmlContent: any = marked(item.content || this.sampleContent);
-    this.selectedItemContent = this.sanitizer.bypassSecurityTrustHtml(htmlContent);
+/**
+ * Get keywords array for detail item safely
+ */
+getDetailKeywordsArray(): string[] {
+  if (!this.selectedDetailItem) {
+    return [];
   }
+  return this.getKeywordsArray(this.selectedDetailItem);
+}
 
-  this.isDetailOpen = true;
+/**
+ * Get assessment questions for detail item safely
+ */
+getDetailAssessmentQuestions(): AssessmentQuestion[] {
+  if (!this.selectedDetailItem || this.selectedDetailItem.type !== 'questions') {
+    return [];
+  }
+  return this.selectedDetailItem.assessmentQuestions || [];
+}
+
+/**
+ * Remove keyword from detail item
+ */
+removeDetailKeyword(keyword: string): void {
+  if (!this.selectedDetailItem) {
+    return;
+  }
+  this.removeKeyword(this.selectedDetailItem.id, keyword);
 }
 
 
 
-closeDetail(): void {
-  this.isDetailOpen = false;
-  this.selectedResultItemId = '';
-  this.selectedDetailItem = null;
-}
+
 
 
 
@@ -43,25 +60,28 @@ closeDetail(): void {
     <!-- KEYWORDS Content -->
     <div *ngIf="selectedDetailItem?.type === 'keywords'" class="detail-keywords-wrapper">
         <div class="keywords-chips-container">
-            <div class="keyword-chip" *ngFor="let keyword of getKeywordsArray(selectedDetailItem); let i = index"
-                [style.background]="getChipBackground(i)" [style.border-color]="getChipBorderColor(i)">
+            <div class="keyword-chip" 
+                 *ngFor="let keyword of getDetailKeywordsArray(); let i = index"
+                 [style.background]="getChipBackground(i)" 
+                 [style.border-color]="getChipBorderColor(i)">
                 <span class="chip-text">{{ keyword }}</span>
-                <button class="chip-remove-btn" (click)="removeKeyword(selectedDetailItem.id, keyword)"
-                    title="Remove keyword">
+                <button class="chip-remove-btn" 
+                        (click)="removeDetailKeyword(keyword)"
+                        title="Remove keyword">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
                         stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
                     </svg>
                 </button>
             </div>
-            <p class="no-keywords-message" *ngIf="getKeywordsArray(selectedDetailItem).length === 0">
+            <p class="no-keywords-message" *ngIf="getDetailKeywordsArray().length === 0">
                 No keywords available
             </p>
         </div>
     </div>
 
     <!-- ASSESSMENT QUESTIONS Content -->
-    <div *ngIf="selectedDetailItem?.type === 'questions' && selectedDetailItem.assessmentQuestions && selectedDetailItem.assessmentQuestions.length > 0" 
+    <div *ngIf="selectedDetailItem?.type === 'questions' && getDetailAssessmentQuestions().length > 0" 
          class="detail-assessment-wrapper">
         <div class="assessment-container">
             <!-- Only show header and questions when NOT complete -->
@@ -69,10 +89,12 @@ closeDetail(): void {
                 <div class="assessment-header">
                     <div class="question-progress">
                         <span class="current-question">Question {{ currentQuestionIndex + 1 }}</span>
-                        <span class="total-questions">of {{ selectedDetailItem.assessmentQuestions.length }}</span>
+                        <span class="total-questions">of {{ getDetailAssessmentQuestions().length }}</span>
                     </div>
                     <div class="progress-bar">
-                        <div class="progress-fill" [style.width.%]="((currentQuestionIndex + 1) / selectedDetailItem.assessmentQuestions.length) * 100"></div>
+                        <div class="progress-fill" 
+                             [style.width.%]="((currentQuestionIndex + 1) / getDetailAssessmentQuestions().length) * 100">
+                        </div>
                     </div>
                 </div>
 
@@ -87,11 +109,21 @@ closeDetail(): void {
                             <div class="option-indicator">
                                 <span class="option-letter">{{ optionKey }}</span>
                                 <svg *ngIf="getOptionClass(optionKey) === 'correct' || getOptionClass(optionKey) === 'correct-answer'" 
-                                     class="option-icon check-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+                                     class="option-icon check-icon" 
+                                     xmlns="http://www.w3.org/2000/svg" 
+                                     fill="none" 
+                                     viewBox="0 0 24 24" 
+                                     stroke-width="2.5" 
+                                     stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
                                 </svg>
                                 <svg *ngIf="getOptionClass(optionKey) === 'incorrect'" 
-                                     class="option-icon x-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+                                     class="option-icon x-icon" 
+                                     xmlns="http://www.w3.org/2000/svg" 
+                                     fill="none" 
+                                     viewBox="0 0 24 24" 
+                                     stroke-width="2.5" 
+                                     stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
                                 </svg>
                             </div>
@@ -102,8 +134,14 @@ closeDetail(): void {
                     <!-- Explanation Section -->
                     <div class="explanation-section" *ngIf="shouldShowExplanation()">
                         <div class="explanation-header">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.823 1.508-2.316a7.5 7.5 0 10-7.517 0c.85.493 1.509 1.333 1.509 2.316V18" />
+                            <svg xmlns="http://www.w3.org/2000/svg" 
+                                 fill="none" 
+                                 viewBox="0 0 24 24" 
+                                 stroke-width="1.5" 
+                                 stroke="currentColor">
+                                <path stroke-linecap="round" 
+                                      stroke-linejoin="round" 
+                                      d="M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.823 1.508-2.316a7.5 7.5 0 10-7.517 0c.85.493 1.509 1.333 1.509 2.316V18" />
                             </svg>
                             <span>Explanation</span>
                         </div>
@@ -112,16 +150,32 @@ closeDetail(): void {
 
                     <!-- Navigation Buttons -->
                     <div class="mcq-navigation" *ngIf="shouldShowExplanation()">
-                        <button class="next-question-btn" (click)="nextQuestion()" *ngIf="!isLastQuestion()">
+                        <button class="next-question-btn" 
+                                (click)="nextQuestion()" 
+                                *ngIf="!isLastQuestion()">
                             Next Question
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+                            <svg xmlns="http://www.w3.org/2000/svg" 
+                                 fill="none" 
+                                 viewBox="0 0 24 24" 
+                                 stroke-width="2" 
+                                 stroke="currentColor">
+                                <path stroke-linecap="round" 
+                                      stroke-linejoin="round" 
+                                      d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
                             </svg>
                         </button>
-                        <button class="done-btn" (click)="nextQuestion()" *ngIf="isLastQuestion()">
+                        <button class="done-btn" 
+                                (click)="nextQuestion()" 
+                                *ngIf="isLastQuestion()">
                             Done
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                            <svg xmlns="http://www.w3.org/2000/svg" 
+                                 fill="none" 
+                                 viewBox="0 0 24 24" 
+                                 stroke-width="2" 
+                                 stroke="currentColor">
+                                <path stroke-linecap="round" 
+                                      stroke-linejoin="round" 
+                                      d="M4.5 12.75l6 6 9-13.5" />
                             </svg>
                         </button>
                     </div>
@@ -131,15 +185,29 @@ closeDetail(): void {
             <!-- Assessment Complete Screen -->
             <div class="assessment-complete" *ngIf="assessmentComplete">
                 <div class="complete-icon">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    <svg xmlns="http://www.w3.org/2000/svg" 
+                         fill="none" 
+                         viewBox="0 0 24 24" 
+                         stroke-width="1.5" 
+                         stroke="currentColor">
+                        <path stroke-linecap="round" 
+                              stroke-linejoin="round" 
+                              d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                 </div>
                 <h3 class="complete-title">Assessment Complete!</h3>
-                <p class="complete-message">You've completed all {{ selectedDetailItem.assessmentQuestions.length }} questions.</p>
+                <p class="complete-message">
+                    You've completed all {{ getDetailAssessmentQuestions().length }} questions.
+                </p>
                 <button class="restart-btn" (click)="restartAssessment()">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                    <svg xmlns="http://www.w3.org/2000/svg" 
+                         fill="none" 
+                         viewBox="0 0 24 24" 
+                         stroke-width="2" 
+                         stroke="currentColor">
+                        <path stroke-linecap="round" 
+                              stroke-linejoin="round" 
+                              d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
                     </svg>
                     Restart Assessment
                 </button>
@@ -153,47 +221,3 @@ closeDetail(): void {
         <div class="markdown-content" [innerHTML]="selectedItemContent"></div>
     </div>
 </div>
-
-
-
-/* Detail Sidebar Content Wrappers */
-.detail-markdown-wrapper,
-.detail-keywords-wrapper,
-.detail-assessment-wrapper {
-    width: 100%;
-}
-
-.detail-keywords-wrapper .keywords-chips-container {
-    padding: 8px 0;
-}
-
-.detail-assessment-wrapper {
-    padding: 8px 0;
-}
-
-.detail-assessment-wrapper .assessment-container {
-    padding: 0;
-}
-
-.detail-assessment-wrapper .mcq-question {
-    font-size: 15px;
-    margin-bottom: 16px;
-}
-
-.detail-assessment-wrapper .mcq-option {
-    padding: 12px 14px;
-    font-size: 13px;
-}
-
-.detail-assessment-wrapper .option-text {
-    font-size: 13px;
-}
-
-.detail-assessment-wrapper .explanation-section {
-    margin-top: 16px;
-    padding: 14px;
-}
-
-.detail-assessment-wrapper .explanation-text {
-    font-size: 13px;
-}
