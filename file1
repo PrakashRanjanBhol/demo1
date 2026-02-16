@@ -1,93 +1,56 @@
-// Update the loadModels method:
-loadModels(): void {
-  this.isLoadingModels = true;
-  this.modelsLoadError = '';
-
-  const sub = this.uploadGenerateService.getModels().subscribe({
-    next: (response: ModelsResponse) => {
-      console.log('Models loaded:', response);
-      
-      if (response.status === 'Success' || response.status === 'success') {
-        if (response.result && response.result.length > 0) {
-          this.availableModels = response.result;
-          // Select first model by default
-          this.selectedModel = this.availableModels[0];
-          this.modelsLoadError = '';
-        } else {
-          // Empty array - no models available
-          this.availableModels = [];
-          this.selectedModel = '';
-          this.modelsLoadError = '';
-        }
-      } else {
-        this.availableModels = [];
-        this.selectedModel = '';
-        this.modelsLoadError = 'No models available';
-      }
-      
-      this.isLoadingModels = false;
-    },
-    error: (error) => {
-      console.error('Error loading models:', error);
-      this.availableModels = [];
-      this.selectedModel = '';
-      this.modelsLoadError = 'Failed to load models';
-      this.isLoadingModels = false;
-    }
-  });
+/**
+ * Copy content to clipboard (fallback method for HTTP)
+ */
+copyToClipboard(content: string, itemType?: string, itemId?: string): void {
+  let contentToCopy = content;
   
-  this.subscriptions.push(sub);
+  // For assessment questions, copy the raw FAQ data
+  if (itemType === 'questions' && this.faqRawData) {
+    contentToCopy = typeof this.faqRawData === 'string' 
+      ? this.faqRawData 
+      : JSON.stringify(this.faqRawData, null, 2);
+  }
+  
+  const textArea = document.createElement('textarea');
+  textArea.value = contentToCopy;
+  
+  // Make the textarea invisible
+  textArea.style.position = 'fixed';
+  textArea.style.top = '0';
+  textArea.style.left = '0';
+  textArea.style.width = '2em';
+  textArea.style.height = '2em';
+  textArea.style.padding = '0';
+  textArea.style.border = 'none';
+  textArea.style.outline = 'none';
+  textArea.style.boxShadow = 'none';
+  textArea.style.background = 'transparent';
+  textArea.style.opacity = '0';
+  
+  document.body.appendChild(textArea);
+  textArea.focus();
+  textArea.select();
+  
+  try {
+    const successful = document.execCommand('copy');
+    if (successful) {
+      console.log('Content copied to clipboard');
+      
+      // Show tick icon for this item
+      if (itemId) {
+        this.copiedItemId = itemId;
+        
+        // Reset back to copy icon after 1.5 seconds
+        setTimeout(() => {
+          this.copiedItemId = '';
+        }, 1500);
+      }
+    } else {
+      console.error('Failed to copy content');
+    }
+  } catch (err) {
+    console.error('Failed to copy content:', err);
+  }
+  
+  document.body.removeChild(textArea);
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<!-- Model Selector - Update this section in panel-header -->
-<div class="model-selector-container">
-    <div class="model-selector-wrapper">
-        <label class="model-selector-label">Model:</label>
-        
-        <!-- Show dropdown when models are loaded (even if empty) -->
-        <select class="model-dropdown" 
-                *ngIf="!modelsLoadError"
-                [(ngModel)]="selectedModel" 
-                (change)="onModelChange(selectedModel)"
-                [disabled]="isLoadingModels || isProcessing || isUploading || availableModels.length === 0">
-            <option value="" *ngIf="availableModels.length === 0" disabled>No models available</option>
-            <option *ngFor="let model of availableModels" [value]="model">
-                {{ model }}
-            </option>
-        </select>
-        
-        <!-- Show error indicator when loading fails -->
-        <div class="model-error-indicator" *ngIf="modelsLoadError" [title]="modelsLoadError">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round"
-                    d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-            </svg>
-            <span>Error</span>
-        </div>
-        
-        <button class="model-refresh-btn" 
-                (click)="refreshModels()" 
-                [disabled]="isLoadingModels || isProcessing || isUploading"
-                [title]="modelsLoadError ? 'Retry loading models' : 'Refresh models'">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                stroke="currentColor" [class.spin]="isLoadingModels">
-                <path stroke-linecap="round" stroke-linejoin="round"
-                    d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-            </svg>
-        </button>
-    </div>
-</div>
