@@ -1,75 +1,846 @@
-// Add new @Output decorator at the top with other outputs:
-@Output() onGenerate = new EventEmitter<{ file: any, prompts: string, mode: 'new' }>();
-@Output() onFileRemoved = new EventEmitter<{ id: string | number, name: string }>();
-@Output() onGenerationComplete = new EventEmitter<{ 
-  id: number, 
-  status: 'Success' | 'Failure',
-  summary_prompt?: string,
-  faq_prompt?: string
-}>();
-@Output() onFileUploaded = new EventEmitter<{ 
-  id: number, 
-  original_name: string, 
-  created_at: string,
-  summary_prompt: string | null,
-  faq_prompt: string | null
-}>();
-@Output() onProcessingStatusChange = new EventEmitter<{ 
-  isProcessing: boolean, 
-  id: number | null 
-}>();
-@Output() onUploadStatusChange = new EventEmitter<{ isFileUploading: boolean }>();
+import { Component, EventEmitter, Output, Input, OnInit, OnChanges, SimpleChanges } from '@angular/core';
+import { HistoryService, FileItem } from './history.service';
 
-
-
-
-
-// Update the onUpload method:
-async onUpload(): Promise<void> {
-  if (this.uploadedFilesWithStatus.length > 0 && !this.isUploading) {
-    this.isUploading = true;
-    
-    // Emit upload started
-    this.onUploadStatusChange.emit({ isFileUploading: true });
-    
-    await this.uploadFilesSequentially();
-    
-    this.isUploading = false;
-    
-    // Emit upload completed
-    this.onUploadStatusChange.emit({ isFileUploading: false });
-    
-    // Stay on Upload tab - don't navigate to Generate
-  }
+interface HistoryItem {
+  id: string;
+  name: string;
+  displayDate: string;
+  date: Date;
+  hasResult: boolean;
+  summary_prompt: string | null;
+  faq_prompt: string | null;
 }
 
+export interface HistoryItemSelect {
+  id: string;
+  name: string;
+  displayDate: string;
+  date: Date;
+  summary_prompt: string | null;
+  faq_prompt: string | null;
+}
 
+interface RemoveGenerateFile {
+  id: number;
+  name: string;
+}
 
+interface GenerationStatus {
+  id: number;
+  status: 'Success' | 'Failure';
+  summary_prompt?: string;
+  faq_prompt?: string;
+}
 
+interface NewUploadFile {
+  id: number;
+  original_name: string;
+  created_at: string;
+  summary_prompt: string | null;
+  faq_prompt: string | null;
+}
 
+interface ProcessStatus {
+  id: number | null;
+  isProcessing: boolean;
+}
 
-
-
-// In your parent component template:
-<app-upload-generate 
-  [requestFile]="selectedFile"
-  (onGenerate)="handleGenerate($event)"
-  (onFileRemoved)="handleFileRemoved($event)"
-  (onGenerationComplete)="handleGenerationComplete($event)"
-  (onFileUploaded)="handleFileUploaded($event)"
-  (onProcessingStatusChange)="handleProcessingStatusChange($event)"
-  (onUploadStatusChange)="handleUploadStatusChange($event)">
-</app-upload-generate>
-
-// In your parent component class:
-handleUploadStatusChange(event: { isFileUploading: boolean }): void {
-  console.log('Upload status changed:', event);
+@Component({
+  selector: 'app-history',
+  templateUrl: './history.component.html',
+  styleUrls: ['./history.component.css']
+})
+export class HistoryComponent implements OnInit, OnChanges {
+  @Input() removeGenerateFile: RemoveGenerateFile | null = null;
+  @Input() generationStatus: GenerationStatus | null = null;
+  @Input() newUploadFile: NewUploadFile | null = null;
+  @Input() processStatus: ProcessStatus | null = null;
+  @Input() isFileUploading: boolean = false;  // New input
   
-  if (event.isFileUploading) {
-    console.log('Files are uploading...');
-    // Handle upload started - e.g., disable certain actions, show loading indicator
-  } else {
-    console.log('Upload completed');
-    // Handle upload completed - e.g., re-enable actions, hide loading indicator
+  @Output() onItemSelect = new EventEmitter<HistoryItemSelect>();
+  @Output() onAddToContentGeneration = new EventEmitter<HistoryItem>();
+  @Output() onRemoveFromContentGeneration = new EventEmitter<string>();
+
+  selectedHistoryItem: HistoryItem | null = null;
+  addedToGenerationId: string | null = null;
+  processingItemId: string | null = null;
+  isPendingExpanded: boolean = true;
+  isCompletedExpanded: boolean = true;
+
+  startDate: string = '';
+  endDate: string = '';
+
+  historyItems: HistoryItem[] = [];
+  isLoading: boolean = false;
+  isRefreshing: boolean = false;
+  errorMessage: string = '';
+
+  // Filter properties
+  isFilterVisible: boolean = false;
+  filterFromDate: string = '';
+  filterToDate: string = '';
+  searchText: string = '';
+
+  constructor(private historyService: HistoryService) {}
+
+  ngOnInit(): void {
+    this.initializeDateRange();
+    this.fetchHistoryData();
+  }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['removeGenerateFile'] && changes['removeGenerateFile'].currentValue) {
+      const fileToRemove = changes['removeGenerateFile'].currentValue as RemoveGenerateFile;
+      this.handleRemoveFromParent(fileToRemove);
+    }
+
+    if (changes['generationStatus'] && changes['generationStatus'].currentValue) {
+      const statusUpdate = changes['generationStatus'].currentValue as GenerationStatus;
+      this.handleGenerationStatusChange(statusUpdate);
+    }
+
+    if (changes['newUploadFile'] && changes['newUploadFile'].currentValue) {
+      const newFile = changes['newUploadFile'].currentValue as NewUploadFile;
+      this.handleNewFileUpload(newFile);
+    }
+
+    if (changes['processStatus'] && changes['processStatus'].currentValue) {
+      const status = changes['processStatus'].currentValue as ProcessStatus;
+      this.handleProcessStatusChange(status);
+    }
+  }
+
+  get pendingFiles(): HistoryItem[] {
+    return this.historyItems.filter(item => !item.hasResult);
+  }
+
+  get completedFiles(): HistoryItem[] {
+    return this.historyItems.filter(item => item.hasResult);
+  }
+
+  get filteredPendingFiles(): HistoryItem[] {
+    return this.applyTextSearch(this.pendingFiles);
+  }
+
+  get filteredCompletedFiles(): HistoryItem[] {
+    return this.applyTextSearch(this.completedFiles);
+  }
+
+  isProcessing(itemId: string): boolean {
+    return this.processingItemId === itemId;
+  }
+
+  isAnyProcessing(): boolean {
+    return this.processingItemId !== null;
+  }
+
+  // Check if buttons should be disabled
+  isButtonsDisabled(): boolean {
+    return this.isFileUploading || this.isAnyProcessing();
+  }
+
+  onHistoryItemClick(itemId: string): void {
+    const item = this.historyItems.find(i => i.id === itemId);
+    if (item) {
+      this.selectedHistoryItem = item;
+      
+      const itemToEmit: HistoryItemSelect = {
+        id: item.id,
+        name: item.name,
+        displayDate: item.displayDate,
+        date: item.date,
+        summary_prompt: item.summary_prompt,
+        faq_prompt: item.faq_prompt
+      };
+      
+      this.onItemSelect.emit(itemToEmit);
+    }
+  }
+
+  onAddToGeneration(event: Event, item: HistoryItem): void {
+    event.stopPropagation();
+    
+    // Check if file is uploading
+    if (this.isFileUploading) {
+      alert('Cannot perform this action. A file is currently being uploaded. Please wait until the upload is complete.');
+      return;
+    }
+    
+    // Check if any file is currently processing
+    if (this.isAnyProcessing()) {
+      const processingItem = this.historyItems.find(i => i.id === this.processingItemId);
+      const processingFileName = processingItem ? processingItem.name : 'A file';
+      alert(`Cannot perform this action. ${processingFileName} is currently being processed. Please wait until processing is complete.`);
+      return;
+    }
+
+    const button = (event.currentTarget as HTMLElement);
+    const historyItem = button.closest('.history-item') as HTMLElement;
+    
+    if (this.addedToGenerationId === item.id) {
+      this.removeItemWithAnimation(historyItem, button, item.id);
+    } else {
+      this.addItemWithAnimation(historyItem, button, item);
+    }
+  }
+
+  // ... rest of the methods remain the same ...
+
+  toggleFilter(): void {
+    this.isFilterVisible = !this.isFilterVisible;
+    
+    if (this.isFilterVisible && !this.filterFromDate && !this.filterToDate) {
+      const today = new Date();
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(today.getDate() - 30);
+      
+      this.filterFromDate = this.formatDateForInput(thirtyDaysAgo);
+      this.filterToDate = this.formatDateForInput(today);
+    }
+  }
+
+  applyDateFilter(): void {
+    if (!this.filterFromDate || !this.filterToDate) {
+      console.warn('Please select both from and to dates');
+      return;
+    }
+
+    const fromDate = new Date(this.filterFromDate);
+    const toDate = new Date(this.filterToDate);
+
+    if (fromDate > toDate) {
+      console.warn('From date cannot be after to date');
+      return;
+    }
+
+    this.isRefreshing = true;
+    
+    this.startDate = this.formatDateForDisplay(fromDate);
+    this.endDate = this.formatDateForDisplay(toDate);
+
+    this.historyService.getFilesByDateRange(this.filterFromDate, this.filterToDate)
+      .subscribe({
+        next: (response) => {
+          if (response.status === 'success' && response.data.files) {
+            this.historyItems = this.mapFilesToHistoryItems(response.data.files);
+            console.log('Date filter applied successfully');
+          }
+          this.isRefreshing = false;
+        },
+        error: (error) => {
+          console.error('Error applying date filter:', error);
+          this.errorMessage = 'Failed to apply date filter. Please try again.';
+          this.isRefreshing = false;
+        }
+      });
+  }
+
+  onSearchChange(): void {
+    console.log('Searching for:', this.searchText);
+  }
+
+  clearSearch(): void {
+    this.searchText = '';
+  }
+
+  togglePendingSection(): void {
+    this.isPendingExpanded = !this.isPendingExpanded;
+  }
+
+  toggleCompletedSection(): void {
+    this.isCompletedExpanded = !this.isCompletedExpanded;
+  }
+
+  isAddedToGeneration(itemId: string): boolean {
+    return this.addedToGenerationId === itemId;
+  }
+
+  clearSelection(): void {
+    this.selectedHistoryItem = null;
+  }
+
+  clearAddedToGeneration(): void {
+    this.addedToGenerationId = null;
+  }
+
+  addHistoryItem(item: HistoryItem): void {
+    this.historyItems.unshift(item);
+  }
+
+  private addItemWithAnimation(historyItem: HTMLElement | null, button: HTMLElement, item: HistoryItem): void {
+    if (historyItem) {
+      historyItem.classList.add('adding-animation');
+      setTimeout(() => {
+        historyItem.classList.remove('adding-animation');
+      }, 800);
+    }
+    
+    button.classList.add('pulse-animation');
+    setTimeout(() => {
+      button.classList.remove('pulse-animation');
+    }, 400);
+    
+    const previousId = this.addedToGenerationId;
+    this.addedToGenerationId = item.id;
+    this.onAddToContentGeneration.emit(item);
+    console.log('Added to content generation:', item.name);
+    
+    if (previousId) {
+      console.log('Previous item removed automatically');
+    }
+  }
+
+  private removeItemWithAnimation(historyItem: HTMLElement | null, button: HTMLElement, itemId: string): void {
+    if (historyItem) {
+      historyItem.classList.add('removing-animation');
+      setTimeout(() => {
+        historyItem.classList.remove('removing-animation');
+      }, 800);
+    }
+    
+    button.classList.add('pulse-animation');
+    setTimeout(() => {
+      button.classList.remove('pulse-animation');
+    }, 400);
+    
+    this.addedToGenerationId = null;
+    this.onRemoveFromContentGeneration.emit(itemId);
+    console.log('Removed from content generation:', itemId);
+  }
+
+  private handleRemoveFromParent(fileToRemove: RemoveGenerateFile): void {
+    const itemId = fileToRemove.id.toString();
+    
+    if (this.addedToGenerationId === itemId) {
+      console.log('Removing file from parent:', fileToRemove.name);
+      
+      const historyItemElement = document.querySelector(
+        `.history-item[data-item-id="${itemId}"]`
+      ) as HTMLElement;
+      
+      if (historyItemElement) {
+        historyItemElement.classList.add('removing-animation');
+        setTimeout(() => {
+          historyItemElement.classList.remove('removing-animation');
+        }, 800);
+      }
+      
+      this.addedToGenerationId = null;
+      console.log('File removed successfully:', fileToRemove.name);
+    }
+  }
+
+  private handleGenerationStatusChange(statusUpdate: GenerationStatus): void {
+    const itemId = statusUpdate.id.toString();
+    const item = this.historyItems.find(i => i.id === itemId);
+
+    if (!item) {
+      console.warn('Item not found for status update:', itemId);
+      return;
+    }
+
+    console.log(`Generation status update for item ${itemId}: ${statusUpdate.status}`);
+
+    if (statusUpdate.summary_prompt !== undefined) {
+      item.summary_prompt = statusUpdate.summary_prompt;
+      console.log(`Updated summary_prompt for item ${itemId}:`, statusUpdate.summary_prompt);
+    }
+
+    if (statusUpdate.faq_prompt !== undefined) {
+      item.faq_prompt = statusUpdate.faq_prompt;
+      console.log(`Updated faq_prompt for item ${itemId}:`, statusUpdate.faq_prompt);
+    }
+
+    if (statusUpdate.status === 'Success') {
+      if (!item.hasResult) {
+        console.log(`Moving item ${itemId} to Completed Results`);
+        
+        item.hasResult = true;
+
+        if (!this.isCompletedExpanded) {
+          this.isCompletedExpanded = true;
+        }
+
+        setTimeout(() => {
+          const historyItemElement = document.querySelector(
+            `.history-item[data-item-id="${itemId}"]`
+          ) as HTMLElement;
+
+          if (historyItemElement) {
+            historyItemElement.classList.add('success-animation');
+            setTimeout(() => {
+              historyItemElement.classList.remove('success-animation');
+            }, 1000);
+
+            historyItemElement.scrollIntoView({
+              behavior: 'smooth',
+              block: 'center',
+              inline: 'nearest'
+            });
+
+            setTimeout(() => {
+              this.selectedHistoryItem = item;
+              
+              const itemToEmit: HistoryItemSelect = {
+                id: item.id,
+                name: item.name,
+                displayDate: item.displayDate,
+                date: item.date,
+                summary_prompt: item.summary_prompt,
+                faq_prompt: item.faq_prompt
+              };
+              
+              this.onItemSelect.emit(itemToEmit);
+              console.log(`Card ${itemId} selected and scrolled into view`);
+            }, 300);
+          }
+        }, 100);
+      } else {
+        const historyItemElement = document.querySelector(
+          `.history-item[data-item-id="${itemId}"]`
+        ) as HTMLElement;
+
+        if (historyItemElement) {
+          historyItemElement.classList.add('success-animation');
+          setTimeout(() => {
+            historyItemElement.classList.remove('success-animation');
+          }, 1000);
+
+          historyItemElement.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center',
+            inline: 'nearest'
+          });
+
+          setTimeout(() => {
+            this.selectedHistoryItem = item;
+            
+            const itemToEmit: HistoryItemSelect = {
+              id: item.id,
+              name: item.name,
+              displayDate: item.displayDate,
+              date: item.date,
+              summary_prompt: item.summary_prompt,
+              faq_prompt: item.faq_prompt
+            };
+            
+            this.onItemSelect.emit(itemToEmit);
+            console.log(`Card ${itemId} selected and scrolled into view`);
+          }, 300);
+        }
+      }
+
+      if (this.addedToGenerationId === itemId) {
+        console.log(`Clearing added state for item ${itemId} - restoring plus icon`);
+        this.addedToGenerationId = null;
+      }
+    } else if (statusUpdate.status === 'Failure') {
+      if (item.hasResult) {
+        console.log(`Moving item ${itemId} to Pending Results`);
+        
+        item.hasResult = false;
+
+        if (!this.isPendingExpanded) {
+          this.isPendingExpanded = true;
+        }
+
+        setTimeout(() => {
+          const historyItemElement = document.querySelector(
+            `.history-item[data-item-id="${itemId}"]`
+          ) as HTMLElement;
+
+          if (historyItemElement) {
+            historyItemElement.classList.add('failure-animation');
+            setTimeout(() => {
+              historyItemElement.classList.remove('failure-animation');
+            }, 1000);
+          }
+        }, 100);
+      } else {
+        const historyItemElement = document.querySelector(
+          `.history-item[data-item-id="${itemId}"]`
+        ) as HTMLElement;
+
+        if (historyItemElement) {
+          historyItemElement.classList.add('failure-animation');
+          setTimeout(() => {
+            historyItemElement.classList.remove('failure-animation');
+          }, 1000);
+        }
+      }
+
+      if (this.addedToGenerationId === itemId) {
+        console.log(`Clearing added state for item ${itemId} - restoring plus icon`);
+        this.addedToGenerationId = null;
+      }
+    }
+  }
+
+  private handleNewFileUpload(newFile: NewUploadFile): void {
+    console.log('New file uploaded:', newFile);
+
+    const existingFile = this.historyItems.find(item => item.id === newFile.id.toString());
+    if (existingFile) {
+      console.warn('File already exists in history:', newFile.id);
+      return;
+    }
+
+    const newHistoryItem: HistoryItem = {
+      id: newFile.id.toString(),
+      name: newFile.original_name,
+      displayDate: `Created on ${newFile.created_at}`,
+      date: new Date(newFile.created_at),
+      hasResult: false,
+      summary_prompt: newFile.summary_prompt,
+      faq_prompt: newFile.faq_prompt
+    };
+
+    this.historyItems.unshift(newHistoryItem);
+
+    if (!this.isPendingExpanded) {
+      this.isPendingExpanded = true;
+    }
+
+    console.log('New file added to Pending Results:', newHistoryItem);
+    if (newFile.summary_prompt) {
+      console.log('With summary_prompt:', newFile.summary_prompt);
+    }
+    if (newFile.faq_prompt) {
+      console.log('With faq_prompt:', newFile.faq_prompt);
+    }
+
+    setTimeout(() => {
+      const historyItemElement = document.querySelector(
+        `.history-item[data-item-id="${newFile.id}"]`
+      ) as HTMLElement;
+
+      if (historyItemElement) {
+        historyItemElement.classList.add('new-item-animation');
+        setTimeout(() => {
+          historyItemElement.classList.remove('new-item-animation');
+        }, 800);
+
+        historyItemElement.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+          inline: 'nearest'
+        });
+      }
+    }, 100);
+  }
+
+  private handleProcessStatusChange(status: ProcessStatus): void {
+    if (status.id === null) {
+      console.log('Clearing all processing states');
+      this.processingItemId = null;
+      return;
+    }
+
+    const itemId = status.id.toString();
+    const item = this.historyItems.find(i => i.id === itemId);
+
+    if (!item) {
+      console.warn('Item not found for process status update:', itemId);
+      return;
+    }
+
+    if (status.isProcessing) {
+      console.log(`Setting processing state for item ${itemId}`);
+      this.processingItemId = itemId;
+    } else {
+      console.log(`Clearing processing state for item ${itemId}`);
+      if (this.processingItemId === itemId) {
+        this.processingItemId = null;
+      }
+    }
+  }
+
+  private applyTextSearch(items: HistoryItem[]): HistoryItem[] {
+    if (!this.searchText || this.searchText.trim() === '') {
+      return items;
+    }
+
+    const searchTerm = this.searchText.toLowerCase().trim();
+    
+    return items.filter(item => {
+      const nameMatch = item.name.toLowerCase().includes(searchTerm);
+      const idMatch = item.id.toLowerCase().includes(searchTerm);
+      
+      return nameMatch || idMatch;
+    });
+  }
+
+  private initializeDateRange(): void {
+    const today = new Date();
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(today.getDate() - 30);
+
+    this.startDate = this.formatDateForDisplay(thirtyDaysAgo);
+    this.endDate = this.formatDateForDisplay(today);
+  }
+
+  private fetchHistoryData(): void {
+    this.isLoading = true;
+    this.errorMessage = '';
+
+    const today = new Date();
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(today.getDate() - 30);
+
+    const startDateForApi = this.formatDateForApi(thirtyDaysAgo);
+    const endDateForApi = this.formatDateForApi(today);
+
+    this.historyService.getFilesByDateRange(startDateForApi, endDateForApi)
+      .subscribe({
+        next: (response) => {
+          if (response.status === 'success' && response.data.files) {
+            this.historyItems = this.mapFilesToHistoryItems(response.data.files);
+          }
+          this.isLoading = false;
+        },
+        error: (error) => {
+          console.error('Error fetching history data:', error);
+          this.errorMessage = 'Failed to load history data. Please try again.';
+          this.isLoading = false;
+        }
+      });
+  }
+
+  private mapFilesToHistoryItems(files: FileItem[]): HistoryItem[] {
+    return files.map(file => {
+      const hasResult = file.progress === 'completed';
+
+      return {
+        id: file.id.toString(),
+        name: file.original_name,
+        displayDate: `Created on ${file.inserted_at}`,
+        date: this.parseInsertedDate(file.inserted_at),
+        hasResult: hasResult,
+        summary_prompt: file.summary_prompt,
+        faq_prompt: file.faq_prompt
+      };
+    });
+  }
+
+  private parseInsertedDate(dateString: string): Date {
+    return new Date(dateString);
+  }
+
+  private formatDateForDisplay(date: Date): string {
+    const options: Intl.DateTimeFormatOptions = { 
+      month: 'short', 
+      day: 'numeric', 
+      year: 'numeric' 
+    };
+    return date.toLocaleDateString('en-US', options);
+  }
+
+  private formatDateForApi(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  private formatDateForInput(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   }
 }
+
+
+
+
+
+
+
+
+
+<!-- For Pending Files Section - Update button only -->
+<button class="add-to-generation-btn" 
+        [class.added]="isAddedToGeneration(item.id)"
+        [class.disabled-by-processing]="isButtonsDisabled()"
+        (click)="onAddToGeneration($event, item)"
+        [title]="isFileUploading ? 'Please wait, a file is being uploaded' : (isAnyProcessing() ? 'Please wait, a file is being processed' : (isAddedToGeneration(item.id) ? 'Remove from content generation' : 'Add to content generation'))">
+    <div class="btn-icon-wrapper">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
+            stroke="currentColor" class="plus-icon" *ngIf="!isAddedToGeneration(item.id)">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+        </svg>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
+            stroke="currentColor" class="minus-icon" *ngIf="isAddedToGeneration(item.id)">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 12h-15" />
+        </svg>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+            stroke="currentColor" class="arrow-left-icon" *ngIf="!isAddedToGeneration(item.id)">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+        </svg>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+            stroke="currentColor" class="arrow-right-icon" *ngIf="isAddedToGeneration(item.id)">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+        </svg>
+    </div>
+</button>
+
+<!-- Same update for Completed Files Section button -->
+<button class="add-to-generation-btn" 
+        [class.added]="isAddedToGeneration(item.id)"
+        [class.disabled-by-processing]="isButtonsDisabled()"
+        (click)="onAddToGeneration($event, item)"
+        [title]="isFileUploading ? 'Please wait, a file is being uploaded' : (isAnyProcessing() ? 'Please wait, a file is being processed' : (isAddedToGeneration(item.id) ? 'Remove from content generation' : 'Add to content generation'))">
+    <div class="btn-icon-wrapper">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
+            stroke="currentColor" class="plus-icon" *ngIf="!isAddedToGeneration(item.id)">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+        </svg>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
+            stroke="currentColor" class="minus-icon" *ngIf="isAddedToGeneration(item.id)">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 12h-15" />
+        </svg>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+            stroke="currentColor" class="arrow-left-icon" *ngIf="!isAddedToGeneration(item.id)">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+        </svg>
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+            stroke="currentColor" class="arrow-right-icon" *ngIf="isAddedToGeneration(item.id)">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+        </svg>
+    </div>
+</button>
+
+
+
+
+
+
+
+
+
+
+
+
+// parent.component.ts
+export class ParentComponent {
+  removeGenerateFile: { id: number; name: string } | null = null;
+  generationStatus: { 
+    id: number; 
+    status: 'Success' | 'Failure';
+    summary_prompt?: string;
+    faq_prompt?: string;
+  } | null = null;
+  newUploadFile: { 
+    id: number; 
+    original_name: string; 
+    created_at: string;
+    summary_prompt: string | null;
+    faq_prompt: string | null;
+  } | null = null;
+  processStatus: { 
+    id: number | null; 
+    isProcessing: boolean 
+  } | null = null;
+  isFileUploading: boolean = false;  // New property
+
+  // Start file upload
+  startFileUpload() {
+    this.isFileUploading = true;
+    console.log('File upload started - buttons disabled');
+  }
+
+  // Complete file upload
+  completeFileUpload() {
+    this.isFileUploading = false;
+    console.log('File upload completed - buttons enabled');
+  }
+
+  // Simulate file upload
+  uploadFile(file: File) {
+    this.startFileUpload();
+
+    // Simulate upload process
+    setTimeout(() => {
+      this.completeFileUpload();
+      
+      // Add the uploaded file to history
+      this.newUploadFile = {
+        id: Math.floor(Math.random() * 1000),
+        original_name: file.name,
+        created_at: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+        summary_prompt: null,
+        faq_prompt: null
+      };
+      
+      setTimeout(() => {
+        this.newUploadFile = null;
+      }, 100);
+    }, 3000); // 3 second upload simulation
+  }
+
+  // Other methods...
+  startProcessing(fileId: number) {
+    this.processStatus = { 
+      id: fileId, 
+      isProcessing: true 
+    };
+  }
+
+  stopProcessing(fileId: number) {
+    this.processStatus = { 
+      id: fileId, 
+      isProcessing: false 
+    };
+  }
+
+  markGenerationSuccess(fileId: number, summaryPrompt: string, faqPrompt: string) {
+    this.generationStatus = { 
+      id: fileId, 
+      status: 'Success',
+      summary_prompt: summaryPrompt,
+      faq_prompt: faqPrompt
+    };
+    
+    setTimeout(() => {
+      this.generationStatus = null;
+    }, 100);
+  }
+
+  handleItemSelect(item: any) {
+    console.log('Selected Item:', item);
+  }
+
+  handleAddToGeneration(item: any) {
+    console.log('File added:', item);
+  }
+
+  handleRemoveFromGeneration(itemId: string) {
+    console.log('File removed:', itemId);
+  }
+}
+
+
+
+
+
+
+
+
+
+
+<!-- parent.component.html -->
+<app-history 
+  [removeGenerateFile]="removeGenerateFile"
+  [generationStatus]="generationStatus"
+  [newUploadFile]="newUploadFile"
+  [processStatus]="processStatus"
+  [isFileUploading]="isFileUploading"
+  (onItemSelect)="handleItemSelect($event)"
+  (onAddToContentGeneration)="handleAddToGeneration($event)"
+  (onRemoveFromContentGeneration)="handleRemoveFromGeneration($event)">
+</app-history>
+
+<!-- Example buttons for testing -->
+<button (click)="startFileUpload()">Start File Upload</button>
+<button (click)="completeFileUpload()">Complete File Upload</button>
+<button (click)="uploadFile(mockFile)">Simulate File Upload (3 sec)</button>
