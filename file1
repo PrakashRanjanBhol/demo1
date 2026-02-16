@@ -1,54 +1,93 @@
-/* Content Editor Textarea */
-.content-editor {
-    flex: 1;
-    width: 100%;
-    min-height: 300px;
-    padding: 12px;
-    font-family: 'Courier New', monospace;
-    font-size: 13px;
-    line-height: 1.6;
-    color: var(--text-color);
-    background: var(--bg-color);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    resize: none;
-    outline: none;
-    transition: all 0.2s ease;
-    margin-bottom: 12px;
+// Update the loadModels method:
+loadModels(): void {
+  this.isLoadingModels = true;
+  this.modelsLoadError = '';
+
+  const sub = this.uploadGenerateService.getModels().subscribe({
+    next: (response: ModelsResponse) => {
+      console.log('Models loaded:', response);
+      
+      if (response.status === 'Success' || response.status === 'success') {
+        if (response.result && response.result.length > 0) {
+          this.availableModels = response.result;
+          // Select first model by default
+          this.selectedModel = this.availableModels[0];
+          this.modelsLoadError = '';
+        } else {
+          // Empty array - no models available
+          this.availableModels = [];
+          this.selectedModel = '';
+          this.modelsLoadError = '';
+        }
+      } else {
+        this.availableModels = [];
+        this.selectedModel = '';
+        this.modelsLoadError = 'No models available';
+      }
+      
+      this.isLoadingModels = false;
+    },
+    error: (error) => {
+      console.error('Error loading models:', error);
+      this.availableModels = [];
+      this.selectedModel = '';
+      this.modelsLoadError = 'Failed to load models';
+      this.isLoadingModels = false;
+    }
+  });
+  
+  this.subscriptions.push(sub);
 }
 
-.content-editor:focus {
-    border-color: #10b981;
-    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
-}
 
-.content-editor::placeholder {
-    color: var(--text-color);
-    opacity: 0.4;
-}
 
-/* Content Editor Scrollbar - Match preview container */
-.content-editor::-webkit-scrollbar {
-    width: 6px;
-}
 
-.content-editor::-webkit-scrollbar-track {
-    background: var(--scrollbar-track-bg);
-    border-radius: 3px;
-}
 
-.content-editor::-webkit-scrollbar-thumb {
-    background-color: var(--scrollbar-thumb-bg);
-    border-radius: 3px;
-}
 
-.content-editor::-webkit-scrollbar-thumb:hover {
-    background-color: var(--primary-color);
-}
 
-/* Disabled textarea */
-.content-editor:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-    background: rgba(107, 114, 128, 0.05);
-}
+
+
+
+
+
+
+
+<!-- Model Selector - Update this section in panel-header -->
+<div class="model-selector-container">
+    <div class="model-selector-wrapper">
+        <label class="model-selector-label">Model:</label>
+        
+        <!-- Show dropdown when models are loaded (even if empty) -->
+        <select class="model-dropdown" 
+                *ngIf="!modelsLoadError"
+                [(ngModel)]="selectedModel" 
+                (change)="onModelChange(selectedModel)"
+                [disabled]="isLoadingModels || isProcessing || isUploading || availableModels.length === 0">
+            <option value="" *ngIf="availableModels.length === 0" disabled>No models available</option>
+            <option *ngFor="let model of availableModels" [value]="model">
+                {{ model }}
+            </option>
+        </select>
+        
+        <!-- Show error indicator when loading fails -->
+        <div class="model-error-indicator" *ngIf="modelsLoadError" [title]="modelsLoadError">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+            </svg>
+            <span>Error</span>
+        </div>
+        
+        <button class="model-refresh-btn" 
+                (click)="refreshModels()" 
+                [disabled]="isLoadingModels || isProcessing || isUploading"
+                [title]="modelsLoadError ? 'Retry loading models' : 'Refresh models'">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                stroke="currentColor" [class.spin]="isLoadingModels">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+            </svg>
+        </button>
+    </div>
+</div>
