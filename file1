@@ -1,37 +1,75 @@
-// Update the uploadFilesSequentially method:
-async uploadFilesSequentially(): Promise<void> {
-  for (let i = 0; i < this.uploadedFilesWithStatus.length; i++) {
-    const fileWithStatus = this.uploadedFilesWithStatus[i];
+// Add new @Output decorator at the top with other outputs:
+@Output() onGenerate = new EventEmitter<{ file: any, prompts: string, mode: 'new' }>();
+@Output() onFileRemoved = new EventEmitter<{ id: string | number, name: string }>();
+@Output() onGenerationComplete = new EventEmitter<{ 
+  id: number, 
+  status: 'Success' | 'Failure',
+  summary_prompt?: string,
+  faq_prompt?: string
+}>();
+@Output() onFileUploaded = new EventEmitter<{ 
+  id: number, 
+  original_name: string, 
+  created_at: string,
+  summary_prompt: string | null,
+  faq_prompt: string | null
+}>();
+@Output() onProcessingStatusChange = new EventEmitter<{ 
+  isProcessing: boolean, 
+  id: number | null 
+}>();
+@Output() onUploadStatusChange = new EventEmitter<{ isFileUploading: boolean }>();
 
-    // Skip already uploaded files
-    if (fileWithStatus.status === 'uploaded') {
-      continue;
-    }
 
-    fileWithStatus.status = 'uploading';
-    fileWithStatus.progress = 0;
 
-    try {
-      await this.uploadFileViaService(fileWithStatus);
-      fileWithStatus.status = 'uploaded';
-      fileWithStatus.progress = 100;
-    } catch (error) {
-      fileWithStatus.status = 'error';
-      console.error(`Failed to upload ${fileWithStatus.file.name}:`, error);
-    }
+
+
+// Update the onUpload method:
+async onUpload(): Promise<void> {
+  if (this.uploadedFilesWithStatus.length > 0 && !this.isUploading) {
+    this.isUploading = true;
+    
+    // Emit upload started
+    this.onUploadStatusChange.emit({ isFileUploading: true });
+    
+    await this.uploadFilesSequentially();
+    
+    this.isUploading = false;
+    
+    // Emit upload completed
+    this.onUploadStatusChange.emit({ isFileUploading: false });
+    
+    // Stay on Upload tab - don't navigate to Generate
   }
+}
 
-  // Check if all files are uploaded successfully
-  const allUploaded = this.uploadedFilesWithStatus.every(
-    file => file.status === 'uploaded'
-  );
 
-  // Clear the list if all files uploaded successfully
-  if (allUploaded && this.uploadedFilesWithStatus.length > 0) {
-    // Optional: Add a small delay so users can see the "Uploaded" status
-    setTimeout(() => {
-      this.uploadedFilesWithStatus = [];
-      this.selectedUploadFile = null;
-    }, 1500); // 1.5 second delay before clearing
+
+
+
+
+
+
+// In your parent component template:
+<app-upload-generate 
+  [requestFile]="selectedFile"
+  (onGenerate)="handleGenerate($event)"
+  (onFileRemoved)="handleFileRemoved($event)"
+  (onGenerationComplete)="handleGenerationComplete($event)"
+  (onFileUploaded)="handleFileUploaded($event)"
+  (onProcessingStatusChange)="handleProcessingStatusChange($event)"
+  (onUploadStatusChange)="handleUploadStatusChange($event)">
+</app-upload-generate>
+
+// In your parent component class:
+handleUploadStatusChange(event: { isFileUploading: boolean }): void {
+  console.log('Upload status changed:', event);
+  
+  if (event.isFileUploading) {
+    console.log('Files are uploading...');
+    // Handle upload started - e.g., disable certain actions, show loading indicator
+  } else {
+    console.log('Upload completed');
+    // Handle upload completed - e.g., re-enable actions, hide loading indicator
   }
 }
