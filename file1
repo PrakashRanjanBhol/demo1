@@ -1,96 +1,104 @@
-.empty-state-title {
-    font-size: 18px;
-    font-weight: 700;
-    color: var(--text-color);
-    margin: 0 0 4px 0;
-}
+/**
+ * Map API response to result items
+ */
+private mapResponseToResultItems(data: any): void {
+  this.resultItems = [];
+  this.hasNoData = false;
 
-.empty-state-description {
-    font-size: 14px;
-    color: var(--text-color);
-    opacity: 0.7;
-    margin: 0 0 32px 0;
-}
+  // Check if summary is empty
+  const hasSummary = data.summary && 
+    typeof data.summary === 'string' && 
+    data.summary.trim().length > 0;
 
-.user-guide-title {
-    font-size: 17px;
-    font-weight: 700;
-    color: var(--text-color);
-    margin: 0 0 20px 0;
-    text-align: center;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-}
+  // Check if keywords is empty
+  const hasKeywords = data.keywords && 
+    Array.isArray(data.keywords) && 
+    data.keywords.length > 0;
 
-.step-number {
-    width: 28px;
-    height: 28px;
-    background: var(--primary-gradient);
-    color: white;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 14px;
-    font-weight: 700;
-    flex-shrink: 0;
-}
-
-.step-title {
-    font-size: 14px;
-    font-weight: 700;
-    color: var(--text-color);
-    margin: 0 0 4px 0;
-}
-
-.step-description {
-    font-size: 13px;
-    color: var(--text-color);
-    opacity: 0.8;
-    margin: 0;
-    line-height: 1.5;
-}
-
-
-
-
-
-
-
-
-
-
-@media screen and (max-width: 1400px) {
-    .empty-state-title {
-        font-size: 16px;
-        margin-bottom: 3px;
+  // Check if faq is empty - handles "", "[]", [], null, undefined
+  const isFaqEmpty = (faq: any): boolean => {
+    if (!faq) return true;
+    if (Array.isArray(faq) && faq.length === 0) return true;
+    if (typeof faq === 'string') {
+      const trimmed = faq.trim();
+      if (trimmed === '') return true;
+      if (trimmed === '[]') return true;
+      // Try parsing the string to check if it's an empty array
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed) && parsed.length === 0) return true;
+      } catch {
+        // If parsing fails and it's not empty string or "[]", consider it non-empty
+        return false;
+      }
     }
+    return false;
+  };
 
-    .empty-state-description {
-        font-size: 13px;
-        margin-bottom: 28px;
-    }
+  const hasFaq = !isFaqEmpty(data.faq);
 
-    .user-guide-title {
-        font-size: 15px;
-        margin-bottom: 16px;
-        gap: 8px;
-    }
+  // If all are empty, set empty state
+  if (!hasSummary && !hasKeywords && !hasFaq) {
+    this.hasNoData = true;
+    return;
+  }
 
-    .step-number {
-        width: 26px;
-        height: 26px;
-        font-size: 13px;
-    }
+  // Add Summary with markdown rendering
+  if (hasSummary) {
+    const htmlContent: any = marked(data.summary);
+    this.resultItems.push({
+      id: 'summary-1',
+      title: 'Summary',
+      icon: 'document',
+      content: data.summary,
+      type: 'summary',
+      htmlContent: this.sanitizer.bypassSecurityTrustHtml(htmlContent)
+    });
+  }
 
-    .step-title {
-        font-size: 13px;
-        margin-bottom: 3px;
-    }
+  // Add Keywords
+  if (hasKeywords) {
+    this.resultItems.push({
+      id: 'keywords-1',
+      title: 'Key Topics',
+      icon: 'tag',
+      content: data.keywords.map((k: string) => `• ${k}`).join(' '),
+      type: 'keywords',
+      keywords: data.keywords
+    });
+  }
 
-    .step-description {
-        font-size: 12px;
+  // Add Assessment Questions (FAQ as MCQ)
+  if (hasFaq) {
+    try {
+      const parsedFaq = typeof data.faq === 'string' ? eval(data.faq) : data.faq;
+
+      // Store raw FAQ data for copying
+      this.faqRawData = data.faq;
+
+      if (Array.isArray(parsedFaq) && parsedFaq.length > 0) {
+        this.resultItems.push({
+          id: 'assessment-1',
+          title: 'Assessment Questions',
+          icon: 'question',
+          content: `${parsedFaq.length} questions`,
+          type: 'questions',
+          assessmentQuestions: parsedFaq
+        });
+      } else {
+        // Parsed FAQ resulted in empty array
+        if (!hasSummary && !hasKeywords) {
+          this.hasNoData = true;
+          return;
+        }
+      }
+    } catch (error) {
+      console.error('Error parsing FAQ:', error);
     }
+  }
+
+  // Final check - if resultItems is still empty, show no data state
+  if (this.resultItems.length === 0) {
+    this.hasNoData = true;
+  }
 }
