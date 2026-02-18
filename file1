@@ -1,36 +1,57 @@
-switchToTab(tab: 'upload' | 'generate'): void {
-    if (this.isUploading && tab === 'generate') return;
-    if (this.isProcessing && tab === 'upload') return; // Prevent switching during generation
+import { Injectable, NgZone } from '@angular/core';
+import { BehaviorSubject } from 'rxjs';
 
-    // Don't reset if switching to generate tab with an existing file (from parent or locally selected)
-    if (tab === 'generate' && (this.requestFile || this.selectedGenerateFile)) {
-      this.currentTab = tab;
-      return;
+export type ToastType = 'success' | 'error' | 'warning' | 'info';
+
+export interface Toast {
+  id: string;
+  type: ToastType;
+  title: string;
+  message?: string;
+  duration?: number; // ms, 0 = persist until dismissed
+}
+
+@Injectable({ providedIn: 'root' })
+export class ToastService {
+  private toasts$ = new BehaviorSubject<Toast[]>([]);
+  readonly toasts = this.toasts$.asObservable();
+
+  constructor(private zone: NgZone) {}
+
+  private add(toast: Omit<Toast, 'id'>): void {
+    const id = crypto.randomUUID();
+    const newToast: Toast = { id, duration: 4000, ...toast };
+
+    this.toasts$.next([...this.toasts$.getValue(), newToast]);
+
+    if (newToast.duration && newToast.duration > 0) {
+      this.zone.run(() => {
+        setTimeout(() => this.dismiss(id), newToast.duration);
+      });
     }
-
-    // Only reset upload files when switching away from upload tab (i.e. switching TO generate)
-    if (tab === 'generate') {
-      this.uploadedFilesWithStatus = [];
-      this.selectedUploadFile = null;
-    }
-
-    // Only reset selectedGenerateFile if not coming from parent
-    if (!this.requestFile) {
-      this.selectedGenerateFile = null;
-    }
-
-    // Only reset prompts if there's no active generate file to preserve
-    if (!this.selectedGenerateFile) {
-      this.summaryPrompt = '';
-      this.faqPrompt = '';
-    }
-    this.isDragging = false;
-    this.isDraggingGenerate = false;
-    this.isProcessing = false;
-    this.processingProgress = 0;
-    this.processingFileName = '';
-    this.generationStatus = 'idle';
-    this.generationErrorMessage = '';
-
-    this.currentTab = tab;
   }
+
+  success(title: string, message?: string, duration?: number): void {
+    this.add({ type: 'success', title, message, duration });
+  }
+
+  error(title: string, message?: string, duration?: number): void {
+    this.add({ type: 'error', title, message, duration: duration ?? 0 }); // errors persist by default
+  }
+
+  warning(title: string, message?: string, duration?: number): void {
+    this.add({ type: 'warning', title, message, duration: duration ?? 6000 });
+  }
+
+  info(title: string, message?: string, duration?: number): void {
+    this.add({ type: 'info', title, message, duration });
+  }
+
+  dismiss(id: string): void {
+    this.toasts$.next(this.toasts$.getValue().filter(t => t.id !== id));
+  }
+
+  clear(): void {
+    this.toasts$.next([]);
+  }
+}
