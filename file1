@@ -1,322 +1,38 @@
-// Assessment view mode in detail sidebar
-assessmentViewMode: 'mcq' | 'all' = 'mcq';
-
-
-/**
- * Switch assessment view mode
- */
-switchAssessmentView(mode: 'mcq' | 'all'): void {
-  this.assessmentViewMode = mode;
+/* ── Panel entrance animations ── */
+@keyframes panelSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(16px) scale(0.985);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
 }
 
-
-
-
-
-
-<!-- ASSESSMENT QUESTIONS Content -->
-<div *ngIf="selectedDetailItem?.type === 'questions' && getDetailAssessmentQuestions().length > 0" 
-     class="detail-assessment-wrapper">
-    
-    <!-- Tab Navigation -->
-    <div class="assessment-tabs">
-        <button class="tab-btn" 
-                [class.active]="assessmentViewMode === 'mcq'"
-                (click)="switchAssessmentView('mcq')">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
-            </svg>
-            MCQ Mode
-        </button>
-        <button class="tab-btn" 
-                [class.active]="assessmentViewMode === 'all'"
-                (click)="switchAssessmentView('all')">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
-            </svg>
-            View All
-        </button>
-    </div>
-
-    <!-- MCQ Mode Content -->
-    <div class="assessment-container" *ngIf="assessmentViewMode === 'mcq'">
-        <!-- Only show header and questions when NOT complete -->
-        <ng-container *ngIf="!assessmentComplete">
-            <div class="assessment-header">
-                <div class="question-progress">
-                    <span class="current-question">Question {{ currentQuestionIndex + 1 }}</span>
-                    <span class="total-questions">of {{ getDetailAssessmentQuestions().length }}</span>
-                </div>
-                <div class="progress-bar">
-                    <div class="progress-fill" 
-                         [style.width.%]="((currentQuestionIndex + 1) / getDetailAssessmentQuestions().length) * 100">
-                    </div>
-                </div>
-            </div>
-
-            <div class="mcq-question-container" *ngIf="getCurrentQuestion() as question">
-                <h4 class="mcq-question">{{ question.question }}</h4>
-
-                <div class="mcq-options">
-                    <div class="mcq-option" 
-                         *ngFor="let optionKey of getOptionKeys(question.options)"
-                         [class]="getOptionClass(optionKey)"
-                         (click)="selectAnswer(optionKey)">
-                        <div class="option-indicator">
-                            <span class="option-letter">{{ optionKey }}</span>
-                            <svg *ngIf="getOptionClass(optionKey) === 'correct' || getOptionClass(optionKey) === 'correct-answer'" 
-                                 class="option-icon check-icon" 
-                                 xmlns="http://www.w3.org/2000/svg" 
-                                 fill="none" 
-                                 viewBox="0 0 24 24" 
-                                 stroke-width="2.5" 
-                                 stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                            </svg>
-                            <svg *ngIf="getOptionClass(optionKey) === 'incorrect'" 
-                                 class="option-icon x-icon" 
-                                 xmlns="http://www.w3.org/2000/svg" 
-                                 fill="none" 
-                                 viewBox="0 0 24 24" 
-                                 stroke-width="2.5" 
-                                 stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                        </div>
-                        <span class="option-text">{{ getOptionValue(question.options, optionKey) }}</span>
-                    </div>
-                </div>
-
-                <!-- Explanation Section -->
-                <div class="explanation-section" *ngIf="shouldShowExplanation()">
-                    <div class="explanation-header">
-                        <svg xmlns="http://www.w3.org/2000/svg" 
-                             fill="none" 
-                             viewBox="0 0 24 24" 
-                             stroke-width="1.5" 
-                             stroke="currentColor">
-                            <path stroke-linecap="round" 
-                                  stroke-linejoin="round" 
-                                  d="M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.823 1.508-2.316a7.5 7.5 0 10-7.517 0c.85.493 1.509 1.333 1.509 2.316V18" />
-                        </svg>
-                        <span>Explanation</span>
-                    </div>
-                    <p class="explanation-text">{{ question.explanation }}</p>
-                </div>
-
-                <!-- Navigation Buttons -->
-                <div class="mcq-navigation" *ngIf="shouldShowExplanation()">
-                    <button class="next-question-btn" 
-                            (click)="nextQuestion()" 
-                            *ngIf="!isLastQuestion()">
-                        Next Question
-                        <svg xmlns="http://www.w3.org/2000/svg" 
-                             fill="none" 
-                             viewBox="0 0 24 24" 
-                             stroke-width="2" 
-                             stroke="currentColor">
-                            <path stroke-linecap="round" 
-                                  stroke-linejoin="round" 
-                                  d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
-                        </svg>
-                    </button>
-                    <button class="done-btn" 
-                            (click)="nextQuestion()" 
-                            *ngIf="isLastQuestion()">
-                        Done
-                        <svg xmlns="http://www.w3.org/2000/svg" 
-                             fill="none" 
-                             viewBox="0 0 24 24" 
-                             stroke-width="2" 
-                             stroke="currentColor">
-                            <path stroke-linecap="round" 
-                                  stroke-linejoin="round" 
-                                  d="M4.5 12.75l6 6 9-13.5" />
-                        </svg>
-                    </button>
-                </div>
-            </div>
-        </ng-container>
-
-        <!-- Assessment Complete Screen -->
-        <div class="assessment-complete" *ngIf="assessmentComplete">
-            <div class="complete-icon">
-                <svg xmlns="http://www.w3.org/2000/svg" 
-                     fill="none" 
-                     viewBox="0 0 24 24" 
-                     stroke-width="1.5" 
-                     stroke="currentColor">
-                    <path stroke-linecap="round" 
-                          stroke-linejoin="round" 
-                          d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-            </div>
-            <h3 class="complete-title">Assessment Complete!</h3>
-            <p class="complete-message">
-                You've completed all {{ getDetailAssessmentQuestions().length }} questions.
-            </p>
-            <button class="restart-btn" (click)="restartAssessment()">
-                <svg xmlns="http://www.w3.org/2000/svg" 
-                     fill="none" 
-                     viewBox="0 0 24 24" 
-                     stroke-width="2" 
-                     stroke="currentColor">
-                    <path stroke-linecap="round" 
-                          stroke-linejoin="round" 
-                          d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-                </svg>
-                Restart Assessment
-            </button>
-        </div>
-    </div>
-
-    <!-- View All Mode Content -->
-    <div class="all-questions-container" *ngIf="assessmentViewMode === 'all'">
-        <div class="all-questions-list">
-            <div class="question-card" 
-                 *ngFor="let question of getDetailAssessmentQuestions(); let i = index"
-                 [attr.data-index]="i">
-                <div class="question-card-header">
-                    <div class="question-number">Q{{ i + 1 }}</div>
-                    <h4 class="question-text">{{ question.question }}</h4>
-                </div>
-
-                <div class="all-options-list">
-                    <div class="all-option" 
-                         *ngFor="let optionKey of getOptionKeys(question.options)"
-                         [class.correct-option]="question.correct_answer === optionKey">
-                        <div class="all-option-indicator">
-                            <span class="all-option-letter">{{ optionKey }}</span>
-                            <svg *ngIf="question.correct_answer === optionKey" 
-                                 xmlns="http://www.w3.org/2000/svg" 
-                                 fill="none" 
-                                 viewBox="0 0 24 24" 
-                                 stroke-width="2.5" 
-                                 stroke="currentColor"
-                                 class="correct-check">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                            </svg>
-                        </div>
-                        <span class="all-option-text">{{ getOptionValue(question.options, optionKey) }}</span>
-                    </div>
-                </div>
-
-                <div class="answer-explanation">
-                    <div class="answer-section">
-                        <div class="answer-label">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            <span>Correct Answer:</span>
-                        </div>
-                        <div class="answer-value">
-                            <strong>{{ question.correct_answer }}</strong> - {{ getOptionValue(question.options, question.correct_answer) }}
-                        </div>
-                    </div>
-
-                    <div class="explanation-section-all">
-                        <div class="explanation-label">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.823 1.508-2.316a7.5 7.5 0 10-7.517 0c.85.493 1.509 1.333 1.509 2.316V18" />
-                            </svg>
-                            <span>Explanation:</span>
-                        </div>
-                        <p class="explanation-text-all">{{ question.explanation }}</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-
-
-
-
-
-
-
-
-
-
-/* Assessment Tabs */
-.assessment-tabs {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 20px;
-    padding-bottom: 12px;
-    border-bottom: 2px solid var(--border-color);
+@keyframes fadeSlideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
-.tab-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 16px;
-    background: transparent;
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text-color);
-    cursor: pointer;
-    transition: all 0.3s ease;
-    opacity: 0.6;
+@keyframes fadeSlideUp {
+    from {
+        opacity: 0;
+        transform: translateY(14px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
-.tab-btn svg {
-    width: 16px;
-    height: 16px;
-    stroke: currentColor;
-    transition: all 0.3s ease;
-}
-
-.tab-btn:hover {
-    opacity: 1;
-    border-color: var(--primary-color);
-    background: linear-gradient(135deg, var(--primary-gradient-lighter-start), var(--primary-gradient-lighter-end));
-}
-
-.tab-btn.active {
-    background: var(--primary-gradient);
-    border-color: var(--primary-color);
-    color: white;
-    opacity: 1;
-    box-shadow: 0 2px 6px var(--primary-shadow);
-}
-
-.tab-btn.active svg {
-    stroke: white;
-}
-
-/* View All Mode Styles */
-.all-questions-container {
-    width: 100%;
-    padding: 8px 0;
-}
-
-.all-questions-list {
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-}
-
-.question-card {
-    background: var(--bg-color);
-    border: 1px solid var(--border-color);
-    border-radius: 10px;
-    padding: 16px;
-    transition: all 0.3s ease;
-    animation: questionSlideIn 0.4s ease-out backwards;
-}
-
-.question-card:nth-child(1) { animation-delay: 0.05s; }
-.question-card:nth-child(2) { animation-delay: 0.1s; }
-.question-card:nth-child(3) { animation-delay: 0.15s; }
-.question-card:nth-child(4) { animation-delay: 0.2s; }
-.question-card:nth-child(5) { animation-delay: 0.25s; }
-
-@keyframes questionSlideIn {
+@keyframes tabContentSwitch {
     from {
         opacity: 0;
         transform: translateY(10px);
@@ -327,232 +43,84 @@ switchAssessmentView(mode: 'mcq' | 'all'): void {
     }
 }
 
-.question-card:hover {
-    border-color: var(--primary-color);
-    box-shadow: 0 2px 8px var(--primary-shadow-lighter);
-}
-
-.question-card-header {
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
-    margin-bottom: 16px;
-}
-
-.question-number {
-    width: 36px;
-    height: 36px;
-    background: var(--primary-gradient);
-    color: white;
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 13px;
-    font-weight: 700;
-    flex-shrink: 0;
-}
-
-.question-text {
-    flex: 1;
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text-color);
-    margin: 0;
-    line-height: 1.5;
-    padding-top: 6px;
-}
-
-.all-options-list {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    margin-bottom: 16px;
-    padding-left: 48px;
-}
-
-.all-option {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 12px;
-    background: var(--bg-color);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    transition: all 0.2s ease;
-}
-
-.all-option.correct-option {
-    background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(16, 185, 129, 0.05));
-    border-color: #10b981;
-}
-
-.all-option-indicator {
-    width: 26px;
-    height: 26px;
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 50%;
-    background: linear-gradient(135deg, var(--primary-gradient-light-start), var(--primary-gradient-light-end));
-    border: 1.5px solid var(--primary-border-color);
-    position: relative;
-}
-
-.all-option.correct-option .all-option-indicator {
-    background: linear-gradient(135deg, #10b981, #34d399);
-    border-color: #10b981;
-}
-
-.all-option-letter {
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--primary-color);
-}
-
-.all-option.correct-option .all-option-letter {
-    display: none;
-}
-
-.correct-check {
-    width: 14px;
-    height: 14px;
-    stroke: white;
-}
-
-.all-option-text {
-    flex: 1;
-    font-size: 13px;
-    color: var(--text-color);
-    line-height: 1.4;
-}
-
-.all-option.correct-option .all-option-text {
-    font-weight: 600;
-    color: #10b981;
-}
-
-.answer-explanation {
-    padding-left: 48px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-}
-
-.answer-section {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    padding: 12px;
-    background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(16, 185, 129, 0.05));
-    border-left: 3px solid #10b981;
-    border-radius: 0 6px 6px 0;
-}
-
-.answer-label {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 11px;
-    font-weight: 700;
-    color: #10b981;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.answer-label svg {
-    width: 14px;
-    height: 14px;
-    stroke: #10b981;
-}
-
-.answer-value {
-    font-size: 13px;
-    color: var(--text-color);
-    line-height: 1.4;
-}
-
-.answer-value strong {
-    color: #10b981;
-    font-weight: 700;
-}
-
-.explanation-section-all {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    padding: 12px;
-    background: linear-gradient(135deg, var(--primary-gradient-light-start), var(--primary-gradient-lighter-end));
-    border-left: 3px solid var(--primary-color);
-    border-radius: 0 6px 6px 0;
-}
-
-.explanation-label {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--primary-color);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.explanation-label svg {
-    width: 14px;
-    height: 14px;
-    stroke: var(--primary-color);
-}
-
-.explanation-text-all {
-    font-size: 13px;
-    color: var(--text-color);
-    line-height: 1.5;
-    margin: 0;
-}
-
-/* Responsive adjustments for View All mode */
-@media screen and (max-width: 1400px) {
-    .question-card {
-        padding: 14px;
+@keyframes iconBounceIn {
+    from {
+        opacity: 0;
+        transform: scale(0.6) rotate(-8deg);
     }
-
-    .question-number {
-        width: 32px;
-        height: 32px;
-        font-size: 12px;
+    to {
+        opacity: 1;
+        transform: scale(1) rotate(0deg);
     }
+}
 
-    .question-text {
-        font-size: 13px;
-    }
 
-    .all-options-list {
-        padding-left: 44px;
-        gap: 8px;
-    }
 
-    .all-option {
-        padding: 8px 10px;
-    }
 
-    .all-option-text {
-        font-size: 12px;
-    }
 
-    .answer-explanation {
-        padding-left: 44px;
-        gap: 10px;
-    }
 
-    .answer-section,
-    .explanation-section-all {
-        padding: 10px;
-    }
 
-    .answer-value,
-    .explanation-text-all {
-        font-size: 12px;
-    }
+
+
+
+.panel {
+    /* ...existing styles... */
+    animation: panelSlideIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.panel-header {
+    /* ...existing styles... */
+    animation: fadeSlideDown 0.4s cubic-bezier(0.22, 1, 0.36, 1) 0.08s both;
+}
+
+.panel-content {
+    /* ...existing styles... */
+    animation: fadeSlideUp 0.45s cubic-bezier(0.22, 1, 0.36, 1) 0.18s both;
+}
+
+.mode-header-icon {
+    /* ...existing styles... */
+    animation: iconBounceIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.35s both;
+}
+
+
+
+
+
+
+
+
+
+
+
+/* Stagger direct children of panel-content */
+.panel-content > *:nth-child(1) {
+    animation: fadeSlideUp 0.4s cubic-bezier(0.22, 1, 0.36, 1) 0.22s both;
+}
+.panel-content > *:nth-child(2) {
+    animation: fadeSlideUp 0.4s cubic-bezier(0.22, 1, 0.36, 1) 0.32s both;
+}
+.panel-content > *:nth-child(3) {
+    animation: fadeSlideUp 0.4s cubic-bezier(0.22, 1, 0.36, 1) 0.42s both;
+}
+
+/* Tab content animates in when switching tabs */
+.upload-content-wrapper {
+    animation: tabContentSwitch 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+
+
+
+
+
+
+
+
+
+.mode-tab:nth-child(1) {
+    animation: fadeSlideUp 0.38s cubic-bezier(0.22, 1, 0.36, 1) 0.38s both;
+}
+.mode-tab:nth-child(2) {
+    animation: fadeSlideUp 0.38s cubic-bezier(0.22, 1, 0.36, 1) 0.46s both;
 }
