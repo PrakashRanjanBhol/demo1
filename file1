@@ -1,56 +1,52 @@
-@Output() onItemDeselect = new EventEmitter<void>();
+import { Injectable } from '@angular/core';
+import { BehaviorSubject } from 'rxjs';
 
-if (this.selectedHistoryItem && idsToDelete.includes(this.selectedHistoryItem.id)) {
-  this.onItemDeselect.emit();
-  this.selectedHistoryItem = null;
+export type ToastType = 'success' | 'error' | 'warning' | 'info';
+
+export interface Toast {
+  id: string;
+  type: ToastType;
+  title: string;
+  message?: string;
+  duration?: number; // ms, 0 = persist until dismissed
 }
 
+@Injectable({ providedIn: 'root' })
+export class ToastService {
+  private toasts$ = new BehaviorSubject<Toast[]>([]);
+  readonly toasts = this.toasts$.asObservable();
+  private add(toast: Omit<Toast, 'id'>): void {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const newToast: Toast = { id, duration: 4000, ...toast };
 
-executeDelete(): void {
-  if (this.selectedForDelete.size === 0 || this.isDeleting) return;
+    this.toasts$.next([...this.toasts$.getValue(), newToast]);
 
-  const idsToDelete = Array.from(this.selectedForDelete);
-  const numericIds = idsToDelete.map(id => Number(id));
-
-  this.isDeleting = true;
-
-  this.historyService.deleteFiles(numericIds).subscribe({
-    next: (response) => {
-      if (response.status === 'success') {
-        if (this.selectedHistoryItem && idsToDelete.includes(this.selectedHistoryItem.id)) {
-          this.onItemDeselect.emit();
-          this.selectedHistoryItem = null;
-        }
-
-        if (this.addedToGenerationId && idsToDelete.includes(this.addedToGenerationId)) {
-          this.onRemoveFromContentGeneration.emit(this.addedToGenerationId);
-          this.addedToGenerationId = null;
-        }
-
-        this.historyItems = this.historyItems.filter(item => !this.selectedForDelete.has(item.id));
-        this.selectedForDelete.clear();
-        this.showDeleteConfirm = false;
-        this.isDeleteMode = false;
-        this.isDeleting = false;
-      } else {
-        this.isDeleting = false;
-      }
-    },
-    error: () => {
-      this.isDeleting = false;
+    if (newToast.duration && newToast.duration > 0) {
+      setTimeout(() => this.dismiss(id), newToast.duration);
     }
-  });
-}
+  }
 
+  success(title: string, message?: string, duration = 3000): void {
+    this.add({ type: 'success', title, message, duration });
+  }
 
+  error(title: string, message?: string, duration = 6000): void {
+    this.add({ type: 'error', title, message, duration });
+  }
 
+  warning(title: string, message?: string, duration = 5000): void {
+    this.add({ type: 'warning', title, message, duration });
+  }
 
-<app-history
-  ...
-  (onItemDeselect)="onHistoryItemDeselect()">
-</app-history>
+  info(title: string, message?: string, duration = 4000): void {
+    this.add({ type: 'info', title, message, duration });
+  }
 
+  dismiss(id: string): void {
+    this.toasts$.next(this.toasts$.getValue().filter(t => t.id !== id));
+  }
 
-onHistoryItemDeselect(): void {
-  this.selectedHistoryItem = null; // or whatever variable holds the selected item in the parent
+  clear(): void {
+    this.toasts$.next([]);
+  }
 }
