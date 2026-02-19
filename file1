@@ -1,131 +1,52 @@
-// Delete mode properties
-isDeleteMode: boolean = false;
-selectedForDelete: Set<string> = new Set();
-
-
-toggleDeleteMode(): void {
-  this.isDeleteMode = !this.isDeleteMode;
-  if (!this.isDeleteMode) {
-    this.selectedForDelete.clear();
-  }
-}
-
-toggleSelectForDelete(event: Event, itemId: string): void {
-  event.stopPropagation();
-  if (this.selectedForDelete.has(itemId)) {
-    this.selectedForDelete.delete(itemId);
-  } else {
-    this.selectedForDelete.add(itemId);
-  }
-}
-
-isSelectedForDelete(itemId: string): boolean {
-  return this.selectedForDelete.has(itemId);
-}
-
-get allPendingSelected(): boolean {
-  return this.filteredPendingFiles.length > 0 &&
-    this.filteredPendingFiles.every(item => this.selectedForDelete.has(item.id));
-}
-
-get allCompletedSelected(): boolean {
-  return this.filteredCompletedFiles.length > 0 &&
-    this.filteredCompletedFiles.every(item => this.selectedForDelete.has(item.id));
-}
-
-toggleSelectAllPending(event: Event): void {
-  event.stopPropagation();
-  if (this.allPendingSelected) {
-    this.filteredPendingFiles.forEach(item => this.selectedForDelete.delete(item.id));
-  } else {
-    this.filteredPendingFiles.forEach(item => this.selectedForDelete.add(item.id));
-  }
-}
-
-toggleSelectAllCompleted(event: Event): void {
-  event.stopPropagation();
-  if (this.allCompletedSelected) {
-    this.filteredCompletedFiles.forEach(item => this.selectedForDelete.delete(item.id));
-  } else {
-    this.filteredCompletedFiles.forEach(item => this.selectedForDelete.add(item.id));
-  }
-}
-
-get totalSelected(): number {
-  return this.selectedForDelete.size;
-}
-
-confirmDelete(): void {
-  if (this.selectedForDelete.size === 0) return;
-
-  const count = this.selectedForDelete.size;
-  const confirmed = confirm(`Are you sure you want to delete ${count} file${count > 1 ? 's' : ''}? This action cannot be undone.`);
-
-  if (confirmed) {
-    const idsToDelete = Array.from(this.selectedForDelete);
-
-    // If the selected item is being deleted, clear the selection
-    if (this.selectedHistoryItem && idsToDelete.includes(this.selectedHistoryItem.id)) {
-      this.selectedHistoryItem = null;
-    }
-
-    // If the added-to-generation item is being deleted, clear it
-    if (this.addedToGenerationId && idsToDelete.includes(this.addedToGenerationId)) {
-      this.addedToGenerationId = null;
-    }
-
-    // Remove items from the list
-    this.historyItems = this.historyItems.filter(item => !this.selectedForDelete.has(item.id));
-
-    this.selectedForDelete.clear();
-    this.isDeleteMode = false;
-
-    // TODO: call your delete API here, e.g.:
-    // this.historyService.deleteFiles(idsToDelete).subscribe(...)
-  }
-}
-
-cancelDelete(): void {
-  this.isDeleteMode = false;
-  this.selectedForDelete.clear();
-}
-
-
-
-
-
-<!-- Delete Mode Toggle Button -->
-<button class="delete-toggle-btn" (click)="toggleDeleteMode()" [class.active]="isDeleteMode"
-    title="Toggle delete mode">
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-        stroke="currentColor">
-        <path stroke-linecap="round" stroke-linejoin="round"
-            d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-    </svg>
-</button>
-
-
-
-
-
-<!-- Delete Action Bar -->
-<div class="delete-action-bar" *ngIf="isDeleteMode">
-    <div class="delete-bar-left">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round"
-                d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-        </svg>
-        <span>{{ totalSelected }} file{{ totalSelected !== 1 ? 's' : '' }} selected</span>
-    </div>
-    <div class="delete-bar-right">
-        <button class="delete-cancel-btn" (click)="cancelDelete()">Cancel</button>
-        <button class="delete-confirm-btn" (click)="confirmDelete()" [disabled]="totalSelected === 0">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+<!-- Delete Confirmation Popup -->
+<div class="delete-overlay" *ngIf="showDeleteConfirm" (click)="cancelDeleteConfirm()">
+    <div class="delete-popup" (click)="$event.stopPropagation()">
+        <div class="delete-popup-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round"
                     d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
             </svg>
-            Delete Selected
-        </button>
+        </div>
+
+        <div class="delete-popup-content">
+            <h4 class="delete-popup-title">Delete Files</h4>
+            <p class="delete-popup-message">
+                You are about to delete
+                <strong>{{ totalSelected }} file{{ totalSelected !== 1 ? 's' : '' }}</strong>.
+                This action cannot be undone.
+            </p>
+
+            <!-- File list preview -->
+            <div class="delete-popup-file-list">
+                <div class="delete-popup-file-item" *ngFor="let id of getSelectedFilesList().slice(0, 4)">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                            d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
+                    </svg>
+                    <span class="delete-file-name">{{ id.name }}</span>
+                    <span class="delete-file-id">#{{ id.id }}</span>
+                </div>
+                <div class="delete-popup-more" *ngIf="totalSelected > 4">
+                    + {{ totalSelected - 4 }} more file{{ totalSelected - 4 !== 1 ? 's' : '' }}
+                </div>
+            </div>
+        </div>
+
+        <div class="delete-popup-actions">
+            <button class="delete-popup-cancel" (click)="cancelDeleteConfirm()">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                Cancel
+            </button>
+            <button class="delete-popup-confirm" (click)="executeDelete()">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                        d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                </svg>
+                Yes, Delete
+            </button>
+        </div>
     </div>
 </div>
 
@@ -133,31 +54,7 @@ cancelDelete(): void {
 
 
 
-
-<div class="content-section-header" (click)="togglePendingSection()">
-    <div class="content-header-icon">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-            stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round"
-                d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-    </div>
-    <h3 class="content-header-title">Pending Results</h3>
-    <span class="content-count">{{ (isLoading || isRefreshing) ? '...' : filteredPendingFiles.length }} files</span>
-
-    <!-- Select All checkbox for delete mode -->
-    <label class="select-all-checkbox" *ngIf="isDeleteMode && filteredPendingFiles.length > 0" (click)="$event.stopPropagation()">
-        <input type="checkbox" [checked]="allPendingSelected" (change)="toggleSelectAllPending($event)">
-        <span>All</span>
-    </label>
-
-    <button class="collapse-toggle-btn" [class.collapsed]="!isPendingExpanded">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
-            stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-        </svg>
-    </button>
-</div>
+showDeleteConfirm: boolean = false;
 
 
 
@@ -165,33 +62,41 @@ cancelDelete(): void {
 
 
 
+confirmDelete(): void {
+  if (this.selectedForDelete.size === 0) return;
+  this.showDeleteConfirm = true;
+}
 
+cancelDeleteConfirm(): void {
+  this.showDeleteConfirm = false;
+}
 
+executeDelete(): void {
+  const idsToDelete = Array.from(this.selectedForDelete);
 
-<div class="content-section-header" (click)="toggleCompletedSection()">
-    <div class="content-header-icon">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-            stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round"
-                d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-    </div>
-    <h3 class="content-header-title">Completed Results</h3>
-    <span class="content-count">{{ (isLoading || isRefreshing) ? '...' : filteredCompletedFiles.length }} files</span>
+  if (this.selectedHistoryItem && idsToDelete.includes(this.selectedHistoryItem.id)) {
+    this.selectedHistoryItem = null;
+  }
 
-    <!-- Select All checkbox for delete mode -->
-    <label class="select-all-checkbox" *ngIf="isDeleteMode && filteredCompletedFiles.length > 0" (click)="$event.stopPropagation()">
-        <input type="checkbox" [checked]="allCompletedSelected" (change)="toggleSelectAllCompleted($event)">
-        <span>All</span>
-    </label>
+  if (this.addedToGenerationId && idsToDelete.includes(this.addedToGenerationId)) {
+    this.addedToGenerationId = null;
+  }
 
-    <button class="collapse-toggle-btn" [class.collapsed]="!isCompletedExpanded">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
-            stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-        </svg>
-    </button>
-</div>
+  this.historyItems = this.historyItems.filter(item => !this.selectedForDelete.has(item.id));
+
+  this.selectedForDelete.clear();
+  this.showDeleteConfirm = false;
+  this.isDeleteMode = false;
+
+  // TODO: call your delete API here
+  // this.historyService.deleteFiles(idsToDelete).subscribe(...)
+}
+
+getSelectedFilesList(): { id: string; name: string }[] {
+  return this.historyItems
+    .filter(item => this.selectedForDelete.has(item.id))
+    .map(item => ({ id: item.id, name: item.name }));
+}
 
 
 
@@ -202,264 +107,247 @@ cancelDelete(): void {
 
 
 
-<!-- Delete Checkbox -->
-<div class="delete-checkbox-wrapper" *ngIf="isDeleteMode" (click)="toggleSelectForDelete($event, item.id)">
-    <div class="delete-checkbox" [class.checked]="isSelectedForDelete(item.id)">
-        <svg *ngIf="isSelectedForDelete(item.id)" xmlns="http://www.w3.org/2000/svg" fill="none"
-            viewBox="0 0 24 24" stroke-width="3" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-        </svg>
-    </div>
-</div>
-
-
-
-
-
-
-
-
-
-<div class="history-item" *ngFor="let item of filteredPendingFiles" [attr.data-item-id]="item.id"
-    [class.selected]="selectedHistoryItem?.id === item.id"
-    [class.processing]="isProcessing(item.id)"
-    [class.delete-selected]="isDeleteMode && isSelectedForDelete(item.id)"
-    (click)="onHistoryItemClick(item.id)">
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* ===================== DELETE TOGGLE BUTTON ===================== */
-.delete-toggle-btn {
-    width: 32px;
-    height: 32px;
-    background: linear-gradient(135deg, var(--primary-gradient-light-start), var(--primary-gradient-light-end));
-    border: 1.5px solid var(--primary-border-color);
-    border-radius: 8px;
+/* ===================== DELETE CONFIRMATION POPUP ===================== */
+.delete-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
     display: flex;
     align-items: center;
     justify-content: center;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    flex-shrink: 0;
+    z-index: 100;
+    animation: fadeIn 0.2s ease;
+    padding: 20px;
 }
 
-.delete-toggle-btn svg {
-    width: 18px;
-    height: 18px;
-    stroke: var(--primary-color);
-    transition: all 0.3s ease;
+.delete-popup {
+    width: 100%;
+    max-width: 380px;
+    background: var(--bg-color);
+    border-radius: 16px;
+    border: 1px solid var(--border-color);
+    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.2), 0 8px 16px rgba(0, 0, 0, 0.12);
+    overflow: hidden;
+    animation: popupSlideIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-.delete-toggle-btn:hover {
-    background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(248, 113, 113, 0.1));
-    border-color: rgba(239, 68, 68, 0.5);
+@keyframes popupSlideIn {
+    from {
+        opacity: 0;
+        transform: scale(0.88) translateY(16px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
 }
 
-.delete-toggle-btn:hover svg {
-    stroke: #ef4444;
-}
-
-.delete-toggle-btn.active {
-    background: linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(248, 113, 113, 0.15));
-    border-color: rgba(239, 68, 68, 0.6);
-}
-
-.delete-toggle-btn.active svg {
-    stroke: #ef4444;
-}
-
-/* ===================== DELETE ACTION BAR ===================== */
-.delete-action-bar {
+/* Top icon strip */
+.delete-popup-icon {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 10px 16px;
-    background: linear-gradient(135deg, rgba(239, 68, 68, 0.08), rgba(248, 113, 113, 0.08));
-    border-bottom: 1px solid rgba(239, 68, 68, 0.2);
-    animation: slideDown 0.25s ease;
-    flex-shrink: 0;
-    gap: 12px;
+    justify-content: center;
+    padding: 28px 24px 20px 24px;
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.08), rgba(248, 113, 113, 0.06));
+    border-bottom: 1px solid rgba(239, 68, 68, 0.12);
 }
 
-.delete-bar-left {
+.delete-popup-icon svg {
+    width: 48px;
+    height: 48px;
+    stroke: #ef4444;
+    background: rgba(239, 68, 68, 0.1);
+    padding: 10px;
+    border-radius: 14px;
+    border: 1.5px solid rgba(239, 68, 68, 0.25);
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.15);
+}
+
+/* Content */
+.delete-popup-content {
+    padding: 20px 24px;
+}
+
+.delete-popup-title {
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--text-color);
+    margin: 0 0 8px 0;
+    text-align: center;
+}
+
+.delete-popup-message {
+    font-size: 13px;
+    color: var(--text-color);
+    opacity: 0.75;
+    margin: 0 0 16px 0;
+    text-align: center;
+    line-height: 1.6;
+}
+
+.delete-popup-message strong {
+    color: #ef4444;
+    opacity: 1;
+    font-weight: 700;
+}
+
+/* File list */
+.delete-popup-file-list {
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.04), rgba(248, 113, 113, 0.04));
+    border: 1px solid rgba(239, 68, 68, 0.14);
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.delete-popup-file-item {
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 13px;
+    padding: 9px 12px;
+    border-bottom: 1px solid rgba(239, 68, 68, 0.08);
+    transition: background 0.15s ease;
+}
+
+.delete-popup-file-item:last-child {
+    border-bottom: none;
+}
+
+.delete-popup-file-item svg {
+    width: 15px;
+    height: 15px;
+    stroke: #ef4444;
+    opacity: 0.7;
+    flex-shrink: 0;
+}
+
+.delete-file-name {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-color);
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.delete-file-id {
+    font-size: 11px;
+    font-weight: 700;
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.1);
+    padding: 2px 6px;
+    border-radius: 5px;
+    flex-shrink: 0;
+}
+
+.delete-popup-more {
+    padding: 8px 12px;
+    font-size: 12px;
     font-weight: 600;
     color: #ef4444;
+    opacity: 0.8;
+    text-align: center;
+    border-top: 1px dashed rgba(239, 68, 68, 0.2);
 }
 
-.delete-bar-left svg {
-    width: 16px;
-    height: 16px;
-    stroke: #ef4444;
-    flex-shrink: 0;
+/* Action buttons */
+.delete-popup-actions {
+    display: flex;
+    gap: 10px;
+    padding: 16px 24px 20px 24px;
+    border-top: 1px solid var(--border-color);
 }
 
-.delete-bar-right {
+.delete-popup-cancel {
+    flex: 1;
     display: flex;
     align-items: center;
-    gap: 8px;
-}
-
-.delete-cancel-btn {
-    padding: 6px 14px;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 16px;
     background: transparent;
     border: 1.5px solid var(--border-color);
-    border-radius: 7px;
-    font-size: 12px;
+    border-radius: 10px;
+    font-size: 13px;
     font-weight: 600;
     color: var(--text-color);
     cursor: pointer;
     transition: all 0.2s ease;
 }
 
-.delete-cancel-btn:hover {
-    border-color: var(--primary-color);
-    color: var(--primary-color);
+.delete-popup-cancel svg {
+    width: 15px;
+    height: 15px;
 }
 
-.delete-confirm-btn {
+.delete-popup-cancel:hover {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+    background: linear-gradient(135deg, var(--primary-gradient-lighter-start), var(--primary-gradient-lighter-end));
+}
+
+.delete-popup-confirm {
+    flex: 1;
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 6px;
-    padding: 6px 14px;
+    padding: 10px 16px;
     background: linear-gradient(135deg, #ef4444, #f87171);
     border: none;
-    border-radius: 7px;
-    font-size: 12px;
+    border-radius: 10px;
+    font-size: 13px;
     font-weight: 600;
     color: white;
     cursor: pointer;
     transition: all 0.2s ease;
-    box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
 }
 
-.delete-confirm-btn svg {
-    width: 14px;
-    height: 14px;
+.delete-popup-confirm svg {
+    width: 15px;
+    height: 15px;
     stroke: white;
 }
 
-.delete-confirm-btn:hover:not(:disabled) {
+.delete-popup-confirm:hover {
     background: linear-gradient(135deg, #dc2626, #ef4444);
-    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+    box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
     transform: translateY(-1px);
 }
 
-.delete-confirm-btn:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
-    transform: none;
-    box-shadow: none;
+.delete-popup-confirm:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
 }
 
-/* ===================== SELECT ALL CHECKBOX ===================== */
-.select-all-checkbox {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-left: auto;
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text-color);
-    opacity: 0.8;
-    padding: 4px 8px;
-    border-radius: 6px;
-    border: 1.5px solid var(--border-color);
-    background: var(--bg-color);
-    transition: all 0.2s ease;
-    user-select: none;
-}
+/* Responsive */
+@media screen and (max-width: 1400px) {
+    .delete-popup {
+        max-width: 340px;
+    }
 
-.select-all-checkbox:hover {
-    border-color: #ef4444;
-    color: #ef4444;
-    opacity: 1;
-}
+    .delete-popup-icon {
+        padding: 22px 20px 16px 20px;
+    }
 
-.select-all-checkbox input[type="checkbox"] {
-    width: 14px;
-    height: 14px;
-    accent-color: #ef4444;
-    cursor: pointer;
-}
+    .delete-popup-icon svg {
+        width: 42px;
+        height: 42px;
+    }
 
-/* ===================== CARD DELETE CHECKBOX ===================== */
-.delete-checkbox-wrapper {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    cursor: pointer;
-    padding: 2px;
-}
+    .delete-popup-content {
+        padding: 16px 20px;
+    }
 
-.delete-checkbox {
-    width: 20px;
-    height: 20px;
-    border-radius: 6px;
-    border: 2px solid var(--border-color);
-    background: var(--bg-color);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s ease;
-    flex-shrink: 0;
-}
+    .delete-popup-title {
+        font-size: 16px;
+    }
 
-.delete-checkbox-wrapper:hover .delete-checkbox {
-    border-color: #ef4444;
-}
-
-.delete-checkbox.checked {
-    background: linear-gradient(135deg, #ef4444, #f87171);
-    border-color: #ef4444;
-    box-shadow: 0 2px 6px rgba(239, 68, 68, 0.35);
-}
-
-.delete-checkbox svg {
-    width: 12px;
-    height: 12px;
-    stroke: white;
-}
-
-/* ===================== CARD DELETE SELECTED STATE ===================== */
-.history-item.delete-selected {
-    background: linear-gradient(135deg, rgba(239, 68, 68, 0.06), rgba(248, 113, 113, 0.06));
-    border-color: rgba(239, 68, 68, 0.4);
-    box-shadow: 0 2px 8px rgba(239, 68, 68, 0.15);
-}
-
-.history-item.delete-selected::before {
-    content: '';
-    position: absolute;
-    left: -1px;
-    top: 0;
-    bottom: 0;
-    width: 4px;
-    background: linear-gradient(180deg, #ef4444, #f87171);
-    border-radius: 10px 0 0 10px;
-}
-
-.history-item.delete-selected .history-item-icon {
-    background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(248, 113, 113, 0.1));
-    border-color: rgba(239, 68, 68, 0.3);
-}
-
-.history-item.delete-selected .history-item-icon svg {
-    stroke: #ef4444;
+    .delete-popup-actions {
+        padding: 14px 20px 18px 20px;
+    }
 }
