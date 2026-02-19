@@ -1,34 +1,52 @@
-executeDelete(): void {
-  if (this.selectedForDelete.size === 0 || this.isDeleting) return;
+<button class="delete-toggle-btn" (click)="toggleDeleteMode()" [class.active]="isDeleteMode"
+    [disabled]="isAnyProcessing() || isFileUploading"
+    [title]="isAnyProcessing() ? 'Cannot delete while a file is being processed' : isFileUploading ? 'Cannot delete while a file is being uploaded' : 'Toggle delete mode'">
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+        stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round"
+            d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+    </svg>
+</button>
 
-  const idsToDelete = Array.from(this.selectedForDelete);
-  const numericIds = idsToDelete.map(id => Number(id));
 
-  this.isDeleting = true;
 
-  this.historyService.deleteFiles(numericIds).subscribe({
-    next: (response) => {
-      if (response.status === 'success') {
-        if (this.selectedHistoryItem && idsToDelete.includes(this.selectedHistoryItem.id)) {
-          this.selectedHistoryItem = null;
-        }
+.delete-toggle-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    pointer-events: none;
+}
 
-        if (this.addedToGenerationId && idsToDelete.includes(this.addedToGenerationId)) {
-          this.onRemoveFromContentGeneration.emit(this.addedToGenerationId);
-          this.addedToGenerationId = null;
-        }
 
-        this.historyItems = this.historyItems.filter(item => !this.selectedForDelete.has(item.id));
-        this.selectedForDelete.clear();
-        this.showDeleteConfirm = false;
-        this.isDeleteMode = false;
-        this.isDeleting = false;
-      } else {
-        this.isDeleting = false;
-      }
-    },
-    error: () => {
-      this.isDeleting = false;
+
+private handleProcessStatusChange(status: ProcessStatus): void {
+  if (status.id === null) {
+    console.log('Clearing all processing states');
+    this.processingItemId = null;
+    return;
+  }
+
+  const itemId = status.id.toString();
+  const item = this.historyItems.find(i => i.id === itemId);
+
+  if (!item) {
+    console.warn('Item not found for process status update:', itemId);
+    return;
+  }
+
+  if (status.isProcessing) {
+    console.log(`Setting processing state for item ${itemId}`);
+    this.processingItemId = itemId;
+
+    // Auto-exit delete mode if processing starts
+    if (this.isDeleteMode) {
+      this.isDeleteMode = false;
+      this.selectedForDelete.clear();
+      this.showDeleteConfirm = false;
     }
-  });
+  } else {
+    console.log(`Clearing processing state for item ${itemId}`);
+    if (this.processingItemId === itemId) {
+      this.processingItemId = null;
+    }
+  }
 }
