@@ -1,20 +1,380 @@
-.wrapper {
-  gap: 1rem;
+import React, { useState, useRef, useMemo } from "react";
+import { DataTable } from "primereact/datatable";
+import { Column } from "primereact/column";
+import { Tag } from "primereact/tag";
+import { Button } from "primereact/button";
+import { Dialog } from "primereact/dialog";
+import { InputText } from "primereact/inputtext";
+import { Dropdown } from "primereact/dropdown";
+import { InputNumber } from "primereact/inputnumber";
+import { Avatar } from "primereact/avatar";
+import { IconField } from "primereact/iconfield";
+import { InputIcon } from "primereact/inputicon";
+import { ConfirmDialog, confirmDialog } from "primereact/confirmdialog";
+import { Toast } from "primereact/toast";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type AccessRole = "Admin" | "User";
+
+interface RoleUser {
+  id: number;
+  name: string;
+  email: string;
+  role: AccessRole;
+  memoryLimit: number; // in GB
+  avatar: string;
 }
 
-.sidebar {
-  background: #ffffff;
-  width: 300px;
-  border-right: 1px solid var(--surface-border);
-  font-size: 1rem;
-  border-radius: 12px;
-}
+// ─── Static Data ──────────────────────────────────────────────────────────────
 
-.navLabel {
-  font-size: 1rem;
-}
+const roleOptions: { label: string; value: AccessRole }[] = [
+  { label: "Admin", value: "Admin" },
+  { label: "User",  value: "User"  },
+];
 
-.main {
-  background: #ffffff;
-  border-radius: 12px;
-}
+const avatarColors: Record<string, string> = {
+  AC: "#6366f1",
+  JP: "#22c55e",
+  SM: "#f97316",
+  TN: "#ef4444",
+  PS: "#a855f7",
+  RK: "#0ea5e9",
+};
+
+const initialUsers: RoleUser[] = [
+  { id: 1, name: "Alexandra Chen",  email: "alex.chen@company.com",   role: "Admin", memoryLimit: 100, avatar: "AC" },
+  { id: 2, name: "James Patel",     email: "james.patel@company.com", role: "User",  memoryLimit: 50,  avatar: "JP" },
+  { id: 3, name: "Sofia Martinez",  email: "sofia.m@company.com",     role: "Admin", memoryLimit: 100, avatar: "SM" },
+  { id: 4, name: "Tom Nguyen",      email: "tom.nguyen@company.com",  role: "User",  memoryLimit: 25,  avatar: "TN" },
+  { id: 5, name: "Priya Sharma",    email: "priya.s@company.com",     role: "User",  memoryLimit: 50,  avatar: "PS" },
+  { id: 6, name: "Ryan Kim",        email: "ryan.kim@company.com",    role: "User",  memoryLimit: 75,  avatar: "RK" },
+];
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
+const RoleManagement: React.FC = () => {
+  const toast = useRef<Toast>(null);
+
+  const [users, setUsers]               = useState<RoleUser[]>(initialUsers);
+  const [searchQuery, setSearchQuery]   = useState<string>("");
+  const [selectedUser, setSelectedUser] = useState<RoleUser | null>(null);
+  const [editVisible, setEditVisible]   = useState(false);
+  const [addVisible, setAddVisible]     = useState(false);
+
+  // Edit form
+  const [editRole, setEditRole]           = useState<AccessRole>("User");
+  const [editMemory, setEditMemory]       = useState<number>(50);
+
+  // Add form
+  const [newName, setNewName]             = useState("");
+  const [newEmail, setNewEmail]           = useState("");
+  const [newRole, setNewRole]             = useState<AccessRole>("User");
+  const [newMemory, setNewMemory]         = useState<number>(50);
+
+  // ── Filtered data ─────────────────────────────────────────────────────────
+
+  const filteredUsers = useMemo(() =>
+    users.filter((u) =>
+      u.name.toLowerCase().includes(searchQuery.toLowerCase())
+    ),
+    [users, searchQuery]
+  );
+
+  // ── Handlers ─────────────────────────────────────────────────────────────
+
+  const openEdit = (user: RoleUser) => {
+    setSelectedUser(user);
+    setEditRole(user.role);
+    setEditMemory(user.memoryLimit);
+    setEditVisible(true);
+  };
+
+  const saveEdit = () => {
+    if (!selectedUser) return;
+    setUsers((prev) =>
+      prev.map((u) =>
+        u.id === selectedUser.id
+          ? { ...u, role: editRole, memoryLimit: editMemory }
+          : u
+      )
+    );
+    setEditVisible(false);
+    toast.current?.show({
+      severity: "success",
+      summary: "Updated",
+      detail: `${selectedUser.name} has been updated.`,
+      life: 3000,
+    });
+  };
+
+  const handleDelete = (user: RoleUser) => {
+    confirmDialog({
+      message: `Are you sure you want to remove ${user.name}?`,
+      header: "Confirm Delete",
+      icon: "pi pi-exclamation-triangle",
+      acceptClassName: "p-button-danger",
+      accept: () => {
+        setUsers((prev) => prev.filter((u) => u.id !== user.id));
+        toast.current?.show({
+          severity: "info",
+          summary: "Removed",
+          detail: `${user.name} has been removed.`,
+          life: 3000,
+        });
+      },
+    });
+  };
+
+  const saveAdd = () => {
+    if (!newName.trim() || !newEmail.trim()) return;
+    const initials = newName
+      .trim()
+      .split(" ")
+      .map((w) => w[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2);
+    setUsers((prev) => [
+      ...prev,
+      {
+        id: Date.now(),
+        name: newName.trim(),
+        email: newEmail.trim(),
+        role: newRole,
+        memoryLimit: newMemory,
+        avatar: initials,
+      },
+    ]);
+    setNewName("");
+    setNewEmail("");
+    setNewRole("User");
+    setNewMemory(50);
+    setAddVisible(false);
+    toast.current?.show({
+      severity: "success",
+      summary: "Added",
+      detail: `${newName} has been added.`,
+      life: 3000,
+    });
+  };
+
+  // ── Column Templates ──────────────────────────────────────────────────────
+
+  const userTemplate = (row: RoleUser) => (
+    <div className="flex align-items-center gap-3">
+      <Avatar
+        label={row.avatar}
+        shape="circle"
+        className="font-bold flex-shrink-0"
+        style={{
+          background: avatarColors[row.avatar] ?? "#6366f1",
+          color: "#fff",
+          width: "36px",
+          height: "36px",
+          fontSize: "0.8rem",
+        }}
+      />
+      <div>
+        <div className="font-semibold text-900">{row.name}</div>
+        <div className="text-color-secondary text-sm">{row.email}</div>
+      </div>
+    </div>
+  );
+
+  const roleTemplate = (row: RoleUser) => (
+    <Tag
+      value={row.role}
+      severity={row.role === "Admin" ? "danger" : "info"}
+      rounded
+    />
+  );
+
+  const memoryTemplate = (row: RoleUser) => (
+    <span className="font-medium text-900">{row.memoryLimit} GB</span>
+  );
+
+  const actionTemplate = (row: RoleUser) => (
+    <div className="flex gap-1">
+      <Button
+        icon="pi pi-pencil"
+        rounded
+        text
+        severity="info"
+        size="small"
+        tooltip="Edit"
+        tooltipOptions={{ position: "top" }}
+        onClick={() => openEdit(row)}
+      />
+      <Button
+        icon="pi pi-trash"
+        rounded
+        text
+        severity="danger"
+        size="small"
+        tooltip="Delete"
+        tooltipOptions={{ position: "top" }}
+        onClick={() => handleDelete(row)}
+      />
+    </div>
+  );
+
+  // ─────────────────────────────────────────────────────────────────────────
+
+  return (
+    <div className="flex flex-column gap-3">
+      <Toast ref={toast} />
+      <ConfirmDialog />
+
+      {/* ── Toolbar: search left, add button right ── */}
+      <div className="flex align-items-center justify-content-between">
+        <IconField iconPosition="left">
+          <InputIcon className="pi pi-search" />
+          <InputText
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search by username..."
+            style={{ width: "280px" }}
+          />
+        </IconField>
+
+        <Button
+          label="Add User"
+          icon="pi pi-plus"
+          size="small"
+          onClick={() => setAddVisible(true)}
+        />
+      </div>
+
+      {/* ── Data Table ── */}
+      <DataTable
+        value={filteredUsers}
+        paginator
+        rows={5}
+        rowsPerPageOptions={[5, 10, 20]}
+        tableStyle={{ minWidth: "100%" }}
+        stripedRows
+        emptyMessage="No users found."
+        paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown"
+      >
+        <Column header="User"         body={userTemplate}   style={{ minWidth: "220px" }} />
+        <Column header="Access Role"  body={roleTemplate}   style={{ width: "140px" }} />
+        <Column header="Memory Limit" body={memoryTemplate} style={{ width: "140px" }} />
+        <Column header="Actions"      body={actionTemplate} style={{ width: "110px" }} />
+      </DataTable>
+
+      {/* ── Edit Dialog ── */}
+      <Dialog
+        header={`Edit User — ${selectedUser?.name}`}
+        visible={editVisible}
+        style={{ width: "420px" }}
+        onHide={() => setEditVisible(false)}
+        footer={
+          <div className="flex justify-content-end gap-2 pt-2">
+            <Button
+              label="Cancel"
+              outlined
+              severity="secondary"
+              onClick={() => setEditVisible(false)}
+            />
+            <Button label="Save" icon="pi pi-check" onClick={saveEdit} />
+          </div>
+        }
+      >
+        <div className="flex flex-column gap-4 pt-3">
+          <div className="flex flex-column gap-2">
+            <label className="font-semibold text-900">Access Role</label>
+            <Dropdown
+              value={editRole}
+              options={roleOptions}
+              onChange={(e) => setEditRole(e.value)}
+              className="w-full"
+              placeholder="Select role"
+            />
+          </div>
+          <div className="flex flex-column gap-2">
+            <label className="font-semibold text-900">Memory Limit (GB)</label>
+            <InputNumber
+              value={editMemory}
+              onValueChange={(e) => setEditMemory(e.value ?? 0)}
+              suffix=" GB"
+              min={1}
+              max={1000}
+              className="w-full"
+              showButtons
+            />
+          </div>
+        </div>
+      </Dialog>
+
+      {/* ── Add User Dialog ── */}
+      <Dialog
+        header="Add New User"
+        visible={addVisible}
+        style={{ width: "440px" }}
+        onHide={() => setAddVisible(false)}
+        footer={
+          <div className="flex justify-content-end gap-2 pt-2">
+            <Button
+              label="Cancel"
+              outlined
+              severity="secondary"
+              onClick={() => setAddVisible(false)}
+            />
+            <Button
+              label="Add User"
+              icon="pi pi-plus"
+              onClick={saveAdd}
+              disabled={!newName.trim() || !newEmail.trim()}
+            />
+          </div>
+        }
+      >
+        <div className="flex flex-column gap-4 pt-3">
+          <div className="flex flex-column gap-2">
+            <label className="font-semibold text-900">Full Name</label>
+            <InputText
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="e.g. Jane Doe"
+              className="w-full"
+            />
+          </div>
+          <div className="flex flex-column gap-2">
+            <label className="font-semibold text-900">Email</label>
+            <InputText
+              value={newEmail}
+              onChange={(e) => setNewEmail(e.target.value)}
+              placeholder="e.g. jane@company.com"
+              className="w-full"
+            />
+          </div>
+          <div className="flex flex-column gap-2">
+            <label className="font-semibold text-900">Access Role</label>
+            <Dropdown
+              value={newRole}
+              options={roleOptions}
+              onChange={(e) => setNewRole(e.value)}
+              className="w-full"
+              placeholder="Select role"
+            />
+          </div>
+          <div className="flex flex-column gap-2">
+            <label className="font-semibold text-900">Memory Limit (GB)</label>
+            <InputNumber
+              value={newMemory}
+              onValueChange={(e) => setNewMemory(e.value ?? 50)}
+              suffix=" GB"
+              min={1}
+              max={1000}
+              className="w-full"
+              showButtons
+            />
+          </div>
+        </div>
+      </Dialog>
+    </div>
+  );
+};
+
+export default RoleManagement;
