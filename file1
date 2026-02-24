@@ -22,6 +22,10 @@ interface RoleUser {
   role: AccessRole;
   memoryLimit: number;
   avatar: string;
+  // Inline edit state embedded in the row so DataTable always re-renders
+  isEditing: boolean;
+  draftRole: AccessRole;
+  draftMemory: number;
 }
 
 // ─── Static Data ──────────────────────────────────────────────────────────────
@@ -40,7 +44,7 @@ const avatarColors: Record<string, string> = {
   RK: "#0ea5e9",
 };
 
-const initialUsers: RoleUser[] = [
+const seed: Omit<RoleUser, "isEditing" | "draftRole" | "draftMemory">[] = [
   { id: 1, name: "Alexandra Chen", email: "alex.chen@company.com",   role: "Admin", memoryLimit: 100, avatar: "AC" },
   { id: 2, name: "James Patel",    email: "james.patel@company.com", role: "User",  memoryLimit: 50,  avatar: "JP" },
   { id: 3, name: "Sofia Martinez", email: "sofia.m@company.com",     role: "Admin", memoryLimit: 100, avatar: "SM" },
@@ -49,19 +53,29 @@ const initialUsers: RoleUser[] = [
   { id: 6, name: "Ryan Kim",       email: "ryan.kim@company.com",    role: "User",  memoryLimit: 75,  avatar: "RK" },
 ];
 
+const toRow = (u: Omit<RoleUser, "isEditing" | "draftRole" | "draftMemory">): RoleUser => ({
+  ...u,
+  isEditing: false,
+  draftRole: u.role,
+  draftMemory: u.memoryLimit,
+});
+
+const initialUsers: RoleUser[] = seed.map(toRow);
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const updateRow = (
+  prev: RoleUser[],
+  id: number,
+  patch: Partial<RoleUser>
+): RoleUser[] => prev.map((u) => (u.id === id ? { ...u, ...patch } : u));
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 const RoleManagement: React.FC = () => {
   const toast = useRef<Toast>(null);
-
   const [users, setUsers]             = useState<RoleUser[]>(initialUsers);
   const [searchQuery, setSearchQuery] = useState("");
-
-  // Which row is currently being edited
-  const [editingId, setEditingId]     = useState<number | null>(null);
-  // Draft values while editing
-  const [draftRole, setDraftRole]     = useState<AccessRole>("User");
-  const [draftMemory, setDraftMemory] = useState<number>(50);
 
   // ── Filtered rows ─────────────────────────────────────────────────────────
 
@@ -72,21 +86,26 @@ const RoleManagement: React.FC = () => {
 
   // ── Handlers ─────────────────────────────────────────────────────────────
 
-  const startEdit = (row: RoleUser) => {
-    setEditingId(row.id);
-    setDraftRole(row.role);
-    setDraftMemory(row.memoryLimit);
-  };
-
-  const cancelEdit = () => setEditingId(null);
-
-  const confirmSave = (row: RoleUser) => {
+  const startEdit = (row: RoleUser) =>
     setUsers((prev) =>
-      prev.map((u) =>
-        u.id === row.id ? { ...u, role: draftRole, memoryLimit: draftMemory } : u
-      )
+      updateRow(prev, row.id, {
+        isEditing: true,
+        draftRole: row.role,
+        draftMemory: row.memoryLimit,
+      })
     );
-    setEditingId(null);
+
+  const cancelEdit = (row: RoleUser) =>
+    setUsers((prev) => updateRow(prev, row.id, { isEditing: false }));
+
+  const saveEdit = (row: RoleUser) => {
+    setUsers((prev) =>
+      updateRow(prev, row.id, {
+        role: row.draftRole,
+        memoryLimit: row.draftMemory,
+        isEditing: false,
+      })
+    );
     toast.current?.show({
       severity: "success",
       summary: "Updated",
@@ -113,12 +132,18 @@ const RoleManagement: React.FC = () => {
     });
   };
 
-  const adjustMemory = (delta: number) =>
-    setDraftMemory((prev) => Math.max(1, Math.min(1000, prev + delta)));
+  const setDraftRole = (row: RoleUser, value: AccessRole) =>
+    setUsers((prev) => updateRow(prev, row.id, { draftRole: value }));
+
+  const setDraftMemory = (row: RoleUser, value: number) =>
+    setUsers((prev) =>
+      updateRow(prev, row.id, {
+        draftMemory: Math.max(1, Math.min(1000, value)),
+      })
+    );
 
   // ── Column Templates ──────────────────────────────────────────────────────
 
-  // User column — always read-only
   const userTemplate = (row: RoleUser) => (
     <div className="flex align-items-center gap-3">
       <Avatar
@@ -140,14 +165,13 @@ const RoleManagement: React.FC = () => {
     </div>
   );
 
-  // Access Role — Tag in view mode, Dropdown in edit mode
   const roleTemplate = (row: RoleUser) => {
-    if (editingId === row.id) {
+    if (row.isEditing) {
       return (
         <Dropdown
-          value={draftRole}
+          value={row.draftRole}
           options={roleOptions}
-          onChange={(e) => setDraftRole(e.value)}
+          onChange={(e) => setDraftRole(row, e.value)}
           style={{ width: "130px" }}
         />
       );
@@ -161,9 +185,8 @@ const RoleManagement: React.FC = () => {
     );
   };
 
-  // Memory Limit — plain text in view mode, ± input in edit mode
   const memoryTemplate = (row: RoleUser) => {
-    if (editingId === row.id) {
+    if (row.isEditing) {
       return (
         <div className="flex align-items-center gap-1">
           <Button
@@ -171,16 +194,14 @@ const RoleManagement: React.FC = () => {
             text
             severity="secondary"
             size="small"
-            onClick={() => adjustMemory(-5)}
+            onClick={() => setDraftMemory(row, row.draftMemory - 5)}
             style={{ width: "28px", height: "28px", padding: 0 }}
           />
           <InputText
-            value={String(draftMemory)}
+            value={String(row.draftMemory)}
             onChange={(e) => {
               const parsed = parseInt(e.target.value, 10);
-              if (!isNaN(parsed)) {
-                setDraftMemory(Math.max(1, Math.min(1000, parsed)));
-              }
+              if (!isNaN(parsed)) setDraftMemory(row, parsed);
             }}
             style={{ width: "58px", textAlign: "center", padding: "0.35rem 0.4rem" }}
           />
@@ -190,7 +211,7 @@ const RoleManagement: React.FC = () => {
             text
             severity="secondary"
             size="small"
-            onClick={() => adjustMemory(5)}
+            onClick={() => setDraftMemory(row, row.draftMemory + 5)}
             style={{ width: "28px", height: "28px", padding: 0 }}
           />
         </div>
@@ -199,9 +220,8 @@ const RoleManagement: React.FC = () => {
     return <span className="font-medium text-900">{row.memoryLimit} GB</span>;
   };
 
-  // Actions — pencil+trash in view mode, tick+cancel in edit mode
   const actionTemplate = (row: RoleUser) => {
-    if (editingId === row.id) {
+    if (row.isEditing) {
       return (
         <div className="flex gap-1">
           <Button
@@ -212,7 +232,7 @@ const RoleManagement: React.FC = () => {
             size="small"
             tooltip="Save"
             tooltipOptions={{ position: "top" }}
-            onClick={() => confirmSave(row)}
+            onClick={() => saveEdit(row)}
           />
           <Button
             icon="pi pi-times"
@@ -222,12 +242,11 @@ const RoleManagement: React.FC = () => {
             size="small"
             tooltip="Cancel"
             tooltipOptions={{ position: "top" }}
-            onClick={cancelEdit}
+            onClick={() => cancelEdit(row)}
           />
         </div>
       );
     }
-
     return (
       <div className="flex gap-1">
         <Button
@@ -261,7 +280,7 @@ const RoleManagement: React.FC = () => {
       <Toast ref={toast} />
       <ConfirmDialog />
 
-      {/* Search — aligned to the right */}
+      {/* Search — right aligned */}
       <div className="flex justify-content-end">
         <IconField iconPosition="left">
           <InputIcon className="pi pi-search" />
@@ -274,7 +293,7 @@ const RoleManagement: React.FC = () => {
         </IconField>
       </div>
 
-      {/* Data Table */}
+      {/* Table */}
       <DataTable
         value={filteredUsers}
         dataKey="id"
