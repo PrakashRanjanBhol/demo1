@@ -1,5 +1,5 @@
 import React, { useState, useRef, useMemo } from "react";
-import { DataTable, DataTableRowEditCompleteEvent } from "primereact/datatable";
+import { DataTable } from "primereact/datatable";
 import { Column } from "primereact/column";
 import { Tag } from "primereact/tag";
 import { Button } from "primereact/button";
@@ -55,49 +55,70 @@ const RoleManagement: React.FC = () => {
   const toast = useRef<Toast>(null);
 
   const [users, setUsers]             = useState<RoleUser[]>(initialUsers);
-  const [searchQuery, setSearchQuery] = useState<string>("");
-  const [editingRows, setEditingRows] = useState<Record<string, boolean>>({});
+  const [searchQuery, setSearchQuery] = useState("");
 
-  // ── Filtered data ─────────────────────────────────────────────────────────
+  // Which row is currently being edited
+  const [editingId, setEditingId]     = useState<number | null>(null);
+  // Draft values while editing
+  const [draftRole, setDraftRole]     = useState<AccessRole>("User");
+  const [draftMemory, setDraftMemory] = useState<number>(50);
+
+  // ── Filtered rows ─────────────────────────────────────────────────────────
 
   const filteredUsers = useMemo(
     () => users.filter((u) => u.name.toLowerCase().includes(searchQuery.toLowerCase())),
     [users, searchQuery]
   );
 
-  // ── Row edit handlers ─────────────────────────────────────────────────────
+  // ── Handlers ─────────────────────────────────────────────────────────────
 
-  const onRowEditComplete = (e: DataTableRowEditCompleteEvent) => {
-    const updated = e.newData as RoleUser;
-    setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
+  const startEdit = (row: RoleUser) => {
+    setEditingId(row.id);
+    setDraftRole(row.role);
+    setDraftMemory(row.memoryLimit);
+  };
+
+  const cancelEdit = () => setEditingId(null);
+
+  const confirmSave = (row: RoleUser) => {
+    setUsers((prev) =>
+      prev.map((u) =>
+        u.id === row.id ? { ...u, role: draftRole, memoryLimit: draftMemory } : u
+      )
+    );
+    setEditingId(null);
     toast.current?.show({
       severity: "success",
       summary: "Updated",
-      detail: `${updated.name} has been updated.`,
+      detail: `${row.name} has been updated.`,
       life: 3000,
     });
   };
 
-  const handleDelete = (user: RoleUser) => {
+  const handleDelete = (row: RoleUser) => {
     confirmDialog({
-      message: `Are you sure you want to remove ${user.name}?`,
+      message: `Are you sure you want to remove ${row.name}?`,
       header: "Confirm Delete",
       icon: "pi pi-exclamation-triangle",
       acceptClassName: "p-button-danger",
       accept: () => {
-        setUsers((prev) => prev.filter((u) => u.id !== user.id));
+        setUsers((prev) => prev.filter((u) => u.id !== row.id));
         toast.current?.show({
           severity: "info",
           summary: "Removed",
-          detail: `${user.name} has been removed.`,
+          detail: `${row.name} has been removed.`,
           life: 3000,
         });
       },
     });
   };
 
+  const adjustMemory = (delta: number) =>
+    setDraftMemory((prev) => Math.max(1, Math.min(1000, prev + delta)));
+
   // ── Column Templates ──────────────────────────────────────────────────────
 
+  // User column — always read-only
   const userTemplate = (row: RoleUser) => (
     <div className="flex align-items-center gap-3">
       <Avatar
@@ -119,77 +140,68 @@ const RoleManagement: React.FC = () => {
     </div>
   );
 
-  // View mode: squared Tag
-  const roleTemplate = (row: RoleUser) => (
-    <Tag
-      value={row.role}
-      severity={row.role === "Admin" ? "danger" : "info"}
-      style={{ borderRadius: "4px" }}
-    />
-  );
-
-  // Edit mode: Dropdown
-  const roleEditor = (options: any) => (
-    <Dropdown
-      value={options.value}
-      options={roleOptions}
-      onChange={(e) => options.editorCallback(e.value)}
-      style={{ width: "120px" }}
-    />
-  );
-
-  // View mode: plain text
-  const memoryTemplate = (row: RoleUser) => (
-    <span className="font-medium text-900">{row.memoryLimit} GB</span>
-  );
-
-  // Edit mode: minus / input / GB / plus
-  const memoryEditor = (options: any) => {
-    const val: number = options.value ?? 0;
-
-    const adjust = (delta: number) => {
-      const next = Math.max(1, Math.min(1000, val + delta));
-      options.editorCallback(next);
-    };
-
+  // Access Role — Tag in view mode, Dropdown in edit mode
+  const roleTemplate = (row: RoleUser) => {
+    if (editingId === row.id) {
+      return (
+        <Dropdown
+          value={draftRole}
+          options={roleOptions}
+          onChange={(e) => setDraftRole(e.value)}
+          style={{ width: "130px" }}
+        />
+      );
+    }
     return (
-      <div className="flex align-items-center gap-1">
-        <Button
-          icon="pi pi-minus"
-          text
-          severity="secondary"
-          size="small"
-          onClick={() => adjust(-5)}
-          style={{ width: "28px", height: "28px", padding: 0 }}
-        />
-        <InputText
-          value={String(val)}
-          onChange={(e) => {
-            const parsed = parseInt(e.target.value, 10);
-            if (!isNaN(parsed)) {
-              options.editorCallback(Math.max(1, Math.min(1000, parsed)));
-            }
-          }}
-          style={{ width: "60px", textAlign: "center", padding: "0.35rem 0.4rem" }}
-        />
-        <span className="text-color-secondary text-sm">GB</span>
-        <Button
-          icon="pi pi-plus"
-          text
-          severity="secondary"
-          size="small"
-          onClick={() => adjust(5)}
-          style={{ width: "28px", height: "28px", padding: 0 }}
-        />
-      </div>
+      <Tag
+        value={row.role}
+        severity={row.role === "Admin" ? "danger" : "info"}
+        style={{ borderRadius: "4px" }}
+      />
     );
   };
 
-  // Actions: edit/delete in view mode, tick/cancel in edit mode
-  const actionTemplate = (row: RoleUser, options: any) => {
-    const rowEditing = editingRows[String(row.id)];
+  // Memory Limit — plain text in view mode, ± input in edit mode
+  const memoryTemplate = (row: RoleUser) => {
+    if (editingId === row.id) {
+      return (
+        <div className="flex align-items-center gap-1">
+          <Button
+            icon="pi pi-minus"
+            text
+            severity="secondary"
+            size="small"
+            onClick={() => adjustMemory(-5)}
+            style={{ width: "28px", height: "28px", padding: 0 }}
+          />
+          <InputText
+            value={String(draftMemory)}
+            onChange={(e) => {
+              const parsed = parseInt(e.target.value, 10);
+              if (!isNaN(parsed)) {
+                setDraftMemory(Math.max(1, Math.min(1000, parsed)));
+              }
+            }}
+            style={{ width: "58px", textAlign: "center", padding: "0.35rem 0.4rem" }}
+          />
+          <span className="text-color-secondary text-sm font-medium">GB</span>
+          <Button
+            icon="pi pi-plus"
+            text
+            severity="secondary"
+            size="small"
+            onClick={() => adjustMemory(5)}
+            style={{ width: "28px", height: "28px", padding: 0 }}
+          />
+        </div>
+      );
+    }
+    return <span className="font-medium text-900">{row.memoryLimit} GB</span>;
+  };
 
-    if (rowEditing) {
+  // Actions — pencil+trash in view mode, tick+cancel in edit mode
+  const actionTemplate = (row: RoleUser) => {
+    if (editingId === row.id) {
       return (
         <div className="flex gap-1">
           <Button
@@ -200,7 +212,7 @@ const RoleManagement: React.FC = () => {
             size="small"
             tooltip="Save"
             tooltipOptions={{ position: "top" }}
-            onClick={(e) => options.rowEditor.onSaveClick(e)}
+            onClick={() => confirmSave(row)}
           />
           <Button
             icon="pi pi-times"
@@ -210,7 +222,7 @@ const RoleManagement: React.FC = () => {
             size="small"
             tooltip="Cancel"
             tooltipOptions={{ position: "top" }}
-            onClick={(e) => options.rowEditor.onCancelClick(e)}
+            onClick={cancelEdit}
           />
         </div>
       );
@@ -226,7 +238,7 @@ const RoleManagement: React.FC = () => {
           size="small"
           tooltip="Edit"
           tooltipOptions={{ position: "top" }}
-          onClick={(e) => options.rowEditor.onInitClick(e)}
+          onClick={() => startEdit(row)}
         />
         <Button
           icon="pi pi-trash"
@@ -249,7 +261,7 @@ const RoleManagement: React.FC = () => {
       <Toast ref={toast} />
       <ConfirmDialog />
 
-      {/* ── Search on the right ── */}
+      {/* Search — aligned to the right */}
       <div className="flex justify-content-end">
         <IconField iconPosition="left">
           <InputIcon className="pi pi-search" />
@@ -262,14 +274,10 @@ const RoleManagement: React.FC = () => {
         </IconField>
       </div>
 
-      {/* ── Data Table with row editing ── */}
+      {/* Data Table */}
       <DataTable
         value={filteredUsers}
-        editMode="row"
         dataKey="id"
-        editingRows={editingRows}
-        onRowEditChange={(e) => setEditingRows(e.data as Record<string, boolean>)}
-        onRowEditComplete={onRowEditComplete}
         paginator
         rows={5}
         rowsPerPageOptions={[5, 10, 20]}
@@ -278,16 +286,10 @@ const RoleManagement: React.FC = () => {
         emptyMessage="No users found."
         paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown"
       >
-        <Column header="User"         body={userTemplate}                                      style={{ minWidth: "220px" }} />
-        <Column header="Access Role"  field="role"        body={roleTemplate}   editor={roleEditor}   style={{ width: "160px" }} />
-        <Column header="Memory Limit" field="memoryLimit" body={memoryTemplate} editor={memoryEditor} style={{ width: "220px" }} />
-        {/* Hidden built-in rowEditor column — we drive it manually from actionTemplate */}
-        <Column rowEditor style={{ display: "none" }} />
-        <Column
-          header="Actions"
-          body={actionTemplate}
-          style={{ width: "100px" }}
-        />
+        <Column header="User"         body={userTemplate}   style={{ minWidth: "220px" }} />
+        <Column header="Access Role"  body={roleTemplate}   style={{ width: "160px" }} />
+        <Column header="Memory Limit" body={memoryTemplate} style={{ width: "220px" }} />
+        <Column header="Actions"      body={actionTemplate} style={{ width: "100px" }} />
       </DataTable>
     </div>
   );
