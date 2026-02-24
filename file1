@@ -1,42 +1,303 @@
-/* =============================================
-   3D Panel Rise Animation
-   ============================================= */
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>MCQ JSON Formatter</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
-/* Give perspective context to the panel content container */
-.panel-content {
-  perspective: 1200px;
-}
+    body {
+      font-family: Arial, sans-serif;
+      background: #f0f2f5;
+      color: #222;
+      padding: 30px 20px;
+    }
 
-/* Apply 3D base styles to each animatable card/section */
-.mode-selection-header,
-.mode-toggle-tabs,
-.upload-content-wrapper {
-  transform-style: preserve-3d;
-  will-change: transform;
-  transition: transform 0.5s cubic-bezier(0.23, 1, 0.32, 1),
-              box-shadow 0.5s ease;
-}
+    h1 {
+      text-align: center;
+      font-size: 22px;
+      margin-bottom: 6px;
+      color: #1a1a2e;
+    }
 
-/* Staggered panelRise per child order */
-.mode-selection-header {
-  animation: panelRise 0.8s cubic-bezier(0.23, 1, 0.32, 1) 0.1s both;
-}
+    p.sub {
+      text-align: center;
+      color: #666;
+      font-size: 13px;
+      margin-bottom: 20px;
+    }
 
-.mode-toggle-tabs {
-  animation: panelRise 0.8s cubic-bezier(0.23, 1, 0.32, 1) 0.25s both;
-}
+    .editor-area {
+      background: white;
+      border-radius: 10px;
+      padding: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      margin-bottom: 16px;
+    }
 
-.upload-content-wrapper {
-  animation: panelRise 0.8s cubic-bezier(0.23, 1, 0.32, 1) 0.4s both;
-}
+    label {
+      font-weight: bold;
+      font-size: 13px;
+      color: #444;
+      display: block;
+      margin-bottom: 6px;
+    }
 
-@keyframes panelRise {
-  from {
-    opacity: 0;
-    transform: perspective(1200px) rotateX(18deg) translateY(40px);
+    textarea {
+      width: 100%;
+      height: 160px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      padding: 10px;
+      font-family: monospace;
+      font-size: 13px;
+      resize: vertical;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    textarea:focus { border-color: #4f8ef7; }
+
+    .btn-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 12px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      padding: 9px 20px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+
+    #btnFormat { background: #4f8ef7; color: white; }
+    #btnFormat:hover { background: #2f6fdb; }
+
+    #btnCopy { background: #28a745; color: white; }
+    #btnCopy:hover { background: #1e7e34; }
+
+    #btnClear { background: #e0e0e0; color: #444; }
+    #btnClear:hover { background: #c8c8c8; }
+
+    #error {
+      color: #c0392b;
+      font-size: 13px;
+      margin-top: 8px;
+      display: none;
+    }
+
+    /* OUTPUT */
+    #output {
+      background: white;
+      border-radius: 10px;
+      padding: 30px 36px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      min-height: 100px;
+    }
+
+    #output:empty::before {
+      content: "Formatted questions will appear here...";
+      color: #aaa;
+      font-style: italic;
+      font-size: 14px;
+    }
+
+    /* Question card */
+    .q-card {
+      margin-bottom: 28px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid #e0e0e0;
+    }
+
+    .q-card:last-child { border-bottom: none; margin-bottom: 0; }
+
+    .q-number {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #4f8ef7;
+      margin-bottom: 4px;
+    }
+
+    .q-text {
+      font-size: 15px;
+      font-weight: 700;
+      color: #1a1a2e;
+      margin-bottom: 12px;
+      line-height: 1.5;
+    }
+
+    .options { margin-bottom: 12px; }
+
+    .option {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 7px 10px;
+      border-radius: 6px;
+      margin-bottom: 5px;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .option.correct {
+      background: #e8f5e9;
+      border-left: 3px solid #28a745;
+    }
+
+    .option-key {
+      font-weight: 700;
+      min-width: 22px;
+      color: #444;
+    }
+
+    .option.correct .option-key { color: #1a7a34; }
+
+    .explanation {
+      background: #fff8e1;
+      border-left: 3px solid #f0b429;
+      padding: 8px 12px;
+      border-radius: 0 6px 6px 0;
+      font-size: 13px;
+      color: #555;
+      line-height: 1.6;
+    }
+
+    .explanation strong { color: #333; }
+
+    @media print {
+      body { background: white; padding: 0; }
+      .editor-area, .btn-row { display: none; }
+      #output { box-shadow: none; padding: 0; }
+    }
+  </style>
+</head>
+<body>
+
+<h1>📝 MCQ JSON Formatter</h1>
+<p class="sub">Paste your JSON below, click Format, then Copy to Clipboard and paste into Word.</p>
+
+<div class="editor-area">
+  <label for="jsonInput">Paste JSON here:</label>
+  <textarea id="jsonInput" placeholder='[{"question":"...","options":{"A":"...","B":"..."},"correct_answer":"A","explanation":"..."}]'></textarea>
+  <div id="error">⚠️ Invalid JSON. Please check the format and try again.</div>
+  <div class="btn-row">
+    <button id="btnFormat" onclick="formatJSON()">Format Questions</button>
+    <button id="btnCopy" onclick="copyOutput()">Copy to Clipboard</button>
+    <button id="btnClear" onclick="clearAll()">Clear</button>
+  </div>
+</div>
+
+<div id="output"></div>
+
+<script>
+  function sanitize(str) {
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
   }
-  to {
-    opacity: 1;
-    transform: perspective(1200px) rotateX(0deg) translateY(0px);
+
+  function fixJSON(raw) {
+    // Handle unquoted keys like { question: "..." }
+    return raw
+      .replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)(\s*:)/g, '$1"$2"$3')
+      .replace(/'/g, '"');
   }
-}
+
+  function formatJSON() {
+    const input = document.getElementById('jsonInput').value.trim();
+    const err = document.getElementById('error');
+    const output = document.getElementById('output');
+    err.style.display = 'none';
+
+    if (!input) {
+      output.innerHTML = '';
+      return;
+    }
+
+    let data;
+    try {
+      data = JSON.parse(input);
+    } catch(e) {
+      try {
+        data = JSON.parse(fixJSON(input));
+      } catch(e2) {
+        err.style.display = 'block';
+        return;
+      }
+    }
+
+    if (!Array.isArray(data)) data = [data];
+
+    let html = '';
+    data.forEach((q, i) => {
+      const options = q.options || {};
+      const correct = (q.correct_answer || '').toUpperCase();
+
+      let optionsHTML = '';
+      for (const [key, val] of Object.entries(options)) {
+        const isCorrect = key.toUpperCase() === correct;
+        optionsHTML += `
+          <div class="option${isCorrect ? ' correct' : ''}">
+            <span class="option-key">${sanitize(key)}.</span>
+            <span>${sanitize(val)}</span>
+          </div>`;
+      }
+
+      html += `
+        <div class="q-card">
+          <div class="q-number">Question ${i + 1}</div>
+          <div class="q-text">${sanitize(q.question || '')}</div>
+          <div class="options">${optionsHTML}</div>
+          ${q.explanation ? `<div class="explanation"><strong>✅ Answer: ${sanitize(correct)} &nbsp;|&nbsp; Explanation:</strong> ${sanitize(q.explanation)}</div>` : ''}
+        </div>`;
+    });
+
+    output.innerHTML = html;
+  }
+
+  function copyOutput() {
+    const output = document.getElementById('output');
+    if (!output.innerText.trim()) {
+      alert('Nothing to copy yet. Format your JSON first.');
+      return;
+    }
+    const range = document.createRange();
+    range.selectNode(output);
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+    document.execCommand('copy');
+    window.getSelection().removeAllRanges();
+    alert('Copied! Now paste into Word with Ctrl+V (or Cmd+V on Mac). Formatting will be preserved.');
+  }
+
+  function clearAll() {
+    document.getElementById('jsonInput').value = '';
+    document.getElementById('output').innerHTML = '';
+    document.getElementById('error').style.display = 'none';
+  }
+
+  // Pre-load example
+  document.getElementById('jsonInput').value = `[{
+  "question": "What is the capital of France?",
+  "options": {
+    "A": "London",
+    "B": "Berlin",
+    "C": "Paris",
+    "D": "Madrid"
+  },
+  "correct_answer": "C",
+  "explanation": "Paris is the capital and most populous city of France."
+}]`;
+</script>
+
+</body>
+</html>
