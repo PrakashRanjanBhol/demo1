@@ -3,10 +3,8 @@ import { DataTable } from "primereact/datatable";
 import { Column } from "primereact/column";
 import { Tag } from "primereact/tag";
 import { Button } from "primereact/button";
-import { Dialog } from "primereact/dialog";
 import { InputText } from "primereact/inputtext";
 import { Dropdown } from "primereact/dropdown";
-import { InputNumber } from "primereact/inputnumber";
 import { Avatar } from "primereact/avatar";
 import { IconField } from "primereact/iconfield";
 import { InputIcon } from "primereact/inputicon";
@@ -22,8 +20,13 @@ interface RoleUser {
   name: string;
   email: string;
   role: AccessRole;
-  memoryLimit: number; // in GB
+  memoryLimit: number;
   avatar: string;
+}
+
+interface EditState {
+  role: AccessRole;
+  memoryLimit: number;
 }
 
 // ─── Static Data ──────────────────────────────────────────────────────────────
@@ -43,12 +46,12 @@ const avatarColors: Record<string, string> = {
 };
 
 const initialUsers: RoleUser[] = [
-  { id: 1, name: "Alexandra Chen",  email: "alex.chen@company.com",   role: "Admin", memoryLimit: 100, avatar: "AC" },
-  { id: 2, name: "James Patel",     email: "james.patel@company.com", role: "User",  memoryLimit: 50,  avatar: "JP" },
-  { id: 3, name: "Sofia Martinez",  email: "sofia.m@company.com",     role: "Admin", memoryLimit: 100, avatar: "SM" },
-  { id: 4, name: "Tom Nguyen",      email: "tom.nguyen@company.com",  role: "User",  memoryLimit: 25,  avatar: "TN" },
-  { id: 5, name: "Priya Sharma",    email: "priya.s@company.com",     role: "User",  memoryLimit: 50,  avatar: "PS" },
-  { id: 6, name: "Ryan Kim",        email: "ryan.kim@company.com",    role: "User",  memoryLimit: 75,  avatar: "RK" },
+  { id: 1, name: "Alexandra Chen", email: "alex.chen@company.com",   role: "Admin", memoryLimit: 100, avatar: "AC" },
+  { id: 2, name: "James Patel",    email: "james.patel@company.com", role: "User",  memoryLimit: 50,  avatar: "JP" },
+  { id: 3, name: "Sofia Martinez", email: "sofia.m@company.com",     role: "Admin", memoryLimit: 100, avatar: "SM" },
+  { id: 4, name: "Tom Nguyen",     email: "tom.nguyen@company.com",  role: "User",  memoryLimit: 25,  avatar: "TN" },
+  { id: 5, name: "Priya Sharma",   email: "priya.s@company.com",     role: "User",  memoryLimit: 50,  avatar: "PS" },
+  { id: 6, name: "Ryan Kim",       email: "ryan.kim@company.com",    role: "User",  memoryLimit: 75,  avatar: "RK" },
 ];
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -56,54 +59,44 @@ const initialUsers: RoleUser[] = [
 const RoleManagement: React.FC = () => {
   const toast = useRef<Toast>(null);
 
-  const [users, setUsers]               = useState<RoleUser[]>(initialUsers);
-  const [searchQuery, setSearchQuery]   = useState<string>("");
-  const [selectedUser, setSelectedUser] = useState<RoleUser | null>(null);
-  const [editVisible, setEditVisible]   = useState(false);
-  const [addVisible, setAddVisible]     = useState(false);
+  const [users, setUsers]             = useState<RoleUser[]>(initialUsers);
+  const [searchQuery, setSearchQuery] = useState<string>("");
 
-  // Edit form
-  const [editRole, setEditRole]           = useState<AccessRole>("User");
-  const [editMemory, setEditMemory]       = useState<number>(50);
-
-  // Add form
-  const [newName, setNewName]             = useState("");
-  const [newEmail, setNewEmail]           = useState("");
-  const [newRole, setNewRole]             = useState<AccessRole>("User");
-  const [newMemory, setNewMemory]         = useState<number>(50);
+  // Track which row is being edited and its draft values
+  const [editingId, setEditingId]     = useState<number | null>(null);
+  const [editState, setEditState]     = useState<EditState>({ role: "User", memoryLimit: 50 });
 
   // ── Filtered data ─────────────────────────────────────────────────────────
 
-  const filteredUsers = useMemo(() =>
-    users.filter((u) =>
-      u.name.toLowerCase().includes(searchQuery.toLowerCase())
-    ),
+  const filteredUsers = useMemo(
+    () => users.filter((u) => u.name.toLowerCase().includes(searchQuery.toLowerCase())),
     [users, searchQuery]
   );
 
   // ── Handlers ─────────────────────────────────────────────────────────────
 
-  const openEdit = (user: RoleUser) => {
-    setSelectedUser(user);
-    setEditRole(user.role);
-    setEditMemory(user.memoryLimit);
-    setEditVisible(true);
+  const startEdit = (user: RoleUser) => {
+    setEditingId(user.id);
+    setEditState({ role: user.role, memoryLimit: user.memoryLimit });
   };
 
-  const saveEdit = () => {
-    if (!selectedUser) return;
+  const cancelEdit = () => {
+    setEditingId(null);
+  };
+
+  const saveEdit = (user: RoleUser) => {
     setUsers((prev) =>
       prev.map((u) =>
-        u.id === selectedUser.id
-          ? { ...u, role: editRole, memoryLimit: editMemory }
+        u.id === user.id
+          ? { ...u, role: editState.role, memoryLimit: editState.memoryLimit }
           : u
       )
     );
-    setEditVisible(false);
+    setEditingId(null);
     toast.current?.show({
       severity: "success",
       summary: "Updated",
-      detail: `${selectedUser.name} has been updated.`,
+      detail: `${user.name} has been updated.`,
       life: 3000,
     });
   };
@@ -126,37 +119,11 @@ const RoleManagement: React.FC = () => {
     });
   };
 
-  const saveAdd = () => {
-    if (!newName.trim() || !newEmail.trim()) return;
-    const initials = newName
-      .trim()
-      .split(" ")
-      .map((w) => w[0])
-      .join("")
-      .toUpperCase()
-      .slice(0, 2);
-    setUsers((prev) => [
+  const adjustMemory = (delta: number) => {
+    setEditState((prev) => ({
       ...prev,
-      {
-        id: Date.now(),
-        name: newName.trim(),
-        email: newEmail.trim(),
-        role: newRole,
-        memoryLimit: newMemory,
-        avatar: initials,
-      },
-    ]);
-    setNewName("");
-    setNewEmail("");
-    setNewRole("User");
-    setNewMemory(50);
-    setAddVisible(false);
-    toast.current?.show({
-      severity: "success",
-      summary: "Added",
-      detail: `${newName} has been added.`,
-      life: 3000,
-    });
+      memoryLimit: Math.max(1, Math.min(1000, prev.memoryLimit + delta)),
+    }));
   };
 
   // ── Column Templates ──────────────────────────────────────────────────────
@@ -182,42 +149,127 @@ const RoleManagement: React.FC = () => {
     </div>
   );
 
-  const roleTemplate = (row: RoleUser) => (
-    <Tag
-      value={row.role}
-      severity={row.role === "Admin" ? "danger" : "info"}
-      rounded
-    />
-  );
+  const roleTemplate = (row: RoleUser) => {
+    const isEditing = editingId === row.id;
 
-  const memoryTemplate = (row: RoleUser) => (
-    <span className="font-medium text-900">{row.memoryLimit} GB</span>
-  );
+    if (isEditing) {
+      return (
+        <Dropdown
+          value={editState.role}
+          options={roleOptions}
+          onChange={(e) => setEditState((prev) => ({ ...prev, role: e.value }))}
+          style={{ width: "120px" }}
+        />
+      );
+    }
 
-  const actionTemplate = (row: RoleUser) => (
-    <div className="flex gap-1">
-      <Button
-        icon="pi pi-pencil"
-        rounded
-        text
-        severity="info"
-        size="small"
-        tooltip="Edit"
-        tooltipOptions={{ position: "top" }}
-        onClick={() => openEdit(row)}
+    return (
+      <Tag
+        value={row.role}
+        severity={row.role === "Admin" ? "danger" : "info"}
+        style={{ borderRadius: "4px" }}
       />
-      <Button
-        icon="pi pi-trash"
-        rounded
-        text
-        severity="danger"
-        size="small"
-        tooltip="Delete"
-        tooltipOptions={{ position: "top" }}
-        onClick={() => handleDelete(row)}
-      />
-    </div>
-  );
+    );
+  };
+
+  const memoryTemplate = (row: RoleUser) => {
+    const isEditing = editingId === row.id;
+
+    if (isEditing) {
+      return (
+        <div className="flex align-items-center gap-1">
+          <Button
+            icon="pi pi-minus"
+            text
+            severity="secondary"
+            size="small"
+            onClick={() => adjustMemory(-5)}
+            style={{ width: "28px", height: "28px", padding: 0 }}
+          />
+          <InputText
+            value={String(editState.memoryLimit)}
+            onChange={(e) => {
+              const val = parseInt(e.target.value, 10);
+              if (!isNaN(val)) {
+                setEditState((prev) => ({
+                  ...prev,
+                  memoryLimit: Math.max(1, Math.min(1000, val)),
+                }));
+              }
+            }}
+            style={{ width: "64px", textAlign: "center", padding: "0.35rem 0.5rem" }}
+          />
+          <span className="text-color-secondary text-sm">GB</span>
+          <Button
+            icon="pi pi-plus"
+            text
+            severity="secondary"
+            size="small"
+            onClick={() => adjustMemory(5)}
+            style={{ width: "28px", height: "28px", padding: 0 }}
+          />
+        </div>
+      );
+    }
+
+    return <span className="font-medium text-900">{row.memoryLimit} GB</span>;
+  };
+
+  const actionTemplate = (row: RoleUser) => {
+    const isEditing = editingId === row.id;
+
+    if (isEditing) {
+      return (
+        <div className="flex gap-1">
+          <Button
+            icon="pi pi-check"
+            rounded
+            text
+            severity="success"
+            size="small"
+            tooltip="Save"
+            tooltipOptions={{ position: "top" }}
+            onClick={() => saveEdit(row)}
+          />
+          <Button
+            icon="pi pi-times"
+            rounded
+            text
+            severity="secondary"
+            size="small"
+            tooltip="Cancel"
+            tooltipOptions={{ position: "top" }}
+            onClick={cancelEdit}
+          />
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex gap-1">
+        <Button
+          icon="pi pi-pencil"
+          rounded
+          text
+          severity="info"
+          size="small"
+          tooltip="Edit"
+          tooltipOptions={{ position: "top" }}
+          onClick={() => startEdit(row)}
+        />
+        <Button
+          icon="pi pi-trash"
+          rounded
+          text
+          severity="danger"
+          size="small"
+          tooltip="Delete"
+          tooltipOptions={{ position: "top" }}
+          onClick={() => handleDelete(row)}
+        />
+      </div>
+    );
+  };
 
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -226,8 +278,8 @@ const RoleManagement: React.FC = () => {
       <Toast ref={toast} />
       <ConfirmDialog />
 
-      {/* ── Toolbar: search left, add button right ── */}
-      <div className="flex align-items-center justify-content-between">
+      {/* ── Toolbar: search on the right ── */}
+      <div className="flex justify-content-end">
         <IconField iconPosition="left">
           <InputIcon className="pi pi-search" />
           <InputText
@@ -237,13 +289,6 @@ const RoleManagement: React.FC = () => {
             style={{ width: "280px" }}
           />
         </IconField>
-
-        <Button
-          label="Add User"
-          icon="pi pi-plus"
-          size="small"
-          onClick={() => setAddVisible(true)}
-        />
       </div>
 
       {/* ── Data Table ── */}
@@ -258,121 +303,10 @@ const RoleManagement: React.FC = () => {
         paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown"
       >
         <Column header="User"         body={userTemplate}   style={{ minWidth: "220px" }} />
-        <Column header="Access Role"  body={roleTemplate}   style={{ width: "140px" }} />
-        <Column header="Memory Limit" body={memoryTemplate} style={{ width: "140px" }} />
-        <Column header="Actions"      body={actionTemplate} style={{ width: "110px" }} />
+        <Column header="Access Role"  body={roleTemplate}   style={{ width: "160px" }} />
+        <Column header="Memory Limit" body={memoryTemplate} style={{ width: "210px" }} />
+        <Column header="Actions"      body={actionTemplate} style={{ width: "100px" }} />
       </DataTable>
-
-      {/* ── Edit Dialog ── */}
-      <Dialog
-        header={`Edit User — ${selectedUser?.name}`}
-        visible={editVisible}
-        style={{ width: "420px" }}
-        onHide={() => setEditVisible(false)}
-        footer={
-          <div className="flex justify-content-end gap-2 pt-2">
-            <Button
-              label="Cancel"
-              outlined
-              severity="secondary"
-              onClick={() => setEditVisible(false)}
-            />
-            <Button label="Save" icon="pi pi-check" onClick={saveEdit} />
-          </div>
-        }
-      >
-        <div className="flex flex-column gap-4 pt-3">
-          <div className="flex flex-column gap-2">
-            <label className="font-semibold text-900">Access Role</label>
-            <Dropdown
-              value={editRole}
-              options={roleOptions}
-              onChange={(e) => setEditRole(e.value)}
-              className="w-full"
-              placeholder="Select role"
-            />
-          </div>
-          <div className="flex flex-column gap-2">
-            <label className="font-semibold text-900">Memory Limit (GB)</label>
-            <InputNumber
-              value={editMemory}
-              onValueChange={(e) => setEditMemory(e.value ?? 0)}
-              suffix=" GB"
-              min={1}
-              max={1000}
-              className="w-full"
-              showButtons
-            />
-          </div>
-        </div>
-      </Dialog>
-
-      {/* ── Add User Dialog ── */}
-      <Dialog
-        header="Add New User"
-        visible={addVisible}
-        style={{ width: "440px" }}
-        onHide={() => setAddVisible(false)}
-        footer={
-          <div className="flex justify-content-end gap-2 pt-2">
-            <Button
-              label="Cancel"
-              outlined
-              severity="secondary"
-              onClick={() => setAddVisible(false)}
-            />
-            <Button
-              label="Add User"
-              icon="pi pi-plus"
-              onClick={saveAdd}
-              disabled={!newName.trim() || !newEmail.trim()}
-            />
-          </div>
-        }
-      >
-        <div className="flex flex-column gap-4 pt-3">
-          <div className="flex flex-column gap-2">
-            <label className="font-semibold text-900">Full Name</label>
-            <InputText
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder="e.g. Jane Doe"
-              className="w-full"
-            />
-          </div>
-          <div className="flex flex-column gap-2">
-            <label className="font-semibold text-900">Email</label>
-            <InputText
-              value={newEmail}
-              onChange={(e) => setNewEmail(e.target.value)}
-              placeholder="e.g. jane@company.com"
-              className="w-full"
-            />
-          </div>
-          <div className="flex flex-column gap-2">
-            <label className="font-semibold text-900">Access Role</label>
-            <Dropdown
-              value={newRole}
-              options={roleOptions}
-              onChange={(e) => setNewRole(e.value)}
-              className="w-full"
-              placeholder="Select role"
-            />
-          </div>
-          <div className="flex flex-column gap-2">
-            <label className="font-semibold text-900">Memory Limit (GB)</label>
-            <InputNumber
-              value={newMemory}
-              onValueChange={(e) => setNewMemory(e.value ?? 50)}
-              suffix=" GB"
-              min={1}
-              max={1000}
-              className="w-full"
-              showButtons
-            />
-          </div>
-        </div>
-      </Dialog>
     </div>
   );
 };
