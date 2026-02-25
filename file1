@@ -1,557 +1,157 @@
-// Add these properties to your component class
-export class WorkspaceComponent implements OnInit, OnChanges, OnDestroy {
-  // ... existing properties ...
+/**
+ * Copy content to clipboard (fallback method for HTTP)
+ */
+copyToClipboard(content: string, itemType?: string, itemId?: string): void {
+  let contentToCopy = content;
   
-  // Copy format dropdown state for assessment questions
-  showCopyFormatDropdown: { [key: string]: boolean } = {};
+  const textArea = document.createElement('textarea');
+  textArea.value = contentToCopy;
   
-  // Download format dropdown state
-  showDownloadFormatDropdown: { [key: string]: boolean } = {};
+  // Make the textarea invisible
+  textArea.style.position = 'fixed';
+  textArea.style.top = '0';
+  textArea.style.left = '0';
+  textArea.style.width = '2em';
+  textArea.style.height = '2em';
+  textArea.style.padding = '0';
+  textArea.style.border = 'none';
+  textArea.style.outline = 'none';
+  textArea.style.boxShadow = 'none';
+  textArea.style.background = 'transparent';
+  textArea.style.opacity = '0';
   
-  // ... rest of existing code ...
+  document.body.appendChild(textArea);
+  textArea.focus();
+  textArea.select();
   
-  /**
-   * Toggle copy format dropdown
-   */
-  toggleCopyFormatDropdown(itemId: string, event: Event): void {
-    event.stopPropagation();
-    this.showCopyFormatDropdown[itemId] = !this.showCopyFormatDropdown[itemId];
-    // Close download dropdown if open
-    this.closeDownloadFormatDropdowns();
-  }
-
-  /**
-   * Close all copy format dropdowns
-   */
-  closeCopyFormatDropdowns(): void {
-    this.showCopyFormatDropdown = {};
-  }
-
-  /**
-   * Toggle download format dropdown
-   */
-  toggleDownloadFormatDropdown(itemId: string, event: Event): void {
-    event.stopPropagation();
-    this.showDownloadFormatDropdown[itemId] = !this.showDownloadFormatDropdown[itemId];
-    // Close copy dropdown if open
-    this.closeCopyFormatDropdowns();
-  }
-
-  /**
-   * Close all download format dropdowns
-   */
-  closeDownloadFormatDropdowns(): void {
-    this.showDownloadFormatDropdown = {};
-  }
-
-  /**
-   * Copy content to clipboard (fallback method for HTTP)
-   */
-  copyToClipboard(content: string, itemType?: string, itemId?: string): void {
-    let contentToCopy = content;
-    
-    // For assessment questions, copy in a readable format
-    if (itemType === 'questions' && this.faqRawData) {
-      contentToCopy = this.formatAssessmentQuestionsForCopy();
-    }
-    
-    const textArea = document.createElement('textarea');
-    textArea.value = contentToCopy;
-    
-    // Make the textarea invisible
-    textArea.style.position = 'fixed';
-    textArea.style.top = '0';
-    textArea.style.left = '0';
-    textArea.style.width = '2em';
-    textArea.style.height = '2em';
-    textArea.style.padding = '0';
-    textArea.style.border = 'none';
-    textArea.style.outline = 'none';
-    textArea.style.boxShadow = 'none';
-    textArea.style.background = 'transparent';
-    textArea.style.opacity = '0';
-    
-    document.body.appendChild(textArea);
-    textArea.focus();
-    textArea.select();
-    
-    try {
-      const successful = document.execCommand('copy');
-      if (successful) {
-        console.log('Content copied to clipboard');
-        
-        // Show tick icon for this item
-        if (itemId) {
-          this.copiedItemId = itemId;
-          
-          // Reset back to copy icon after 1.5 seconds
-          setTimeout(() => {
-            this.copiedItemId = '';
-          }, 1500);
-        }
-      } else {
-        console.error('Failed to copy content');
-      }
-    } catch (err) {
-      console.error('Failed to copy content:', err);
-    }
-    
-    document.body.removeChild(textArea);
-  }
-
-  /**
-   * Copy assessment in specific format
-   */
-  copyAssessmentInFormat(format: 'json' | 'readable' | 'html', itemId: string, event: Event): void {
-    event.stopPropagation();
-    
-    let contentToCopy = '';
-    
-    switch (format) {
-      case 'json':
-        contentToCopy = this.formatAssessmentAsJSON();
-        break;
-      case 'readable':
-        contentToCopy = this.formatAssessmentQuestionsForCopy();
-        break;
-      case 'html':
-        contentToCopy = this.formatAssessmentAsHTML();
-        break;
-    }
-    
-    // Copy to clipboard
-    const textArea = document.createElement('textarea');
-    textArea.value = contentToCopy;
-    textArea.style.position = 'fixed';
-    textArea.style.top = '0';
-    textArea.style.left = '0';
-    textArea.style.width = '2em';
-    textArea.style.height = '2em';
-    textArea.style.padding = '0';
-    textArea.style.border = 'none';
-    textArea.style.outline = 'none';
-    textArea.style.boxShadow = 'none';
-    textArea.style.background = 'transparent';
-    textArea.style.opacity = '0';
-    
-    document.body.appendChild(textArea);
-    textArea.focus();
-    textArea.select();
-    
-    try {
-      const successful = document.execCommand('copy');
-      if (successful) {
-        console.log(`Content copied as ${format}`);
-        
-        // Show tick icon
+  try {
+    const successful = document.execCommand('copy');
+    if (successful) {
+      console.log('Content copied to clipboard');
+      
+      // Show tick icon for this item
+      if (itemId) {
         this.copiedItemId = itemId;
         
-        // Close dropdown
-        this.closeCopyFormatDropdowns();
-        
-        // Reset after 1.5 seconds
+        // Reset back to copy icon after 1.5 seconds
         setTimeout(() => {
           this.copiedItemId = '';
         }, 1500);
       }
-    } catch (err) {
-      console.error('Failed to copy content:', err);
+    } else {
+      console.error('Failed to copy content');
     }
-    
-    document.body.removeChild(textArea);
+  } catch (err) {
+    console.error('Failed to copy content:', err);
   }
+  
+  document.body.removeChild(textArea);
+}
 
-  /**
-   * Download content in specific format (client-side)
-   */
-  downloadInFormat(item: ResultItem, format: 'json' | 'readable' | 'html' | 'txt' | 'md', event: Event): void {
-    event.stopPropagation();
-    
-    let content = '';
-    let filename = '';
-    let mimeType = '';
-    
-    const timestamp = new Date().toISOString().split('T')[0];
-    const baseName = this.selectedHistoryItem?.name.replace(/\.[^/.]+$/, '') || 'content';
-    
-    switch (item.type) {
-      case 'summary':
-        ({ content, filename, mimeType } = this.prepareSummaryDownload(item, format, baseName, timestamp));
-        break;
-      case 'keywords':
-        ({ content, filename, mimeType } = this.prepareKeywordsDownload(item, format, baseName, timestamp));
-        break;
-      case 'questions':
-        ({ content, filename, mimeType } = this.prepareAssessmentDownload(format, baseName, timestamp));
-        break;
-      default:
-        return;
-    }
-    
-    // Create blob and download
-    const blob = new Blob([content], { type: mimeType });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    window.URL.revokeObjectURL(url);
-    
-    // Close dropdown
-    this.closeDownloadFormatDropdowns();
+/**
+ * Copy content in specific format
+ */
+copyInFormat(item: ResultItem, format: 'json' | 'readable' | 'html' | 'txt' | 'md', itemId: string, event: Event): void {
+  event.stopPropagation();
+  
+  let contentToCopy = '';
+  
+  switch (item.type) {
+    case 'summary':
+      contentToCopy = this.formatSummaryForCopy(item, format);
+      break;
+    case 'keywords':
+      contentToCopy = this.formatKeywordsForCopy(item, format);
+      break;
+    case 'questions':
+      contentToCopy = this.formatAssessmentForCopy(format);
+      break;
+    default:
+      return;
   }
-
-  /**
-   * Format assessment questions for copying in readable format
-   */
-  private formatAssessmentQuestionsForCopy(): string {
-    try {
-      const parsedFaq = typeof this.faqRawData === 'string' ? eval(this.faqRawData) : this.faqRawData;
+  
+  // Copy to clipboard
+  const textArea = document.createElement('textarea');
+  textArea.value = contentToCopy;
+  textArea.style.position = 'fixed';
+  textArea.style.top = '0';
+  textArea.style.left = '0';
+  textArea.style.width = '2em';
+  textArea.style.height = '2em';
+  textArea.style.padding = '0';
+  textArea.style.border = 'none';
+  textArea.style.outline = 'none';
+  textArea.style.boxShadow = 'none';
+  textArea.style.background = 'transparent';
+  textArea.style.opacity = '0';
+  
+  document.body.appendChild(textArea);
+  textArea.focus();
+  textArea.select();
+  
+  try {
+    const successful = document.execCommand('copy');
+    if (successful) {
+      console.log(`Content copied as ${format}`);
       
-      if (!Array.isArray(parsedFaq) || parsedFaq.length === 0) {
-        return 'No assessment questions available';
-      }
-
-      let formattedText = '='.repeat(80) + '\n';
-      formattedText += 'ASSESSMENT QUESTIONS\n';
-      formattedText += '='.repeat(80) + '\n\n';
-
-      parsedFaq.forEach((question: AssessmentQuestion, index: number) => {
-        // Question number and text
-        formattedText += `Q${index + 1}. ${question.question}\n`;
-        formattedText += '-'.repeat(80) + '\n\n';
-
-        // Options
-        formattedText += 'Options:\n';
-        const optionKeys = Object.keys(question.options);
-        optionKeys.forEach(key => {
-          const optionValue = question.options[key as keyof MCQOption];
-          const isCorrect = question.correct_answer === key;
-          formattedText += `  ${key}. ${optionValue}${isCorrect ? ' ✓ (Correct Answer)' : ''}\n`;
-        });
-        formattedText += '\n';
-
-        // Correct Answer
-        formattedText += `Correct Answer: ${question.correct_answer}\n`;
-        const correctOptionValue = question.options[question.correct_answer as keyof MCQOption];
-        formattedText += `Answer: ${correctOptionValue}\n\n`;
-
-        // Explanation
-        formattedText += `Explanation:\n`;
-        formattedText += `${question.explanation}\n\n`;
-
-        // Separator between questions
-        if (index < parsedFaq.length - 1) {
-          formattedText += '\n' + '='.repeat(80) + '\n\n';
-        }
-      });
-
-      formattedText += '\n' + '='.repeat(80) + '\n';
-      formattedText += `Total Questions: ${parsedFaq.length}\n`;
-      formattedText += '='.repeat(80);
-
-      return formattedText;
-    } catch (error) {
-      console.error('Error formatting assessment questions:', error);
-      return 'Error formatting assessment questions';
-    }
-  }
-
-  /**
-   * Format assessment as JSON
-   */
-  private formatAssessmentAsJSON(): string {
-    try {
-      const parsedFaq = typeof this.faqRawData === 'string' ? eval(this.faqRawData) : this.faqRawData;
-      return JSON.stringify(parsedFaq, null, 2);
-    } catch (error) {
-      console.error('Error formatting as JSON:', error);
-      return '[]';
-    }
-  }
-
-  /**
-   * Format assessment as HTML
-   */
-  private formatAssessmentAsHTML(): string {
-    try {
-      const parsedFaq = typeof this.faqRawData === 'string' ? eval(this.faqRawData) : this.faqRawData;
+      // Show tick icon
+      this.copiedItemId = itemId;
       
-      if (!Array.isArray(parsedFaq) || parsedFaq.length === 0) {
-        return '<p>No assessment questions available</p>';
-      }
-
-      let html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Assessment Questions</title>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            line-height: 1.6;
-            max-width: 900px;
-            margin: 40px auto;
-            padding: 20px;
-            background: #f8f9fa;
-            color: #333;
-        }
-        .header {
-            text-align: center;
-            margin-bottom: 40px;
-            padding-bottom: 20px;
-            border-bottom: 3px solid #8b5cf6;
-        }
-        .header h1 {
-            color: #8b5cf6;
-            margin: 0 0 10px 0;
-        }
-        .question-card {
-            background: white;
-            border-radius: 12px;
-            padding: 24px;
-            margin-bottom: 24px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            border-left: 4px solid #8b5cf6;
-        }
-        .question-header {
-            display: flex;
-            gap: 12px;
-            margin-bottom: 16px;
-        }
-        .question-number {
-            background: linear-gradient(135deg, #8b5cf6, #a78bfa);
-            color: white;
-            width: 36px;
-            height: 36px;
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-            flex-shrink: 0;
-        }
-        .question-text {
-            flex: 1;
-            font-size: 18px;
-            font-weight: 600;
-            color: #1f2937;
-            padding-top: 6px;
-        }
-        .options {
-            margin: 16px 0;
-            padding-left: 48px;
-        }
-        .option {
-            padding: 12px;
-            margin: 8px 0;
-            border-radius: 8px;
-            border: 1px solid #e5e7eb;
-            background: #f9fafb;
-        }
-        .option.correct {
-            background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(16, 185, 129, 0.05));
-            border-color: #10b981;
-        }
-        .option-label {
-            font-weight: bold;
-            color: #8b5cf6;
-            margin-right: 8px;
-        }
-        .option.correct .option-label {
-            color: #10b981;
-        }
-        .correct-badge {
-            display: inline-block;
-            background: #10b981;
-            color: white;
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 12px;
-            margin-left: 8px;
-        }
-        .answer-section {
-            margin: 16px 0 0 48px;
-            padding: 16px;
-            background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(16, 185, 129, 0.05));
-            border-left: 3px solid #10b981;
-            border-radius: 0 8px 8px 0;
-        }
-        .answer-label {
-            font-weight: bold;
-            color: #10b981;
-            font-size: 12px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 6px;
-        }
-        .answer-value {
-            color: #1f2937;
-            font-weight: 600;
-        }
-        .explanation-section {
-            margin: 16px 0 0 48px;
-            padding: 16px;
-            background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(167, 139, 250, 0.05));
-            border-left: 3px solid #8b5cf6;
-            border-radius: 0 8px 8px 0;
-        }
-        .explanation-label {
-            font-weight: bold;
-            color: #8b5cf6;
-            font-size: 12px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 6px;
-        }
-        .explanation-text {
-            color: #4b5563;
-            line-height: 1.6;
-        }
-        .footer {
-            text-align: center;
-            margin-top: 40px;
-            padding-top: 20px;
-            border-top: 2px solid #e5e7eb;
-            color: #6b7280;
-        }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>Assessment Questions</h1>
-        <p>Total Questions: ${parsedFaq.length}</p>
-    </div>
-`;
-
-      parsedFaq.forEach((question: AssessmentQuestion, index: number) => {
-        const optionKeys = Object.keys(question.options);
-        
-        html += `
-    <div class="question-card">
-        <div class="question-header">
-            <div class="question-number">Q${index + 1}</div>
-            <div class="question-text">${this.escapeHtml(question.question)}</div>
-        </div>
-        
-        <div class="options">
-`;
-        
-        optionKeys.forEach(key => {
-          const optionValue = question.options[key as keyof MCQOption];
-          const isCorrect = question.correct_answer === key;
-          
-          html += `
-            <div class="option${isCorrect ? ' correct' : ''}">
-                <span class="option-label">${key}.</span>
-                ${this.escapeHtml(optionValue)}
-                ${isCorrect ? '<span class="correct-badge">✓ Correct</span>' : ''}
-            </div>
-`;
-        });
-        
-        const correctOptionValue = question.options[question.correct_answer as keyof MCQOption];
-        
-        html += `
-        </div>
-        
-        <div class="answer-section">
-            <div class="answer-label">Correct Answer</div>
-            <div class="answer-value">${question.correct_answer} - ${this.escapeHtml(correctOptionValue)}</div>
-        </div>
-        
-        <div class="explanation-section">
-            <div class="explanation-label">Explanation</div>
-            <div class="explanation-text">${this.escapeHtml(question.explanation)}</div>
-        </div>
-    </div>
-`;
-      });
-
-      html += `
-    <div class="footer">
-        <p>Generated Assessment Questions</p>
-    </div>
-</body>
-</html>`;
-
-      return html;
-    } catch (error) {
-      console.error('Error formatting as HTML:', error);
-      return '<p>Error formatting questions</p>';
+      // Close dropdown
+      this.closeCopyFormatDropdowns();
+      
+      // Reset after 1.5 seconds
+      setTimeout(() => {
+        this.copiedItemId = '';
+      }, 1500);
     }
+  } catch (err) {
+    console.error('Failed to copy content:', err);
   }
+  
+  document.body.removeChild(textArea);
+}
 
-  /**
-   * Prepare summary download content
-   */
-  private prepareSummaryDownload(item: ResultItem, format: string, baseName: string, timestamp: string): { content: string, filename: string, mimeType: string } {
-    let content = '';
-    let filename = '';
-    let mimeType = '';
-    
-    switch (format) {
-      case 'txt':
-        content = item.content || '';
-        filename = `${baseName}_summary_${timestamp}.txt`;
-        mimeType = 'text/plain';
-        break;
-        
-      case 'md':
-        content = item.content || '';
-        filename = `${baseName}_summary_${timestamp}.md`;
-        mimeType = 'text/markdown';
-        break;
-        
-      case 'html':
-        const htmlContent = item.htmlContent ? (item.htmlContent as any).changingThisBreaksApplicationSecurity : '';
-        content = this.wrapInHTMLTemplate(htmlContent, 'Summary');
-        filename = `${baseName}_summary_${timestamp}.html`;
-        mimeType = 'text/html';
-        break;
-        
-      case 'json':
-        content = JSON.stringify({
-          type: 'summary',
-          content: item.content,
-          timestamp: new Date().toISOString()
-        }, null, 2);
-        filename = `${baseName}_summary_${timestamp}.json`;
-        mimeType = 'application/json';
-        break;
-    }
-    
-    return { content, filename, mimeType };
+/**
+ * Format summary for copying
+ */
+private formatSummaryForCopy(item: ResultItem, format: string): string {
+  switch (format) {
+    case 'txt':
+    case 'md':
+      return item.content || '';
+      
+    case 'html':
+      const htmlContent = item.htmlContent ? (item.htmlContent as any).changingThisBreaksApplicationSecurity : '';
+      return this.wrapInHTMLTemplate(htmlContent, 'Summary');
+      
+    case 'json':
+      return JSON.stringify({
+        type: 'summary',
+        content: item.content,
+        timestamp: new Date().toISOString()
+      }, null, 2);
+      
+    default:
+      return item.content || '';
   }
+}
 
-  /**
-   * Prepare keywords download content
-   */
-  private prepareKeywordsDownload(item: ResultItem, format: string, baseName: string, timestamp: string): { content: string, filename: string, mimeType: string } {
-    let content = '';
-    let filename = '';
-    let mimeType = '';
-    
-    const keywords = item.keywords || [];
-    
-    switch (format) {
-      case 'txt':
-        content = keywords.join('\n');
-        filename = `${baseName}_keywords_${timestamp}.txt`;
-        mimeType = 'text/plain';
-        break;
-        
-      case 'md':
-        content = '# Key Topics\n\n' + keywords.map(k => `- ${k}`).join('\n');
-        filename = `${baseName}_keywords_${timestamp}.md`;
-        mimeType = 'text/markdown';
-        break;
-        
-      case 'html':
-        const keywordsHTML = `
+/**
+ * Format keywords for copying
+ */
+private formatKeywordsForCopy(item: ResultItem, format: string): string {
+  const keywords = item.keywords || [];
+  
+  switch (format) {
+    case 'txt':
+      return keywords.join('\n');
+      
+    case 'md':
+      return '# Key Topics\n\n' + keywords.map(k => `- ${k}`).join('\n');
+      
+    case 'html':
+      const keywordsHTML = `
         <h1>Key Topics</h1>
         <div style="display: flex; flex-wrap: wrap; gap: 12px; margin-top: 20px;">
           ${keywords.map((keyword, index) => {
@@ -582,183 +182,43 @@ export class WorkspaceComponent implements OnInit, OnChanges, OnDestroy {
           }).join('')}
         </div>
       `;
-        content = this.wrapInHTMLTemplate(keywordsHTML, 'Key Topics');
-        filename = `${baseName}_keywords_${timestamp}.html`;
-        mimeType = 'text/html';
-        break;
-        
-      case 'json':
-        content = JSON.stringify({
-          type: 'keywords',
-          keywords: keywords,
-          timestamp: new Date().toISOString()
-        }, null, 2);
-        filename = `${baseName}_keywords_${timestamp}.json`;
-        mimeType = 'application/json';
-        break;
-    }
-    
-    return { content, filename, mimeType };
-  }
-
-  /**
-   * Prepare assessment download content
-   */
-  private prepareAssessmentDownload(format: string, baseName: string, timestamp: string): { content: string, filename: string, mimeType: string } {
-    let content = '';
-    let filename = '';
-    let mimeType = '';
-    
-    switch (format) {
-      case 'readable':
-        content = this.formatAssessmentQuestionsForCopy();
-        filename = `${baseName}_assessment_${timestamp}.txt`;
-        mimeType = 'text/plain';
-        break;
-        
-      case 'html':
-        content = this.formatAssessmentAsHTML();
-        filename = `${baseName}_assessment_${timestamp}.html`;
-        mimeType = 'text/html';
-        break;
-        
-      case 'json':
-        content = this.formatAssessmentAsJSON();
-        filename = `${baseName}_assessment_${timestamp}.json`;
-        mimeType = 'application/json';
-        break;
-    }
-    
-    return { content, filename, mimeType };
-  }
-
-  /**
-   * Wrap content in HTML template
-   */
-  private wrapInHTMLTemplate(content: string, title: string): string {
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${title}</title>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            line-height: 1.6;
-            max-width: 900px;
-            margin: 40px auto;
-            padding: 20px;
-            background: #f8f9fa;
-            color: #333;
-        }
-        .header {
-            text-align: center;
-            margin-bottom: 40px;
-            padding-bottom: 20px;
-            border-bottom: 3px solid #8b5cf6;
-        }
-        .header h1 {
-            color: #8b5cf6;
-            margin: 0;
-        }
-        .content {
-            background: white;
-            border-radius: 12px;
-            padding: 30px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-        h1, h2, h3, h4, h5, h6 {
-            color: #8b5cf6;
-        }
-        strong {
-            color: #8b5cf6;
-            background: rgba(139, 92, 246, 0.1);
-            padding: 2px 4px;
-            border-radius: 3px;
-        }
-        code {
-            background: rgba(139, 92, 246, 0.1);
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-family: 'Courier New', monospace;
-        }
-        pre {
-            background: rgba(139, 92, 246, 0.05);
-            padding: 16px;
-            border-radius: 8px;
-            border-left: 4px solid #8b5cf6;
-            overflow-x: auto;
-        }
-        blockquote {
-            border-left: 4px solid #8b5cf6;
-            padding-left: 16px;
-            margin-left: 0;
-            color: #666;
-            font-style: italic;
-        }
-        ul, ol {
-            padding-left: 24px;
-        }
-        li::marker {
-            color: #8b5cf6;
-        }
-        .footer {
-            text-align: center;
-            margin-top: 40px;
-            padding-top: 20px;
-            border-top: 2px solid #e5e7eb;
-            color: #6b7280;
-            font-size: 14px;
-        }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>${title}</h1>
-    </div>
-    <div class="content">
-        ${content}
-    </div>
-    <div class="footer">
-        <p>Generated on ${new Date().toLocaleDateString()}</p>
-    </div>
-</body>
-</html>`;
-  }
-
-  /**
-   * Escape HTML special characters
-   */
-  private escapeHtml(text: string): string {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-  }
-
-  /**
-   * Update the HostListener to close both dropdowns
-   */
-  @HostListener('document:click', ['$event'])
-  onDocumentClick(event: Event): void {
-    // Close copy format dropdowns when clicking outside
-    const target = event.target as HTMLElement;
-    if (!target.closest('.copy-button-wrapper')) {
-      this.closeCopyFormatDropdowns();
-    }
-    if (!target.closest('.download-button-wrapper')) {
-      this.closeDownloadFormatDropdowns();
-    }
-    
-    // Close detail sidebar when clicking outside
-    if (!target.closest('.detail-sidebar') && !target.closest('.result-action-icon-btn')) {
-      if (this.selectedDetailItem && !this.isEditMode) {
-        this.closeDetail();
-      }
-    }
+      return this.wrapInHTMLTemplate(keywordsHTML, 'Key Topics');
+      
+    case 'json':
+      return JSON.stringify({
+        type: 'keywords',
+        keywords: keywords,
+        timestamp: new Date().toISOString()
+      }, null, 2);
+      
+    default:
+      return keywords.join(', ');
   }
 }
 
+/**
+ * Format assessment for copying
+ */
+private formatAssessmentForCopy(format: string): string {
+  switch (format) {
+    case 'readable':
+    case 'txt':
+      return this.formatAssessmentQuestionsForCopy();
+      
+    case 'html':
+      return this.formatAssessmentAsHTML();
+      
+    case 'json':
+      return this.formatAssessmentAsJSON();
+      
+    default:
+      return this.formatAssessmentQuestionsForCopy();
+  }
+}
+
+/**
+ * Remove the old copyAssessmentInFormat method as it's now replaced by copyInFormat
+ */
 
 
 
@@ -793,8 +253,8 @@ export class WorkspaceComponent implements OnInit, OnChanges, OnDestroy {
         </svg>
     </button>
     
-    <!-- Copy Button - Special treatment for Assessment Questions -->
-    <div class="copy-button-wrapper" *ngIf="item.type === 'questions'">
+    <!-- Copy Button with Format Options - All Types -->
+    <div class="copy-button-wrapper">
         <button class="result-action-icon-btn" 
                 [title]="'Copy Options'" 
                 (click)="toggleCopyFormatDropdown(item.id, $event)"
@@ -831,71 +291,149 @@ export class WorkspaceComponent implements OnInit, OnChanges, OnDestroy {
                 </button>
             </div>
             <div class="dropdown-options">
-                <button class="format-option" (click)="copyAssessmentInFormat('json', item.id, $event)">
-                    <div class="format-icon json-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
-                        </svg>
-                    </div>
-                    <div class="format-details">
-                        <div class="format-name">JSON</div>
-                        <div class="format-desc">Raw data</div>
-                    </div>
-                </button>
+                <!-- Summary Copy Options -->
+                <ng-container *ngIf="item.type === 'summary'">
+                    <button class="format-option" (click)="copyInFormat(item, 'txt', item.id, $event)">
+                        <div class="format-icon txt-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                            </svg>
+                        </div>
+                        <div class="format-details">
+                            <div class="format-name">Text</div>
+                            <div class="format-desc">Plain text</div>
+                        </div>
+                    </button>
+                    
+                    <button class="format-option" (click)="copyInFormat(item, 'md', item.id, $event)">
+                        <div class="format-icon md-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m3.75 9v6m3-3H9m1.5-12H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                            </svg>
+                        </div>
+                        <div class="format-details">
+                            <div class="format-name">Markdown</div>
+                            <div class="format-desc">MD format</div>
+                        </div>
+                    </button>
+                    
+                    <button class="format-option" (click)="copyInFormat(item, 'html', item.id, $event)">
+                        <div class="format-icon html-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+                            </svg>
+                        </div>
+                        <div class="format-details">
+                            <div class="format-name">HTML</div>
+                            <div class="format-desc">Web page</div>
+                        </div>
+                    </button>
+                    
+                    <button class="format-option" (click)="copyInFormat(item, 'json', item.id, $event)">
+                        <div class="format-icon json-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+                            </svg>
+                        </div>
+                        <div class="format-details">
+                            <div class="format-name">JSON</div>
+                            <div class="format-desc">Raw data</div>
+                        </div>
+                    </button>
+                </ng-container>
                 
-                <button class="format-option" (click)="copyAssessmentInFormat('readable', item.id, $event)">
-                    <div class="format-icon readable-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                        </svg>
-                    </div>
-                    <div class="format-details">
-                        <div class="format-name">Plain Text</div>
-                        <div class="format-desc">Readable</div>
-                    </div>
-                </button>
+                <!-- Keywords Copy Options -->
+                <ng-container *ngIf="item.type === 'keywords'">
+                    <button class="format-option" (click)="copyInFormat(item, 'txt', item.id, $event)">
+                        <div class="format-icon txt-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                            </svg>
+                        </div>
+                        <div class="format-details">
+                            <div class="format-name">Text</div>
+                            <div class="format-desc">Line by line</div>
+                        </div>
+                    </button>
+                    
+                    <button class="format-option" (click)="copyInFormat(item, 'md', item.id, $event)">
+                        <div class="format-icon md-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m3.75 9v6m3-3H9m1.5-12H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                            </svg>
+                        </div>
+                        <div class="format-details">
+                            <div class="format-name">Markdown</div>
+                            <div class="format-desc">Bullet list</div>
+                        </div>
+                    </button>
+                    
+                    <button class="format-option" (click)="copyInFormat(item, 'html', item.id, $event)">
+                        <div class="format-icon html-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+                            </svg>
+                        </div>
+                        <div class="format-details">
+                            <div class="format-name">HTML</div>
+                            <div class="format-desc">Styled chips</div>
+                        </div>
+                    </button>
+                    
+                    <button class="format-option" (click)="copyInFormat(item, 'json', item.id, $event)">
+                        <div class="format-icon json-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+                            </svg>
+                        </div>
+                        <div class="format-details">
+                            <div class="format-name">JSON</div>
+                            <div class="format-desc">Array data</div>
+                        </div>
+                    </button>
+                </ng-container>
                 
-                <button class="format-option" (click)="copyAssessmentInFormat('html', item.id, $event)">
-                    <div class="format-icon html-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
-                        </svg>
-                    </div>
-                    <div class="format-details">
-                        <div class="format-name">HTML</div>
-                        <div class="format-desc">Styled page</div>
-                    </div>
-                </button>
+                <!-- Assessment Copy Options -->
+                <ng-container *ngIf="item.type === 'questions'">
+                    <button class="format-option" (click)="copyInFormat(item, 'txt', item.id, $event)">
+                        <div class="format-icon readable-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                            </svg>
+                        </div>
+                        <div class="format-details">
+                            <div class="format-name">Plain Text</div>
+                            <div class="format-desc">Readable</div>
+                        </div>
+                    </button>
+                    
+                    <button class="format-option" (click)="copyInFormat(item, 'html', item.id, $event)">
+                        <div class="format-icon html-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+                            </svg>
+                        </div>
+                        <div class="format-details">
+                            <div class="format-name">HTML</div>
+                            <div class="format-desc">Styled page</div>
+                        </div>
+                    </button>
+                    
+                    <button class="format-option" (click)="copyInFormat(item, 'json', item.id, $event)">
+                        <div class="format-icon json-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+                            </svg>
+                        </div>
+                        <div class="format-details">
+                            <div class="format-name">JSON</div>
+                            <div class="format-desc">Raw data</div>
+                        </div>
+                    </button>
+                </ng-container>
             </div>
         </div>
     </div>
-    
-    <!-- Copy Button - Normal for Summary and Keywords -->
-    <button class="result-action-icon-btn" 
-            *ngIf="item.type !== 'questions'"
-            title="Copy" 
-            (click)="copyToClipboard(item.content, item.type, item.id)"
-            [class.copy-success]="copiedItemId === item.id">
-        <svg *ngIf="copiedItemId === item.id" 
-             xmlns="http://www.w3.org/2000/svg" 
-             fill="none" 
-             viewBox="0 0 24 24" 
-             stroke-width="2.5" 
-             stroke="currentColor"
-             class="copy-success-icon">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M1.5 12.5l4 4 8-8" />
-            <path stroke-linecap="round" stroke-linejoin="round" d="M6.5 12.5l4 4 8-8" />
-        </svg>
-        <svg *ngIf="copiedItemId !== item.id" 
-             xmlns="http://www.w3.org/2000/svg" 
-             fill="none" 
-             viewBox="0 0 24 24" 
-             stroke-width="1.5"
-             stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round"
-                d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 00-3.375-3.375h-1.5a1.125 1.125 0 01-1.125-1.125v-1.5a3.375 3.375 0 00-3.375-3.375H9.75" />
-        </svg>
-    </button>
     
     <!-- Download Button with Format Options -->
     <div class="download-button-wrapper">
@@ -1064,329 +602,3 @@ export class WorkspaceComponent implements OnInit, OnChanges, OnDestroy {
         </div>
     </div>
 </div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* Copy Button Wrapper for Assessment Questions */
-.copy-button-wrapper {
-    position: relative;
-}
-
-/* Copy Format Dropdown - Compact Version */
-.copy-format-dropdown {
-    position: absolute;
-    top: calc(100% + 4px);
-    right: 0;
-    width: 160px;
-    background: var(--bg-color);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-    z-index: 9999;
-    animation: dropdownSlideIn 0.15s ease-out;
-    overflow: hidden;
-}
-
-@keyframes dropdownSlideIn {
-    from {
-        opacity: 0;
-        transform: translateY(-5px) scale(0.95);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
-}
-
-.dropdown-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 10px;
-    background: linear-gradient(135deg, var(--primary-gradient-light-start), var(--primary-gradient-light-end));
-    border-bottom: 1px solid var(--border-color);
-}
-
-.dropdown-header span {
-    font-size: 10px;
-    font-weight: 700;
-    color: var(--text-color);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.dropdown-close {
-    width: 16px;
-    height: 16px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: transparent;
-    border: none;
-    border-radius: 3px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.dropdown-close:hover {
-    background: rgba(0, 0, 0, 0.1);
-}
-
-.dropdown-close svg {
-    width: 12px;
-    height: 12px;
-    stroke: var(--text-color);
-}
-
-.dropdown-options {
-    padding: 4px;
-}
-
-.format-option {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    width: 100%;
-    padding: 8px 8px;
-    background: transparent;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    text-align: left;
-}
-
-.format-option:hover {
-    background: linear-gradient(135deg, var(--primary-gradient-lighter-start), var(--primary-gradient-lighter-end));
-}
-
-.format-icon {
-    width: 28px;
-    height: 28px;
-    border-radius: 6px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    transition: all 0.2s ease;
-}
-
-.format-icon svg {
-    width: 14px;
-    height: 14px;
-}
-
-/* JSON Icon */
-.json-icon {
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(59, 130, 246, 0.08));
-}
-
-.json-icon svg {
-    stroke: #3b82f6;
-}
-
-.format-option:hover .json-icon {
-    background: linear-gradient(135deg, #3b82f6, #60a5fa);
-    transform: scale(1.05);
-}
-
-.format-option:hover .json-icon svg {
-    stroke: white;
-}
-
-/* Readable/Plain Text Icon */
-.readable-icon {
-    background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(16, 185, 129, 0.08));
-}
-
-.readable-icon svg {
-    stroke: #10b981;
-}
-
-.format-option:hover .readable-icon {
-    background: linear-gradient(135deg, #10b981, #34d399);
-    transform: scale(1.05);
-}
-
-.format-option:hover .readable-icon svg {
-    stroke: white;
-}
-
-/* HTML Icon */
-.html-icon {
-    background: linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(245, 158, 11, 0.08));
-}
-
-.html-icon svg {
-    stroke: #f59e0b;
-}
-
-.format-option:hover .html-icon {
-    background: linear-gradient(135deg, #f59e0b, #fbbf24);
-    transform: scale(1.05);
-}
-
-.format-option:hover .html-icon svg {
-    stroke: white;
-}
-
-/* TXT Icon */
-.txt-icon {
-    background: linear-gradient(135deg, rgba(107, 114, 128, 0.15), rgba(107, 114, 128, 0.08));
-}
-
-.txt-icon svg {
-    stroke: #6b7280;
-}
-
-.format-option:hover .txt-icon {
-    background: linear-gradient(135deg, #6b7280, #9ca3af);
-    transform: scale(1.05);
-}
-
-.format-option:hover .txt-icon svg {
-    stroke: white;
-}
-
-/* MD (Markdown) Icon */
-.md-icon {
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(167, 139, 250, 0.08));
-}
-
-.md-icon svg {
-    stroke: #8b5cf6;
-}
-
-.format-option:hover .md-icon {
-    background: linear-gradient(135deg, #8b5cf6, #a78bfa);
-    transform: scale(1.05);
-}
-
-.format-option:hover .md-icon svg {
-    stroke: white;
-}
-
-.format-details {
-    flex: 1;
-    min-width: 0;
-}
-
-.format-name {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text-color);
-    line-height: 1.2;
-}
-
-.format-desc {
-    font-size: 9px;
-    color: var(--text-color);
-    opacity: 0.6;
-    line-height: 1.2;
-    margin-top: 1px;
-}
-
-.format-option:hover .format-name {
-    color: var(--primary-color);
-}
-
-/* Ensure dropdown appears above everything */
-.result-item {
-    position: relative;
-    z-index: 1;
-}
-
-.result-item:has(.copy-format-dropdown) {
-    z-index: 10000;
-}
-
-/* Download Button Wrapper */
-.download-button-wrapper {
-    position: relative;
-}
-
-/* Download Format Dropdown - Same styling as copy */
-.download-format-dropdown {
-    position: absolute;
-    top: calc(100% + 4px);
-    right: 0;
-    width: 160px;
-    background: var(--bg-color);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-    z-index: 9999;
-    animation: dropdownSlideIn 0.15s ease-out;
-    overflow: hidden;
-}
-
-/* Ensure download dropdown appears above everything */
-.result-item:has(.download-format-dropdown) {
-    z-index: 10000;
-}
-
-/* Responsive adjustments for dropdowns */
-@media screen and (max-width: 1400px) {
-    .copy-format-dropdown,
-    .download-format-dropdown {
-        width: 150px;
-    }
-
-    .dropdown-header {
-        padding: 7px 9px;
-    }
-
-    .dropdown-header span {
-        font-size: 9px;
-    }
-
-    .dropdown-close {
-        width: 14px;
-        height: 14px;
-    }
-
-    .dropdown-close svg {
-        width: 11px;
-        height: 11px;
-    }
-
-    .dropdown-options {
-        padding: 3px;
-    }
-
-    .format-option {
-        gap: 7px;
-        padding: 7px 7px;
-    }
-
-    .format-icon {
-        width: 26px;
-        height: 26px;
-        border-radius: 5px;
-    }
-
-    .format-icon svg {
-        width: 13px;
-        height: 13px;
-    }
-
-    .format-name {
-        font-size: 11px;
-    }
-
-    .format-desc {
-        font-size: 8px;
-    }
-}
