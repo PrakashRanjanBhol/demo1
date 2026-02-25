@@ -1,132 +1,557 @@
-// Download format dropdown state
-showDownloadFormatDropdown: { [key: string]: boolean } = {};
-
-
-
-/**
- * Toggle download format dropdown
- */
-toggleDownloadFormatDropdown(itemId: string, event: Event): void {
-  event.stopPropagation();
-  this.showDownloadFormatDropdown[itemId] = !this.showDownloadFormatDropdown[itemId];
-}
-
-/**
- * Close all download format dropdowns
- */
-closeDownloadFormatDropdowns(): void {
-  this.showDownloadFormatDropdown = {};
-}
-
-/**
- * Download content in specific format (client-side)
- */
-downloadInFormat(item: ResultItem, format: 'json' | 'readable' | 'html' | 'txt' | 'md', event: Event): void {
-  event.stopPropagation();
+// Add these properties to your component class
+export class WorkspaceComponent implements OnInit, OnChanges, OnDestroy {
+  // ... existing properties ...
   
-  let content = '';
-  let filename = '';
-  let mimeType = '';
+  // Copy format dropdown state for assessment questions
+  showCopyFormatDropdown: { [key: string]: boolean } = {};
   
-  const timestamp = new Date().toISOString().split('T')[0];
-  const baseName = this.selectedHistoryItem?.name.replace(/\.[^/.]+$/, '') || 'content';
+  // Download format dropdown state
+  showDownloadFormatDropdown: { [key: string]: boolean } = {};
   
-  switch (item.type) {
-    case 'summary':
-      ({ content, filename, mimeType } = this.prepareSummaryDownload(item, format, baseName, timestamp));
-      break;
-    case 'keywords':
-      ({ content, filename, mimeType } = this.prepareKeywordsDownload(item, format, baseName, timestamp));
-      break;
-    case 'questions':
-      ({ content, filename, mimeType } = this.prepareAssessmentDownload(format, baseName, timestamp));
-      break;
-    default:
-      return;
+  // ... rest of existing code ...
+  
+  /**
+   * Toggle copy format dropdown
+   */
+  toggleCopyFormatDropdown(itemId: string, event: Event): void {
+    event.stopPropagation();
+    this.showCopyFormatDropdown[itemId] = !this.showCopyFormatDropdown[itemId];
+    // Close download dropdown if open
+    this.closeDownloadFormatDropdowns();
   }
-  
-  // Create blob and download
-  const blob = new Blob([content], { type: mimeType });
-  const url = window.URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  window.URL.revokeObjectURL(url);
-  
-  // Close dropdown
-  this.closeDownloadFormatDropdowns();
-}
 
-/**
- * Prepare summary download content
- */
-private prepareSummaryDownload(item: ResultItem, format: string, baseName: string, timestamp: string): { content: string, filename: string, mimeType: string } {
-  let content = '';
-  let filename = '';
-  let mimeType = '';
-  
-  switch (format) {
-    case 'txt':
-      content = item.content || '';
-      filename = `${baseName}_summary_${timestamp}.txt`;
-      mimeType = 'text/plain';
-      break;
-      
-    case 'md':
-      content = item.content || '';
-      filename = `${baseName}_summary_${timestamp}.md`;
-      mimeType = 'text/markdown';
-      break;
-      
-    case 'html':
-      const htmlContent = item.htmlContent ? (item.htmlContent as any).changingThisBreaksApplicationSecurity : '';
-      content = this.wrapInHTMLTemplate(htmlContent, 'Summary');
-      filename = `${baseName}_summary_${timestamp}.html`;
-      mimeType = 'text/html';
-      break;
-      
-    case 'json':
-      content = JSON.stringify({
-        type: 'summary',
-        content: item.content,
-        timestamp: new Date().toISOString()
-      }, null, 2);
-      filename = `${baseName}_summary_${timestamp}.json`;
-      mimeType = 'application/json';
-      break;
+  /**
+   * Close all copy format dropdowns
+   */
+  closeCopyFormatDropdowns(): void {
+    this.showCopyFormatDropdown = {};
   }
-  
-  return { content, filename, mimeType };
-}
 
-/**
- * Prepare keywords download content
- */
-private prepareKeywordsDownload(item: ResultItem, format: string, baseName: string, timestamp: string): { content: string, filename: string, mimeType: string } {
-  let content = '';
-  let filename = '';
-  let mimeType = '';
-  
-  const keywords = item.keywords || [];
-  
-  switch (format) {
-    case 'txt':
-      content = keywords.join('\n');
-      filename = `${baseName}_keywords_${timestamp}.txt`;
-      mimeType = 'text/plain';
-      break;
+  /**
+   * Toggle download format dropdown
+   */
+  toggleDownloadFormatDropdown(itemId: string, event: Event): void {
+    event.stopPropagation();
+    this.showDownloadFormatDropdown[itemId] = !this.showDownloadFormatDropdown[itemId];
+    // Close copy dropdown if open
+    this.closeCopyFormatDropdowns();
+  }
+
+  /**
+   * Close all download format dropdowns
+   */
+  closeDownloadFormatDropdowns(): void {
+    this.showDownloadFormatDropdown = {};
+  }
+
+  /**
+   * Copy content to clipboard (fallback method for HTTP)
+   */
+  copyToClipboard(content: string, itemType?: string, itemId?: string): void {
+    let contentToCopy = content;
+    
+    // For assessment questions, copy in a readable format
+    if (itemType === 'questions' && this.faqRawData) {
+      contentToCopy = this.formatAssessmentQuestionsForCopy();
+    }
+    
+    const textArea = document.createElement('textarea');
+    textArea.value = contentToCopy;
+    
+    // Make the textarea invisible
+    textArea.style.position = 'fixed';
+    textArea.style.top = '0';
+    textArea.style.left = '0';
+    textArea.style.width = '2em';
+    textArea.style.height = '2em';
+    textArea.style.padding = '0';
+    textArea.style.border = 'none';
+    textArea.style.outline = 'none';
+    textArea.style.boxShadow = 'none';
+    textArea.style.background = 'transparent';
+    textArea.style.opacity = '0';
+    
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    
+    try {
+      const successful = document.execCommand('copy');
+      if (successful) {
+        console.log('Content copied to clipboard');
+        
+        // Show tick icon for this item
+        if (itemId) {
+          this.copiedItemId = itemId;
+          
+          // Reset back to copy icon after 1.5 seconds
+          setTimeout(() => {
+            this.copiedItemId = '';
+          }, 1500);
+        }
+      } else {
+        console.error('Failed to copy content');
+      }
+    } catch (err) {
+      console.error('Failed to copy content:', err);
+    }
+    
+    document.body.removeChild(textArea);
+  }
+
+  /**
+   * Copy assessment in specific format
+   */
+  copyAssessmentInFormat(format: 'json' | 'readable' | 'html', itemId: string, event: Event): void {
+    event.stopPropagation();
+    
+    let contentToCopy = '';
+    
+    switch (format) {
+      case 'json':
+        contentToCopy = this.formatAssessmentAsJSON();
+        break;
+      case 'readable':
+        contentToCopy = this.formatAssessmentQuestionsForCopy();
+        break;
+      case 'html':
+        contentToCopy = this.formatAssessmentAsHTML();
+        break;
+    }
+    
+    // Copy to clipboard
+    const textArea = document.createElement('textarea');
+    textArea.value = contentToCopy;
+    textArea.style.position = 'fixed';
+    textArea.style.top = '0';
+    textArea.style.left = '0';
+    textArea.style.width = '2em';
+    textArea.style.height = '2em';
+    textArea.style.padding = '0';
+    textArea.style.border = 'none';
+    textArea.style.outline = 'none';
+    textArea.style.boxShadow = 'none';
+    textArea.style.background = 'transparent';
+    textArea.style.opacity = '0';
+    
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    
+    try {
+      const successful = document.execCommand('copy');
+      if (successful) {
+        console.log(`Content copied as ${format}`);
+        
+        // Show tick icon
+        this.copiedItemId = itemId;
+        
+        // Close dropdown
+        this.closeCopyFormatDropdowns();
+        
+        // Reset after 1.5 seconds
+        setTimeout(() => {
+          this.copiedItemId = '';
+        }, 1500);
+      }
+    } catch (err) {
+      console.error('Failed to copy content:', err);
+    }
+    
+    document.body.removeChild(textArea);
+  }
+
+  /**
+   * Download content in specific format (client-side)
+   */
+  downloadInFormat(item: ResultItem, format: 'json' | 'readable' | 'html' | 'txt' | 'md', event: Event): void {
+    event.stopPropagation();
+    
+    let content = '';
+    let filename = '';
+    let mimeType = '';
+    
+    const timestamp = new Date().toISOString().split('T')[0];
+    const baseName = this.selectedHistoryItem?.name.replace(/\.[^/.]+$/, '') || 'content';
+    
+    switch (item.type) {
+      case 'summary':
+        ({ content, filename, mimeType } = this.prepareSummaryDownload(item, format, baseName, timestamp));
+        break;
+      case 'keywords':
+        ({ content, filename, mimeType } = this.prepareKeywordsDownload(item, format, baseName, timestamp));
+        break;
+      case 'questions':
+        ({ content, filename, mimeType } = this.prepareAssessmentDownload(format, baseName, timestamp));
+        break;
+      default:
+        return;
+    }
+    
+    // Create blob and download
+    const blob = new Blob([content], { type: mimeType });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+    
+    // Close dropdown
+    this.closeDownloadFormatDropdowns();
+  }
+
+  /**
+   * Format assessment questions for copying in readable format
+   */
+  private formatAssessmentQuestionsForCopy(): string {
+    try {
+      const parsedFaq = typeof this.faqRawData === 'string' ? eval(this.faqRawData) : this.faqRawData;
       
-    case 'md':
-      content = '# Key Topics\n\n' + keywords.map(k => `- ${k}`).join('\n');
-      filename = `${baseName}_keywords_${timestamp}.md`;
-      mimeType = 'text/markdown';
-      break;
+      if (!Array.isArray(parsedFaq) || parsedFaq.length === 0) {
+        return 'No assessment questions available';
+      }
+
+      let formattedText = '='.repeat(80) + '\n';
+      formattedText += 'ASSESSMENT QUESTIONS\n';
+      formattedText += '='.repeat(80) + '\n\n';
+
+      parsedFaq.forEach((question: AssessmentQuestion, index: number) => {
+        // Question number and text
+        formattedText += `Q${index + 1}. ${question.question}\n`;
+        formattedText += '-'.repeat(80) + '\n\n';
+
+        // Options
+        formattedText += 'Options:\n';
+        const optionKeys = Object.keys(question.options);
+        optionKeys.forEach(key => {
+          const optionValue = question.options[key as keyof MCQOption];
+          const isCorrect = question.correct_answer === key;
+          formattedText += `  ${key}. ${optionValue}${isCorrect ? ' ✓ (Correct Answer)' : ''}\n`;
+        });
+        formattedText += '\n';
+
+        // Correct Answer
+        formattedText += `Correct Answer: ${question.correct_answer}\n`;
+        const correctOptionValue = question.options[question.correct_answer as keyof MCQOption];
+        formattedText += `Answer: ${correctOptionValue}\n\n`;
+
+        // Explanation
+        formattedText += `Explanation:\n`;
+        formattedText += `${question.explanation}\n\n`;
+
+        // Separator between questions
+        if (index < parsedFaq.length - 1) {
+          formattedText += '\n' + '='.repeat(80) + '\n\n';
+        }
+      });
+
+      formattedText += '\n' + '='.repeat(80) + '\n';
+      formattedText += `Total Questions: ${parsedFaq.length}\n`;
+      formattedText += '='.repeat(80);
+
+      return formattedText;
+    } catch (error) {
+      console.error('Error formatting assessment questions:', error);
+      return 'Error formatting assessment questions';
+    }
+  }
+
+  /**
+   * Format assessment as JSON
+   */
+  private formatAssessmentAsJSON(): string {
+    try {
+      const parsedFaq = typeof this.faqRawData === 'string' ? eval(this.faqRawData) : this.faqRawData;
+      return JSON.stringify(parsedFaq, null, 2);
+    } catch (error) {
+      console.error('Error formatting as JSON:', error);
+      return '[]';
+    }
+  }
+
+  /**
+   * Format assessment as HTML
+   */
+  private formatAssessmentAsHTML(): string {
+    try {
+      const parsedFaq = typeof this.faqRawData === 'string' ? eval(this.faqRawData) : this.faqRawData;
       
-    case 'html':
-      const keywordsHTML = `
+      if (!Array.isArray(parsedFaq) || parsedFaq.length === 0) {
+        return '<p>No assessment questions available</p>';
+      }
+
+      let html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Assessment Questions</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f8f9fa;
+            color: #333;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding-bottom: 20px;
+            border-bottom: 3px solid #8b5cf6;
+        }
+        .header h1 {
+            color: #8b5cf6;
+            margin: 0 0 10px 0;
+        }
+        .question-card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            border-left: 4px solid #8b5cf6;
+        }
+        .question-header {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .question-number {
+            background: linear-gradient(135deg, #8b5cf6, #a78bfa);
+            color: white;
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+        .question-text {
+            flex: 1;
+            font-size: 18px;
+            font-weight: 600;
+            color: #1f2937;
+            padding-top: 6px;
+        }
+        .options {
+            margin: 16px 0;
+            padding-left: 48px;
+        }
+        .option {
+            padding: 12px;
+            margin: 8px 0;
+            border-radius: 8px;
+            border: 1px solid #e5e7eb;
+            background: #f9fafb;
+        }
+        .option.correct {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(16, 185, 129, 0.05));
+            border-color: #10b981;
+        }
+        .option-label {
+            font-weight: bold;
+            color: #8b5cf6;
+            margin-right: 8px;
+        }
+        .option.correct .option-label {
+            color: #10b981;
+        }
+        .correct-badge {
+            display: inline-block;
+            background: #10b981;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            margin-left: 8px;
+        }
+        .answer-section {
+            margin: 16px 0 0 48px;
+            padding: 16px;
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(16, 185, 129, 0.05));
+            border-left: 3px solid #10b981;
+            border-radius: 0 8px 8px 0;
+        }
+        .answer-label {
+            font-weight: bold;
+            color: #10b981;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        }
+        .answer-value {
+            color: #1f2937;
+            font-weight: 600;
+        }
+        .explanation-section {
+            margin: 16px 0 0 48px;
+            padding: 16px;
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(167, 139, 250, 0.05));
+            border-left: 3px solid #8b5cf6;
+            border-radius: 0 8px 8px 0;
+        }
+        .explanation-label {
+            font-weight: bold;
+            color: #8b5cf6;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        }
+        .explanation-text {
+            color: #4b5563;
+            line-height: 1.6;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 2px solid #e5e7eb;
+            color: #6b7280;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Assessment Questions</h1>
+        <p>Total Questions: ${parsedFaq.length}</p>
+    </div>
+`;
+
+      parsedFaq.forEach((question: AssessmentQuestion, index: number) => {
+        const optionKeys = Object.keys(question.options);
+        
+        html += `
+    <div class="question-card">
+        <div class="question-header">
+            <div class="question-number">Q${index + 1}</div>
+            <div class="question-text">${this.escapeHtml(question.question)}</div>
+        </div>
+        
+        <div class="options">
+`;
+        
+        optionKeys.forEach(key => {
+          const optionValue = question.options[key as keyof MCQOption];
+          const isCorrect = question.correct_answer === key;
+          
+          html += `
+            <div class="option${isCorrect ? ' correct' : ''}">
+                <span class="option-label">${key}.</span>
+                ${this.escapeHtml(optionValue)}
+                ${isCorrect ? '<span class="correct-badge">✓ Correct</span>' : ''}
+            </div>
+`;
+        });
+        
+        const correctOptionValue = question.options[question.correct_answer as keyof MCQOption];
+        
+        html += `
+        </div>
+        
+        <div class="answer-section">
+            <div class="answer-label">Correct Answer</div>
+            <div class="answer-value">${question.correct_answer} - ${this.escapeHtml(correctOptionValue)}</div>
+        </div>
+        
+        <div class="explanation-section">
+            <div class="explanation-label">Explanation</div>
+            <div class="explanation-text">${this.escapeHtml(question.explanation)}</div>
+        </div>
+    </div>
+`;
+      });
+
+      html += `
+    <div class="footer">
+        <p>Generated Assessment Questions</p>
+    </div>
+</body>
+</html>`;
+
+      return html;
+    } catch (error) {
+      console.error('Error formatting as HTML:', error);
+      return '<p>Error formatting questions</p>';
+    }
+  }
+
+  /**
+   * Prepare summary download content
+   */
+  private prepareSummaryDownload(item: ResultItem, format: string, baseName: string, timestamp: string): { content: string, filename: string, mimeType: string } {
+    let content = '';
+    let filename = '';
+    let mimeType = '';
+    
+    switch (format) {
+      case 'txt':
+        content = item.content || '';
+        filename = `${baseName}_summary_${timestamp}.txt`;
+        mimeType = 'text/plain';
+        break;
+        
+      case 'md':
+        content = item.content || '';
+        filename = `${baseName}_summary_${timestamp}.md`;
+        mimeType = 'text/markdown';
+        break;
+        
+      case 'html':
+        const htmlContent = item.htmlContent ? (item.htmlContent as any).changingThisBreaksApplicationSecurity : '';
+        content = this.wrapInHTMLTemplate(htmlContent, 'Summary');
+        filename = `${baseName}_summary_${timestamp}.html`;
+        mimeType = 'text/html';
+        break;
+        
+      case 'json':
+        content = JSON.stringify({
+          type: 'summary',
+          content: item.content,
+          timestamp: new Date().toISOString()
+        }, null, 2);
+        filename = `${baseName}_summary_${timestamp}.json`;
+        mimeType = 'application/json';
+        break;
+    }
+    
+    return { content, filename, mimeType };
+  }
+
+  /**
+   * Prepare keywords download content
+   */
+  private prepareKeywordsDownload(item: ResultItem, format: string, baseName: string, timestamp: string): { content: string, filename: string, mimeType: string } {
+    let content = '';
+    let filename = '';
+    let mimeType = '';
+    
+    const keywords = item.keywords || [];
+    
+    switch (format) {
+      case 'txt':
+        content = keywords.join('\n');
+        filename = `${baseName}_keywords_${timestamp}.txt`;
+        mimeType = 'text/plain';
+        break;
+        
+      case 'md':
+        content = '# Key Topics\n\n' + keywords.map(k => `- ${k}`).join('\n');
+        filename = `${baseName}_keywords_${timestamp}.md`;
+        mimeType = 'text/markdown';
+        break;
+        
+      case 'html':
+        const keywordsHTML = `
         <h1>Key Topics</h1>
         <div style="display: flex; flex-wrap: wrap; gap: 12px; margin-top: 20px;">
           ${keywords.map((keyword, index) => {
@@ -157,61 +582,61 @@ private prepareKeywordsDownload(item: ResultItem, format: string, baseName: stri
           }).join('')}
         </div>
       `;
-      content = this.wrapInHTMLTemplate(keywordsHTML, 'Key Topics');
-      filename = `${baseName}_keywords_${timestamp}.html`;
-      mimeType = 'text/html';
-      break;
-      
-    case 'json':
-      content = JSON.stringify({
-        type: 'keywords',
-        keywords: keywords,
-        timestamp: new Date().toISOString()
-      }, null, 2);
-      filename = `${baseName}_keywords_${timestamp}.json`;
-      mimeType = 'application/json';
-      break;
+        content = this.wrapInHTMLTemplate(keywordsHTML, 'Key Topics');
+        filename = `${baseName}_keywords_${timestamp}.html`;
+        mimeType = 'text/html';
+        break;
+        
+      case 'json':
+        content = JSON.stringify({
+          type: 'keywords',
+          keywords: keywords,
+          timestamp: new Date().toISOString()
+        }, null, 2);
+        filename = `${baseName}_keywords_${timestamp}.json`;
+        mimeType = 'application/json';
+        break;
+    }
+    
+    return { content, filename, mimeType };
   }
-  
-  return { content, filename, mimeType };
-}
 
-/**
- * Prepare assessment download content
- */
-private prepareAssessmentDownload(format: string, baseName: string, timestamp: string): { content: string, filename: string, mimeType: string } {
-  let content = '';
-  let filename = '';
-  let mimeType = '';
-  
-  switch (format) {
-    case 'readable':
-      content = this.formatAssessmentQuestionsForCopy();
-      filename = `${baseName}_assessment_${timestamp}.txt`;
-      mimeType = 'text/plain';
-      break;
-      
-    case 'html':
-      content = this.formatAssessmentAsHTML();
-      filename = `${baseName}_assessment_${timestamp}.html`;
-      mimeType = 'text/html';
-      break;
-      
-    case 'json':
-      content = this.formatAssessmentAsJSON();
-      filename = `${baseName}_assessment_${timestamp}.json`;
-      mimeType = 'application/json';
-      break;
+  /**
+   * Prepare assessment download content
+   */
+  private prepareAssessmentDownload(format: string, baseName: string, timestamp: string): { content: string, filename: string, mimeType: string } {
+    let content = '';
+    let filename = '';
+    let mimeType = '';
+    
+    switch (format) {
+      case 'readable':
+        content = this.formatAssessmentQuestionsForCopy();
+        filename = `${baseName}_assessment_${timestamp}.txt`;
+        mimeType = 'text/plain';
+        break;
+        
+      case 'html':
+        content = this.formatAssessmentAsHTML();
+        filename = `${baseName}_assessment_${timestamp}.html`;
+        mimeType = 'text/html';
+        break;
+        
+      case 'json':
+        content = this.formatAssessmentAsJSON();
+        filename = `${baseName}_assessment_${timestamp}.json`;
+        mimeType = 'application/json';
+        break;
+    }
+    
+    return { content, filename, mimeType };
   }
-  
-  return { content, filename, mimeType };
-}
 
-/**
- * Wrap content in HTML template
- */
-private wrapInHTMLTemplate(content: string, title: string): string {
-  return `<!DOCTYPE html>
+  /**
+   * Wrap content in HTML template
+   */
+  private wrapInHTMLTemplate(content: string, title: string): string {
+    return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -300,7 +725,42 @@ private wrapInHTMLTemplate(content: string, title: string): string {
     </div>
 </body>
 </html>`;
+  }
+
+  /**
+   * Escape HTML special characters
+   */
+  private escapeHtml(text: string): string {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  /**
+   * Update the HostListener to close both dropdowns
+   */
+  @HostListener('document:click', ['$event'])
+  onDocumentClick(event: Event): void {
+    // Close copy format dropdowns when clicking outside
+    const target = event.target as HTMLElement;
+    if (!target.closest('.copy-button-wrapper')) {
+      this.closeCopyFormatDropdowns();
+    }
+    if (!target.closest('.download-button-wrapper')) {
+      this.closeDownloadFormatDropdowns();
+    }
+    
+    // Close detail sidebar when clicking outside
+    if (!target.closest('.detail-sidebar') && !target.closest('.result-action-icon-btn')) {
+      if (this.selectedDetailItem && !this.isEditMode) {
+        this.closeDetail();
+      }
+    }
+  }
 }
+
+
+
 
 
 
@@ -615,6 +1075,10 @@ private wrapInHTMLTemplate(content: string, title: string): string {
 
 
 
+
+
+
+
 /* Copy Button Wrapper for Assessment Questions */
 .copy-button-wrapper {
     position: relative;
@@ -778,6 +1242,42 @@ private wrapInHTMLTemplate(content: string, title: string): string {
     stroke: white;
 }
 
+/* TXT Icon */
+.txt-icon {
+    background: linear-gradient(135deg, rgba(107, 114, 128, 0.15), rgba(107, 114, 128, 0.08));
+}
+
+.txt-icon svg {
+    stroke: #6b7280;
+}
+
+.format-option:hover .txt-icon {
+    background: linear-gradient(135deg, #6b7280, #9ca3af);
+    transform: scale(1.05);
+}
+
+.format-option:hover .txt-icon svg {
+    stroke: white;
+}
+
+/* MD (Markdown) Icon */
+.md-icon {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(167, 139, 250, 0.08));
+}
+
+.md-icon svg {
+    stroke: #8b5cf6;
+}
+
+.format-option:hover .md-icon {
+    background: linear-gradient(135deg, #8b5cf6, #a78bfa);
+    transform: scale(1.05);
+}
+
+.format-option:hover .md-icon svg {
+    stroke: white;
+}
+
 .format-details {
     flex: 1;
     min-width: 0;
@@ -830,42 +1330,6 @@ private wrapInHTMLTemplate(content: string, title: string): string {
     z-index: 9999;
     animation: dropdownSlideIn 0.15s ease-out;
     overflow: hidden;
-}
-
-/* TXT Icon */
-.txt-icon {
-    background: linear-gradient(135deg, rgba(107, 114, 128, 0.15), rgba(107, 114, 128, 0.08));
-}
-
-.txt-icon svg {
-    stroke: #6b7280;
-}
-
-.format-option:hover .txt-icon {
-    background: linear-gradient(135deg, #6b7280, #9ca3af);
-    transform: scale(1.05);
-}
-
-.format-option:hover .txt-icon svg {
-    stroke: white;
-}
-
-/* MD (Markdown) Icon */
-.md-icon {
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(167, 139, 250, 0.08));
-}
-
-.md-icon svg {
-    stroke: #8b5cf6;
-}
-
-.format-option:hover .md-icon {
-    background: linear-gradient(135deg, #8b5cf6, #a78bfa);
-    transform: scale(1.05);
-}
-
-.format-option:hover .md-icon svg {
-    stroke: white;
 }
 
 /* Ensure download dropdown appears above everything */
@@ -926,5 +1390,3 @@ private wrapInHTMLTemplate(content: string, title: string): string {
         font-size: 8px;
     }
 }
-
-
