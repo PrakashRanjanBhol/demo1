@@ -1,317 +1,930 @@
-import React, { useState, useRef, useMemo } from "react";
-import { DataTable } from "primereact/datatable";
-import { Column } from "primereact/column";
-import { Tag } from "primereact/tag";
-import { Button } from "primereact/button";
-import { InputText } from "primereact/inputtext";
-import { Dropdown } from "primereact/dropdown";
-import { Avatar } from "primereact/avatar";
-import { IconField } from "primereact/iconfield";
-import { InputIcon } from "primereact/inputicon";
-import { ConfirmDialog, confirmDialog } from "primereact/confirmdialog";
-import { Toast } from "primereact/toast";
+// Download format dropdown state
+showDownloadFormatDropdown: { [key: string]: boolean } = {};
 
-// ─── Types ────────────────────────────────────────────────────────────────────
 
-type AccessRole = "Admin" | "User";
 
-interface RoleUser {
-  id: number;
-  name: string;
-  email: string;
-  role: AccessRole;
-  memoryLimit: number;
-  avatar: string;
-  // Inline edit state embedded in the row so DataTable always re-renders
-  isEditing: boolean;
-  draftRole: AccessRole;
-  draftMemory: number;
+/**
+ * Toggle download format dropdown
+ */
+toggleDownloadFormatDropdown(itemId: string, event: Event): void {
+  event.stopPropagation();
+  this.showDownloadFormatDropdown[itemId] = !this.showDownloadFormatDropdown[itemId];
 }
 
-// ─── Static Data ──────────────────────────────────────────────────────────────
+/**
+ * Close all download format dropdowns
+ */
+closeDownloadFormatDropdowns(): void {
+  this.showDownloadFormatDropdown = {};
+}
 
-const roleOptions: { label: string; value: AccessRole }[] = [
-  { label: "Admin", value: "Admin" },
-  { label: "User",  value: "User"  },
-];
+/**
+ * Download content in specific format (client-side)
+ */
+downloadInFormat(item: ResultItem, format: 'json' | 'readable' | 'html' | 'txt' | 'md', event: Event): void {
+  event.stopPropagation();
+  
+  let content = '';
+  let filename = '';
+  let mimeType = '';
+  
+  const timestamp = new Date().toISOString().split('T')[0];
+  const baseName = this.selectedHistoryItem?.name.replace(/\.[^/.]+$/, '') || 'content';
+  
+  switch (item.type) {
+    case 'summary':
+      ({ content, filename, mimeType } = this.prepareSummaryDownload(item, format, baseName, timestamp));
+      break;
+    case 'keywords':
+      ({ content, filename, mimeType } = this.prepareKeywordsDownload(item, format, baseName, timestamp));
+      break;
+    case 'questions':
+      ({ content, filename, mimeType } = this.prepareAssessmentDownload(format, baseName, timestamp));
+      break;
+    default:
+      return;
+  }
+  
+  // Create blob and download
+  const blob = new Blob([content], { type: mimeType });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(url);
+  
+  // Close dropdown
+  this.closeDownloadFormatDropdowns();
+}
 
-const avatarColors: Record<string, string> = {
-  AC: "#6366f1",
-  JP: "#22c55e",
-  SM: "#f97316",
-  TN: "#ef4444",
-  PS: "#a855f7",
-  RK: "#0ea5e9",
-};
+/**
+ * Prepare summary download content
+ */
+private prepareSummaryDownload(item: ResultItem, format: string, baseName: string, timestamp: string): { content: string, filename: string, mimeType: string } {
+  let content = '';
+  let filename = '';
+  let mimeType = '';
+  
+  switch (format) {
+    case 'txt':
+      content = item.content || '';
+      filename = `${baseName}_summary_${timestamp}.txt`;
+      mimeType = 'text/plain';
+      break;
+      
+    case 'md':
+      content = item.content || '';
+      filename = `${baseName}_summary_${timestamp}.md`;
+      mimeType = 'text/markdown';
+      break;
+      
+    case 'html':
+      const htmlContent = item.htmlContent ? (item.htmlContent as any).changingThisBreaksApplicationSecurity : '';
+      content = this.wrapInHTMLTemplate(htmlContent, 'Summary');
+      filename = `${baseName}_summary_${timestamp}.html`;
+      mimeType = 'text/html';
+      break;
+      
+    case 'json':
+      content = JSON.stringify({
+        type: 'summary',
+        content: item.content,
+        timestamp: new Date().toISOString()
+      }, null, 2);
+      filename = `${baseName}_summary_${timestamp}.json`;
+      mimeType = 'application/json';
+      break;
+  }
+  
+  return { content, filename, mimeType };
+}
 
-const seed: Omit<RoleUser, "isEditing" | "draftRole" | "draftMemory">[] = [
-  { id: 1, name: "Alexandra Chen", email: "alex.chen@company.com",   role: "Admin", memoryLimit: 100, avatar: "AC" },
-  { id: 2, name: "James Patel",    email: "james.patel@company.com", role: "User",  memoryLimit: 50,  avatar: "JP" },
-  { id: 3, name: "Sofia Martinez", email: "sofia.m@company.com",     role: "Admin", memoryLimit: 100, avatar: "SM" },
-  { id: 4, name: "Tom Nguyen",     email: "tom.nguyen@company.com",  role: "User",  memoryLimit: 25,  avatar: "TN" },
-  { id: 5, name: "Priya Sharma",   email: "priya.s@company.com",     role: "User",  memoryLimit: 50,  avatar: "PS" },
-  { id: 6, name: "Ryan Kim",       email: "ryan.kim@company.com",    role: "User",  memoryLimit: 75,  avatar: "RK" },
-];
-
-const toRow = (u: Omit<RoleUser, "isEditing" | "draftRole" | "draftMemory">): RoleUser => ({
-  ...u,
-  isEditing: false,
-  draftRole: u.role,
-  draftMemory: u.memoryLimit,
-});
-
-const initialUsers: RoleUser[] = seed.map(toRow);
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const updateRow = (
-  prev: RoleUser[],
-  id: number,
-  patch: Partial<RoleUser>
-): RoleUser[] => prev.map((u) => (u.id === id ? { ...u, ...patch } : u));
-
-// ─── Component ────────────────────────────────────────────────────────────────
-
-const RoleManagement: React.FC = () => {
-  const toast = useRef<Toast>(null);
-  const [users, setUsers]             = useState<RoleUser[]>(initialUsers);
-  const [searchQuery, setSearchQuery] = useState("");
-
-  // ── Filtered rows ─────────────────────────────────────────────────────────
-
-  const filteredUsers = useMemo(
-    () => users.filter((u) => u.name.toLowerCase().includes(searchQuery.toLowerCase())),
-    [users, searchQuery]
-  );
-
-  // ── Handlers ─────────────────────────────────────────────────────────────
-
-  const startEdit = (row: RoleUser) =>
-    setUsers((prev) =>
-      updateRow(prev, row.id, {
-        isEditing: true,
-        draftRole: row.role,
-        draftMemory: row.memoryLimit,
-      })
-    );
-
-  const cancelEdit = (row: RoleUser) =>
-    setUsers((prev) => updateRow(prev, row.id, { isEditing: false }));
-
-  const saveEdit = (row: RoleUser) => {
-    setUsers((prev) =>
-      updateRow(prev, row.id, {
-        role: row.draftRole,
-        memoryLimit: row.draftMemory,
-        isEditing: false,
-      })
-    );
-    toast.current?.show({
-      severity: "success",
-      summary: "Updated",
-      detail: `${row.name} has been updated.`,
-      life: 3000,
-    });
-  };
-
-  const handleDelete = (row: RoleUser) => {
-    confirmDialog({
-      message: `Are you sure you want to remove ${row.name}?`,
-      header: "Confirm Delete",
-      icon: "pi pi-exclamation-triangle",
-      acceptClassName: "p-button-danger",
-      accept: () => {
-        setUsers((prev) => prev.filter((u) => u.id !== row.id));
-        toast.current?.show({
-          severity: "info",
-          summary: "Removed",
-          detail: `${row.name} has been removed.`,
-          life: 3000,
-        });
-      },
-    });
-  };
-
-  const setDraftRole = (row: RoleUser, value: AccessRole) =>
-    setUsers((prev) => updateRow(prev, row.id, { draftRole: value }));
-
-  const setDraftMemory = (row: RoleUser, value: number) =>
-    setUsers((prev) =>
-      updateRow(prev, row.id, {
-        draftMemory: Math.max(1, Math.min(1000, value)),
-      })
-    );
-
-  // ── Column Templates ──────────────────────────────────────────────────────
-
-  const userTemplate = (row: RoleUser) => (
-    <div className="flex align-items-center gap-3">
-      <Avatar
-        label={row.avatar}
-        shape="circle"
-        className="font-bold flex-shrink-0"
-        style={{
-          background: avatarColors[row.avatar] ?? "#6366f1",
-          color: "#fff",
-          width: "36px",
-          height: "36px",
-          fontSize: "0.8rem",
-        }}
-      />
-      <div>
-        <div className="font-semibold text-900">{row.name}</div>
-        <div className="text-color-secondary text-sm">{row.email}</div>
-      </div>
-    </div>
-  );
-
-  const roleTemplate = (row: RoleUser) => {
-    if (row.isEditing) {
-      return (
-        <Dropdown
-          value={row.draftRole}
-          options={roleOptions}
-          onChange={(e) => setDraftRole(row, e.value)}
-          style={{ width: "130px" }}
-        />
-      );
-    }
-    return (
-      <Tag
-        value={row.role}
-        severity={row.role === "Admin" ? "danger" : "info"}
-        style={{ borderRadius: "4px" }}
-      />
-    );
-  };
-
-  const memoryTemplate = (row: RoleUser) => {
-    if (row.isEditing) {
-      return (
-        <div className="flex align-items-center gap-1">
-          <Button
-            icon="pi pi-minus"
-            text
-            severity="secondary"
-            size="small"
-            onClick={() => setDraftMemory(row, row.draftMemory - 5)}
-            style={{ width: "28px", height: "28px", padding: 0 }}
-          />
-          <InputText
-            value={String(row.draftMemory)}
-            onChange={(e) => {
-              const parsed = parseInt(e.target.value, 10);
-              if (!isNaN(parsed)) setDraftMemory(row, parsed);
-            }}
-            style={{ width: "58px", textAlign: "center", padding: "0.35rem 0.4rem" }}
-          />
-          <span className="text-color-secondary text-sm font-medium">GB</span>
-          <Button
-            icon="pi pi-plus"
-            text
-            severity="secondary"
-            size="small"
-            onClick={() => setDraftMemory(row, row.draftMemory + 5)}
-            style={{ width: "28px", height: "28px", padding: 0 }}
-          />
+/**
+ * Prepare keywords download content
+ */
+private prepareKeywordsDownload(item: ResultItem, format: string, baseName: string, timestamp: string): { content: string, filename: string, mimeType: string } {
+  let content = '';
+  let filename = '';
+  let mimeType = '';
+  
+  const keywords = item.keywords || [];
+  
+  switch (format) {
+    case 'txt':
+      content = keywords.join('\n');
+      filename = `${baseName}_keywords_${timestamp}.txt`;
+      mimeType = 'text/plain';
+      break;
+      
+    case 'md':
+      content = '# Key Topics\n\n' + keywords.map(k => `- ${k}`).join('\n');
+      filename = `${baseName}_keywords_${timestamp}.md`;
+      mimeType = 'text/markdown';
+      break;
+      
+    case 'html':
+      const keywordsHTML = `
+        <h1>Key Topics</h1>
+        <div style="display: flex; flex-wrap: wrap; gap: 12px; margin-top: 20px;">
+          ${keywords.map((keyword, index) => {
+            const colors = [
+              { bg: 'linear-gradient(135deg, #8b5cf6, #a78bfa)', border: '#8b5cf6' },
+              { bg: 'linear-gradient(135deg, #3b82f6, #60a5fa)', border: '#3b82f6' },
+              { bg: 'linear-gradient(135deg, #10b981, #34d399)', border: '#10b981' },
+              { bg: 'linear-gradient(135deg, #f59e0b, #fbbf24)', border: '#f59e0b' },
+              { bg: 'linear-gradient(135deg, #ef4444, #f87171)', border: '#ef4444' },
+              { bg: 'linear-gradient(135deg, #ec4899, #f472b6)', border: '#ec4899' }
+            ];
+            const colorIndex = index % colors.length;
+            const color = colors[colorIndex];
+            return `
+              <span style="
+                display: inline-flex;
+                align-items: center;
+                padding: 8px 16px;
+                border-radius: 20px;
+                background: ${color.bg};
+                border: 1px solid ${color.border};
+                color: white;
+                font-size: 14px;
+                font-weight: 600;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+              ">${this.escapeHtml(keyword)}</span>
+            `;
+          }).join('')}
         </div>
-      );
-    }
-    return <span className="font-medium text-900">{row.memoryLimit} GB</span>;
-  };
+      `;
+      content = this.wrapInHTMLTemplate(keywordsHTML, 'Key Topics');
+      filename = `${baseName}_keywords_${timestamp}.html`;
+      mimeType = 'text/html';
+      break;
+      
+    case 'json':
+      content = JSON.stringify({
+        type: 'keywords',
+        keywords: keywords,
+        timestamp: new Date().toISOString()
+      }, null, 2);
+      filename = `${baseName}_keywords_${timestamp}.json`;
+      mimeType = 'application/json';
+      break;
+  }
+  
+  return { content, filename, mimeType };
+}
 
-  const actionTemplate = (row: RoleUser) => {
-    if (row.isEditing) {
-      return (
-        <div className="flex gap-1">
-          <Button
-            icon="pi pi-check"
-            rounded
-            text
-            severity="success"
-            size="small"
-            tooltip="Save"
-            tooltipOptions={{ position: "top" }}
-            onClick={() => saveEdit(row)}
-          />
-          <Button
-            icon="pi pi-times"
-            rounded
-            text
-            severity="secondary"
-            size="small"
-            tooltip="Cancel"
-            tooltipOptions={{ position: "top" }}
-            onClick={() => cancelEdit(row)}
-          />
-        </div>
-      );
-    }
-    return (
-      <div className="flex gap-1">
-        <Button
-          icon="pi pi-pencil"
-          rounded
-          text
-          severity="info"
-          size="small"
-          tooltip="Edit"
-          tooltipOptions={{ position: "top" }}
-          onClick={() => startEdit(row)}
-        />
-        <Button
-          icon="pi pi-trash"
-          rounded
-          text
-          severity="danger"
-          size="small"
-          tooltip="Delete"
-          tooltipOptions={{ position: "top" }}
-          onClick={() => handleDelete(row)}
-        />
-      </div>
-    );
-  };
+/**
+ * Prepare assessment download content
+ */
+private prepareAssessmentDownload(format: string, baseName: string, timestamp: string): { content: string, filename: string, mimeType: string } {
+  let content = '';
+  let filename = '';
+  let mimeType = '';
+  
+  switch (format) {
+    case 'readable':
+      content = this.formatAssessmentQuestionsForCopy();
+      filename = `${baseName}_assessment_${timestamp}.txt`;
+      mimeType = 'text/plain';
+      break;
+      
+    case 'html':
+      content = this.formatAssessmentAsHTML();
+      filename = `${baseName}_assessment_${timestamp}.html`;
+      mimeType = 'text/html';
+      break;
+      
+    case 'json':
+      content = this.formatAssessmentAsJSON();
+      filename = `${baseName}_assessment_${timestamp}.json`;
+      mimeType = 'application/json';
+      break;
+  }
+  
+  return { content, filename, mimeType };
+}
 
-  // ─────────────────────────────────────────────────────────────────────────
-
-  return (
-    <div className="flex flex-column gap-3">
-      <Toast ref={toast} />
-      <ConfirmDialog />
-
-      {/* Search — right aligned */}
-      <div className="flex justify-content-end">
-        <IconField iconPosition="left">
-          <InputIcon className="pi pi-search" />
-          <InputText
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search by username..."
-            style={{ width: "280px" }}
-          />
-        </IconField>
-      </div>
-
-      {/* Table */}
-      <DataTable
-        value={filteredUsers}
-        dataKey="id"
-        paginator
-        rows={5}
-        rowsPerPageOptions={[5, 10, 20]}
-        tableStyle={{ minWidth: "100%" }}
-        stripedRows
-        emptyMessage="No users found."
-        paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown"
-      >
-        <Column header="User"         body={userTemplate}   style={{ minWidth: "220px" }} />
-        <Column header="Access Role"  body={roleTemplate}   style={{ width: "160px" }} align="center" headerStyle={{ textAlign: "center" }} />
-        <Column header="Memory Limit" body={memoryTemplate} style={{ width: "220px" }} align="center" headerStyle={{ textAlign: "center" }} />
-        <Column header="Actions"      body={actionTemplate} style={{ width: "100px" }} align="center" headerStyle={{ textAlign: "center" }} />
-      </DataTable>
+/**
+ * Wrap content in HTML template
+ */
+private wrapInHTMLTemplate(content: string, title: string): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${title}</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f8f9fa;
+            color: #333;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding-bottom: 20px;
+            border-bottom: 3px solid #8b5cf6;
+        }
+        .header h1 {
+            color: #8b5cf6;
+            margin: 0;
+        }
+        .content {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        h1, h2, h3, h4, h5, h6 {
+            color: #8b5cf6;
+        }
+        strong {
+            color: #8b5cf6;
+            background: rgba(139, 92, 246, 0.1);
+            padding: 2px 4px;
+            border-radius: 3px;
+        }
+        code {
+            background: rgba(139, 92, 246, 0.1);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+        }
+        pre {
+            background: rgba(139, 92, 246, 0.05);
+            padding: 16px;
+            border-radius: 8px;
+            border-left: 4px solid #8b5cf6;
+            overflow-x: auto;
+        }
+        blockquote {
+            border-left: 4px solid #8b5cf6;
+            padding-left: 16px;
+            margin-left: 0;
+            color: #666;
+            font-style: italic;
+        }
+        ul, ol {
+            padding-left: 24px;
+        }
+        li::marker {
+            color: #8b5cf6;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 2px solid #e5e7eb;
+            color: #6b7280;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>${title}</h1>
     </div>
-  );
-};
+    <div class="content">
+        ${content}
+    </div>
+    <div class="footer">
+        <p>Generated on ${new Date().toLocaleDateString()}</p>
+    </div>
+</body>
+</html>`;
+}
 
-export default RoleManagement;
+
+
+
+
+
+
+
+
+
+
+<div class="result-actions">
+    <!-- Edit Button - Only for Summary and Keywords -->
+    <button class="result-action-icon-btn" 
+            title="Edit" 
+            (click)="openEditMode(item)"
+            *ngIf="item.type === 'summary' || item.type === 'keywords'">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+            stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round"
+                d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+        </svg>
+    </button>
+    
+    <button class="result-action-icon-btn" title="Expand" (click)="openDetail(item)">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+            stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round"
+                d="M15.75 4.5H19.5v3.75M19.5 4.5l-5.25 5.25M8.25 19.5H4.5v-3.75M4.5 19.5l5.25-5.25" />
+        </svg>
+    </button>
+    
+    <!-- Copy Button - Special treatment for Assessment Questions -->
+    <div class="copy-button-wrapper" *ngIf="item.type === 'questions'">
+        <button class="result-action-icon-btn" 
+                [title]="'Copy Options'" 
+                (click)="toggleCopyFormatDropdown(item.id, $event)"
+                [class.copy-success]="copiedItemId === item.id">
+            <svg *ngIf="copiedItemId === item.id" 
+                 xmlns="http://www.w3.org/2000/svg" 
+                 fill="none" 
+                 viewBox="0 0 24 24" 
+                 stroke-width="2.5" 
+                 stroke="currentColor"
+                 class="copy-success-icon">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M1.5 12.5l4 4 8-8" />
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6.5 12.5l4 4 8-8" />
+            </svg>
+            <svg *ngIf="copiedItemId !== item.id" 
+                 xmlns="http://www.w3.org/2000/svg" 
+                 fill="none" 
+                 viewBox="0 0 24 24" 
+                 stroke-width="1.5"
+                 stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 00-3.375-3.375h-1.5a1.125 1.125 0 01-1.125-1.125v-1.5a3.375 3.375 0 00-3.375-3.375H9.75" />
+            </svg>
+        </button>
+        
+        <!-- Copy Format Dropdown -->
+        <div class="copy-format-dropdown" *ngIf="showCopyFormatDropdown[item.id]" (click)="$event.stopPropagation()">
+            <div class="dropdown-header">
+                <span>Copy As</span>
+                <button class="dropdown-close" (click)="closeCopyFormatDropdowns()">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+            <div class="dropdown-options">
+                <button class="format-option" (click)="copyAssessmentInFormat('json', item.id, $event)">
+                    <div class="format-icon json-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+                        </svg>
+                    </div>
+                    <div class="format-details">
+                        <div class="format-name">JSON</div>
+                        <div class="format-desc">Raw data</div>
+                    </div>
+                </button>
+                
+                <button class="format-option" (click)="copyAssessmentInFormat('readable', item.id, $event)">
+                    <div class="format-icon readable-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                        </svg>
+                    </div>
+                    <div class="format-details">
+                        <div class="format-name">Plain Text</div>
+                        <div class="format-desc">Readable</div>
+                    </div>
+                </button>
+                
+                <button class="format-option" (click)="copyAssessmentInFormat('html', item.id, $event)">
+                    <div class="format-icon html-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+                        </svg>
+                    </div>
+                    <div class="format-details">
+                        <div class="format-name">HTML</div>
+                        <div class="format-desc">Styled page</div>
+                    </div>
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Copy Button - Normal for Summary and Keywords -->
+    <button class="result-action-icon-btn" 
+            *ngIf="item.type !== 'questions'"
+            title="Copy" 
+            (click)="copyToClipboard(item.content, item.type, item.id)"
+            [class.copy-success]="copiedItemId === item.id">
+        <svg *ngIf="copiedItemId === item.id" 
+             xmlns="http://www.w3.org/2000/svg" 
+             fill="none" 
+             viewBox="0 0 24 24" 
+             stroke-width="2.5" 
+             stroke="currentColor"
+             class="copy-success-icon">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M1.5 12.5l4 4 8-8" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6.5 12.5l4 4 8-8" />
+        </svg>
+        <svg *ngIf="copiedItemId !== item.id" 
+             xmlns="http://www.w3.org/2000/svg" 
+             fill="none" 
+             viewBox="0 0 24 24" 
+             stroke-width="1.5"
+             stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round"
+                d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 00-3.375-3.375h-1.5a1.125 1.125 0 01-1.125-1.125v-1.5a3.375 3.375 0 00-3.375-3.375H9.75" />
+        </svg>
+    </button>
+    
+    <!-- Download Button with Format Options -->
+    <div class="download-button-wrapper">
+        <button class="result-action-icon-btn" 
+                title="Download Options" 
+                (click)="toggleDownloadFormatDropdown(item.id, $event)">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+            </svg>
+        </button>
+        
+        <!-- Download Format Dropdown -->
+        <div class="download-format-dropdown" *ngIf="showDownloadFormatDropdown[item.id]" (click)="$event.stopPropagation()">
+            <div class="dropdown-header">
+                <span>Download As</span>
+                <button class="dropdown-close" (click)="closeDownloadFormatDropdowns()">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+            <div class="dropdown-options">
+                <!-- Summary Download Options -->
+                <ng-container *ngIf="item.type === 'summary'">
+                    <button class="format-option" (click)="downloadInFormat(item, 'txt', $event)">
+                        <div class="format-icon txt-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                            </svg>
+                        </div>
+                        <div class="format-details">
+                            <div class="format-name">Text</div>
+                            <div class="format-desc">Plain text</div>
+                        </div>
+                    </button>
+                    
+                    <button class="format-option" (click)="downloadInFormat(item, 'md', $event)">
+                        <div class="format-icon md-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m3.75 9v6m3-3H9m1.5-12H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                            </svg>
+                        </div>
+                        <div class="format-details">
+                            <div class="format-name">Markdown</div>
+                            <div class="format-desc">MD file</div>
+                        </div>
+                    </button>
+                    
+                    <button class="format-option" (click)="downloadInFormat(item, 'html', $event)">
+                        <div class="format-icon html-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+                            </svg>
+                        </div>
+                        <div class="format-details">
+                            <div class="format-name">HTML</div>
+                            <div class="format-desc">Web page</div>
+                        </div>
+                    </button>
+                    
+                    <button class="format-option" (click)="downloadInFormat(item, 'json', $event)">
+                        <div class="format-icon json-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+                            </svg>
+                        </div>
+                        <div class="format-details">
+                            <div class="format-name">JSON</div>
+                            <div class="format-desc">Raw data</div>
+                        </div>
+                    </button>
+                </ng-container>
+                
+                <!-- Keywords Download Options -->
+                <ng-container *ngIf="item.type === 'keywords'">
+                    <button class="format-option" (click)="downloadInFormat(item, 'txt', $event)">
+                        <div class="format-icon txt-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                            </svg>
+                        </div>
+                        <div class="format-details">
+                            <div class="format-name">Text</div>
+                            <div class="format-desc">Line by line</div>
+                        </div>
+                    </button>
+                    
+                    <button class="format-option" (click)="downloadInFormat(item, 'md', $event)">
+                        <div class="format-icon md-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m3.75 9v6m3-3H9m1.5-12H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                            </svg>
+                        </div>
+                        <div class="format-details">
+                            <div class="format-name">Markdown</div>
+                            <div class="format-desc">Bullet list</div>
+                        </div>
+                    </button>
+                    
+                    <button class="format-option" (click)="downloadInFormat(item, 'html', $event)">
+                        <div class="format-icon html-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+                            </svg>
+                        </div>
+                        <div class="format-details">
+                            <div class="format-name">HTML</div>
+                            <div class="format-desc">Styled chips</div>
+                        </div>
+                    </button>
+                    
+                    <button class="format-option" (click)="downloadInFormat(item, 'json', $event)">
+                        <div class="format-icon json-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+                            </svg>
+                        </div>
+                        <div class="format-details">
+                            <div class="format-name">JSON</div>
+                            <div class="format-desc">Array data</div>
+                        </div>
+                    </button>
+                </ng-container>
+                
+                <!-- Assessment Download Options -->
+                <ng-container *ngIf="item.type === 'questions'">
+                    <button class="format-option" (click)="downloadInFormat(item, 'readable', $event)">
+                        <div class="format-icon readable-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                            </svg>
+                        </div>
+                        <div class="format-details">
+                            <div class="format-name">Plain Text</div>
+                            <div class="format-desc">Formatted</div>
+                        </div>
+                    </button>
+                    
+                    <button class="format-option" (click)="downloadInFormat(item, 'html', $event)">
+                        <div class="format-icon html-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+                            </svg>
+                        </div>
+                        <div class="format-details">
+                            <div class="format-name">HTML</div>
+                            <div class="format-desc">Styled page</div>
+                        </div>
+                    </button>
+                    
+                    <button class="format-option" (click)="downloadInFormat(item, 'json', $event)">
+                        <div class="format-icon json-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+                            </svg>
+                        </div>
+                        <div class="format-details">
+                            <div class="format-name">JSON</div>
+                            <div class="format-desc">Raw data</div>
+                        </div>
+                    </button>
+                </ng-container>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+/* Copy Button Wrapper for Assessment Questions */
+.copy-button-wrapper {
+    position: relative;
+}
+
+/* Copy Format Dropdown - Compact Version */
+.copy-format-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    width: 160px;
+    background: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    z-index: 9999;
+    animation: dropdownSlideIn 0.15s ease-out;
+    overflow: hidden;
+}
+
+@keyframes dropdownSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-5px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.dropdown-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 10px;
+    background: linear-gradient(135deg, var(--primary-gradient-light-start), var(--primary-gradient-light-end));
+    border-bottom: 1px solid var(--border-color);
+}
+
+.dropdown-header span {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-color);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.dropdown-close {
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.dropdown-close:hover {
+    background: rgba(0, 0, 0, 0.1);
+}
+
+.dropdown-close svg {
+    width: 12px;
+    height: 12px;
+    stroke: var(--text-color);
+}
+
+.dropdown-options {
+    padding: 4px;
+}
+
+.format-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 8px;
+    background: transparent;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: left;
+}
+
+.format-option:hover {
+    background: linear-gradient(135deg, var(--primary-gradient-lighter-start), var(--primary-gradient-lighter-end));
+}
+
+.format-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.2s ease;
+}
+
+.format-icon svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* JSON Icon */
+.json-icon {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(59, 130, 246, 0.08));
+}
+
+.json-icon svg {
+    stroke: #3b82f6;
+}
+
+.format-option:hover .json-icon {
+    background: linear-gradient(135deg, #3b82f6, #60a5fa);
+    transform: scale(1.05);
+}
+
+.format-option:hover .json-icon svg {
+    stroke: white;
+}
+
+/* Readable/Plain Text Icon */
+.readable-icon {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(16, 185, 129, 0.08));
+}
+
+.readable-icon svg {
+    stroke: #10b981;
+}
+
+.format-option:hover .readable-icon {
+    background: linear-gradient(135deg, #10b981, #34d399);
+    transform: scale(1.05);
+}
+
+.format-option:hover .readable-icon svg {
+    stroke: white;
+}
+
+/* HTML Icon */
+.html-icon {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(245, 158, 11, 0.08));
+}
+
+.html-icon svg {
+    stroke: #f59e0b;
+}
+
+.format-option:hover .html-icon {
+    background: linear-gradient(135deg, #f59e0b, #fbbf24);
+    transform: scale(1.05);
+}
+
+.format-option:hover .html-icon svg {
+    stroke: white;
+}
+
+.format-details {
+    flex: 1;
+    min-width: 0;
+}
+
+.format-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-color);
+    line-height: 1.2;
+}
+
+.format-desc {
+    font-size: 9px;
+    color: var(--text-color);
+    opacity: 0.6;
+    line-height: 1.2;
+    margin-top: 1px;
+}
+
+.format-option:hover .format-name {
+    color: var(--primary-color);
+}
+
+/* Ensure dropdown appears above everything */
+.result-item {
+    position: relative;
+    z-index: 1;
+}
+
+.result-item:has(.copy-format-dropdown) {
+    z-index: 10000;
+}
+
+/* Download Button Wrapper */
+.download-button-wrapper {
+    position: relative;
+}
+
+/* Download Format Dropdown - Same styling as copy */
+.download-format-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    width: 160px;
+    background: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    z-index: 9999;
+    animation: dropdownSlideIn 0.15s ease-out;
+    overflow: hidden;
+}
+
+/* TXT Icon */
+.txt-icon {
+    background: linear-gradient(135deg, rgba(107, 114, 128, 0.15), rgba(107, 114, 128, 0.08));
+}
+
+.txt-icon svg {
+    stroke: #6b7280;
+}
+
+.format-option:hover .txt-icon {
+    background: linear-gradient(135deg, #6b7280, #9ca3af);
+    transform: scale(1.05);
+}
+
+.format-option:hover .txt-icon svg {
+    stroke: white;
+}
+
+/* MD (Markdown) Icon */
+.md-icon {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(167, 139, 250, 0.08));
+}
+
+.md-icon svg {
+    stroke: #8b5cf6;
+}
+
+.format-option:hover .md-icon {
+    background: linear-gradient(135deg, #8b5cf6, #a78bfa);
+    transform: scale(1.05);
+}
+
+.format-option:hover .md-icon svg {
+    stroke: white;
+}
+
+/* Ensure download dropdown appears above everything */
+.result-item:has(.download-format-dropdown) {
+    z-index: 10000;
+}
+
+/* Responsive adjustments for dropdowns */
+@media screen and (max-width: 1400px) {
+    .copy-format-dropdown,
+    .download-format-dropdown {
+        width: 150px;
+    }
+
+    .dropdown-header {
+        padding: 7px 9px;
+    }
+
+    .dropdown-header span {
+        font-size: 9px;
+    }
+
+    .dropdown-close {
+        width: 14px;
+        height: 14px;
+    }
+
+    .dropdown-close svg {
+        width: 11px;
+        height: 11px;
+    }
+
+    .dropdown-options {
+        padding: 3px;
+    }
+
+    .format-option {
+        gap: 7px;
+        padding: 7px 7px;
+    }
+
+    .format-icon {
+        width: 26px;
+        height: 26px;
+        border-radius: 5px;
+    }
+
+    .format-icon svg {
+        width: 13px;
+        height: 13px;
+    }
+
+    .format-name {
+        font-size: 11px;
+    }
+
+    .format-desc {
+        font-size: 8px;
+    }
+}
+
+
