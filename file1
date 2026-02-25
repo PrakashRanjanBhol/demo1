@@ -1,224 +1,134 @@
-/**
- * Copy content to clipboard (fallback method for HTTP)
- */
-copyToClipboard(content: string, itemType?: string, itemId?: string): void {
-  let contentToCopy = content;
-  
-  const textArea = document.createElement('textarea');
-  textArea.value = contentToCopy;
-  
-  // Make the textarea invisible
-  textArea.style.position = 'fixed';
-  textArea.style.top = '0';
-  textArea.style.left = '0';
-  textArea.style.width = '2em';
-  textArea.style.height = '2em';
-  textArea.style.padding = '0';
-  textArea.style.border = 'none';
-  textArea.style.outline = 'none';
-  textArea.style.boxShadow = 'none';
-  textArea.style.background = 'transparent';
-  textArea.style.opacity = '0';
-  
-  document.body.appendChild(textArea);
-  textArea.focus();
-  textArea.select();
-  
-  try {
-    const successful = document.execCommand('copy');
-    if (successful) {
-      console.log('Content copied to clipboard');
-      
-      // Show tick icon for this item
-      if (itemId) {
-        this.copiedItemId = itemId;
-        
-        // Reset back to copy icon after 1.5 seconds
-        setTimeout(() => {
-          this.copiedItemId = '';
-        }, 1500);
-      }
-    } else {
-      console.error('Failed to copy content');
+import { configureStore } from '@reduxjs/toolkit';
+import roleReducer from './slices/roleSlice';
+
+export const store = configureStore({
+  reducer: {
+    roles: roleReducer,
+  },
+});
+
+export type RootState = ReturnType<typeof store.getState>;
+export type AppDispatch = typeof store.dispatch;
+
+
+
+
+
+import axiosInstance from './axiosInstance';
+
+export interface RoleUser {
+  ms_user_id: number;
+  username: string;
+  email: string;
+  role: 'user' | 'admin';
+}
+
+export interface RoleApiResponse {
+  status: 'success' | 'error';
+  result: RoleUser[];
+}
+
+export const fetchRolesApi = async (): Promise<RoleUser[]> => {
+  const response = await axiosInstance.get<RoleApiResponse>('/roles');
+  return response.data.result;
+};
+
+export const updateRoleApi = async (
+  ms_user_id: number,
+  role: 'user' | 'admin'
+): Promise<void> => {
+  await axiosInstance.patch(`/roles/${ms_user_id}`, { role });
+};
+
+
+
+
+
+
+
+
+import { createAsyncThunk, createSlice, PayloadAction } from '@reduxjs/toolkit';
+import { fetchRolesApi, RoleUser, updateRoleApi } from '../../api/roleApi';
+
+interface RoleState {
+  users: RoleUser[];
+  loading: boolean;
+  error: string | null;
+  updating: number | null; // ms_user_id currently being updated
+}
+
+const initialState: RoleState = {
+  users: [],
+  loading: false,
+  error: null,
+  updating: null,
+};
+
+export const fetchRoles = createAsyncThunk(
+  'roles/fetchAll',
+  async (_, { rejectWithValue }) => {
+    try {
+      return await fetchRolesApi();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to fetch roles';
+      return rejectWithValue(message);
     }
-  } catch (err) {
-    console.error('Failed to copy content:', err);
   }
-  
-  document.body.removeChild(textArea);
-}
+);
 
-/**
- * Copy content in specific format
- */
-copyInFormat(item: ResultItem, format: 'json' | 'readable' | 'html' | 'txt' | 'md', itemId: string, event: Event): void {
-  event.stopPropagation();
-  
-  let contentToCopy = '';
-  
-  switch (item.type) {
-    case 'summary':
-      contentToCopy = this.formatSummaryForCopy(item, format);
-      break;
-    case 'keywords':
-      contentToCopy = this.formatKeywordsForCopy(item, format);
-      break;
-    case 'questions':
-      contentToCopy = this.formatAssessmentForCopy(format);
-      break;
-    default:
-      return;
-  }
-  
-  // Copy to clipboard
-  const textArea = document.createElement('textarea');
-  textArea.value = contentToCopy;
-  textArea.style.position = 'fixed';
-  textArea.style.top = '0';
-  textArea.style.left = '0';
-  textArea.style.width = '2em';
-  textArea.style.height = '2em';
-  textArea.style.padding = '0';
-  textArea.style.border = 'none';
-  textArea.style.outline = 'none';
-  textArea.style.boxShadow = 'none';
-  textArea.style.background = 'transparent';
-  textArea.style.opacity = '0';
-  
-  document.body.appendChild(textArea);
-  textArea.focus();
-  textArea.select();
-  
-  try {
-    const successful = document.execCommand('copy');
-    if (successful) {
-      console.log(`Content copied as ${format}`);
-      
-      // Show tick icon
-      this.copiedItemId = itemId;
-      
-      // Close dropdown
-      this.closeCopyFormatDropdowns();
-      
-      // Reset after 1.5 seconds
-      setTimeout(() => {
-        this.copiedItemId = '';
-      }, 1500);
+export const updateRole = createAsyncThunk(
+  'roles/update',
+  async (
+    { ms_user_id, role }: { ms_user_id: number; role: 'user' | 'admin' },
+    { rejectWithValue }
+  ) => {
+    try {
+      await updateRoleApi(ms_user_id, role);
+      return { ms_user_id, role };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to update role';
+      return rejectWithValue(message);
     }
-  } catch (err) {
-    console.error('Failed to copy content:', err);
   }
-  
-  document.body.removeChild(textArea);
-}
+);
 
-/**
- * Format summary for copying
- */
-private formatSummaryForCopy(item: ResultItem, format: string): string {
-  switch (format) {
-    case 'txt':
-    case 'md':
-      return item.content || '';
-      
-    case 'html':
-      const htmlContent = item.htmlContent ? (item.htmlContent as any).changingThisBreaksApplicationSecurity : '';
-      return this.wrapInHTMLTemplate(htmlContent, 'Summary');
-      
-    case 'json':
-      return JSON.stringify({
-        type: 'summary',
-        content: item.content,
-        timestamp: new Date().toISOString()
-      }, null, 2);
-      
-    default:
-      return item.content || '';
-  }
-}
+const roleSlice = createSlice({
+  name: 'roles',
+  initialState,
+  reducers: {},
+  extraReducers: (builder) => {
+    builder
+      // fetch
+      .addCase(fetchRoles.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchRoles.fulfilled, (state, action: PayloadAction<RoleUser[]>) => {
+        state.loading = false;
+        state.users = action.payload;
+      })
+      .addCase(fetchRoles.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      })
+      // update
+      .addCase(updateRole.pending, (state, action) => {
+        state.updating = action.meta.arg.ms_user_id;
+      })
+      .addCase(updateRole.fulfilled, (state, action) => {
+        state.updating = null;
+        const { ms_user_id, role } = action.payload;
+        const user = state.users.find((u) => u.ms_user_id === ms_user_id);
+        if (user) user.role = role;
+      })
+      .addCase(updateRole.rejected, (state, action) => {
+        state.updating = null;
+        state.error = action.payload as string;
+      });
+  },
+});
 
-/**
- * Format keywords for copying
- */
-private formatKeywordsForCopy(item: ResultItem, format: string): string {
-  const keywords = item.keywords || [];
-  
-  switch (format) {
-    case 'txt':
-      return keywords.join('\n');
-      
-    case 'md':
-      return '# Key Topics\n\n' + keywords.map(k => `- ${k}`).join('\n');
-      
-    case 'html':
-      const keywordsHTML = `
-        <h1>Key Topics</h1>
-        <div style="display: flex; flex-wrap: wrap; gap: 12px; margin-top: 20px;">
-          ${keywords.map((keyword, index) => {
-            const colors = [
-              { bg: 'linear-gradient(135deg, #8b5cf6, #a78bfa)', border: '#8b5cf6' },
-              { bg: 'linear-gradient(135deg, #3b82f6, #60a5fa)', border: '#3b82f6' },
-              { bg: 'linear-gradient(135deg, #10b981, #34d399)', border: '#10b981' },
-              { bg: 'linear-gradient(135deg, #f59e0b, #fbbf24)', border: '#f59e0b' },
-              { bg: 'linear-gradient(135deg, #ef4444, #f87171)', border: '#ef4444' },
-              { bg: 'linear-gradient(135deg, #ec4899, #f472b6)', border: '#ec4899' }
-            ];
-            const colorIndex = index % colors.length;
-            const color = colors[colorIndex];
-            return `
-              <span style="
-                display: inline-flex;
-                align-items: center;
-                padding: 8px 16px;
-                border-radius: 20px;
-                background: ${color.bg};
-                border: 1px solid ${color.border};
-                color: white;
-                font-size: 14px;
-                font-weight: 600;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-              ">${this.escapeHtml(keyword)}</span>
-            `;
-          }).join('')}
-        </div>
-      `;
-      return this.wrapInHTMLTemplate(keywordsHTML, 'Key Topics');
-      
-    case 'json':
-      return JSON.stringify({
-        type: 'keywords',
-        keywords: keywords,
-        timestamp: new Date().toISOString()
-      }, null, 2);
-      
-    default:
-      return keywords.join(', ');
-  }
-}
-
-/**
- * Format assessment for copying
- */
-private formatAssessmentForCopy(format: string): string {
-  switch (format) {
-    case 'readable':
-    case 'txt':
-      return this.formatAssessmentQuestionsForCopy();
-      
-    case 'html':
-      return this.formatAssessmentAsHTML();
-      
-    case 'json':
-      return this.formatAssessmentAsJSON();
-      
-    default:
-      return this.formatAssessmentQuestionsForCopy();
-  }
-}
-
-/**
- * Remove the old copyAssessmentInFormat method as it's now replaced by copyInFormat
- */
+export default roleSlice.reducer;
 
 
 
@@ -230,375 +140,212 @@ private formatAssessmentForCopy(format: string): string {
 
 
 
+import { ColumnDef } from '@tanstack/react-table';
+import { useEffect, useState } from 'react';
+import { RoleUser } from '../api/roleApi';
+import DataTable from '../components/DataTable/DataTable';
+import { useAppDispatch, useAppSelector } from '../store/hooks';
+import { fetchRoles, updateRole } from '../store/slices/roleSlice';
+import styles from './PageShell.module.scss';
+import roleStyles from './RoleManagement.module.scss';
 
+export default function RoleManagement() {
+  const dispatch = useAppDispatch();
+  const { users, loading, error, updating } = useAppSelector((state) => state.roles);
 
-<div class="result-actions">
-    <!-- Edit Button - Only for Summary and Keywords -->
-    <button class="result-action-icon-btn" 
-            title="Edit" 
-            (click)="openEditMode(item)"
-            *ngIf="item.type === 'summary' || item.type === 'keywords'">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-            stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round"
-                d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
-        </svg>
-    </button>
-    
-    <button class="result-action-icon-btn" title="Expand" (click)="openDetail(item)">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-            stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round"
-                d="M15.75 4.5H19.5v3.75M19.5 4.5l-5.25 5.25M8.25 19.5H4.5v-3.75M4.5 19.5l5.25-5.25" />
-        </svg>
-    </button>
-    
-    <!-- Copy Button with Format Options - All Types -->
-    <div class="copy-button-wrapper">
-        <button class="result-action-icon-btn" 
-                [title]="'Copy Options'" 
-                (click)="toggleCopyFormatDropdown(item.id, $event)"
-                [class.copy-success]="copiedItemId === item.id">
-            <svg *ngIf="copiedItemId === item.id" 
-                 xmlns="http://www.w3.org/2000/svg" 
-                 fill="none" 
-                 viewBox="0 0 24 24" 
-                 stroke-width="2.5" 
-                 stroke="currentColor"
-                 class="copy-success-icon">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M1.5 12.5l4 4 8-8" />
-                <path stroke-linecap="round" stroke-linejoin="round" d="M6.5 12.5l4 4 8-8" />
-            </svg>
-            <svg *ngIf="copiedItemId !== item.id" 
-                 xmlns="http://www.w3.org/2000/svg" 
-                 fill="none" 
-                 viewBox="0 0 24 24" 
-                 stroke-width="1.5"
-                 stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round"
-                    d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 00-3.375-3.375h-1.5a1.125 1.125 0 01-1.125-1.125v-1.5a3.375 3.375 0 00-3.375-3.375H9.75" />
-            </svg>
-        </button>
-        
-        <!-- Copy Format Dropdown -->
-        <div class="copy-format-dropdown" *ngIf="showCopyFormatDropdown[item.id]" (click)="$event.stopPropagation()">
-            <div class="dropdown-header">
-                <span>Copy As</span>
-                <button class="dropdown-close" (click)="closeCopyFormatDropdowns()">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                </button>
-            </div>
-            <div class="dropdown-options">
-                <!-- Summary Copy Options -->
-                <ng-container *ngIf="item.type === 'summary'">
-                    <button class="format-option" (click)="copyInFormat(item, 'txt', item.id, $event)">
-                        <div class="format-icon txt-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                            </svg>
-                        </div>
-                        <div class="format-details">
-                            <div class="format-name">Text</div>
-                            <div class="format-desc">Plain text</div>
-                        </div>
-                    </button>
-                    
-                    <button class="format-option" (click)="copyInFormat(item, 'md', item.id, $event)">
-                        <div class="format-icon md-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m3.75 9v6m3-3H9m1.5-12H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                            </svg>
-                        </div>
-                        <div class="format-details">
-                            <div class="format-name">Markdown</div>
-                            <div class="format-desc">MD format</div>
-                        </div>
-                    </button>
-                    
-                    <button class="format-option" (click)="copyInFormat(item, 'html', item.id, $event)">
-                        <div class="format-icon html-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
-                            </svg>
-                        </div>
-                        <div class="format-details">
-                            <div class="format-name">HTML</div>
-                            <div class="format-desc">Web page</div>
-                        </div>
-                    </button>
-                    
-                    <button class="format-option" (click)="copyInFormat(item, 'json', item.id, $event)">
-                        <div class="format-icon json-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
-                            </svg>
-                        </div>
-                        <div class="format-details">
-                            <div class="format-name">JSON</div>
-                            <div class="format-desc">Raw data</div>
-                        </div>
-                    </button>
-                </ng-container>
-                
-                <!-- Keywords Copy Options -->
-                <ng-container *ngIf="item.type === 'keywords'">
-                    <button class="format-option" (click)="copyInFormat(item, 'txt', item.id, $event)">
-                        <div class="format-icon txt-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                            </svg>
-                        </div>
-                        <div class="format-details">
-                            <div class="format-name">Text</div>
-                            <div class="format-desc">Line by line</div>
-                        </div>
-                    </button>
-                    
-                    <button class="format-option" (click)="copyInFormat(item, 'md', item.id, $event)">
-                        <div class="format-icon md-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m3.75 9v6m3-3H9m1.5-12H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                            </svg>
-                        </div>
-                        <div class="format-details">
-                            <div class="format-name">Markdown</div>
-                            <div class="format-desc">Bullet list</div>
-                        </div>
-                    </button>
-                    
-                    <button class="format-option" (click)="copyInFormat(item, 'html', item.id, $event)">
-                        <div class="format-icon html-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
-                            </svg>
-                        </div>
-                        <div class="format-details">
-                            <div class="format-name">HTML</div>
-                            <div class="format-desc">Styled chips</div>
-                        </div>
-                    </button>
-                    
-                    <button class="format-option" (click)="copyInFormat(item, 'json', item.id, $event)">
-                        <div class="format-icon json-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
-                            </svg>
-                        </div>
-                        <div class="format-details">
-                            <div class="format-name">JSON</div>
-                            <div class="format-desc">Array data</div>
-                        </div>
-                    </button>
-                </ng-container>
-                
-                <!-- Assessment Copy Options -->
-                <ng-container *ngIf="item.type === 'questions'">
-                    <button class="format-option" (click)="copyInFormat(item, 'txt', item.id, $event)">
-                        <div class="format-icon readable-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                            </svg>
-                        </div>
-                        <div class="format-details">
-                            <div class="format-name">Plain Text</div>
-                            <div class="format-desc">Readable</div>
-                        </div>
-                    </button>
-                    
-                    <button class="format-option" (click)="copyInFormat(item, 'html', item.id, $event)">
-                        <div class="format-icon html-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
-                            </svg>
-                        </div>
-                        <div class="format-details">
-                            <div class="format-name">HTML</div>
-                            <div class="format-desc">Styled page</div>
-                        </div>
-                    </button>
-                    
-                    <button class="format-option" (click)="copyInFormat(item, 'json', item.id, $event)">
-                        <div class="format-icon json-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
-                            </svg>
-                        </div>
-                        <div class="format-details">
-                            <div class="format-name">JSON</div>
-                            <div class="format-desc">Raw data</div>
-                        </div>
-                    </button>
-                </ng-container>
-            </div>
-        </div>
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingRole, setEditingRole] = useState<'user' | 'admin'>('user');
+
+  useEffect(() => {
+    dispatch(fetchRoles());
+  }, [dispatch]);
+
+  const handleEdit = (row: RoleUser) => {
+    setEditingId(row.ms_user_id);
+    setEditingRole(row.role);
+  };
+
+  const handleSave = async (ms_user_id: number) => {
+    await dispatch(updateRole({ ms_user_id, role: editingRole }));
+    setEditingId(null);
+  };
+
+  const handleCancel = () => {
+    setEditingId(null);
+  };
+
+  const columns: ColumnDef<RoleUser, unknown>[] = [
+    {
+      accessorKey: 'username',
+      header: 'User',
+      size: 220,
+    },
+    {
+      accessorKey: 'email',
+      header: 'Email',
+      size: 260,
+    },
+    {
+      accessorKey: 'role',
+      header: 'Access Role',
+      size: 180,
+      cell: ({ row }) =>
+        editingId === row.original.ms_user_id ? (
+          <div className={roleStyles.selectWrapper}>
+            <select
+              className={roleStyles.roleSelect}
+              value={editingRole}
+              onChange={(e) => setEditingRole(e.target.value as 'user' | 'admin')}
+            >
+              <option value="admin">Admin</option>
+              <option value="user">User</option>
+            </select>
+            <span className={roleStyles.selectIcon}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </span>
+          </div>
+        ) : (
+          <span className={`${roleStyles.roleBadge} ${row.original.role === 'admin' ? roleStyles.admin : roleStyles.user}`}>
+            {row.original.role === 'admin' ? 'Admin' : 'User'}
+          </span>
+        ),
+    },
+    {
+      id: 'actions',
+      header: 'Actions',
+      enableSorting: false,
+      size: 120,
+      cell: ({ row }) =>
+        editingId === row.original.ms_user_id ? (
+          <div className={roleStyles.actions}>
+            <button
+              className={`${roleStyles.actionBtn} ${roleStyles.save}`}
+              onClick={() => handleSave(row.original.ms_user_id)}
+              disabled={updating === row.original.ms_user_id}
+              title="Save"
+            >
+              {updating === row.original.ms_user_id ? (
+                <span className={roleStyles.spinner} />
+              ) : (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              )}
+            </button>
+            <button
+              className={`${roleStyles.actionBtn} ${roleStyles.cancel}`}
+              onClick={handleCancel}
+              title="Cancel"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
+        ) : (
+          <div className={roleStyles.actions}>
+            <button
+              className={`${roleStyles.actionBtn} ${roleStyles.edit}`}
+              onClick={() => handleEdit(row.original)}
+              title="Edit"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+              </svg>
+            </button>
+          </div>
+        ),
+    },
+  ];
+
+  return (
+    <div className={styles.page}>
+      <div className={styles.pageHeader}>
+        <h1 className={styles.title}>Role Management</h1>
+        <p className={styles.description}>Manage roles and permissions across your organization.</p>
+      </div>
+      <div className={styles.pageContent}>
+        {loading ? (
+          <div className={roleStyles.stateBox}>
+            <span className={roleStyles.spinner} />
+            <p>Loading users...</p>
+          </div>
+        ) : error ? (
+          <div className={roleStyles.stateBox}>
+            <p className={roleStyles.errorText}>{error}</p>
+            <button className={roleStyles.retryBtn} onClick={() => dispatch(fetchRoles())}>
+              Retry
+            </button>
+          </div>
+        ) : (
+          <DataTable columns={columns} data={users} pageSize={6} />
+        )}
+      </div>
     </div>
-    
-    <!-- Download Button with Format Options -->
-    <div class="download-button-wrapper">
-        <button class="result-action-icon-btn" 
-                title="Download Options" 
-                (click)="toggleDownloadFormatDropdown(item.id, $event)">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round"
-                    d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-            </svg>
-        </button>
-        
-        <!-- Download Format Dropdown -->
-        <div class="download-format-dropdown" *ngIf="showDownloadFormatDropdown[item.id]" (click)="$event.stopPropagation()">
-            <div class="dropdown-header">
-                <span>Download As</span>
-                <button class="dropdown-close" (click)="closeDownloadFormatDropdowns()">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                </button>
-            </div>
-            <div class="dropdown-options">
-                <!-- Summary Download Options -->
-                <ng-container *ngIf="item.type === 'summary'">
-                    <button class="format-option" (click)="downloadInFormat(item, 'txt', $event)">
-                        <div class="format-icon txt-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                            </svg>
-                        </div>
-                        <div class="format-details">
-                            <div class="format-name">Text</div>
-                            <div class="format-desc">Plain text</div>
-                        </div>
-                    </button>
-                    
-                    <button class="format-option" (click)="downloadInFormat(item, 'md', $event)">
-                        <div class="format-icon md-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m3.75 9v6m3-3H9m1.5-12H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                            </svg>
-                        </div>
-                        <div class="format-details">
-                            <div class="format-name">Markdown</div>
-                            <div class="format-desc">MD file</div>
-                        </div>
-                    </button>
-                    
-                    <button class="format-option" (click)="downloadInFormat(item, 'html', $event)">
-                        <div class="format-icon html-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
-                            </svg>
-                        </div>
-                        <div class="format-details">
-                            <div class="format-name">HTML</div>
-                            <div class="format-desc">Web page</div>
-                        </div>
-                    </button>
-                    
-                    <button class="format-option" (click)="downloadInFormat(item, 'json', $event)">
-                        <div class="format-icon json-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
-                            </svg>
-                        </div>
-                        <div class="format-details">
-                            <div class="format-name">JSON</div>
-                            <div class="format-desc">Raw data</div>
-                        </div>
-                    </button>
-                </ng-container>
-                
-                <!-- Keywords Download Options -->
-                <ng-container *ngIf="item.type === 'keywords'">
-                    <button class="format-option" (click)="downloadInFormat(item, 'txt', $event)">
-                        <div class="format-icon txt-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                            </svg>
-                        </div>
-                        <div class="format-details">
-                            <div class="format-name">Text</div>
-                            <div class="format-desc">Line by line</div>
-                        </div>
-                    </button>
-                    
-                    <button class="format-option" (click)="downloadInFormat(item, 'md', $event)">
-                        <div class="format-icon md-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m3.75 9v6m3-3H9m1.5-12H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                            </svg>
-                        </div>
-                        <div class="format-details">
-                            <div class="format-name">Markdown</div>
-                            <div class="format-desc">Bullet list</div>
-                        </div>
-                    </button>
-                    
-                    <button class="format-option" (click)="downloadInFormat(item, 'html', $event)">
-                        <div class="format-icon html-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
-                            </svg>
-                        </div>
-                        <div class="format-details">
-                            <div class="format-name">HTML</div>
-                            <div class="format-desc">Styled chips</div>
-                        </div>
-                    </button>
-                    
-                    <button class="format-option" (click)="downloadInFormat(item, 'json', $event)">
-                        <div class="format-icon json-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
-                            </svg>
-                        </div>
-                        <div class="format-details">
-                            <div class="format-name">JSON</div>
-                            <div class="format-desc">Array data</div>
-                        </div>
-                    </button>
-                </ng-container>
-                
-                <!-- Assessment Download Options -->
-                <ng-container *ngIf="item.type === 'questions'">
-                    <button class="format-option" (click)="downloadInFormat(item, 'readable', $event)">
-                        <div class="format-icon readable-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                            </svg>
-                        </div>
-                        <div class="format-details">
-                            <div class="format-name">Plain Text</div>
-                            <div class="format-desc">Formatted</div>
-                        </div>
-                    </button>
-                    
-                    <button class="format-option" (click)="downloadInFormat(item, 'html', $event)">
-                        <div class="format-icon html-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
-                            </svg>
-                        </div>
-                        <div class="format-details">
-                            <div class="format-name">HTML</div>
-                            <div class="format-desc">Styled page</div>
-                        </div>
-                    </button>
-                    
-                    <button class="format-option" (click)="downloadInFormat(item, 'json', $event)">
-                        <div class="format-icon json-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
-                            </svg>
-                        </div>
-                        <div class="format-details">
-                            <div class="format-name">JSON</div>
-                            <div class="format-desc">Raw data</div>
-                        </div>
-                    </button>
-                </ng-container>
-            </div>
-        </div>
-    </div>
-</div>
+  );
+}
+
+
+
+
+
+
+
+
+
+
+
+.stateBox {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 60px 20px;
+  color: var(--text-tertiary);
+  font-size: 14px;
+
+  p { margin: 0; }
+}
+
+.errorText {
+  color: #dc2626;
+  font-size: 14px;
+  margin: 0;
+}
+
+.retryBtn {
+  padding: 8px 20px;
+  border-radius: 8px;
+  border: 1px solid var(--accent-primary);
+  background: var(--accent-light);
+  color: var(--accent-primary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: system-ui, sans-serif;
+  transition: all 0.15s ease;
+
+  &:hover {
+    background: var(--accent-primary);
+    color: #fff;
+  }
+}
+
+.spinner {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--accent-light);
+  border-top-color: var(--accent-primary);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
