@@ -1,57 +1,39 @@
-export async function copyTextToClipboard(content: string): Promise<boolean> {
-  // Try modern clipboard API first
-  if (navigator.clipboard && window.isSecureContext) {
-    try {
-      await navigator.clipboard.writeText(content);
-      return true;
-    } catch (err) {
-      console.error('Clipboard API failed, trying fallback:', err);
-    }
-  }
-
-  // Fallback for HTTP or older browsers
-  const textArea = document.createElement('textarea');
-  textArea.value = content;
-  textArea.style.cssText = [
-    'position:fixed', 'top:0', 'left:0',
-    'width:2em',      'height:2em',
-    'padding:0',      'border:none',
-    'outline:none',   'box-shadow:none',
-    'background:transparent', 'opacity:0'
-  ].join(';');
-
-  document.body.appendChild(textArea);
-  textArea.focus();
-  textArea.select();
-
-  let success = false;
-  try {
-    success = document.execCommand('copy');
-    if (!success) console.error('execCommand copy returned false');
-  } catch (err) {
-    console.error('Fallback copy failed:', err);
-  }
-
-  document.body.removeChild(textArea);
-  return success;
+getCopyOptions(itemType: string): {label: string, format: string, icon: string}[] {
+  const base = [
+    { label: 'Plain Text', format: 'txt',  icon: 'text'     },
+    { label: 'JSON',       format: 'json', icon: 'code'     },
+    { label: 'HTML',       format: 'html', icon: 'html'     },
+    { label: 'Markdown',   format: 'md',   icon: 'markdown' },
+  ];
+  return base;
 }
 
 
 
 
 
-
-
-async copyAs(item: ResultItem, format: string): Promise<void> {
-  const content = formatContentForExport(item, format as CopyFormat);
-  const success = await copyTextToClipboard(content);
-
-  if (success) {
-    this.copiedItemId = item.id;
-    setTimeout(() => { this.copiedItemId = ''; }, 1500);
-  } else {
-    console.error('Copy failed for format:', format);
-  }
-
-  this.closeActionOptions();
+case 'txt': {
+  return questions.map((q, i) => {
+    const opts = Object.entries(q.options as Record<string, string>)
+      .map(([k, v]) => `  ${k}. ${v}`)
+      .join('\n');
+    return [
+      `Q${i + 1}. ${q.question}`,
+      ``,
+      opts,
+      ``,
+      `Answer      : ${q.correct_answer}`,
+      `Explanation : ${q.explanation}`
+    ].join('\n');
+  }).join('\n\n' + '─'.repeat(50) + '\n\n');
 }
+
+// add this right before the default case
+case 'plain':
+case 'readable': {
+  // redirect legacy format strings to txt
+  return formatAssessmentContent(item, 'txt');
+}
+
+default:
+  return '';
