@@ -1,30 +1,358 @@
-// Update toggleActionOptions - close if same, switch if different
-toggleActionOptions(itemId: string, actionType: 'copy' | 'download', event: Event): void {
-  event.stopPropagation();
-  if (this.activeActionItem === itemId && this.activeActionType === actionType) {
-    // Same button clicked again - close
-    this.activeActionItem = '';
-    this.activeActionType = '';
-  } else {
-    // Different button or different item - switch
-    this.activeActionItem = itemId;
-    this.activeActionType = actionType;
+import { AssessmentQuestion, MCQOption } from './workspace-result.service';
+
+export type CopyFormat = 'json' | 'txt' | 'html' | 'md';
+export type DownloadFormat = 'pdf' | 'docx' | 'txt' | 'json';
+
+export interface ExportItem {
+  type: 'summary' | 'keywords' | 'questions' | 'custom';
+  content?: string;
+  htmlContent?: any;
+  keywords?: string[];
+  assessmentQuestions?: AssessmentQuestion[];
+}
+
+// ─── HTML Template Wrapper ─────────────────────────────────────────────────
+
+export function wrapInHTMLTemplate(body: string, title: string): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${escapeHtml(title)}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 800px; margin: 40px auto; padding: 0 24px; color: #1f2937; line-height: 1.7; }
+    h1   { font-size: 24px; font-weight: 700; color: #8b5cf6; border-bottom: 2px solid #e5e7eb; padding-bottom: 12px; }
+    h2   { font-size: 20px; font-weight: 600; color: #374151; }
+    p    { margin: 12px 0; }
+    ul   { padding-left: 20px; }
+    li   { margin: 6px 0; }
+    code { background: #f3f4f6; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
+    pre  { background: #f3f4f6; padding: 16px; border-radius: 8px; overflow-x: auto; }
+    blockquote { border-left: 4px solid #8b5cf6; margin: 16px 0; padding: 8px 16px; background: #faf5ff; border-radius: 0 8px 8px 0; }
+  </style>
+</head>
+<body>
+  ${body}
+</body>
+</html>`;
+}
+
+// ─── HTML Escape ───────────────────────────────────────────────────────────
+
+export function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+// ─── Clipboard Helper ──────────────────────────────────────────────────────
+
+export function copyTextToClipboard(content: string): boolean {
+  const textArea = document.createElement('textarea');
+  textArea.value = content;
+  textArea.style.cssText = `
+    position: fixed; top: 0; left: 0;
+    width: 2em; height: 2em;
+    padding: 0; border: none;
+    outline: none; box-shadow: none;
+    background: transparent; opacity: 0;
+  `;
+  document.body.appendChild(textArea);
+  textArea.focus();
+  textArea.select();
+
+  let success = false;
+  try {
+    success = document.execCommand('copy');
+    if (!success) console.error('execCommand copy returned false');
+  } catch (err) {
+    console.error('Failed to copy content:', err);
+  }
+
+  document.body.removeChild(textArea);
+  return success;
+}
+
+// ─── Download Helper ───────────────────────────────────────────────────────
+
+export function downloadAsFile(content: string, filename: string, mimeType: string): void {
+  const blob = new Blob([content], { type: mimeType });
+  const url  = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href     = url;
+  link.download = filename;
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+// ─── Summary Formatters ────────────────────────────────────────────────────
+
+export function formatSummaryContent(item: ExportItem, format: CopyFormat | DownloadFormat): string {
+  const raw = item.content || '';
+
+  switch (format) {
+    case 'txt':
+      return raw;
+
+    case 'md':
+      return raw;
+
+    case 'html': {
+      const inner = item.htmlContent
+        ? (item.htmlContent as any).changingThisBreaksApplicationSecurity || ''
+        : `<p>${escapeHtml(raw)}</p>`;
+      return wrapInHTMLTemplate(`<h1>Summary</h1>${inner}`, 'Summary');
+    }
+
+    case 'json':
+      return JSON.stringify(
+        { type: 'summary', content: raw, exportedAt: new Date().toISOString() },
+        null, 2
+      );
+
+    // download-only
+    case 'pdf':
+    case 'docx':
+      return raw;
+
+    default:
+      return raw;
+  }
+}
+
+// ─── Keywords Formatters ───────────────────────────────────────────────────
+
+export function formatKeywordsContent(item: ExportItem, format: CopyFormat | DownloadFormat): string {
+  const keywords = item.keywords || [];
+
+  switch (format) {
+    case 'txt':
+      return keywords.join('\n');
+
+    case 'md':
+      return `# Key Topics\n\n${keywords.map(k => `- ${k}`).join('\n')}`;
+
+    case 'html': {
+      const chipColors = [
+        { bg: 'linear-gradient(135deg,#8b5cf6,#a78bfa)', border: '#8b5cf6' },
+        { bg: 'linear-gradient(135deg,#3b82f6,#60a5fa)', border: '#3b82f6' },
+        { bg: 'linear-gradient(135deg,#10b981,#34d399)', border: '#10b981' },
+        { bg: 'linear-gradient(135deg,#f59e0b,#fbbf24)', border: '#f59e0b' },
+        { bg: 'linear-gradient(135deg,#ef4444,#f87171)', border: '#ef4444' },
+        { bg: 'linear-gradient(135deg,#ec4899,#f472b6)', border: '#ec4899' },
+      ];
+      const chips = keywords.map((kw, i) => {
+        const c = chipColors[i % chipColors.length];
+        return `<span style="display:inline-flex;align-items:center;padding:8px 16px;border-radius:20px;background:${c.bg};border:1px solid ${c.border};color:white;font-size:14px;font-weight:600;box-shadow:0 2px 4px rgba(0,0,0,.1);">${escapeHtml(kw)}</span>`;
+      }).join('\n          ');
+      const inner = `
+        <h1>Key Topics</h1>
+        <div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:20px;">
+          ${chips}
+        </div>`;
+      return wrapInHTMLTemplate(inner, 'Key Topics');
+    }
+
+    case 'json':
+      return JSON.stringify(
+        { type: 'keywords', keywords, exportedAt: new Date().toISOString() },
+        null, 2
+      );
+
+    case 'pdf':
+    case 'docx':
+      return keywords.join('\n');
+
+    default:
+      return keywords.join(', ');
+  }
+}
+
+// ─── Assessment Formatters ─────────────────────────────────────────────────
+
+export function formatAssessmentContent(
+  item: ExportItem,
+  format: CopyFormat | DownloadFormat
+): string {
+  const questions: AssessmentQuestion[] = item.assessmentQuestions || [];
+
+  switch (format) {
+    case 'txt': {
+      return questions.map((q, i) => {
+        const opts = Object.entries(q.options)
+          .map(([k, v]) => `  ${k}. ${v}`)
+          .join('\n');
+        return `Q${i + 1}. ${q.question}\n${opts}\n\nAnswer : ${q.correct_answer}\nExplanation: ${q.explanation}`;
+      }).join('\n\n' + '─'.repeat(50) + '\n\n');
+    }
+
+    case 'md': {
+      return questions.map((q, i) => {
+        const opts = Object.entries(q.options)
+          .map(([k, v]) => `- **${k}.** ${v}`)
+          .join('\n');
+        return `### Q${i + 1}. ${q.question}\n\n${opts}\n\n> ✅ **Answer:** ${q.correct_answer}\n>\n> 💡 **Explanation:** ${q.explanation}`;
+      }).join('\n\n---\n\n');
+    }
+
+    case 'html': {
+      const cards = questions.map((q, i) => {
+        const opts = Object.entries(q.options).map(([k, v]) => {
+          const isCorrect = q.correct_answer === k;
+          const bg     = isCorrect ? '#d1fae5' : '#f9fafb';
+          const border = isCorrect ? '#10b981' : '#e5e7eb';
+          const weight = isCorrect ? '600'     : '400';
+          return `<li style="padding:8px 12px;margin:6px 0;border-radius:6px;background:${bg};border:1px solid ${border};font-weight:${weight};list-style:none;">
+            <strong>${escapeHtml(k)}.</strong> ${escapeHtml(String(v))}${isCorrect ? ' ✅' : ''}
+          </li>`;
+        }).join('\n');
+
+        return `<div style="border:1px solid #e5e7eb;border-radius:10px;padding:20px;margin-bottom:20px;">
+          <h3 style="margin:0 0 12px;color:#1f2937;">Q${i + 1}. ${escapeHtml(q.question)}</h3>
+          <ul style="padding:0;margin:0 0 12px;">${opts}</ul>
+          <div style="background:#faf5ff;border-left:4px solid #8b5cf6;padding:10px 14px;border-radius:0 6px 6px 0;font-size:14px;">
+            <strong style="color:#8b5cf6;">💡 Explanation:</strong> ${escapeHtml(q.explanation)}
+          </div>
+        </div>`;
+      }).join('\n');
+
+      return wrapInHTMLTemplate(
+        `<h1>Assessment Questions</h1>${cards}`,
+        'Assessment Questions'
+      );
+    }
+
+    case 'json':
+      return JSON.stringify(
+        { type: 'assessment', questions, exportedAt: new Date().toISOString() },
+        null, 2
+      );
+
+    case 'pdf':
+    case 'docx':
+      return questions.map((q, i) => {
+        const opts = Object.entries(q.options)
+          .map(([k, v]) => `  ${k}. ${v}`)
+          .join('\n');
+        return `Q${i + 1}. ${q.question}\n${opts}\nAnswer: ${q.correct_answer}\nExplanation: ${q.explanation}`;
+      }).join('\n\n');
+
+    default:
+      return '';
+  }
+}
+
+// ─── Master Format Dispatcher ──────────────────────────────────────────────
+
+export function formatContentForExport(
+  item: ExportItem,
+  format: CopyFormat | DownloadFormat
+): string {
+  switch (item.type) {
+    case 'summary':   return formatSummaryContent(item, format);
+    case 'keywords':  return formatKeywordsContent(item, format);
+    case 'questions': return formatAssessmentContent(item, format);
+    default:          return item.content || '';
+  }
+}
+
+// ─── MIME type helper ──────────────────────────────────────────────────────
+
+export function getMimeType(format: DownloadFormat): string {
+  switch (format) {
+    case 'json': return 'application/json';
+    case 'html': return 'text/html';
+    case 'txt':  return 'text/plain';
+    default:     return 'text/plain';
+  }
+}
+
+// ─── File extension helper ─────────────────────────────────────────────────
+
+export function getFileExtension(format: DownloadFormat): string {
+  switch (format) {
+    case 'json': return 'json';
+    case 'html': return 'html';
+    case 'txt':  return 'txt';
+    case 'pdf':  return 'pdf';
+    case 'docx': return 'docx';
+    default:     return 'txt';
   }
 }
 
 
 
 
-openDetail(item: ResultItem): void {
-  this.closeActionOptions(); // ← add this
-  this.selectedItemName = item.title;
-  // ... rest of existing code unchanged
 
 
 
-openEditMode(item: ResultItem): void {
-  this.closeActionOptions(); // ← add this
-  if (item.type !== 'summary' && item.type !== 'keywords') {
+
+// Add to imports at top
+import {
+  copyTextToClipboard,
+  downloadAsFile,
+  formatContentForExport,
+  getMimeType,
+  getFileExtension,
+  CopyFormat,
+  DownloadFormat
+} from './content-export.util';
+
+
+
+
+copyAs(item: ResultItem, format: string): void {
+  const content = formatContentForExport(item, format as CopyFormat);
+  const success = copyTextToClipboard(content);
+
+  if (success) {
+    console.log(`Content copied as ${format}`);
+    this.copiedItemId = item.id;
+    setTimeout(() => { this.copiedItemId = ''; }, 1500);
+  }
+
+  this.closeActionOptions();
+}
+
+downloadAs(item: ResultItem, format: string): void {
+  // For pdf/docx use your existing API endpoint
+  if (format === 'pdf' || format === 'docx') {
+    if (!this.selectedHistoryItem) return;
+
+    const fileId = this.selectedHistoryItem.id;
+    let exportType: number;
+    switch (item.type) {
+      case 'summary':   exportType = 1; break;
+      case 'keywords':  exportType = 2; break;
+      case 'questions': exportType = 3; break;
+      default: return;
+    }
+
+    const url = `/content_analytics/files/export/${fileId}/${exportType}?format=${format}`;
+    window.open(url, '_blank');
+    this.closeActionOptions();
     return;
   }
-  // ... rest of existing code unchanged
+
+  // For txt / json - generate client-side and trigger download
+  const content   = formatContentForExport(item, format as DownloadFormat);
+  const mimeType  = getMimeType(format as DownloadFormat);
+  const extension = getFileExtension(format as DownloadFormat);
+  const baseName  = this.selectedHistoryItem?.name
+    ? this.selectedHistoryItem.name.replace(/\.[^/.]+$/, '')
+    : 'export';
+  const typeLabel = item.type === 'summary'   ? 'summary'
+                  : item.type === 'keywords'  ? 'keywords'
+                  : 'assessment';
+  const filename  = `${baseName}_${typeLabel}.${extension}`;
+
+  downloadAsFile(content, filename, mimeType);
+  this.closeActionOptions();
+}
