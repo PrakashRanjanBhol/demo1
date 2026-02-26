@@ -1,270 +1,61 @@
-// Add these new state properties after copiedItemId
-activeActionItem: string = '';
-activeActionType: 'copy' | 'download' | '' = '';
+<div class="result-item-header">
+    <div class="result-item-header-row">
 
-// Add these methods
-toggleActionOptions(itemId: string, actionType: 'copy' | 'download', event: Event): void {
-  event.stopPropagation();
-  if (this.activeActionItem === itemId && this.activeActionType === actionType) {
-    this.activeActionItem = '';
-    this.activeActionType = '';
-  } else {
-    this.activeActionItem = itemId;
-    this.activeActionType = actionType;
-  }
+
+
+</div> <!-- closes result-actions -->
+            </div> <!-- closes result-item-header-row -->
+
+            <!-- Options Row - Second line inside header -->
+            <div class="action-options-row"
+                [class.expanded]="activeActionItem === item.id"
+                (click)="$event.stopPropagation()">
+                <ng-container *ngIf="activeActionType === 'copy' && activeActionItem === item.id">
+                    <span class="options-label">Copy as:</span>
+                    <button class="option-pill" *ngFor="let opt of getCopyOptions(item.type)" (click)="copyAs(item, opt.format)">
+                        <svg *ngIf="opt.icon === 'text'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" /></svg>
+                        <svg *ngIf="opt.icon === 'code'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" /></svg>
+                        <svg *ngIf="opt.icon === 'html'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M14.25 9.75L16.5 12l-2.25 2.25m-4.5 0L7.5 12l2.25-2.25M6 20.25h12A2.25 2.25 0 0020.25 18V6A2.25 2.25 0 0018 3.75H6A2.25 2.25 0 003.75 6v12A2.25 2.25 0 006 20.25z" /></svg>
+                        <svg *ngIf="opt.icon === 'markdown'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg>
+                        {{ opt.label }}
+                    </button>
+                </ng-container>
+                <ng-container *ngIf="activeActionType === 'download' && activeActionItem === item.id">
+                    <span class="options-label">Download as:</span>
+                    <button class="option-pill" *ngFor="let opt of getDownloadOptions()" (click)="downloadAs(item, opt.format)">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+                        {{ opt.label }}
+                    </button>
+                </ng-container>
+            </div>
+
+        </div> <!-- closes result-item-header -->
+
+
+
+
+
+
+
+
+
+
+/* Make header a column so options row sits below */
+.result-item-header {
+    display: flex;
+    flex-direction: column;
+    padding: 0; /* remove padding from header, move to inner row */
 }
 
-closeActionOptions(): void {
-  this.activeActionItem = '';
-  this.activeActionType = '';
+/* The actual first row with icon, title, actions */
+.result-item-header-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
 }
 
-copyAs(item: ResultItem, format: string): void {
-  let contentToCopy = '';
-
-  if (format === 'json') {
-    if (item.type === 'questions' && this.faqRawData) {
-      contentToCopy = typeof this.faqRawData === 'string'
-        ? this.faqRawData
-        : JSON.stringify(this.faqRawData, null, 2);
-    } else if (item.type === 'keywords') {
-      contentToCopy = JSON.stringify(item.keywords || [], null, 2);
-    } else {
-      contentToCopy = JSON.stringify({ content: item.content }, null, 2);
-    }
-  } else if (format === 'plain') {
-    if (item.type === 'keywords') {
-      contentToCopy = (item.keywords || []).join('\n');
-    } else if (item.type === 'questions' && item.assessmentQuestions) {
-      contentToCopy = item.assessmentQuestions.map((q, i) =>
-        `Q${i + 1}: ${q.question}\n` +
-        Object.entries(q.options).map(([k, v]) => `  ${k}: ${v}`).join('\n') +
-        `\nAnswer: ${q.correct_answer}\nExplanation: ${q.explanation}`
-      ).join('\n\n');
-    } else {
-      contentToCopy = item.content || '';
-    }
-  } else if (format === 'html') {
-    if (item.type === 'summary') {
-      const html: any = marked(item.content || '');
-      contentToCopy = html;
-    } else if (item.type === 'keywords') {
-      contentToCopy = `<ul>\n${(item.keywords || []).map(k => `  <li>${k}</li>`).join('\n')}\n</ul>`;
-    } else if (item.type === 'questions' && item.assessmentQuestions) {
-      contentToCopy = item.assessmentQuestions.map((q, i) =>
-        `<div class="question">\n  <h4>Q${i + 1}: ${q.question}</h4>\n  <ul>\n` +
-        Object.entries(q.options).map(([k, v]) => `    <li><strong>${k}:</strong> ${v}</li>`).join('\n') +
-        `\n  </ul>\n  <p><strong>Answer:</strong> ${q.correct_answer}</p>\n  <p><strong>Explanation:</strong> ${q.explanation}</p>\n</div>`
-      ).join('\n\n');
-    }
-  } else if (format === 'markdown') {
-    if (item.type === 'summary') {
-      contentToCopy = item.content || '';
-    } else if (item.type === 'keywords') {
-      contentToCopy = (item.keywords || []).map(k => `- ${k}`).join('\n');
-    }
-  }
-
-  const textArea = document.createElement('textarea');
-  textArea.value = contentToCopy;
-  textArea.style.cssText = 'position:fixed;top:0;left:0;width:2em;height:2em;padding:0;border:none;outline:none;box-shadow:none;background:transparent;opacity:0;';
-  document.body.appendChild(textArea);
-  textArea.focus();
-  textArea.select();
-
-  try {
-    document.execCommand('copy');
-    this.copiedItemId = item.id;
-    setTimeout(() => { this.copiedItemId = ''; }, 1500);
-  } catch (err) {
-    console.error('Failed to copy:', err);
-  }
-
-  document.body.removeChild(textArea);
-  this.closeActionOptions();
-}
-
-downloadAs(item: ResultItem, format: string): void {
-  if (!this.selectedHistoryItem) return;
-
-  const fileId = this.selectedHistoryItem.id;
-  let exportType: number;
-
-  switch (item.type) {
-    case 'summary': exportType = 1; break;
-    case 'keywords': exportType = 2; break;
-    case 'questions': exportType = 3; break;
-    default: return;
-  }
-
-  // You can extend this to pass format as a query param if your API supports it
-  const downloadUrl = `${(window as any).environment?.apiUrl || ''}/content_analytics/files/export/${fileId}/${exportType}?format=${format}`;
-  window.open(downloadUrl, '_blank');
-  this.closeActionOptions();
-}
-
-getCopyOptions(itemType: string): {label: string, format: string, icon: string}[] {
-  const base = [
-    { label: 'Plain Text', format: 'plain', icon: 'text' },
-    { label: 'JSON', format: 'json', icon: 'code' },
-  ];
-  if (itemType === 'summary') {
-    return [...base, { label: 'HTML', format: 'html', icon: 'html' }, { label: 'Markdown', format: 'markdown', icon: 'markdown' }];
-  } else if (itemType === 'keywords') {
-    return [...base, { label: 'HTML', format: 'html', icon: 'html' }, { label: 'Markdown', format: 'markdown', icon: 'markdown' }];
-  }
-  return [...base, { label: 'HTML', format: 'html', icon: 'html' }];
-}
-
-getDownloadOptions(): {label: string, format: string}[] {
-  return [
-    { label: 'PDF', format: 'pdf' },
-    { label: 'DOCX', format: 'docx' },
-    { label: 'TXT', format: 'txt' },
-    { label: 'JSON', format: 'json' },
-  ];
-}
-
-
-
-
-
-
-
-
-<!-- Find this block -->
-<div class="result-actions">
-    <!-- Edit Button - Only for Summary and Keywords -->
-    <button class="result-action-icon-btn" title="Edit" (click)="openEditMode(item)"
-        *ngIf="item.type === 'summary' || item.type === 'keywords'">
-        ...
-    </button>
-    <button class="result-action-icon-btn" title="Expand" (click)="openDetail(item)">
-        ...
-    </button>
-    <button class="result-action-icon-btn" title="Copy"
-        (click)="copyToClipboard(item.content, item.type, item.id)"
-        [class.copy-success]="copiedItemId === item.id">
-        ...
-    </button>
-    <button class="result-action-icon-btn" title="Download" (click)="downloadContent(item)">
-        ...
-    </button>
-</div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-<div class="result-actions">
-    <!-- Edit Button -->
-    <button class="result-action-icon-btn" title="Edit" (click)="openEditMode(item)"
-        *ngIf="item.type === 'summary' || item.type === 'keywords'">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round"
-                d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
-        </svg>
-    </button>
-    <!-- Expand Button -->
-    <button class="result-action-icon-btn" title="Expand" (click)="openDetail(item)">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round"
-                d="M15.75 4.5H19.5v3.75M19.5 4.5l-5.25 5.25M8.25 19.5H4.5v-3.75M4.5 19.5l5.25-5.25" />
-        </svg>
-    </button>
-    <!-- Copy Button with toggle -->
-    <button class="result-action-icon-btn"
-        title="Copy"
-        (click)="toggleActionOptions(item.id, 'copy', $event)"
-        [class.copy-success]="copiedItemId === item.id"
-        [class.action-active]="activeActionItem === item.id && activeActionType === 'copy'">
-        <svg *ngIf="copiedItemId === item.id" xmlns="http://www.w3.org/2000/svg" fill="none"
-            viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="copy-success-icon">
-            <path stroke-linecap="round" stroke-linejoin="round"
-                d="M9 12.75L11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 01-1.043 3.296 3.745 3.745 0 01-3.296 1.043A3.745 3.745 0 0112 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 01-3.296-1.043 3.745 3.745 0 01-1.043-3.296A3.745 3.745 0 013 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 011.043-3.296 3.746 3.746 0 013.296-1.043A3.746 3.746 0 0112 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 013.296 1.043 3.746 3.746 0 011.043 3.296A3.745 3.745 0 0121 12z" />
-        </svg>
-        <svg *ngIf="copiedItemId !== item.id" xmlns="http://www.w3.org/2000/svg" fill="none"
-            viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round"
-                d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 00-3.375-3.375h-1.5a1.125 1.125 0 01-1.125-1.125v-1.5a3.375 3.375 0 00-3.375-3.375H9.75" />
-        </svg>
-    </button>
-    <!-- Download Button with toggle -->
-    <button class="result-action-icon-btn"
-        title="Download"
-        (click)="toggleActionOptions(item.id, 'download', $event)"
-        [class.action-active]="activeActionItem === item.id && activeActionType === 'download'">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round"
-                d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-        </svg>
-    </button>
-</div>
-
-<!-- Options Row - appears below the header -->
-<div class="action-options-row"
-    [class.expanded]="activeActionItem === item.id"
-    (click)="$event.stopPropagation()">
-    <!-- Copy Options -->
-    <ng-container *ngIf="activeActionType === 'copy' && activeActionItem === item.id">
-        <span class="options-label">Copy as:</span>
-        <button class="option-pill"
-            *ngFor="let opt of getCopyOptions(item.type)"
-            (click)="copyAs(item, opt.format)">
-            <!-- Text icon -->
-            <svg *ngIf="opt.icon === 'text'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" />
-            </svg>
-            <!-- Code/JSON icon -->
-            <svg *ngIf="opt.icon === 'code'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
-            </svg>
-            <!-- HTML icon -->
-            <svg *ngIf="opt.icon === 'html'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M14.25 9.75L16.5 12l-2.25 2.25m-4.5 0L7.5 12l2.25-2.25M6 20.25h12A2.25 2.25 0 0020.25 18V6A2.25 2.25 0 0018 3.75H6A2.25 2.25 0 003.75 6v12A2.25 2.25 0 006 20.25z" />
-            </svg>
-            <!-- Markdown icon -->
-            <svg *ngIf="opt.icon === 'markdown'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-            </svg>
-            {{ opt.label }}
-        </button>
-    </ng-container>
-    <!-- Download Options -->
-    <ng-container *ngIf="activeActionType === 'download' && activeActionItem === item.id">
-        <span class="options-label">Download as:</span>
-        <button class="option-pill"
-            *ngFor="let opt of getDownloadOptions()"
-            (click)="downloadAs(item, opt.format)">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-            </svg>
-            {{ opt.label }}
-        </button>
-    </ng-container>
-</div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* Action Options Row */
+/* Action Options Row - lives inside header as second row */
 .action-options-row {
     display: flex;
     align-items: center;
@@ -276,15 +67,15 @@ getDownloadOptions(): {label: string, format: string}[] {
     transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1),
                 opacity 0.25s ease,
                 padding 0.35s ease;
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.04), rgba(167, 139, 250, 0.04));
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.05), rgba(167, 139, 250, 0.04));
     border-top: 0px solid var(--border-color);
     flex-wrap: wrap;
 }
 
 .action-options-row.expanded {
-    max-height: 60px;
+    max-height: 56px;
     opacity: 1;
-    padding: 10px 14px;
+    padding: 8px 14px;
     border-top-width: 1px;
 }
 
@@ -303,11 +94,11 @@ getDownloadOptions(): {label: string, format: string}[] {
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    padding: 5px 12px;
+    padding: 4px 11px;
     background: var(--bg-color);
     border: 1px solid var(--border-color);
     border-radius: 20px;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
     color: var(--text-color);
     cursor: pointer;
@@ -322,37 +113,30 @@ getDownloadOptions(): {label: string, format: string}[] {
 .option-pill:nth-child(5) { animation-delay: 0.12s; }
 
 @keyframes pillFadeIn {
-    from {
-        opacity: 0;
-        transform: translateY(-6px) scale(0.92);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
+    from { opacity: 0; transform: translateY(-5px) scale(0.93); }
+    to   { opacity: 1; transform: translateY(0)   scale(1);    }
 }
 
 .option-pill svg {
-    width: 13px;
-    height: 13px;
+    width: 12px;
+    height: 12px;
     stroke: currentColor;
     flex-shrink: 0;
-    transition: all 0.2s ease;
 }
 
 .option-pill:hover {
     background: linear-gradient(135deg, var(--primary-color), #a78bfa);
     border-color: var(--primary-color);
     color: white;
-    transform: translateY(-2px);
-    box-shadow: 0 4px 10px rgba(139, 92, 246, 0.3);
+    transform: translateY(-1px);
+    box-shadow: 0 3px 8px rgba(139, 92, 246, 0.3);
 }
 
 .option-pill:hover svg {
     stroke: white;
 }
 
-/* Active state for copy/download buttons when options are open */
+/* Active state for the toggled button */
 .result-action-icon-btn.action-active {
     background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(167, 139, 250, 0.1));
     border-color: var(--primary-color);
@@ -362,4 +146,3 @@ getDownloadOptions(): {label: string, format: string}[] {
     stroke: var(--primary-color);
     opacity: 1;
 }
-
