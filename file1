@@ -1,20 +1,56 @@
-// Add to state declarations
-const [isFormInitialized, setIsFormInitialized] = useState(false);
+import axiosInstance from './axiosInstance';
 
-// Update isDirty to require initialization
-const isDirty =
-  isFormInitialized &&
-  settings !== null &&
-  (Number(form.file_size_limit) !== settings.file_size_limit ||
-    Number(form.no_of_file_upload) !== settings.no_of_file_upload);
+export interface AdminSettings {
+  file_size_limit: number;
+  no_of_file_upload: number;
+}
 
-// Update the settings sync useEffect to set initialized AFTER form is set
-useEffect(() => {
-  if (settings) {
-    setForm({
-      file_size_limit: String(settings.file_size_limit),
-      no_of_file_upload: String(settings.no_of_file_upload),
-    });
-    setIsFormInitialized(true);
+export interface AdminSettingsResponse {
+  status: 'Success' | 'Error';
+  result: AdminSettings;
+}
+
+export interface SaveAdminSettingsResponse {
+  status: 'Success' | 'Error';
+  result: string;
+}
+
+export const fetchAdminSettingsApi = async (): Promise<AdminSettings> => {
+  const response = await axiosInstance.get<AdminSettingsResponse>('/auth/get_admin_settings');
+  return response.data.result;
+};
+
+export const saveAdminSettingsApi = async (payload: AdminSettings): Promise<string> => {
+  const response = await axiosInstance.post<SaveAdminSettingsResponse>(
+    '/auth/save_admin_settings',
+    payload
+  );
+  return response.data.result;
+};
+
+
+
+
+
+export const saveAdminSettings = createAsyncThunk(
+  'generalSettings/save',
+  async (payload: AdminSettings, { rejectWithValue }) => {
+    try {
+      const message = await saveAdminSettingsApi(payload);
+      return { settings: payload, message };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to save settings';
+      return rejectWithValue(message);
+    }
   }
-}, [settings]);
+);
+
+
+
+
+
+.addCase(saveAdminSettings.fulfilled, (state, action) => {
+  state.saving = false;
+  state.saveSuccess = true;
+  state.settings = action.payload.settings;
+})
