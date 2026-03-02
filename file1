@@ -1,11 +1,794 @@
-import styles from './Footer.module.scss';
+{
+  "settings": {
+    "title": "Settings",
+    "subtitle": "Manage your workspace",
+    "nav": {
+      "personalInformation": "Personal Information",
+      "roleManagement": "Role Management",
+      "ragManagement": "RAG Management",
+      "generalSettings": "General Settings"
+    },
+    "roleManagement": {
+      "title": "Role Management",
+      "description": "Manage roles and permissions across your organization.",
+      "table": {
+        "user": "User",
+        "email": "Email",
+        "accessRole": "Access Role",
+        "actions": "Actions"
+      },
+      "roles": {
+        "admin": "Admin",
+        "user": "User"
+      },
+      "actions": {
+        "edit": "Edit",
+        "save": "Save",
+        "cancel": "Cancel"
+      },
+      "status": {
+        "loading": "Loading users...",
+        "error": "Something went wrong. Please try again.",
+        "retry": "Retry",
+        "noResults": "No results found",
+        "records": "record",
+        "recordsPlural": "records"
+      }
+    },
+    "generalSettings": {
+      "title": "General Settings",
+      "description": "Configure application-wide preferences.",
+      "fileSizeLimit": {
+        "label": "File Size Limit",
+        "unit": "MB",
+        "placeholder": "Enter file size limit",
+        "hint": "Min 1 MB — Max 20 MB"
+      },
+      "noOfFileUpload": {
+        "label": "Number of File Uploads",
+        "placeholder": "Enter number of files",
+        "hint": "Min 1 — Max 20"
+      },
+      "saveButton": "Save Settings",
+      "saving": "Saving...",
+      "status": {
+        "loading": "Loading settings...",
+        "error": "Failed to load settings.",
+        "retry": "Retry",
+        "saveSuccess": "Settings saved successfully.",
+        "saveError": "Failed to save settings."
+      }
+    }
+  }
+}
 
-export default function Footer() {
-  const year = new Date().getFullYear();
+
+
+
+
+
+
+
+{
+  "settings": {
+    "title": "설정",
+    "subtitle": "워크스페이스 관리",
+    "nav": {
+      "personalInformation": "개인 정보",
+      "roleManagement": "역할 관리",
+      "ragManagement": "RAG 관리",
+      "generalSettings": "일반 설정"
+    },
+    "roleManagement": {
+      "title": "역할 관리",
+      "description": "조직의 역할 및 권한을 관리합니다.",
+      "table": {
+        "user": "사용자",
+        "email": "이메일",
+        "accessRole": "접근 역할",
+        "actions": "작업"
+      },
+      "roles": {
+        "admin": "관리자",
+        "user": "사용자"
+      },
+      "actions": {
+        "edit": "편집",
+        "save": "저장",
+        "cancel": "취소"
+      },
+      "status": {
+        "loading": "사용자 불러오는 중...",
+        "error": "오류가 발생했습니다. 다시 시도해주세요.",
+        "retry": "재시도",
+        "noResults": "결과를 찾을 수 없습니다",
+        "records": "건",
+        "recordsPlural": "건"
+      }
+    },
+    "generalSettings": {
+      "title": "일반 설정",
+      "description": "애플리케이션 전반의 환경설정을 구성합니다.",
+      "fileSizeLimit": {
+        "label": "파일 크기 제한",
+        "unit": "MB",
+        "placeholder": "파일 크기 제한 입력",
+        "hint": "최소 1 MB — 최대 20 MB"
+      },
+      "noOfFileUpload": {
+        "label": "파일 업로드 수",
+        "placeholder": "파일 수 입력",
+        "hint": "최소 1 — 최대 20"
+      },
+      "saveButton": "설정 저장",
+      "saving": "저장 중...",
+      "status": {
+        "loading": "설정 불러오는 중...",
+        "error": "설정을 불러오지 못했습니다.",
+        "retry": "재시도",
+        "saveSuccess": "설정이 저장되었습니다.",
+        "saveError": "설정 저장에 실패했습니다."
+      }
+    }
+  }
+}
+
+
+
+
+api/generalSettingsApi.ts
+------------------------
+
+import axiosInstance from './axiosInstance';
+
+export interface AdminSettings {
+  file_size_limit: number;
+  no_of_file_upload: number;
+}
+
+export interface AdminSettingsResponse {
+  status: 'Success' | 'Error';
+  result: AdminSettings;
+}
+
+export const fetchAdminSettingsApi = async (): Promise<AdminSettings> => {
+  const response = await axiosInstance.get<AdminSettingsResponse>('/auth/get_admin_settings');
+  return response.data.result;
+};
+
+export const saveAdminSettingsApi = async (payload: AdminSettings): Promise<void> => {
+  await axiosInstance.post('/auth/save_admin_settings', payload);
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+store/slices/generalSettingsSlice.ts
+------------------------------------
+
+import { createAsyncThunk, createSlice, PayloadAction } from '@reduxjs/toolkit';
+import {
+  AdminSettings,
+  fetchAdminSettingsApi,
+  saveAdminSettingsApi,
+} from '../../api/generalSettingsApi';
+
+interface GeneralSettingsState {
+  settings: AdminSettings | null;
+  loading: boolean;
+  saving: boolean;
+  error: string | null;
+  saveError: string | null;
+  saveSuccess: boolean;
+}
+
+const initialState: GeneralSettingsState = {
+  settings: null,
+  loading: false,
+  saving: false,
+  error: null,
+  saveError: null,
+  saveSuccess: false,
+};
+
+export const fetchAdminSettings = createAsyncThunk(
+  'generalSettings/fetch',
+  async (_, { rejectWithValue }) => {
+    try {
+      return await fetchAdminSettingsApi();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to fetch settings';
+      return rejectWithValue(message);
+    }
+  }
+);
+
+export const saveAdminSettings = createAsyncThunk(
+  'generalSettings/save',
+  async (payload: AdminSettings, { rejectWithValue }) => {
+    try {
+      await saveAdminSettingsApi(payload);
+      return payload;
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to save settings';
+      return rejectWithValue(message);
+    }
+  }
+);
+
+const generalSettingsSlice = createSlice({
+  name: 'generalSettings',
+  initialState,
+  reducers: {
+    clearSaveStatus(state) {
+      state.saveSuccess = false;
+      state.saveError = null;
+    },
+  },
+  extraReducers: (builder) => {
+    builder
+      // fetch
+      .addCase(fetchAdminSettings.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchAdminSettings.fulfilled, (state, action: PayloadAction<AdminSettings>) => {
+        state.loading = false;
+        state.settings = action.payload;
+      })
+      .addCase(fetchAdminSettings.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      })
+      // save
+      .addCase(saveAdminSettings.pending, (state) => {
+        state.saving = true;
+        state.saveError = null;
+        state.saveSuccess = false;
+      })
+      .addCase(saveAdminSettings.fulfilled, (state, action: PayloadAction<AdminSettings>) => {
+        state.saving = false;
+        state.saveSuccess = true;
+        state.settings = action.payload;
+      })
+      .addCase(saveAdminSettings.rejected, (state, action) => {
+        state.saving = false;
+        state.saveError = action.payload as string;
+      });
+  },
+});
+
+export const { clearSaveStatus } = generalSettingsSlice.actions;
+export default generalSettingsSlice.reducer;
+
+
+
+
+
+
+
+
+
+store/index.ts
+--------------
+
+import { configureStore } from '@reduxjs/toolkit';
+import roleReducer from './slices/roleSlice';
+import generalSettingsReducer from './slices/generalSettingsSlice';
+
+export const store = configureStore({
+  reducer: {
+    roles: roleReducer,
+    generalSettings: generalSettingsReducer,
+  },
+});
+
+export type RootState = ReturnType<typeof store.getState>;
+export type AppDispatch = typeof store.dispatch;
+
+
+
+
+
+
+
+pages/GeneralSettings.module.scss
+---------------------------------
+
+
+.formCard {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  padding: 32px;
+  box-shadow: var(--shadow-sm);
+  max-width: 540px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.fieldGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.labelRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.label {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.inputWrapper {
+  display: flex;
+  align-items: center;
+  border: 1.5px solid var(--border-subtle);
+  border-radius: 9px;
+  background: var(--bg-surface);
+  overflow: hidden;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+
+  &:focus-within {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px var(--accent-light);
+  }
+
+  &.error {
+    border-color: #dc2626;
+    box-shadow: 0 0 0 3px #fee2e2;
+  }
+}
+
+.input {
+  flex: 1;
+  border: none;
+  outline: none;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-family: system-ui, sans-serif;
+  color: var(--text-primary);
+  background: transparent;
+
+  &::placeholder {
+    color: var(--text-tertiary);
+  }
+
+  // hide number arrows
+  &::-webkit-outer-spin-button,
+  &::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  &[type='number'] {
+    -moz-appearance: textfield;
+  }
+}
+
+.unit {
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  background: var(--bg-sidebar);
+  border-left: 1.5px solid var(--border-subtle);
+  user-select: none;
+}
+
+.errorText {
+  font-size: 12px;
+  color: #dc2626;
+  margin-top: 2px;
+}
+
+.divider {
+  height: 1px;
+  background: var(--border-subtle);
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.saveBtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 24px;
+  border-radius: 9px;
+  border: none;
+  background: var(--accent-primary);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: system-ui, sans-serif;
+  cursor: pointer;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+
+  &:hover:not(:disabled) {
+    background: var(--accent-hover);
+    box-shadow: var(--shadow-md);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  svg {
+    width: 15px;
+    height: 15px;
+  }
+}
+
+.successMsg {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #16a34a;
+  font-weight: 500;
+
+  svg {
+    width: 15px;
+    height: 15px;
+  }
+}
+
+.saveErrMsg {
+  font-size: 13px;
+  color: #dc2626;
+}
+
+.spinner {
+  display: inline-block;
+  width: 15px;
+  height: 15px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.skeletonCard {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  padding: 32px;
+  box-shadow: var(--shadow-sm);
+  max-width: 540px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.skeletonField {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skeletonLabel {
+  height: 13px;
+  width: 140px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--bg-hover) 25%, var(--border-subtle) 50%, var(--bg-hover) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+.skeletonInput {
+  height: 42px;
+  border-radius: 9px;
+  background: linear-gradient(90deg, var(--bg-hover) 25%, var(--border-subtle) 50%, var(--bg-hover) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+.skeletonBtn {
+  height: 40px;
+  width: 130px;
+  border-radius: 9px;
+  background: linear-gradient(90deg, var(--bg-hover) 25%, var(--border-subtle) 50%, var(--bg-hover) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+
+
+
+
+
+
+
+pages/GeneralSettings.tsx
+------------------------
+
+import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useDispatch, useSelector } from 'react-redux';
+import type { AppDispatch, RootState } from '../store';
+import {
+  clearSaveStatus,
+  fetchAdminSettings,
+  saveAdminSettings,
+} from '../store/slices/generalSettingsSlice';
+import styles from './GeneralSettings.module.scss';
+import pageStyles from './PageShell.module.scss';
+
+interface FormValues {
+  file_size_limit: string;
+  no_of_file_upload: string;
+}
+
+interface FormErrors {
+  file_size_limit?: string;
+  no_of_file_upload?: string;
+}
+
+export default function GeneralSettings() {
+  const { t } = useTranslation();
+  const dispatch = useDispatch<AppDispatch>();
+  const { settings, loading, saving, error, saveSuccess, saveError } = useSelector(
+    (state: RootState) => state.generalSettings
+  );
+
+  const [form, setForm] = useState<FormValues>({
+    file_size_limit: '',
+    no_of_file_upload: '',
+  });
+  const [errors, setErrors] = useState<FormErrors>({});
+
+  useEffect(() => {
+    dispatch(fetchAdminSettings());
+  }, [dispatch]);
+
+  // sync form when settings load
+  useEffect(() => {
+    if (settings) {
+      setForm({
+        file_size_limit: String(settings.file_size_limit),
+        no_of_file_upload: String(settings.no_of_file_upload),
+      });
+    }
+  }, [settings]);
+
+  // auto-clear save status after 3s
+  useEffect(() => {
+    if (saveSuccess || saveError) {
+      const timer = setTimeout(() => dispatch(clearSaveStatus()), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [saveSuccess, saveError, dispatch]);
+
+  const validate = (): boolean => {
+    const newErrors: FormErrors = {};
+    const fileSize = Number(form.file_size_limit);
+    const fileCount = Number(form.no_of_file_upload);
+
+    if (!form.file_size_limit || isNaN(fileSize) || fileSize < 1 || fileSize > 20) {
+      newErrors.file_size_limit = 'Value must be between 1 and 20 MB.';
+    }
+    if (!form.no_of_file_upload || isNaN(fileCount) || fileCount < 1 || fileCount > 20) {
+      newErrors.no_of_file_upload = 'Value must be between 1 and 20.';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
+    setErrors((prev) => ({ ...prev, [name]: undefined }));
+    dispatch(clearSaveStatus());
+  };
+
+  const handleSave = () => {
+    if (!validate()) return;
+    dispatch(
+      saveAdminSettings({
+        file_size_limit: Number(form.file_size_limit),
+        no_of_file_upload: Number(form.no_of_file_upload),
+      })
+    );
+  };
+
+  if (loading) {
+    return (
+      <div className={pageStyles.page}>
+        <div className={pageStyles.pageHeader}>
+          <h1 className={pageStyles.title}>{t('settings.generalSettings.title')}</h1>
+          <p className={pageStyles.description}>{t('settings.generalSettings.description')}</p>
+        </div>
+        <div className={pageStyles.pageContent}>
+          <div className={styles.skeletonCard}>
+            {[1, 2].map((i) => (
+              <div key={i} className={styles.skeletonField}>
+                <div className={styles.skeletonLabel} />
+                <div className={styles.skeletonInput} />
+              </div>
+            ))}
+            <div className={styles.skeletonBtn} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className={pageStyles.page}>
+        <div className={pageStyles.pageHeader}>
+          <h1 className={pageStyles.title}>{t('settings.generalSettings.title')}</h1>
+          <p className={pageStyles.description}>{t('settings.generalSettings.description')}</p>
+        </div>
+        <div className={pageStyles.pageContent}>
+          <div className={styles.formCard}>
+            <p className={styles.saveErrMsg}>{t('settings.generalSettings.status.error')}</p>
+            <button className={styles.saveBtn} onClick={() => dispatch(fetchAdminSettings())}>
+              {t('settings.generalSettings.status.retry')}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <footer className={styles.footer}>
-      <span>© {year} MyApp. All rights reserved.</span>
-    </footer>
+    <div className={pageStyles.page}>
+      <div className={pageStyles.pageHeader}>
+        <h1 className={pageStyles.title}>{t('settings.generalSettings.title')}</h1>
+        <p className={pageStyles.description}>{t('settings.generalSettings.description')}</p>
+      </div>
+      <div className={pageStyles.pageContent}>
+        <div className={styles.formCard}>
+
+          {/* File Size Limit */}
+          <div className={styles.fieldGroup}>
+            <div className={styles.labelRow}>
+              <label className={styles.label}>
+                {t('settings.generalSettings.fileSizeLimit.label')}
+              </label>
+              <span className={styles.hint}>
+                {t('settings.generalSettings.fileSizeLimit.hint')}
+              </span>
+            </div>
+            <div className={`${styles.inputWrapper} ${errors.file_size_limit ? styles.error : ''}`}>
+              <input
+                className={styles.input}
+                type="number"
+                name="file_size_limit"
+                min={1}
+                max={20}
+                value={form.file_size_limit}
+                onChange={handleChange}
+                placeholder={t('settings.generalSettings.fileSizeLimit.placeholder')}
+              />
+              <span className={styles.unit}>
+                {t('settings.generalSettings.fileSizeLimit.unit')}
+              </span>
+            </div>
+            {errors.file_size_limit && (
+              <span className={styles.errorText}>{errors.file_size_limit}</span>
+            )}
+          </div>
+
+          {/* Number of File Uploads */}
+          <div className={styles.fieldGroup}>
+            <div className={styles.labelRow}>
+              <label className={styles.label}>
+                {t('settings.generalSettings.noOfFileUpload.label')}
+              </label>
+              <span className={styles.hint}>
+                {t('settings.generalSettings.noOfFileUpload.hint')}
+              </span>
+            </div>
+            <div className={`${styles.inputWrapper} ${errors.no_of_file_upload ? styles.error : ''}`}>
+              <input
+                className={styles.input}
+                type="number"
+                name="no_of_file_upload"
+                min={1}
+                max={20}
+                value={form.no_of_file_upload}
+                onChange={handleChange}
+                placeholder={t('settings.generalSettings.noOfFileUpload.placeholder')}
+              />
+            </div>
+            {errors.no_of_file_upload && (
+              <span className={styles.errorText}>{errors.no_of_file_upload}</span>
+            )}
+          </div>
+
+          <div className={styles.divider} />
+
+          {/* Footer */}
+          <div className={styles.footer}>
+            <button
+              className={styles.saveBtn}
+              onClick={handleSave}
+              disabled={saving}
+            >
+              {saving ? (
+                <>
+                  <span className={styles.spinner} />
+                  {t('settings.generalSettings.saving')}
+                </>
+              ) : (
+                <>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                    <polyline points="17 21 17 13 7 13 7 21" />
+                    <polyline points="7 3 7 8 15 8" />
+                  </svg>
+                  {t('settings.generalSettings.saveButton')}
+                </>
+              )}
+            </button>
+
+            {saveSuccess && (
+              <span className={styles.successMsg}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                {t('settings.generalSettings.status.saveSuccess')}
+              </span>
+            )}
+
+            {saveError && (
+              <span className={styles.saveErrMsg}>
+                {t('settings.generalSettings.status.saveError')}
+              </span>
+            )}
+          </div>
+
+        </div>
+      </div>
+    </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
