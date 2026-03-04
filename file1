@@ -1,377 +1,3 @@
-import axios from "axios";
-
-const LOCAL_STORAGE_KEY = "ATLASIAN_CONNECTION";
-
-// ── Helpers ───────────────────────────────────────────
-
-const getAuthHeader = () => {
-  const token = localStorage.getItem(LOCAL_STORAGE_KEY) ?? "";
-  return { Authorization: `Bearer ${token}` };
-};
-
-// ── Types ─────────────────────────────────────────────
-
-export interface ConnectPayload {
-  username: string;
-  password: string;
-}
-
-export interface ConnectResponse {
-  status: string;
-  result: string;
-}
-
-export interface DisconnectResponse {
-  status: string;
-  result: string;
-}
-
-export interface JiraProject {
-  key: string;
-  id: string;
-  type: "project";
-  icon: string;
-}
-
-export interface ProjectsResult {
-  [id: string]: JiraProject;
-}
-
-export interface ProjectsResponse {
-  status: string;
-  result: ProjectsResult;
-}
-
-export interface JiraTicket {
-  type: string;
-  summary: string;
-  key: string;
-}
-
-export interface JiraIssueGroup {
-  icon: string;
-  tickets: JiraTicket[];
-}
-
-export interface ProjectDataResult {
-  [issueType: string]: JiraIssueGroup;
-}
-
-export interface ProjectDataResponse {
-  status: string;
-  result: ProjectDataResult;
-}
-
-export interface FavoritePayload {
-  project_key: string;
-}
-
-export interface FavoriteResponse {
-  status: string;
-  result: string;
-}
-
-// ── Service ───────────────────────────────────────────
-
-export const atlassianService = {
-  // Auth
-  connect: async (payload: ConnectPayload): Promise<ConnectResponse> => {
-    const credentials = btoa(`${payload.username}:${payload.password}`);
-    const response = await axios.post<ConnectResponse>(
-      "/api/atlassian/connect",
-      payload,
-      {
-        headers: {
-          Authorization: `Basic ${credentials}`,
-        },
-      }
-    );
-    return response.data;
-  },
-
-  disconnect: async (): Promise<DisconnectResponse> => {
-    const response = await axios.put<DisconnectResponse>(
-      "/api/atlassian/disconnect",
-      {},
-      { headers: getAuthHeader() }
-    );
-    return response.data;
-  },
-
-  // Jira Projects
-  fetchAllProjects: async (): Promise<ProjectsResponse> => {
-    const response = await axios.get<ProjectsResponse>(
-      "/api/jira/projects",
-      { headers: getAuthHeader() }
-    );
-    return response.data;
-  },
-
-  fetchFavoriteProjects: async (): Promise<ProjectsResponse> => {
-    const response = await axios.get<ProjectsResponse>(
-      "/api/jira/projects/favorites",
-      { headers: getAuthHeader() }
-    );
-    return response.data;
-  },
-
-  addFavoriteProject: async (
-    payload: FavoritePayload
-  ): Promise<FavoriteResponse> => {
-    const response = await axios.post<FavoriteResponse>(
-      "/api/jira/projects/favorites",
-      payload,
-      { headers: getAuthHeader() }
-    );
-    return response.data;
-  },
-
-  removeFavoriteProject: async (
-    payload: FavoritePayload
-  ): Promise<FavoriteResponse> => {
-    const response = await axios.delete<FavoriteResponse>(
-      "/api/jira/projects/favorites",
-      {
-        headers: getAuthHeader(),
-        data: payload,
-      }
-    );
-    return response.data;
-  },
-
-  fetchProjectData: async (id: string): Promise<ProjectDataResponse> => {
-    const response = await axios.get<ProjectDataResponse>(
-      `/api/jira/get_project_data/${id}`,
-      { headers: getAuthHeader() }
-    );
-    return response.data;
-  },
-};
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
-import {
-  atlassianService,
-  type JiraProject,
-  type ProjectsResult,
-  type ProjectDataResult,
-} from "./atlassianService";
-
-export interface JiraState {
-  allProjects: ProjectsResult;
-  favoriteProjects: ProjectsResult;
-  isLoadingProjects: boolean;
-  isFavoriteUpdating: Record<string, boolean>;
-  // project data (issue groups) keyed by project id
-  projectData: Record<string, ProjectDataResult>;
-  loadingProjectId: string | null; // which project is currently loading data
-  error: string | null;
-}
-
-const initialState: JiraState = {
-  allProjects: {},
-  favoriteProjects: {},
-  isLoadingProjects: false,
-  isFavoriteUpdating: {},
-  projectData: {},
-  loadingProjectId: null,
-  error: null,
-};
-
-// ── Thunks ────────────────────────────────────────────
-
-export const fetchJiraProjects = createAsyncThunk(
-  "jira/fetchProjects",
-  async (_, { rejectWithValue }) => {
-    try {
-      const [allRes, favRes] = await Promise.all([
-        atlassianService.fetchAllProjects(),
-        atlassianService.fetchFavoriteProjects(),
-      ]);
-
-      if (allRes.status !== "Success") {
-        return rejectWithValue("Failed to fetch projects.");
-      }
-      if (favRes.status !== "Success") {
-        return rejectWithValue("Failed to fetch favorite projects.");
-      }
-
-      return {
-        allProjects: allRes.result,
-        favoriteProjects: favRes.result,
-      };
-    } catch (error: any) {
-      return rejectWithValue(
-        error?.response?.data?.message ?? "Failed to load Jira projects."
-      );
-    }
-  }
-);
-
-export const addFavoriteProject = createAsyncThunk(
-  "jira/addFavorite",
-  async (project: JiraProject, { rejectWithValue }) => {
-    try {
-      const res = await atlassianService.addFavoriteProject({
-        project_key: project.id,
-      });
-      if (res.status !== "Success") return rejectWithValue("Failed to add favorite.");
-      return project;
-    } catch (error: any) {
-      return rejectWithValue(
-        error?.response?.data?.message ?? "Failed to add favorite."
-      );
-    }
-  }
-);
-
-export const removeFavoriteProject = createAsyncThunk(
-  "jira/removeFavorite",
-  async (project: JiraProject, { rejectWithValue }) => {
-    try {
-      const res = await atlassianService.removeFavoriteProject({
-        project_key: project.id,
-      });
-      if (res.status !== "Success") return rejectWithValue("Failed to remove favorite.");
-      return project;
-    } catch (error: any) {
-      return rejectWithValue(
-        error?.response?.data?.message ?? "Failed to remove favorite."
-      );
-    }
-  }
-);
-
-export const fetchProjectData = createAsyncThunk(
-  "jira/fetchProjectData",
-  async (project: JiraProject, { rejectWithValue }) => {
-    try {
-      const res = await atlassianService.fetchProjectData(project.id);
-      if (res.status !== "Success") {
-        return rejectWithValue("Failed to load project data.");
-      }
-      return { id: project.id, data: res.result };
-    } catch (error: any) {
-      return rejectWithValue(
-        error?.response?.data?.message ?? "Failed to load project data."
-      );
-    }
-  }
-);
-
-// ── Slice ─────────────────────────────────────────────
-
-const jiraSlice = createSlice({
-  name: "jira",
-  initialState,
-  reducers: {
-    clearJiraError(state) {
-      state.error = null;
-    },
-    resetJiraState() {
-      return initialState;
-    },
-  },
-  extraReducers: (builder) => {
-    // Fetch projects
-    builder
-      .addCase(fetchJiraProjects.pending, (state) => {
-        state.isLoadingProjects = true;
-        state.error = null;
-      })
-      .addCase(fetchJiraProjects.fulfilled, (state, action) => {
-        state.isLoadingProjects = false;
-        state.allProjects = action.payload.allProjects;
-        state.favoriteProjects = action.payload.favoriteProjects;
-      })
-      .addCase(fetchJiraProjects.rejected, (state, action) => {
-        state.isLoadingProjects = false;
-        state.error = action.payload as string;
-      });
-
-    // Add favorite
-    builder
-      .addCase(addFavoriteProject.pending, (state, action) => {
-        state.isFavoriteUpdating[action.meta.arg.id] = true;
-      })
-      .addCase(addFavoriteProject.fulfilled, (state, action) => {
-        const project = action.payload;
-        state.isFavoriteUpdating[project.id] = false;
-        state.favoriteProjects[project.id] = project;
-      })
-      .addCase(addFavoriteProject.rejected, (state, action) => {
-        state.isFavoriteUpdating[action.meta.arg.id] = false;
-        state.error = action.payload as string;
-      });
-
-    // Remove favorite
-    builder
-      .addCase(removeFavoriteProject.pending, (state, action) => {
-        state.isFavoriteUpdating[action.meta.arg.id] = true;
-      })
-      .addCase(removeFavoriteProject.fulfilled, (state, action) => {
-        const project = action.payload;
-        state.isFavoriteUpdating[project.id] = false;
-        delete state.favoriteProjects[project.id];
-        // also clear cached project data when removed from favorites
-        delete state.projectData[project.id];
-      })
-      .addCase(removeFavoriteProject.rejected, (state, action) => {
-        state.isFavoriteUpdating[action.meta.arg.id] = false;
-        state.error = action.payload as string;
-      });
-
-    // Fetch project data
-    builder
-      .addCase(fetchProjectData.pending, (state, action) => {
-        state.loadingProjectId = action.meta.arg.id;
-        state.error = null;
-      })
-      .addCase(fetchProjectData.fulfilled, (state, action) => {
-        state.loadingProjectId = null;
-        state.projectData[action.payload.id] = action.payload.data;
-      })
-      .addCase(fetchProjectData.rejected, (state, action) => {
-        state.loadingProjectId = null;
-        state.error = action.payload as string;
-      });
-  },
-});
-
-export const { clearJiraError, resetJiraState } = jiraSlice.actions;
-export default jiraSlice.reducer;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import React, { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import type { AppDispatch, RootState } from "../../store";
@@ -595,14 +221,14 @@ const ProjectDetailPanel: React.FC<ProjectDetailPanelProps> = ({ project, onBack
     <div className={styles.projectDetailPanel}>
       {/* Panel header */}
       <div className={styles.projectDetailHeader}>
-        <button className={styles.projectDetailBack} onClick={onBack}>
-          <BackIcon />
-          <span>Projects</span>
-        </button>
         <div className={styles.projectDetailTitle}>
           <ProjectAvatar projectKey={project.key} id={project.id} size="md" />
           <span className={styles.projectDetailName}>{project.key}</span>
         </div>
+        <button className={styles.projectDetailBack} onClick={onBack}>
+          <BackIcon />
+          <span>Projects</span>
+        </button>
       </div>
 
       {/* Loading */}
@@ -926,11 +552,6 @@ export const JiraTool: React.FC<JiraToolProps> = ({ onBack }) => {
 };
 
 export default JiraTool;
-
-
-
-
-
 
 
 
@@ -1659,7 +1280,7 @@ $error-border: #fecaca;
 .projectDetailHeader {
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: space-between;
   padding: 12px 14px;
   border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
@@ -1691,8 +1312,8 @@ $error-border: #fecaca;
   display: flex;
   align-items: center;
   gap: 8px;
-  flex: 1;
   min-width: 0;
+  overflow: hidden;
 }
 
 .projectDetailName {
