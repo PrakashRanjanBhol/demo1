@@ -17,9 +17,15 @@ interface DisconnectResponse {
 
 export const atlassianService = {
   connect: async (payload: ConnectPayload): Promise<ConnectResponse> => {
+    const credentials = btoa(`${payload.username}:${payload.password}`);
     const response = await axios.post<ConnectResponse>(
       "/api/atlassian/connect",
-      payload
+      payload,
+      {
+        headers: {
+          Authorization: `Basic ${credentials}`,
+        },
+      }
     );
     return response.data;
   },
@@ -31,129 +37,3 @@ export const atlassianService = {
     return response.data;
   },
 };
-
-
-
-
-
-
-
-
-
-import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
-import { atlassianService } from "./atlassianService";
-
-const LOCAL_STORAGE_KEY = "ATLASIAN_CONNECTION";
-
-export interface AtlassianState {
-  token: string | null;
-  isConnected: boolean;
-  isLoading: boolean;
-  error: string | null;
-}
-
-const loadFromStorage = (): string | null => {
-  try {
-    return localStorage.getItem(LOCAL_STORAGE_KEY);
-  } catch {
-    return null;
-  }
-};
-
-const initialState: AtlassianState = {
-  token: loadFromStorage(),
-  isConnected: !!loadFromStorage(),
-  isLoading: false,
-  error: null,
-};
-
-// ── Connect ───────────────────────────────────────────
-export const connectAtlassian = createAsyncThunk(
-  "atlassian/connect",
-  async (
-    payload: { username: string; password: string },
-    { rejectWithValue }
-  ) => {
-    try {
-      const data = await atlassianService.connect(payload);
-
-      if (data.status !== "Success") {
-        return rejectWithValue("Connection failed. Please check your credentials.");
-      }
-
-      localStorage.setItem(LOCAL_STORAGE_KEY, data.result);
-      return data.result;
-    } catch (error: any) {
-      return rejectWithValue(
-        error?.response?.data?.message ?? "Connection failed. Please try again."
-      );
-    }
-  }
-);
-
-// ── Disconnect ────────────────────────────────────────
-export const disconnectAtlassian = createAsyncThunk(
-  "atlassian/disconnect",
-  async (_, { rejectWithValue }) => {
-    try {
-      const data = await atlassianService.disconnect();
-
-      if (data.status !== "Success") {
-        return rejectWithValue("Disconnect failed. Please try again.");
-      }
-
-      localStorage.removeItem(LOCAL_STORAGE_KEY);
-      return true;
-    } catch (error: any) {
-      return rejectWithValue(
-        error?.response?.data?.message ?? "Disconnect failed. Please try again."
-      );
-    }
-  }
-);
-
-const atlassianSlice = createSlice({
-  name: "atlassian",
-  initialState,
-  reducers: {
-    clearError(state) {
-      state.error = null;
-    },
-  },
-  extraReducers: (builder) => {
-    // Connect
-    builder
-      .addCase(connectAtlassian.pending, (state) => {
-        state.isLoading = true;
-        state.error = null;
-      })
-      .addCase(connectAtlassian.fulfilled, (state, action) => {
-        state.isLoading = false;
-        state.isConnected = true;
-        state.token = action.payload;
-      })
-      .addCase(connectAtlassian.rejected, (state, action) => {
-        state.isLoading = false;
-        state.error = action.payload as string;
-      });
-
-    // Disconnect
-    builder
-      .addCase(disconnectAtlassian.pending, (state) => {
-        state.isLoading = true;
-        state.error = null;
-      })
-      .addCase(disconnectAtlassian.fulfilled, (state) => {
-        state.isLoading = false;
-        state.isConnected = false;
-        state.token = null;
-      })
-      .addCase(disconnectAtlassian.rejected, (state, action) => {
-        state.isLoading = false;
-        state.error = action.payload as string;
-      });
-  },
-});
-
-export const { clearError } = atlassianSlice.actions;
-export default atlassianSlice.reducer;
