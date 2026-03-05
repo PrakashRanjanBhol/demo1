@@ -1,778 +1,962 @@
-import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
-import {
-  atlassianService,
-  type JiraProject,
-  type ProjectsResult,
-  type ProjectDataResult,
-} from "./atlassianService";
+// Jira brand palette
+$star-gold: #f59e0b;
+$star-gold-hover: #d97706;
+$connected-green: #059669;
+$connected-bg: #ecfdf5;
+$connected-border: #a7f3d0;
+$error-red: #dc2626;
+$error-bg: #fef2f2;
+$error-border: #fecaca;
 
-export interface JiraState {
-  allProjects: ProjectsResult;
-  favoriteProjects: ProjectsResult;
-  isLoadingProjects: boolean;
-  isFavoriteUpdating: Record<string, boolean>;
-  // project data (issue groups) keyed by project id
-  projectData: Record<string, ProjectDataResult>;
-  loadingProjectId: string | null;
-  checkedTickets: string[]; // ticket keys currently checked in the open project
-  error: string | null;
+// ── Wrapper ───────────────────────────────────────────
+
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-main);
+  animation: fadeSlideIn 0.2s ease both;
 }
 
-const initialState: JiraState = {
-  allProjects: {},
-  favoriteProjects: {},
-  isLoadingProjects: false,
-  isFavoriteUpdating: {},
-  projectData: {},
-  loadingProjectId: null,
-  checkedTickets: [],
-  error: null,
-};
-
-// ── Thunks ────────────────────────────────────────────
-
-export const fetchJiraProjects = createAsyncThunk(
-  "jira/fetchProjects",
-  async (_, { rejectWithValue }) => {
-    try {
-      const [allRes, favRes] = await Promise.all([
-        atlassianService.fetchAllProjects(),
-        atlassianService.fetchFavoriteProjects(),
-      ]);
-
-      if (allRes.status !== "Success") {
-        return rejectWithValue("Failed to fetch projects.");
-      }
-      if (favRes.status !== "Success") {
-        return rejectWithValue("Failed to fetch favorite projects.");
-      }
-
-      return {
-        allProjects: allRes.result,
-        favoriteProjects: favRes.result,
-      };
-    } catch (error: any) {
-      return rejectWithValue(
-        error?.response?.data?.message ?? "Failed to load Jira projects."
-      );
-    }
+@keyframes fadeSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
   }
-);
-
-export const addFavoriteProject = createAsyncThunk(
-  "jira/addFavorite",
-  async (project: JiraProject, { rejectWithValue }) => {
-    try {
-      const res = await atlassianService.addFavoriteProject({
-        project_key: project.id,
-      });
-      if (res.status !== "Success") return rejectWithValue("Failed to add favorite.");
-      return project;
-    } catch (error: any) {
-      return rejectWithValue(
-        error?.response?.data?.message ?? "Failed to add favorite."
-      );
-    }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
-);
-
-export const removeFavoriteProject = createAsyncThunk(
-  "jira/removeFavorite",
-  async (project: JiraProject, { rejectWithValue }) => {
-    try {
-      const res = await atlassianService.removeFavoriteProject({
-        project_key: project.id,
-      });
-      if (res.status !== "Success") return rejectWithValue("Failed to remove favorite.");
-      return project;
-    } catch (error: any) {
-      return rejectWithValue(
-        error?.response?.data?.message ?? "Failed to remove favorite."
-      );
-    }
-  }
-);
-
-export const fetchProjectData = createAsyncThunk(
-  "jira/fetchProjectData",
-  async (project: JiraProject, { rejectWithValue }) => {
-    try {
-      const res = await atlassianService.fetchProjectData(project.id);
-      if (res.status !== "Success") {
-        return rejectWithValue("Failed to load project data.");
-      }
-      return { id: project.id, data: res.result };
-    } catch (error: any) {
-      return rejectWithValue(
-        error?.response?.data?.message ?? "Failed to load project data."
-      );
-    }
-  }
-);
-
-// ── Slice ─────────────────────────────────────────────
-
-const jiraSlice = createSlice({
-  name: "jira",
-  initialState,
-  reducers: {
-    clearJiraError(state) {
-      state.error = null;
-    },
-    resetJiraState() {
-      return initialState;
-    },
-    toggleTicket(state, action: { payload: string }) {
-      const key = action.payload;
-      const idx = state.checkedTickets.indexOf(key);
-      if (idx === -1) {
-        state.checkedTickets.push(key);
-      } else {
-        state.checkedTickets.splice(idx, 1);
-      }
-    },
-    clearCheckedTickets(state) {
-      state.checkedTickets = [];
-    },
-  },
-  extraReducers: (builder) => {
-    // Fetch projects
-    builder
-      .addCase(fetchJiraProjects.pending, (state) => {
-        state.isLoadingProjects = true;
-        state.error = null;
-      })
-      .addCase(fetchJiraProjects.fulfilled, (state, action) => {
-        state.isLoadingProjects = false;
-        state.allProjects = action.payload.allProjects;
-        state.favoriteProjects = action.payload.favoriteProjects;
-      })
-      .addCase(fetchJiraProjects.rejected, (state, action) => {
-        state.isLoadingProjects = false;
-        state.error = action.payload as string;
-      });
-
-    // Add favorite
-    builder
-      .addCase(addFavoriteProject.pending, (state, action) => {
-        state.isFavoriteUpdating[action.meta.arg.id] = true;
-      })
-      .addCase(addFavoriteProject.fulfilled, (state, action) => {
-        const project = action.payload;
-        state.isFavoriteUpdating[project.id] = false;
-        state.favoriteProjects[project.id] = project;
-      })
-      .addCase(addFavoriteProject.rejected, (state, action) => {
-        state.isFavoriteUpdating[action.meta.arg.id] = false;
-        state.error = action.payload as string;
-      });
-
-    // Remove favorite
-    builder
-      .addCase(removeFavoriteProject.pending, (state, action) => {
-        state.isFavoriteUpdating[action.meta.arg.id] = true;
-      })
-      .addCase(removeFavoriteProject.fulfilled, (state, action) => {
-        const project = action.payload;
-        state.isFavoriteUpdating[project.id] = false;
-        delete state.favoriteProjects[project.id];
-        // also clear cached project data when removed from favorites
-        delete state.projectData[project.id];
-      })
-      .addCase(removeFavoriteProject.rejected, (state, action) => {
-        state.isFavoriteUpdating[action.meta.arg.id] = false;
-        state.error = action.payload as string;
-      });
-
-    // Fetch project data
-    builder
-      .addCase(fetchProjectData.pending, (state, action) => {
-        state.loadingProjectId = action.meta.arg.id;
-        state.error = null;
-      })
-      .addCase(fetchProjectData.fulfilled, (state, action) => {
-        state.loadingProjectId = null;
-        state.projectData[action.payload.id] = action.payload.data;
-      })
-      .addCase(fetchProjectData.rejected, (state, action) => {
-        state.loadingProjectId = null;
-        state.error = action.payload as string;
-      });
-  },
-});
-
-export const { clearJiraError, resetJiraState, toggleTicket, clearCheckedTickets } = jiraSlice.actions;
-export default jiraSlice.reducer;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-import React, { useEffect, useState } from "react";
-import { useDispatch, useSelector } from "react-redux";
-import type { AppDispatch, RootState } from "../../store";
-import { disconnectAtlassian } from "./atlassianSlice";
-import {
-  fetchJiraProjects,
-  addFavoriteProject,
-  removeFavoriteProject,
-  fetchProjectData,
-  toggleTicket,
-  clearCheckedTickets,
-} from "./jiraSlice";
-import type { JiraProject, JiraIssueGroup, JiraTicket } from "./atlassianService";
-import styles from "./JiraTool.module.scss";
-
-import jiraIcon from "../../assets/icons/jira.png";
-
-interface JiraToolProps {
-  onBack: () => void;
 }
 
-type Tab = "favorites" | "all";
+// ── Unified tool header ───────────────────────────────
 
-// ── Icons ─────────────────────────────────────────────
+.toolHeader {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  background: var(--bg-main);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
 
-const StarFilledIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-  </svg>
-);
-
-const StarOutlineIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-  </svg>
-);
-
-const LogoutIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-    <polyline points="16 17 21 12 16 7" />
-    <line x1="21" y1="12" x2="9" y2="12" />
-  </svg>
-);
-
-const SearchIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="11" cy="11" r="8" />
-    <line x1="21" y1="21" x2="16.65" y2="16.65" />
-  </svg>
-);
-
-const ClearIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="18" y1="6" x2="6" y2="18" />
-    <line x1="6" y1="6" x2="18" y2="18" />
-  </svg>
-);
-
-const EmptyFolderIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-  </svg>
-);
-
-const ChevronDownIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="6 9 12 15 18 9" />
-  </svg>
-);
-
-const BackIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="15 18 9 12 15 6" />
-  </svg>
-);
-
-// ── Gradient palette ──────────────────────────────────
-
-const GRADIENTS: [string, string][] = [
-  ["#6366f1", "#8b5cf6"],
-  ["#0ea5e9", "#2684ff"],
-  ["#10b981", "#06b6d4"],
-  ["#f59e0b", "#ef4444"],
-  ["#ec4899", "#8b5cf6"],
-  ["#14b8a6", "#3b82f6"],
-  ["#f97316", "#eab308"],
-  ["#6366f1", "#ec4899"],
-  ["#84cc16", "#10b981"],
-  ["#8b5cf6", "#06b6d4"],
-];
-
-const getGradient = (key: string, id: string): [string, string] => {
-  const combined = `${key}_${id}`;
-  let hash = 0;
-  for (let i = 0; i < combined.length; i++) {
-    hash = combined.charCodeAt(i) + ((hash << 5) - hash);
+  &::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: linear-gradient(180deg, var(--accent-primary) 0%, var(--accent-hover) 100%);
+    border-radius: 0 2px 2px 0;
   }
-  return GRADIENTS[Math.abs(hash) % GRADIENTS.length];
-};
+}
+
+.toolHeaderTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 12px 9px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: rgba(79, 70, 229, 0.02);
+}
+
+.toolHeaderBottom {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px 10px 16px;
+  background: linear-gradient(
+    135deg,
+    rgba(79, 70, 229, 0.04) 0%,
+    rgba(79, 70, 229, 0.01) 100%
+  );
+}
+
+// ── Breadcrumb nav ────────────────────────────────────
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.breadcrumbLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 0.15s ease;
+  line-height: 1;
+
+  &::before {
+    content: "←";
+    font-size: 0.75rem;
+    transition: transform 0.15s ease;
+    display: inline-block;
+  }
+
+  &:hover {
+    color: var(--accent-primary);
+
+    &::before {
+      transform: translateX(-2px);
+    }
+  }
+}
+
+.breadcrumbSep {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  opacity: 0.4;
+  line-height: 1;
+  user-select: none;
+}
+
+.breadcrumbCurrent {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+  line-height: 1;
+}
+
+.logoutBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-main);
+  color: var(--text-tertiary);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+
+  &:hover:not(:disabled) {
+    background: $error-bg;
+    border-color: $error-border;
+    color: $error-red;
+    transform: scale(1.05);
+  }
+
+  &:active:not(:disabled) {
+    transform: scale(0.95);
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+}
+
+.toolIcon {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  border: 1px solid rgba(79, 70, 229, 0.2);
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 1px 4px rgba(79, 70, 229, 0.15), 0 0 0 3px rgba(79, 70, 229, 0.05);
+}
+
+.img {
+  object-fit: contain;
+  display: block;
+}
+
+.toolMeta {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.toolName {
+  font-size: 0.9625rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+
+.connectedBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: $connected-green;
+  background: $connected-bg;
+  border: 1px solid $connected-border;
+  border-radius: 20px;
+  padding: 2px 7px;
+  align-self: flex-start;
+  letter-spacing: 0.02em;
+}
+
+// ── Tabs ──────────────────────────────────────────────
+
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+  background: var(--bg-main);
+}
+
+.tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 11px 8px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-tertiary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin-bottom: -1px;
+  letter-spacing: 0.01em;
+
+  &:hover:not(.activeTab) {
+    color: var(--text-secondary);
+    background: var(--bg-hover);
+  }
+
+  &.activeTab {
+    color: var(--accent-primary);
+    border-bottom-color: var(--accent-primary);
+    font-weight: 600;
+    background: rgba(79, 70, 229, 0.02);
+  }
+}
+
+.tabCount {
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: var(--bg-surface);
+  color: var(--text-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 20px;
+  padding: 1px 5px;
+  min-width: 16px;
+  text-align: center;
+  transition: all 0.15s ease;
+
+  .activeTab & {
+    background: var(--accent-light);
+    color: var(--accent-primary);
+    border-color: rgba(79, 70, 229, 0.25);
+  }
+}
+
+// ── Search bar ────────────────────────────────────────
+
+.searchBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 10px 4px;
+  padding: 0 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  flex-shrink: 0;
+
+  &:focus-within {
+    border-color: rgba(79, 70, 229, 0.4);
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.08);
+    background: var(--bg-main);
+  }
+}
+
+.searchIcon {
+  display: flex;
+  align-items: center;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+.searchInput {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+  padding: 8px 0;
+  outline: none;
+
+  &::placeholder {
+    color: var(--text-tertiary);
+  }
+}
+
+.clearBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: none;
+  background: var(--text-tertiary);
+  color: var(--bg-main);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s ease;
+  padding: 0;
+
+  &:hover {
+    background: var(--text-secondary);
+  }
+}
+
+// ── Search bar ────────────────────────────────────────
+
+.searchBar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 10px 2px;
+  padding: 5px 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  flex-shrink: 0;
+
+  &:focus-within {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+    background: var(--bg-main);
+  }
+}
+
+.searchIcon {
+  display: flex;
+  align-items: center;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+  transition: color 0.15s ease;
+
+  .searchBar:focus-within & {
+    color: var(--accent-primary);
+  }
+}
+
+.searchInput {
+  flex: 1;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 0.8125rem;
+  color: var(--text-primary);
+  min-width: 0;
+
+  &::placeholder {
+    color: var(--text-tertiary);
+  }
+}
+
+.clearBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: none;
+  background: var(--text-tertiary);
+  color: #fff;
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0.5;
+  transition: opacity 0.15s ease, background 0.15s ease;
+
+  &:hover {
+    opacity: 1;
+    background: var(--accent-primary);
+  }
+}
+
+// ── Scrollable content ────────────────────────────────
+
+.content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 10px 16px;
+
+  &::-webkit-scrollbar {
+    width: 3px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: var(--border-subtle);
+    border-radius: 2px;
+
+    &:hover {
+      background: rgba(79, 70, 229, 0.2);
+    }
+  }
+}
+
+// ── Loading / error / empty states ───────────────────
+
+.loadingState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 48px 20px;
+  color: var(--text-tertiary);
+  font-size: 0.7875rem;
+}
+
+.errorState {
+  margin: 8px 2px 0;
+  padding: 10px 12px;
+  font-size: 0.7875rem;
+  color: $error-red;
+  background: $error-bg;
+  border: 1px solid $error-border;
+  border-radius: 8px;
+  line-height: 1.5;
+}
+
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 48px 24px;
+  text-align: center;
+
+  .emptyIcon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-tertiary);
+    margin-bottom: 6px;
+
+    svg {
+      opacity: 0.5;
+    }
+  }
+
+  p {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin: 0;
+  }
+
+  span {
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+    line-height: 1.5;
+  }
+}
+
+// ── Project list ──────────────────────────────────────
+
+.projectList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.projectItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  transition: all 0.12s ease;
+  animation: itemIn 0.2s ease both;
+
+  @for $i from 1 through 30 {
+    &:nth-child(#{$i}) {
+      animation-delay: #{$i * 0.03}s;
+    }
+  }
+
+  &:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-subtle);
+    box-shadow: var(--shadow-sm);
+
+    .favoriteBtn {
+      opacity: 1;
+    }
+  }
+}
+
+@keyframes itemIn {
+  from {
+    opacity: 0;
+    transform: translateX(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
 
 // ── Project avatar ────────────────────────────────────
 
-const ProjectAvatar: React.FC<{ projectKey: string; id: string; size?: "sm" | "md" }> = ({
-  projectKey, id, size = "sm",
-}) => {
-  const [from, to] = getGradient(projectKey, id);
-  return (
-    <div
-      className={`${styles.projectAvatar} ${size === "md" ? styles.projectAvatarMd : ""}`}
-      style={{ background: `linear-gradient(135deg, ${from} 0%, ${to} 100%)` }}
-    >
-      {projectKey.charAt(0).toUpperCase()}
-    </div>
-  );
-};
-
-// ── Issue group card ──────────────────────────────────
-
-interface IssueGroupCardProps {
-  issueType: string;
-  group: JiraIssueGroup;
-  disabled: boolean;
-  checkedTickets: Set<string>;
-  onTicketToggle: (key: string) => void;
+.projectAvatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 0.8125rem;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: -0.02em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  user-select: none;
 }
 
-const IssueGroupCard: React.FC<IssueGroupCardProps> = ({
-  issueType, group, disabled, checkedTickets, onTicketToggle,
-}) => {
-  const [expanded, setExpanded] = useState(false);
+// ── Project info ──────────────────────────────────────
 
-  return (
-    <div className={`${styles.issueGroup} ${expanded ? styles.issueGroupExpanded : ""}`}>
-      <button
-        className={styles.issueGroupHeader}
-        onClick={() => setExpanded((prev) => !prev)}
-        disabled={disabled}
-      >
-        <div className={styles.issueGroupLeft}>
-          {group.icon ? (
-            <img
-              src={group.icon}
-              alt={issueType}
-              className={styles.issueTypeIcon}
-              width={16}
-              height={16}
-              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-            />
-          ) : (
-            <span className={styles.issueTypeIconFallback}>
-              {issueType.charAt(0).toUpperCase()}
-            </span>
-          )}
-          <span className={styles.issueTypeName}>{issueType}</span>
-          <span className={styles.issueTypeCount}>{group.tickets.length}</span>
-        </div>
-        <span className={`${styles.issueGroupChevron} ${expanded ? styles.chevronUp : ""}`}>
-          <ChevronDownIcon />
-        </span>
-      </button>
+.projectInfo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
 
-      {expanded && (
-        <ul className={styles.ticketList}>
-          {group.tickets.map((ticket) => (
-            <li key={ticket.key} className={styles.ticketItem}>
-              <label className={styles.ticketLabel}>
-                <input
-                  type="checkbox"
-                  className={styles.ticketCheckbox}
-                  checked={checkedTickets.has(ticket.key)}
-                  onChange={() => onTicketToggle(ticket.key)}
-                />
-                <div className={styles.ticketInfo}>
-                  <span className={styles.ticketKey}>{ticket.key}</span>
-                  <span className={styles.ticketSummary}>{ticket.summary}</span>
-                </div>
-              </label>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-};
+.projectKey {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: -0.01em;
+}
+
+.projectId {
+  font-size: 0.68rem;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+// ── Favorite button ───────────────────────────────────
+
+.favoriteBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0.4;
+  transition: all 0.15s ease;
+
+  &:hover:not(:disabled) {
+    opacity: 1;
+    background: #fffbeb;
+    border-color: #fde68a;
+    color: $star-gold;
+    transform: scale(1.1);
+  }
+
+  &:active:not(:disabled) {
+    transform: scale(0.9);
+  }
+
+  &.favorited {
+    opacity: 1;
+    color: $star-gold;
+
+    svg {
+      filter: drop-shadow(0 0 3px rgba($star-gold, 0.4));
+    }
+
+    &:hover:not(:disabled) {
+      background: #fffbeb;
+      border-color: #fde68a;
+      color: $star-gold-hover;
+      transform: scale(1.1);
+
+      svg {
+        filter: none;
+      }
+    }
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+}
+
+// ── Spinners ──────────────────────────────────────────
+
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(79, 70, 229, 0.15);
+  border-top-color: var(--accent-primary);
+  border-radius: 50%;
+  animation: spin 0.65s linear infinite;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.miniSpinner {
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid rgba($star-gold, 0.2);
+  border-top-color: $star-gold;
+  border-radius: 50%;
+  animation: spin 0.65s linear infinite;
+  display: inline-block;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+// ── Project item — clickable variant ─────────────────
+
+.projectItemClickable {
+  width: 100%;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  text-align: left;
+
+  &:hover:not(:disabled) {
+    background: var(--bg-hover);
+    border-color: var(--border-subtle);
+    box-shadow: var(--shadow-sm);
+
+    .projectChevron {
+      color: var(--accent-primary);
+      transform: translateX(2px);
+    }
+  }
+}
+
+.projectItemDisabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.projectChevron {
+  font-size: 1.1rem;
+  color: var(--text-tertiary);
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+// ── Inline spinner (replaces avatar while loading) ────
+
+.inlineSpinner {
+  width: 32px;
+  height: 32px;
+  border: 2px solid rgba(79, 70, 229, 0.15);
+  border-top-color: var(--accent-primary);
+  border-radius: 50%;
+  animation: spin 0.65s linear infinite;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+// ── Larger avatar variant ─────────────────────────────
+
+.projectAvatarMd {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  font-size: 0.9375rem;
+}
 
 // ── Project detail panel ──────────────────────────────
 
-interface ProjectDetailPanelProps {
-  project: JiraProject;
-  onBack: () => void;
+.projectDetailPanel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
 }
 
-const ProjectDetailPanel: React.FC<ProjectDetailPanelProps> = ({ project, onBack }) => {
-  const dispatch = useDispatch<AppDispatch>();
-  const { projectData, loadingProjectId, checkedTickets, error } = useSelector(
-    (state: RootState) => state.jira
-  );
+.projectDetailHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+  background: var(--bg-main);
+}
 
-  const data = projectData[project.id];
-  const isLoading = loadingProjectId === project.id;
-  const anyLoading = loadingProjectId !== null;
-  const checkedSet = new Set(checkedTickets);
+.projectDetailBack {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 0.7875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
 
-  useEffect(() => {
-    if (!data) {
-      dispatch(fetchProjectData(project));
-    }
-    // Clear checked tickets when leaving this project
-    return () => {
-      dispatch(clearCheckedTickets());
-    };
-  }, [project.id]);
+  &:hover {
+    background: var(--accent-light);
+    color: var(--accent-primary);
+    border-color: rgba(79, 70, 229, 0.3);
+  }
+}
 
-  const handleTicketToggle = (key: string) => {
-    dispatch(toggleTicket(key));
-  };
+.projectDetailTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
 
-  const issueEntries = data ? Object.entries(data) : [];
+.projectDetailName {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: -0.01em;
+}
 
-  return (
-    <div className={styles.projectDetailPanel}>
-      {/* Panel header */}
-      <div className={styles.projectDetailHeader}>
-        <div className={styles.projectDetailTitle}>
-          <ProjectAvatar projectKey={project.key} id={project.id} size="md" />
-          <span className={styles.projectDetailName}>{project.key}</span>
-        </div>
-        <button className={styles.projectDetailBack} onClick={onBack}>
-          <BackIcon />
-          <span>Projects</span>
-        </button>
-      </div>
+// ── Issue group list ──────────────────────────────────
 
-      {/* Loading */}
-      {isLoading && (
-        <div className={styles.loadingState}>
-          <span className={styles.spinner} />
-          <span>Loading issues…</span>
-        </div>
-      )}
+.issueGroupList {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 10px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 
-      {/* Error */}
-      {!isLoading && error && (
-        <div className={styles.errorState}>{error}</div>
-      )}
+  &::-webkit-scrollbar {
+    width: 3px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: var(--border-subtle);
+    border-radius: 2px;
+  }
+}
 
-      {/* Issue groups */}
-      {!isLoading && !error && data && (
-        <div className={styles.issueGroupList}>
-          {issueEntries.length === 0 ? (
-            <div className={styles.emptyState}>
-              <div className={styles.emptyIcon}><EmptyFolderIcon /></div>
-              <p>No issues found</p>
-              <span>This project has no issues yet.</span>
-            </div>
-          ) : (
-            issueEntries.map(([issueType, group]) => (
-              <IssueGroupCard
-                key={issueType}
-                issueType={issueType}
-                group={group}
-                disabled={anyLoading}
-                checkedTickets={checkedSet}
-                onTicketToggle={handleTicketToggle}
-              />
-            ))
-          )}
-        </div>
-      )}
-    </div>
-  );
-};
+// ── Issue group card ──────────────────────────────────
 
-// ── Main component ────────────────────────────────────
+.issueGroup {
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: var(--bg-main);
+  overflow: hidden;
+  transition: box-shadow 0.15s ease;
 
-export const JiraTool: React.FC<JiraToolProps> = ({ onBack }) => {
-  const dispatch = useDispatch<AppDispatch>();
+  &.issueGroupExpanded {
+    box-shadow: var(--shadow-md);
+    border-color: rgba(79, 70, 229, 0.2);
+  }
+}
 
-  const { isLoading: isDisconnecting } = useSelector(
-    (state: RootState) => state.atlassian
-  );
-  const {
-    allProjects,
-    favoriteProjects,
-    isLoadingProjects,
-    isFavoriteUpdating,
-    loadingProjectId,
-    error,
-  } = useSelector((state: RootState) => state.jira);
+.issueGroupHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 12px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background 0.12s ease;
+  text-align: left;
 
-  const [activeTab, setActiveTab] = useState<Tab>("favorites");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedProject, setSelectedProject] = useState<JiraProject | null>(null);
-
-  useEffect(() => {
-    dispatch(fetchJiraProjects());
-  }, [dispatch]);
-
-  const handleDisconnect = () => dispatch(disconnectAtlassian());
-
-  const isFavorite = (id: string) => !!favoriteProjects[id];
-
-  const handleToggleFavorite = (project: JiraProject) => {
-    if (isFavoriteUpdating[project.id]) return;
-    if (isFavorite(project.id)) {
-      dispatch(removeFavoriteProject(project));
-    } else {
-      dispatch(addFavoriteProject(project));
-    }
-  };
-
-  const handleTabChange = (tab: Tab) => {
-    setActiveTab(tab);
-    setSearchQuery("");
-  };
-
-  const handleProjectClick = (project: JiraProject) => {
-    if (loadingProjectId !== null) return;
-    setSelectedProject(project);
-    dispatch(fetchProjectData(project));
-  };
-
-  const allProjectsList = Object.values(allProjects);
-  const favoriteProjectsList = Object.values(favoriteProjects);
-
-  const query = searchQuery.toLowerCase().trim();
-  const filteredAll = query
-    ? allProjectsList.filter(
-        (p) => p.key.toLowerCase().includes(query) || p.id.includes(query)
-      )
-    : allProjectsList;
-
-  const filteredFavorites = query
-    ? favoriteProjectsList.filter(
-        (p) => p.key.toLowerCase().includes(query) || p.id.includes(query)
-      )
-    : favoriteProjectsList;
-
-  // ── Project detail view ───────────────────────────
-  if (selectedProject) {
-    return (
-      <div className={styles.wrapper}>
-        <div className={styles.toolHeader}>
-          <div className={styles.toolHeaderTop}>
-            <div className={styles.breadcrumb}>
-              <button className={styles.breadcrumbLink} onClick={onBack}>Tools</button>
-              <span className={styles.breadcrumbSep}>›</span>
-              <span className={styles.breadcrumbCurrent}>Jira</span>
-            </div>
-            <button
-              className={styles.logoutBtn}
-              onClick={handleDisconnect}
-              disabled={isDisconnecting}
-              title="Disconnect Jira"
-            >
-              <LogoutIcon />
-            </button>
-          </div>
-          <div className={styles.toolHeaderBottom}>
-            <div className={styles.toolIcon}>
-              <img src={jiraIcon} alt="Jira" width={22} height={22} className={styles.img} />
-            </div>
-            <div className={styles.toolMeta}>
-              <h2 className={styles.toolName}>Jira</h2>
-              <span className={styles.connectedBadge}>● Connected</span>
-            </div>
-          </div>
-        </div>
-        <ProjectDetailPanel
-          project={selectedProject}
-          onBack={() => setSelectedProject(null)}
-        />
-      </div>
-    );
+  &:hover:not(:disabled) {
+    background: var(--bg-hover);
   }
 
-  // ── Project list view ─────────────────────────────
-  return (
-    <div className={styles.wrapper}>
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+}
 
-      {/* Unified tool header */}
-      <div className={styles.toolHeader}>
-        <div className={styles.toolHeaderTop}>
-          <div className={styles.breadcrumb}>
-            <button className={styles.breadcrumbLink} onClick={onBack}>Tools</button>
-            <span className={styles.breadcrumbSep}>›</span>
-            <span className={styles.breadcrumbCurrent}>Jira</span>
-          </div>
-          <button
-            className={styles.logoutBtn}
-            onClick={handleDisconnect}
-            disabled={isDisconnecting}
-            title="Disconnect Jira"
-          >
-            <LogoutIcon />
-          </button>
-        </div>
-        <div className={styles.toolHeaderBottom}>
-          <div className={styles.toolIcon}>
-            <img src={jiraIcon} alt="Jira" width={22} height={22} className={styles.img} />
-          </div>
-          <div className={styles.toolMeta}>
-            <h2 className={styles.toolName}>Jira</h2>
-            <span className={styles.connectedBadge}>● Connected</span>
-          </div>
-        </div>
-      </div>
+.issueGroupLeft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
 
-      {/* Tabs */}
-      <div className={styles.tabs}>
-        <button
-          className={`${styles.tab} ${activeTab === "favorites" ? styles.activeTab : ""}`}
-          onClick={() => handleTabChange("favorites")}
-        >
-          Favorites
-          {favoriteProjectsList.length > 0 && (
-            <span className={styles.tabCount}>{favoriteProjectsList.length}</span>
-          )}
-        </button>
-        <button
-          className={`${styles.tab} ${activeTab === "all" ? styles.activeTab : ""}`}
-          onClick={() => handleTabChange("all")}
-        >
-          All Projects
-          {allProjectsList.length > 0 && (
-            <span className={styles.tabCount}>{allProjectsList.length}</span>
-          )}
-        </button>
-      </div>
+.issueTypeIcon {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
 
-      {/* Search */}
-      {!isLoadingProjects && !error && (
-        <div className={styles.searchBar}>
-          <span className={styles.searchIcon}><SearchIcon /></span>
-          <input
-            type="text"
-            className={styles.searchInput}
-            placeholder="Search projects…"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-          {searchQuery && (
-            <button className={styles.clearBtn} onClick={() => setSearchQuery("")} title="Clear">
-              <ClearIcon />
-            </button>
-          )}
-        </div>
-      )}
+.issueTypeIconFallback {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  background: var(--accent-light);
+  color: var(--accent-primary);
+  font-size: 0.6rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
 
-      {/* Content */}
-      <div className={styles.content}>
+.issueTypeName {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
-        {isLoadingProjects && (
-          <div className={styles.loadingState}>
-            <span className={styles.spinner} />
-            <span>Loading projects…</span>
-          </div>
-        )}
+.issueTypeCount {
+  font-size: 0.68rem;
+  font-weight: 700;
+  background: var(--bg-surface);
+  color: var(--text-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 1px 6px;
+  flex-shrink: 0;
+}
 
-        {!isLoadingProjects && error && (
-          <div className={styles.errorState}>{error}</div>
-        )}
+.issueGroupChevron {
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+  display: flex;
+  align-items: center;
 
-        {/* Favorites tab */}
-        {!isLoadingProjects && !error && activeTab === "favorites" && (
-          filteredFavorites.length === 0 ? (
-            <div className={styles.emptyState}>
-              <div className={styles.emptyIcon}><StarOutlineIcon /></div>
-              <p>{query ? "No matches found" : "No favorites yet"}</p>
-              <span>
-                {query
-                  ? `No favorite projects match "${searchQuery}".`
-                  : "Star a project in All Projects to pin it here."}
-              </span>
-            </div>
-          ) : (
-            <ul className={styles.projectList}>
-              {filteredFavorites.map((project) => {
-                const isThisLoading = loadingProjectId === project.id;
-                const anyLoading = loadingProjectId !== null;
+  &.chevronUp {
+    transform: rotate(180deg);
+  }
+}
 
-                return (
-                  <li key={project.id}>
-                    <button
-                      className={`${styles.projectItem} ${styles.projectItemClickable} ${anyLoading && !isThisLoading ? styles.projectItemDisabled : ""}`}
-                      onClick={() => handleProjectClick(project)}
-                      disabled={anyLoading && !isThisLoading}
-                    >
-                      {isThisLoading ? (
-                        <span className={styles.inlineSpinner} />
-                      ) : (
-                        <ProjectAvatar projectKey={project.key} id={project.id} />
-                      )}
-                      <div className={styles.projectInfo}>
-                        <span className={styles.projectKey}>{project.key}</span>
-                        <span className={styles.projectId}>#{project.id}</span>
-                      </div>
-                      <span className={styles.projectChevron}>›</span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )
-        )}
+// ── Ticket list ───────────────────────────────────────
 
-        {/* All Projects tab */}
-        {!isLoadingProjects && !error && activeTab === "all" && (
-          filteredAll.length === 0 ? (
-            <div className={styles.emptyState}>
-              <div className={styles.emptyIcon}><EmptyFolderIcon /></div>
-              <p>{query ? "No matches found" : "No projects found"}</p>
-              <span>
-                {query
-                  ? `No projects match "${searchQuery}".`
-                  : "Your Jira projects will appear here."}
-              </span>
-            </div>
-          ) : (
-            <ul className={styles.projectList}>
-              {filteredAll.map((project) => {
-                const favorited = isFavorite(project.id);
-                const updating = !!isFavoriteUpdating[project.id];
+.ticketList {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 6px;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+}
 
-                return (
-                  <li key={project.id} className={styles.projectItem}>
-                    <ProjectAvatar projectKey={project.key} id={project.id} />
-                    <div className={styles.projectInfo}>
-                      <span className={styles.projectKey}>{project.key}</span>
-                      <span className={styles.projectId}>#{project.id}</span>
-                    </div>
-                    <button
-                      className={`${styles.favoriteBtn} ${favorited ? styles.favorited : ""}`}
-                      onClick={() => handleToggleFavorite(project)}
-                      disabled={updating}
-                      title={favorited ? "Remove from favorites" : "Add to favorites"}
-                    >
-                      {updating ? (
-                        <span className={styles.miniSpinner} />
-                      ) : favorited ? (
-                        <StarFilledIcon />
-                      ) : (
-                        <StarOutlineIcon />
-                      )}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )
-        )}
+.ticketItem {
+  border-bottom: 1px solid var(--border-subtle);
+  animation: itemIn 0.15s ease both;
 
-      </div>
-    </div>
-  );
-};
+  &:last-child {
+    border-bottom: none;
+  }
+}
 
-export default JiraTool;
+.ticketLabel {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 12px;
+  cursor: pointer;
+  transition: background 0.1s ease;
+
+  &:hover {
+    background: var(--bg-hover);
+  }
+}
+
+.ticketCheckbox {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent-primary);
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.ticketInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ticketKey {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--accent-primary);
+  letter-spacing: 0.01em;
+}
+
+.ticketSummary {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
