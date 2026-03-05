@@ -1,377 +1,769 @@
-import React, { useState } from "react";
-import { useSelector } from "react-redux";
-import type { RootState } from "../../store";
-import styles from "./PanelTools.module.scss";
+import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
+import {
+  atlassianService,
+  type ConfluenceSpace,
+  type SpacesResult,
+  type ConfluencePage,
+} from "./atlassianService";
 
-import { AtlassianConnect } from "./AtlassianConnect";
-import { JiraTool } from "./JiraTool";
-import { ConfluenceTool } from "./ConfluenceTool";
-
-import jiraIcon from "../../assets/icons/jira.png";
-import confluenceIcon from "../../assets/icons/confluence.webp";
-
-type ToolId = "jira" | "confluence";
-
-interface Tool {
-  id: ToolId;
-  name: string;
-  description: string;
-  icon: string;
+export interface ConfluenceState {
+  allSpaces: SpacesResult;
+  favoriteSpaces: SpacesResult;
+  isLoadingSpaces: boolean;
+  isFavoriteUpdating: Record<string, boolean>;
+  spaceData: Record<string, ConfluencePage[]>;
+  loadingSpaceId: string | null;
+  checkedPages: string[];
+  spacesError: string | null;  // error loading the spaces list
+  error: string | null;        // error loading space data
 }
 
-const tools: Tool[] = [
-  {
-    id: "jira",
-    name: "Jira",
-    description: "Project issues in context",
-    icon: jiraIcon,
-  },
-  {
-    id: "confluence",
-    name: "Confluence",
-    description: "Team knowledge base",
-    icon: confluenceIcon,
-  },
-];
+const initialState: ConfluenceState = {
+  allSpaces: {},
+  favoriteSpaces: {},
+  isLoadingSpaces: false,
+  isFavoriteUpdating: {},
+  spaceData: {},
+  loadingSpaceId: null,
+  checkedPages: [],
+  spacesError: null,
+  error: null,
+};
 
-// ── Plus icon ─────────────────────────────────────────
+// ── Thunks ────────────────────────────────────────────
 
-const PlusIcon = () => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="9"
-    height="9"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="3"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <line x1="12" y1="5" x2="12" y2="19" />
-    <line x1="5" y1="12" x2="19" y2="12" />
+export const fetchConfluenceSpaces = createAsyncThunk(
+  "confluence/fetchSpaces",
+  async (_, { rejectWithValue }) => {
+    try {
+      const [allRes, favRes] = await Promise.all([
+        atlassianService.fetchAllSpaces(),
+        atlassianService.fetchFavoriteSpaces(),
+      ]);
+
+      if (allRes.status !== "Success") {
+        return rejectWithValue("Failed to fetch spaces.");
+      }
+      if (favRes.status !== "Success") {
+        return rejectWithValue("Failed to fetch favorite spaces.");
+      }
+
+      return {
+        allSpaces: allRes.result,
+        favoriteSpaces: favRes.result,
+      };
+    } catch (error: any) {
+      return rejectWithValue(
+        error?.response?.data?.message ?? "Failed to load Confluence spaces."
+      );
+    }
+  }
+);
+
+export const addFavoriteSpace = createAsyncThunk(
+  "confluence/addFavorite",
+  async (space: ConfluenceSpace, { rejectWithValue }) => {
+    try {
+      const res = await atlassianService.addFavoriteSpace({
+        space_key: space.id,
+      });
+      if (res.status !== "Success") return rejectWithValue("Failed to add favorite.");
+      return space;
+    } catch (error: any) {
+      return rejectWithValue(
+        error?.response?.data?.message ?? "Failed to add favorite."
+      );
+    }
+  }
+);
+
+export const removeFavoriteSpace = createAsyncThunk(
+  "confluence/removeFavorite",
+  async (space: ConfluenceSpace, { rejectWithValue }) => {
+    try {
+      const res = await atlassianService.removeFavoriteSpace({
+        space_key: space.id,
+      });
+      if (res.status !== "Success") return rejectWithValue("Failed to remove favorite.");
+      return space;
+    } catch (error: any) {
+      return rejectWithValue(
+        error?.response?.data?.message ?? "Failed to remove favorite."
+      );
+    }
+  }
+);
+
+export const fetchSpaceData = createAsyncThunk(
+  "confluence/fetchSpaceData",
+  async (space: ConfluenceSpace, { rejectWithValue }) => {
+    try {
+      const res = await atlassianService.fetchSpaceData(space.key);
+      if (res.status !== "Success") {
+        return rejectWithValue("Failed to load space data.");
+      }
+      return { id: space.id, data: res.result };
+    } catch (error: any) {
+      return rejectWithValue(
+        error?.response?.data?.message ?? "Failed to load space data."
+      );
+    }
+  }
+);
+
+// ── Slice ─────────────────────────────────────────────
+
+const confluenceSlice = createSlice({
+  name: "confluence",
+  initialState,
+  reducers: {
+    clearConfluenceError(state) {
+      state.error = null;
+    },
+    resetConfluenceState() {
+      return initialState;
+    },
+    togglePage(state, action: { payload: string }) {
+      const key = action.payload;
+      const idx = state.checkedPages.indexOf(key);
+      if (idx === -1) {
+        state.checkedPages.push(key);
+      } else {
+        state.checkedPages.splice(idx, 1);
+      }
+    },
+    clearCheckedPages(state) {
+      state.checkedPages = [];
+    },
+  },
+  extraReducers: (builder) => {
+    // Fetch spaces
+    builder
+      .addCase(fetchConfluenceSpaces.pending, (state) => {
+        state.isLoadingSpaces = true;
+        state.spacesError = null;
+      })
+      .addCase(fetchConfluenceSpaces.fulfilled, (state, action) => {
+        state.isLoadingSpaces = false;
+        state.allSpaces = action.payload.allSpaces;
+        state.favoriteSpaces = action.payload.favoriteSpaces;
+      })
+      .addCase(fetchConfluenceSpaces.rejected, (state, action) => {
+        state.isLoadingSpaces = false;
+        state.spacesError = action.payload as string;
+      });
+
+    // Add favorite
+    builder
+      .addCase(addFavoriteSpace.pending, (state, action) => {
+        state.isFavoriteUpdating[action.meta.arg.id] = true;
+      })
+      .addCase(addFavoriteSpace.fulfilled, (state, action) => {
+        const space = action.payload;
+        state.isFavoriteUpdating[space.id] = false;
+        state.favoriteSpaces[space.id] = space;
+      })
+      .addCase(addFavoriteSpace.rejected, (state, action) => {
+        state.isFavoriteUpdating[action.meta.arg.id] = false;
+        state.error = action.payload as string;
+      });
+
+    // Remove favorite
+    builder
+      .addCase(removeFavoriteSpace.pending, (state, action) => {
+        state.isFavoriteUpdating[action.meta.arg.id] = true;
+      })
+      .addCase(removeFavoriteSpace.fulfilled, (state, action) => {
+        const space = action.payload;
+        state.isFavoriteUpdating[space.id] = false;
+        delete state.favoriteSpaces[space.id];
+        delete state.spaceData[space.id];
+      })
+      .addCase(removeFavoriteSpace.rejected, (state, action) => {
+        state.isFavoriteUpdating[action.meta.arg.id] = false;
+        state.error = action.payload as string;
+      });
+
+    // Fetch space data
+    builder
+      .addCase(fetchSpaceData.pending, (state, action) => {
+        state.loadingSpaceId = action.meta.arg.id;
+        state.error = null;
+      })
+      .addCase(fetchSpaceData.fulfilled, (state, action) => {
+        state.loadingSpaceId = null;
+        state.spaceData[action.payload.id] = action.payload.data;
+      })
+      .addCase(fetchSpaceData.rejected, (state, action) => {
+        state.loadingSpaceId = null;
+        state.error = action.payload as string;
+      });
+  },
+});
+
+export const {
+  clearConfluenceError,
+  resetConfluenceState,
+  togglePage,
+  clearCheckedPages,
+} = confluenceSlice.actions;
+
+export default confluenceSlice.reducer;
+
+
+
+
+
+
+
+
+
+import React, { useEffect, useState } from "react";
+import { useDispatch, useSelector } from "react-redux";
+import type { AppDispatch, RootState } from "../../store";
+import { disconnectAtlassian } from "./atlassianSlice";
+import {
+  fetchConfluenceSpaces,
+  addFavoriteSpace,
+  removeFavoriteSpace,
+  fetchSpaceData,
+  togglePage,
+  clearCheckedPages,
+} from "./confluenceSlice";
+import type { ConfluenceSpace, ConfluencePage } from "./atlassianService";
+import styles from "./ConfluenceTool.module.scss";
+
+import confluenceIcon from "../../assets/icons/confluence.webp";
+
+interface ConfluenceToolProps {
+  onBack: () => void;
+}
+
+type Tab = "favorites" | "all";
+
+// ── Icons ─────────────────────────────────────────────
+
+const StarFilledIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
   </svg>
 );
 
-export const PanelTools: React.FC = () => {
-  const [selectedToolId, setSelectedToolId] = useState<ToolId | null>(null);
+const StarOutlineIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+  </svg>
+);
 
-  const isExpanded: boolean = useSelector(
-    (state: RootState) => state.layout.isRightPanelOpen
+const LogoutIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+    <polyline points="16 17 21 12 16 7" />
+    <line x1="21" y1="12" x2="9" y2="12" />
+  </svg>
+);
+
+const SearchIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="11" cy="11" r="8" />
+    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+  </svg>
+);
+
+const ClearIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="18" y1="6" x2="6" y2="18" />
+    <line x1="6" y1="6" x2="18" y2="18" />
+  </svg>
+);
+
+const ChevronIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="9 18 15 12 9 6" />
+  </svg>
+);
+
+const PageIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <polyline points="14 2 14 8 20 8" />
+  </svg>
+);
+
+const EmptyFolderIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+  </svg>
+);
+
+const BackIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="15 18 9 12 15 6" />
+  </svg>
+);
+
+// ── Gradient palette ──────────────────────────────────
+
+const GRADIENTS: [string, string][] = [
+  ["#0ea5e9", "#06b6d4"],
+  ["#6366f1", "#8b5cf6"],
+  ["#10b981", "#14b8a6"],
+  ["#f59e0b", "#f97316"],
+  ["#ec4899", "#a855f7"],
+  ["#3b82f6", "#6366f1"],
+  ["#84cc16", "#10b981"],
+  ["#8b5cf6", "#ec4899"],
+  ["#06b6d4", "#3b82f6"],
+  ["#f97316", "#eab308"],
+];
+
+const getGradient = (key: string, id: string): [string, string] => {
+  const combined = `${key}_${id}`;
+  let hash = 0;
+  for (let i = 0; i < combined.length; i++) {
+    hash = combined.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return GRADIENTS[Math.abs(hash) % GRADIENTS.length];
+};
+
+const SpaceAvatar: React.FC<{ spaceKey: string; id: string; size?: "sm" | "md" }> = ({
+  spaceKey, id, size = "sm",
+}) => {
+  const [from, to] = getGradient(spaceKey, id);
+  return (
+    <div
+      className={`${styles.spaceAvatar} ${size === "md" ? styles.spaceAvatarMd : ""}`}
+      style={{ background: `linear-gradient(135deg, ${from} 0%, ${to} 100%)` }}
+    >
+      {spaceKey.charAt(0).toUpperCase()}
+    </div>
   );
-  const isConnected: boolean = useSelector(
-    (state: RootState) => state.atlassian.isConnected
-  );
+};
 
-  const handleBack = () => setSelectedToolId(null);
+// ── Page tree node ────────────────────────────────────
 
-  // ── Collapsed: icon strip ─────────────────────────────
-  if (!isExpanded) {
-    return (
-      <div className={styles.panelCollapsed}>
-        {tools.map((tool) => (
-          <button
-            key={tool.id}
-            className={styles.collapsedBtn}
-            onClick={() => setSelectedToolId(tool.id)}
-            title={tool.name}
+interface PageNodeProps {
+  page: ConfluencePage;
+  depth: number;
+  checkedSet: Set<string>;
+  onToggle: (key: string) => void;
+}
+
+const PageNode: React.FC<PageNodeProps> = ({ page, depth, checkedSet, onToggle }) => {
+  const [expanded, setExpanded] = useState(false);
+  const hasChildren = page.children && page.children.length > 0;
+
+  const formattedDate = (() => {
+    try {
+      return new Date(page.last_modified).toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+    } catch {
+      return "";
+    }
+  })();
+
+  return (
+    <li className={styles.pageNode} style={{ "--depth": depth } as React.CSSProperties}>
+      <div className={styles.pageRow}>
+        {/* Expand toggle */}
+        <button
+          className={`${styles.expandBtn} ${!hasChildren ? styles.expandBtnHidden : ""} ${expanded ? styles.expandBtnOpen : ""}`}
+          onClick={() => hasChildren && setExpanded((p) => !p)}
+          tabIndex={hasChildren ? 0 : -1}
+        >
+          <ChevronIcon />
+        </button>
+
+        {/* Checkbox */}
+        <input
+          type="checkbox"
+          className={styles.pageCheckbox}
+          checked={checkedSet.has(page.key)}
+          onChange={() => onToggle(page.key)}
+        />
+
+        {/* Page icon */}
+        <span className={styles.pageIcon}><PageIcon /></span>
+
+        {/* Page info */}
+        <div className={styles.pageInfo}>
+          <a
+            href={page.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={styles.pageTitle}
+            onClick={(e) => e.stopPropagation()}
           >
-            <img
-              src={tool.icon}
-              alt={tool.name}
-              className={styles.collapsedIcon}
-              width={20}
-              height={20}
+            {page.title}
+          </a>
+          {formattedDate && (
+            <span className={styles.pageDate}>{formattedDate}</span>
+          )}
+        </div>
+      </div>
+
+      {/* Children */}
+      {expanded && hasChildren && (
+        <ul className={styles.childList}>
+          {page.children.map((child) => (
+            <PageNode
+              key={child.page_id}
+              page={child}
+              depth={depth + 1}
+              checkedSet={checkedSet}
+              onToggle={onToggle}
             />
-            <span className={styles.collapsedPlus}>
-              <PlusIcon />
-            </span>
-          </button>
-        ))}
+          ))}
+        </ul>
+      )}
+    </li>
+  );
+};
+
+// ── Space detail panel ────────────────────────────────
+
+interface SpaceDetailPanelProps {
+  space: ConfluenceSpace;
+  onBack: () => void;
+}
+
+const SpaceDetailPanel: React.FC<SpaceDetailPanelProps> = ({ space, onBack }) => {
+  const dispatch = useDispatch<AppDispatch>();
+  const { spaceData, loadingSpaceId, checkedPages, error } = useSelector(
+    (state: RootState) => state.confluence
+  );
+
+  const data = spaceData[space.id];
+  const isLoading = loadingSpaceId === space.id;
+  const checkedSet = new Set(checkedPages);
+
+  useEffect(() => {
+    if (!data) {
+      dispatch(fetchSpaceData(space));
+    }
+    return () => {
+      dispatch(clearCheckedPages());
+    };
+  }, [space.id]);
+
+  const handleToggle = (key: string) => {
+    dispatch(togglePage(key));
+  };
+
+  return (
+    <div className={styles.spaceDetailPanel}>
+      <div className={styles.spaceDetailHeader}>
+        <div className={styles.spaceDetailTitle}>
+          <SpaceAvatar spaceKey={space.key} id={space.id} size="md" />
+          <span className={styles.spaceDetailName}>{space.key}</span>
+        </div>
+        <button className={styles.spaceDetailBack} onClick={onBack}>
+          <BackIcon />
+          <span>Spaces</span>
+        </button>
+      </div>
+
+      {isLoading && (
+        <div className={styles.loadingState}>
+          <span className={styles.spinner} />
+          <span>Loading pages…</span>
+        </div>
+      )}
+
+      {!isLoading && error && (
+        <div className={styles.errorState}>{error}</div>
+      )}
+
+      {!isLoading && !error && data && (
+        <div className={styles.pageTreeWrapper}>
+          {data.length === 0 ? (
+            <div className={styles.emptyState}>
+              <div className={styles.emptyIcon}><EmptyFolderIcon /></div>
+              <p>No pages found</p>
+              <span>This space has no pages yet.</span>
+            </div>
+          ) : (
+            <ul className={styles.pageTree}>
+              {data.map((page) => (
+                <PageNode
+                  key={page.page_id}
+                  page={page}
+                  depth={0}
+                  checkedSet={checkedSet}
+                  onToggle={handleToggle}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── Main component ────────────────────────────────────
+
+export const ConfluenceTool: React.FC<ConfluenceToolProps> = ({ onBack }) => {
+  const dispatch = useDispatch<AppDispatch>();
+
+  const { isLoading: isDisconnecting } = useSelector(
+    (state: RootState) => state.atlassian
+  );
+  const {
+    allSpaces,
+    favoriteSpaces,
+    isLoadingSpaces,
+    isFavoriteUpdating,
+    loadingSpaceId,
+    spacesError,
+    error,
+  } = useSelector((state: RootState) => state.confluence);
+
+  const [activeTab, setActiveTab] = useState<Tab>("favorites");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedSpace, setSelectedSpace] = useState<ConfluenceSpace | null>(null);
+
+  useEffect(() => {
+    dispatch(fetchConfluenceSpaces());
+  }, [dispatch]);
+
+  const handleDisconnect = () => dispatch(disconnectAtlassian());
+
+  const isFavorite = (id: string) => !!favoriteSpaces[id];
+
+  const handleToggleFavorite = (space: ConfluenceSpace) => {
+    if (isFavoriteUpdating[space.id]) return;
+    if (isFavorite(space.id)) {
+      dispatch(removeFavoriteSpace(space));
+    } else {
+      dispatch(addFavoriteSpace(space));
+    }
+  };
+
+  const handleTabChange = (tab: Tab) => {
+    setActiveTab(tab);
+    setSearchQuery("");
+  };
+
+  const handleSpaceClick = (space: ConfluenceSpace) => {
+    if (loadingSpaceId !== null) return;
+    setSelectedSpace(space);
+    dispatch(fetchSpaceData(space));
+  };
+
+  const allSpacesList = Object.values(allSpaces);
+  const favoriteSpacesList = Object.values(favoriteSpaces);
+
+  const query = searchQuery.toLowerCase().trim();
+  const filteredAll = query
+    ? allSpacesList.filter(
+        (s) => s.key.toLowerCase().includes(query) || s.id.includes(query)
+      )
+    : allSpacesList;
+
+  const filteredFavorites = query
+    ? favoriteSpacesList.filter(
+        (s) => s.key.toLowerCase().includes(query) || s.id.includes(query)
+      )
+    : favoriteSpacesList;
+
+  const ToolHeader = ({ showDetail = false }) => (
+    <div className={styles.toolHeader}>
+      <div className={styles.toolHeaderTop}>
+        <div className={styles.breadcrumb}>
+          <button className={styles.breadcrumbLink} onClick={onBack}>Tools</button>
+          <span className={styles.breadcrumbSep}>›</span>
+          <span className={styles.breadcrumbCurrent}>Confluence</span>
+        </div>
+        <button
+          className={styles.logoutBtn}
+          onClick={handleDisconnect}
+          disabled={isDisconnecting}
+          title="Disconnect Confluence"
+        >
+          <LogoutIcon />
+        </button>
+      </div>
+      <div className={styles.toolHeaderBottom}>
+        <div className={styles.toolIcon}>
+          <img src={confluenceIcon} alt="Confluence" width={22} height={22} className={styles.img} />
+        </div>
+        <div className={styles.toolMeta}>
+          <h2 className={styles.toolName}>Confluence</h2>
+        </div>
+        <span className={styles.connectedBadge}>● Connected</span>
+      </div>
+    </div>
+  );
+
+  // ── Space detail view ─────────────────────────────
+  if (selectedSpace) {
+    return (
+      <div className={styles.wrapper}>
+        <ToolHeader showDetail />
+        <SpaceDetailPanel
+          space={selectedSpace}
+          onBack={() => setSelectedSpace(null)}
+        />
       </div>
     );
   }
 
-  // ── Expanded: tool selected ───────────────────────────
-  if (selectedToolId) {
-    if (!isConnected) {
-      return (
-        <div className={styles.panel}>
-          <AtlassianConnect toolId={selectedToolId} onBack={handleBack} />
-        </div>
-      );
-    }
-
-    if (selectedToolId === "jira") {
-      return (
-        <div className={styles.panel}>
-          <JiraTool onBack={handleBack} />
-        </div>
-      );
-    }
-
-    if (selectedToolId === "confluence") {
-      return (
-        <div className={styles.panel}>
-          <ConfluenceTool onBack={handleBack} />
-        </div>
-      );
-    }
-  }
-
-  // ── Expanded: tool grid ───────────────────────────────
+  // ── Space list view ───────────────────────────────
   return (
-    <div className={styles.panel}>
-      <div className={styles.panelHeader}>
-        <span className={styles.panelTitle}>Tools</span>
+    <div className={styles.wrapper}>
+      <ToolHeader />
+
+      {/* Tabs */}
+      <div className={styles.tabs}>
+        <button
+          className={`${styles.tab} ${activeTab === "favorites" ? styles.activeTab : ""}`}
+          onClick={() => handleTabChange("favorites")}
+        >
+          Favorite Spaces
+          {favoriteSpacesList.length > 0 && (
+            <span className={styles.tabCount}>{favoriteSpacesList.length}</span>
+          )}
+        </button>
+        <button
+          className={`${styles.tab} ${activeTab === "all" ? styles.activeTab : ""}`}
+          onClick={() => handleTabChange("all")}
+        >
+          All Spaces
+          {allSpacesList.length > 0 && (
+            <span className={styles.tabCount}>{allSpacesList.length}</span>
+          )}
+        </button>
       </div>
-      <div className={styles.toolGrid}>
-        {tools.map((tool) => (
-          <button
-            key={tool.id}
-            className={styles.toolCard}
-            onClick={() => setSelectedToolId(tool.id)}
-          >
-            <div className={styles.cardTop}>
-              <div className={styles.cardIconWrap}>
-                <img
-                  src={tool.icon}
-                  alt={tool.name}
-                  className={styles.cardIcon}
-                  width={22}
-                  height={22}
-                />
-              </div>
-              <span className={styles.cardPlus}>
-                <PlusIcon />
+
+      {/* Search */}
+      {!isLoadingSpaces && !spacesError && (
+        <div className={styles.searchBar}>
+          <span className={styles.searchIcon}><SearchIcon /></span>
+          <input
+            type="text"
+            className={styles.searchInput}
+            placeholder="Search spaces…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          {searchQuery && (
+            <button className={styles.clearBtn} onClick={() => setSearchQuery("")} title="Clear">
+              <ClearIcon />
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Content */}
+      <div className={styles.content}>
+
+        {isLoadingSpaces && (
+          <div className={styles.loadingState}>
+            <span className={styles.spinner} />
+            <span>Loading spaces…</span>
+          </div>
+        )}
+
+        {!isLoadingSpaces && spacesError && (
+          <div className={styles.errorState}>{spacesError}</div>
+        )}
+
+        {/* Favorite Spaces tab */}
+        {!isLoadingSpaces && !spacesError && activeTab === "favorites" && (
+          filteredFavorites.length === 0 ? (
+            <div className={styles.emptyState}>
+              <div className={styles.emptyIcon}><StarOutlineIcon /></div>
+              <p>{query ? "No matches found" : "No favorite spaces yet"}</p>
+              <span>
+                {query
+                  ? `No favorite spaces match "${searchQuery}".`
+                  : "Star a space in All Spaces to pin it here."}
               </span>
             </div>
-            <span className={styles.cardName}>{tool.name}</span>
-            <span className={styles.cardDesc}>{tool.description}</span>
-          </button>
-        ))}
+          ) : (
+            <ul className={styles.spaceList}>
+              {filteredFavorites.map((space) => {
+                const isThisLoading = loadingSpaceId === space.id;
+                const anyLoading = loadingSpaceId !== null;
+
+                return (
+                  <li key={space.id}>
+                    <button
+                      className={`${styles.spaceItem} ${styles.spaceItemClickable} ${anyLoading && !isThisLoading ? styles.spaceItemDisabled : ""}`}
+                      onClick={() => handleSpaceClick(space)}
+                      disabled={anyLoading && !isThisLoading}
+                    >
+                      {isThisLoading ? (
+                        <span className={styles.inlineSpinner} />
+                      ) : (
+                        <SpaceAvatar spaceKey={space.key} id={space.id} />
+                      )}
+                      <div className={styles.spaceInfo}>
+                        <span className={styles.spaceKey}>{space.key}</span>
+                        <span className={styles.spaceId}>#{space.id}</span>
+                      </div>
+                      <span className={styles.spaceChevron}>›</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )
+        )}
+
+        {/* All Spaces tab */}
+        {!isLoadingSpaces && !spacesError && activeTab === "all" && (
+          filteredAll.length === 0 ? (
+            <div className={styles.emptyState}>
+              <div className={styles.emptyIcon}><EmptyFolderIcon /></div>
+              <p>{query ? "No matches found" : "No spaces found"}</p>
+              <span>
+                {query
+                  ? `No spaces match "${searchQuery}".`
+                  : "Your Confluence spaces will appear here."}
+              </span>
+            </div>
+          ) : (
+            <ul className={styles.spaceList}>
+              {filteredAll.map((space) => {
+                const favorited = isFavorite(space.id);
+                const updating = !!isFavoriteUpdating[space.id];
+
+                return (
+                  <li key={space.id} className={styles.spaceItem}>
+                    <SpaceAvatar spaceKey={space.key} id={space.id} />
+                    <div className={styles.spaceInfo}>
+                      <span className={styles.spaceKey}>{space.key}</span>
+                      <span className={styles.spaceId}>#{space.id}</span>
+                    </div>
+                    <button
+                      className={`${styles.favoriteBtn} ${favorited ? styles.favorited : ""}`}
+                      onClick={() => handleToggleFavorite(space)}
+                      disabled={updating}
+                      title={favorited ? "Remove from favorites" : "Add to favorites"}
+                    >
+                      {updating ? (
+                        <span className={styles.miniSpinner} />
+                      ) : favorited ? (
+                        <StarFilledIcon />
+                      ) : (
+                        <StarOutlineIcon />
+                      )}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )
+        )}
+
       </div>
     </div>
   );
 };
 
-export default PanelTools;
-
-
-
-
-
-
-
-
-
-
-
-// ── Panel wrapper ─────────────────────────────────────
-
-.panel {
-  width: 100%;
-  height: 100%;
-  background: var(--bg-main);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  font-family: "DM Sans", "Segoe UI", sans-serif;
-}
-
-// ── Panel header ──────────────────────────────────────
-
-.panelHeader {
-  padding: 14px 14px 8px;
-  flex-shrink: 0;
-}
-
-.panelTitle {
-  font-size: 0.7rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-tertiary);
-}
-
-// ── Expanded: 2-column grid ───────────────────────────
-
-.toolGrid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  padding: 4px 10px 12px;
-  overflow-y: auto;
-
-  &::-webkit-scrollbar { width: 3px; }
-  &::-webkit-scrollbar-track { background: transparent; }
-  &::-webkit-scrollbar-thumb {
-    background: var(--border-subtle);
-    border-radius: 2px;
-  }
-}
-
-// ── Tool card ─────────────────────────────────────────
-
-.toolCard {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 12px 11px 12px;
-  background: var(--bg-sidebar);
-  border: 1px solid var(--border-subtle);
-  border-radius: 12px;
-  cursor: pointer;
-  text-align: left;
-  transition: all 0.18s ease;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-  position: relative;
-  overflow: hidden;
-  min-height: 96px;
-
-  &:hover {
-    background: var(--bg-hover);
-    border-color: var(--accent-primary);
-    box-shadow: 0 2px 8px rgba(79, 70, 229, 0.12), 0 1px 2px rgba(0, 0, 0, 0.06);
-    transform: translateY(-1px);
-
-    .cardPlus {
-      background: var(--accent-primary);
-      color: #fff;
-      border-color: var(--accent-primary);
-    }
-
-    .cardIconWrap {
-      border-color: rgba(79, 70, 229, 0.2);
-    }
-  }
-
-  &:active {
-    transform: translateY(0);
-    box-shadow: var(--shadow-sm);
-  }
-}
-
-// ── Card top row: icon + plus ─────────────────────────
-
-.cardTop {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  width: 100%;
-}
-
-.cardIconWrap {
-  width: 36px;
-  height: 36px;
-  border-radius: 9px;
-  border: 1px solid var(--border-subtle);
-  background: var(--bg-main);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  transition: border-color 0.18s ease;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
-}
-
-.cardIcon {
-  object-fit: contain;
-  display: block;
-}
-
-.cardPlus {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  border: 1.5px solid var(--border-subtle);
-  background: var(--bg-main);
-  color: var(--text-tertiary);
-  flex-shrink: 0;
-  transition: all 0.18s ease;
-  margin-top: 1px;
-}
-
-// ── Card text ─────────────────────────────────────────
-
-.cardName {
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  line-height: 1.2;
-  letter-spacing: -0.01em;
-}
-
-.cardDesc {
-  font-size: 0.72rem;
-  color: var(--text-tertiary);
-  line-height: 1.4;
-  margin-top: -6px;
-}
-
-// ── Collapsed: icon strip ─────────────────────────────
-
-.panelCollapsed {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 8px 0;
-  gap: 6px;
-}
-
-.collapsedBtn {
-  position: relative;
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  border: 1px solid var(--border-subtle);
-  background: var(--bg-sidebar);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-
-  &:hover {
-    background: var(--bg-hover);
-    border-color: var(--accent-primary);
-    box-shadow: 0 2px 6px rgba(79, 70, 229, 0.15);
-
-    .collapsedPlus {
-      background: var(--accent-primary);
-      color: #fff;
-      border-color: var(--accent-primary);
-    }
-  }
-
-  &:active {
-    background: var(--bg-surface);
-    transform: scale(0.95);
-  }
-}
-
-.collapsedIcon {
-  object-fit: contain;
-  display: block;
-}
-
-.collapsedPlus {
-  position: absolute;
-  top: -5px;
-  right: -5px;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  border: 1.5px solid var(--border-subtle);
-  background: var(--bg-main);
-  color: var(--text-tertiary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.15s ease;
-}
+export default ConfluenceTool;
