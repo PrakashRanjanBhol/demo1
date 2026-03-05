@@ -1,21 +1,481 @@
+import axios from "axios";
+
+const LOCAL_STORAGE_KEY = "ATLASIAN_CONNECTION";
+
+// ── Helpers ───────────────────────────────────────────
+
+const getAuthHeader = () => {
+  const token = localStorage.getItem(LOCAL_STORAGE_KEY) ?? "";
+  return { Authorization: `Bearer ${token}` };
+};
+
+// ── Types ─────────────────────────────────────────────
+
+export interface ConnectPayload {
+  username: string;
+  password: string;
+}
+
+export interface ConnectResponse {
+  status: string;
+  result: string;
+}
+
+export interface DisconnectResponse {
+  status: string;
+  result: string;
+}
+
+export interface JiraProject {
+  key: string;
+  id: string;
+  type: "project";
+  icon: string;
+}
+
+export interface ProjectsResult {
+  [id: string]: JiraProject;
+}
+
+export interface ProjectsResponse {
+  status: string;
+  result: ProjectsResult;
+}
+
+export interface JiraTicket {
+  type: string;
+  summary: string;
+  key: string;
+}
+
+export interface JiraIssueGroup {
+  icon: string;
+  tickets: JiraTicket[];
+}
+
+export interface ProjectDataResult {
+  [issueType: string]: JiraIssueGroup;
+}
+
+export interface ProjectDataResponse {
+  status: string;
+  result: ProjectDataResult;
+}
+
+export interface FavoritePayload {
+  project_key: string;
+}
+
+export interface FavoriteResponse {
+  status: string;
+  result: string;
+}
+
+// ── Confluence Types ──────────────────────────────────
+
+export interface ConfluenceSpace {
+  key: string;
+  id: string;
+  type: "space";
+  icon: string;
+}
+
+export interface SpacesResult {
+  [id: string]: ConfluenceSpace;
+}
+
+export interface SpacesResponse {
+  status: string;
+  result: SpacesResult;
+}
+
+export interface SpaceFavoritePayload {
+  space_key: string;
+}
+
+export interface ConfluencePage {
+  page_id: string;
+  title: string;
+  url: string;
+  last_modified: string;
+  children: ConfluencePage[];
+}
+
+export interface SpaceDataResponse {
+  status: string;
+  result: ConfluencePage[];
+}
+
+// ── Service ───────────────────────────────────────────
+
+export const atlassianService = {
+  // Auth
+  connect: async (payload: ConnectPayload): Promise<ConnectResponse> => {
+    const credentials = btoa(`${payload.username}:${payload.password}`);
+    const response = await axios.post<ConnectResponse>(
+      "/api/atlassian/connect",
+      payload,
+      {
+        headers: {
+          Authorization: `Basic ${credentials}`,
+        },
+      }
+    );
+    return response.data;
+  },
+
+  disconnect: async (): Promise<DisconnectResponse> => {
+    const response = await axios.put<DisconnectResponse>(
+      "/api/atlassian/disconnect",
+      {},
+      { headers: getAuthHeader() }
+    );
+    return response.data;
+  },
+
+  // Jira Projects
+  fetchAllProjects: async (): Promise<ProjectsResponse> => {
+    const response = await axios.get<ProjectsResponse>(
+      "/api/jira/projects",
+      { headers: getAuthHeader() }
+    );
+    return response.data;
+  },
+
+  fetchFavoriteProjects: async (): Promise<ProjectsResponse> => {
+    const response = await axios.get<ProjectsResponse>(
+      "/api/jira/projects/favorites",
+      { headers: getAuthHeader() }
+    );
+    return response.data;
+  },
+
+  addFavoriteProject: async (
+    payload: FavoritePayload
+  ): Promise<FavoriteResponse> => {
+    const response = await axios.post<FavoriteResponse>(
+      "/api/jira/projects/favorites",
+      payload,
+      { headers: getAuthHeader() }
+    );
+    return response.data;
+  },
+
+  removeFavoriteProject: async (
+    payload: FavoritePayload
+  ): Promise<FavoriteResponse> => {
+    const response = await axios.delete<FavoriteResponse>(
+      "/api/jira/projects/favorites",
+      {
+        headers: getAuthHeader(),
+        data: payload,
+      }
+    );
+    return response.data;
+  },
+
+  fetchProjectData: async (id: string): Promise<ProjectDataResponse> => {
+    const response = await axios.get<ProjectDataResponse>(
+      `/api/jira/get_project_data/${id}`,
+      { headers: getAuthHeader() }
+    );
+    return response.data;
+  },
+
+  // ── Confluence Spaces ───────────────────────────────
+
+  fetchAllSpaces: async (): Promise<SpacesResponse> => {
+    const response = await axios.get<SpacesResponse>(
+      "/api/confluence/spaces",
+      { headers: getAuthHeader() }
+    );
+    return response.data;
+  },
+
+  fetchFavoriteSpaces: async (): Promise<SpacesResponse> => {
+    const response = await axios.get<SpacesResponse>(
+      "/api/confluence/spaces/favorites",
+      { headers: getAuthHeader() }
+    );
+    return response.data;
+  },
+
+  addFavoriteSpace: async (
+    payload: SpaceFavoritePayload
+  ): Promise<FavoriteResponse> => {
+    const response = await axios.post<FavoriteResponse>(
+      "/api/confluence/spaces/favorites",
+      payload,
+      { headers: getAuthHeader() }
+    );
+    return response.data;
+  },
+
+  removeFavoriteSpace: async (
+    payload: SpaceFavoritePayload
+  ): Promise<FavoriteResponse> => {
+    const response = await axios.delete<FavoriteResponse>(
+      "/api/confluence/spaces/favorites",
+      {
+        headers: getAuthHeader(),
+        data: payload,
+      }
+    );
+    return response.data;
+  },
+
+  fetchSpaceData: async (id: string): Promise<SpaceDataResponse> => {
+    const response = await axios.get<SpaceDataResponse>(
+      `/api/confluence/get_space_data/${id}`,
+      { headers: getAuthHeader() }
+    );
+    return response.data;
+  },
+};
+
+
+
+
+
+
+
+import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
+import {
+  atlassianService,
+  type ConfluenceSpace,
+  type SpacesResult,
+  type ConfluencePage,
+} from "./atlassianService";
+
+export interface ConfluenceState {
+  allSpaces: SpacesResult;
+  favoriteSpaces: SpacesResult;
+  isLoadingSpaces: boolean;
+  isFavoriteUpdating: Record<string, boolean>;
+  spaceData: Record<string, ConfluencePage[]>; // keyed by space id
+  loadingSpaceId: string | null;
+  checkedPages: string[]; // page_ids currently checked
+  error: string | null;
+}
+
+const initialState: ConfluenceState = {
+  allSpaces: {},
+  favoriteSpaces: {},
+  isLoadingSpaces: false,
+  isFavoriteUpdating: {},
+  spaceData: {},
+  loadingSpaceId: null,
+  checkedPages: [],
+  error: null,
+};
+
+// ── Thunks ────────────────────────────────────────────
+
+export const fetchConfluenceSpaces = createAsyncThunk(
+  "confluence/fetchSpaces",
+  async (_, { rejectWithValue }) => {
+    try {
+      const [allRes, favRes] = await Promise.all([
+        atlassianService.fetchAllSpaces(),
+        atlassianService.fetchFavoriteSpaces(),
+      ]);
+
+      if (allRes.status !== "Success") {
+        return rejectWithValue("Failed to fetch spaces.");
+      }
+      if (favRes.status !== "Success") {
+        return rejectWithValue("Failed to fetch favorite spaces.");
+      }
+
+      return {
+        allSpaces: allRes.result,
+        favoriteSpaces: favRes.result,
+      };
+    } catch (error: any) {
+      return rejectWithValue(
+        error?.response?.data?.message ?? "Failed to load Confluence spaces."
+      );
+    }
+  }
+);
+
+export const addFavoriteSpace = createAsyncThunk(
+  "confluence/addFavorite",
+  async (space: ConfluenceSpace, { rejectWithValue }) => {
+    try {
+      const res = await atlassianService.addFavoriteSpace({
+        space_key: space.id,
+      });
+      if (res.status !== "Success") return rejectWithValue("Failed to add favorite.");
+      return space;
+    } catch (error: any) {
+      return rejectWithValue(
+        error?.response?.data?.message ?? "Failed to add favorite."
+      );
+    }
+  }
+);
+
+export const removeFavoriteSpace = createAsyncThunk(
+  "confluence/removeFavorite",
+  async (space: ConfluenceSpace, { rejectWithValue }) => {
+    try {
+      const res = await atlassianService.removeFavoriteSpace({
+        space_key: space.id,
+      });
+      if (res.status !== "Success") return rejectWithValue("Failed to remove favorite.");
+      return space;
+    } catch (error: any) {
+      return rejectWithValue(
+        error?.response?.data?.message ?? "Failed to remove favorite."
+      );
+    }
+  }
+);
+
+export const fetchSpaceData = createAsyncThunk(
+  "confluence/fetchSpaceData",
+  async (space: ConfluenceSpace, { rejectWithValue }) => {
+    try {
+      const res = await atlassianService.fetchSpaceData(space.id);
+      if (res.status !== "Success") {
+        return rejectWithValue("Failed to load space data.");
+      }
+      return { id: space.id, data: res.result };
+    } catch (error: any) {
+      return rejectWithValue(
+        error?.response?.data?.message ?? "Failed to load space data."
+      );
+    }
+  }
+);
+
+// ── Slice ─────────────────────────────────────────────
+
+const confluenceSlice = createSlice({
+  name: "confluence",
+  initialState,
+  reducers: {
+    clearConfluenceError(state) {
+      state.error = null;
+    },
+    resetConfluenceState() {
+      return initialState;
+    },
+    togglePage(state, action: { payload: string }) {
+      const id = action.payload;
+      const idx = state.checkedPages.indexOf(id);
+      if (idx === -1) {
+        state.checkedPages.push(id);
+      } else {
+        state.checkedPages.splice(idx, 1);
+      }
+    },
+    clearCheckedPages(state) {
+      state.checkedPages = [];
+    },
+  },
+  extraReducers: (builder) => {
+    // Fetch spaces
+    builder
+      .addCase(fetchConfluenceSpaces.pending, (state) => {
+        state.isLoadingSpaces = true;
+        state.error = null;
+      })
+      .addCase(fetchConfluenceSpaces.fulfilled, (state, action) => {
+        state.isLoadingSpaces = false;
+        state.allSpaces = action.payload.allSpaces;
+        state.favoriteSpaces = action.payload.favoriteSpaces;
+      })
+      .addCase(fetchConfluenceSpaces.rejected, (state, action) => {
+        state.isLoadingSpaces = false;
+        state.error = action.payload as string;
+      });
+
+    // Add favorite
+    builder
+      .addCase(addFavoriteSpace.pending, (state, action) => {
+        state.isFavoriteUpdating[action.meta.arg.id] = true;
+      })
+      .addCase(addFavoriteSpace.fulfilled, (state, action) => {
+        const space = action.payload;
+        state.isFavoriteUpdating[space.id] = false;
+        state.favoriteSpaces[space.id] = space;
+      })
+      .addCase(addFavoriteSpace.rejected, (state, action) => {
+        state.isFavoriteUpdating[action.meta.arg.id] = false;
+        state.error = action.payload as string;
+      });
+
+    // Remove favorite
+    builder
+      .addCase(removeFavoriteSpace.pending, (state, action) => {
+        state.isFavoriteUpdating[action.meta.arg.id] = true;
+      })
+      .addCase(removeFavoriteSpace.fulfilled, (state, action) => {
+        const space = action.payload;
+        state.isFavoriteUpdating[space.id] = false;
+        delete state.favoriteSpaces[space.id];
+        delete state.spaceData[space.id];
+      })
+      .addCase(removeFavoriteSpace.rejected, (state, action) => {
+        state.isFavoriteUpdating[action.meta.arg.id] = false;
+        state.error = action.payload as string;
+      });
+
+    // Fetch space data
+    builder
+      .addCase(fetchSpaceData.pending, (state, action) => {
+        state.loadingSpaceId = action.meta.arg.id;
+        state.error = null;
+      })
+      .addCase(fetchSpaceData.fulfilled, (state, action) => {
+        state.loadingSpaceId = null;
+        state.spaceData[action.payload.id] = action.payload.data;
+      })
+      .addCase(fetchSpaceData.rejected, (state, action) => {
+        state.loadingSpaceId = null;
+        state.error = action.payload as string;
+      });
+  },
+});
+
+export const {
+  clearConfluenceError,
+  resetConfluenceState,
+  togglePage,
+  clearCheckedPages,
+} = confluenceSlice.actions;
+
+export default confluenceSlice.reducer;
+
+
+
+
+
+
+
+
+
+
 import React, { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import type { AppDispatch, RootState } from "../../store";
 import { disconnectAtlassian } from "./atlassianSlice";
 import {
-  fetchJiraProjects,
-  addFavoriteProject,
-  removeFavoriteProject,
-  fetchProjectData,
-  toggleTicket,
-  clearCheckedTickets,
-} from "./jiraSlice";
-import type { JiraProject, JiraIssueGroup, JiraTicket } from "./atlassianService";
-import styles from "./JiraTool.module.scss";
+  fetchConfluenceSpaces,
+  addFavoriteSpace,
+  removeFavoriteSpace,
+  fetchSpaceData,
+  togglePage,
+  clearCheckedPages,
+} from "./confluenceSlice";
+import type { ConfluenceSpace, ConfluencePage } from "./atlassianService";
+import styles from "./ConfluenceTool.module.scss";
 
-import jiraIcon from "../../assets/icons/jira.png";
+import confluenceIcon from "../../assets/icons/confluence.webp";
 
-interface JiraToolProps {
+interface ConfluenceToolProps {
   onBack: () => void;
 }
 
@@ -57,15 +517,22 @@ const ClearIcon = () => (
   </svg>
 );
 
-const EmptyFolderIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+const ChevronIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="9 18 15 12 9 6" />
   </svg>
 );
 
-const ChevronDownIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="6 9 12 15 18 9" />
+const PageIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <polyline points="14 2 14 8 20 8" />
+  </svg>
+);
+
+const EmptyFolderIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
   </svg>
 );
 
@@ -78,16 +545,16 @@ const BackIcon = () => (
 // ── Gradient palette ──────────────────────────────────
 
 const GRADIENTS: [string, string][] = [
+  ["#0ea5e9", "#06b6d4"],
   ["#6366f1", "#8b5cf6"],
-  ["#0ea5e9", "#2684ff"],
-  ["#10b981", "#06b6d4"],
-  ["#f59e0b", "#ef4444"],
-  ["#ec4899", "#8b5cf6"],
-  ["#14b8a6", "#3b82f6"],
-  ["#f97316", "#eab308"],
-  ["#6366f1", "#ec4899"],
+  ["#10b981", "#14b8a6"],
+  ["#f59e0b", "#f97316"],
+  ["#ec4899", "#a855f7"],
+  ["#3b82f6", "#6366f1"],
   ["#84cc16", "#10b981"],
-  ["#8b5cf6", "#06b6d4"],
+  ["#8b5cf6", "#ec4899"],
+  ["#06b6d4", "#3b82f6"],
+  ["#f97316", "#eab308"],
 ];
 
 const getGradient = (key: string, id: string): [string, string] => {
@@ -99,172 +566,177 @@ const getGradient = (key: string, id: string): [string, string] => {
   return GRADIENTS[Math.abs(hash) % GRADIENTS.length];
 };
 
-// ── Project avatar ────────────────────────────────────
-
-const ProjectAvatar: React.FC<{ projectKey: string; id: string; size?: "sm" | "md" }> = ({
-  projectKey, id, size = "sm",
+const SpaceAvatar: React.FC<{ spaceKey: string; id: string; size?: "sm" | "md" }> = ({
+  spaceKey, id, size = "sm",
 }) => {
-  const [from, to] = getGradient(projectKey, id);
+  const [from, to] = getGradient(spaceKey, id);
   return (
     <div
-      className={`${styles.projectAvatar} ${size === "md" ? styles.projectAvatarMd : ""}`}
+      className={`${styles.spaceAvatar} ${size === "md" ? styles.spaceAvatarMd : ""}`}
       style={{ background: `linear-gradient(135deg, ${from} 0%, ${to} 100%)` }}
     >
-      {projectKey.charAt(0).toUpperCase()}
+      {spaceKey.charAt(0).toUpperCase()}
     </div>
   );
 };
 
-// ── Issue group card ──────────────────────────────────
+// ── Page tree node ────────────────────────────────────
 
-interface IssueGroupCardProps {
-  issueType: string;
-  group: JiraIssueGroup;
-  disabled: boolean;
-  checkedTickets: Set<string>;
-  onTicketToggle: (key: string) => void;
+interface PageNodeProps {
+  page: ConfluencePage;
+  depth: number;
+  checkedSet: Set<string>;
+  onToggle: (pageId: string) => void;
 }
 
-const IssueGroupCard: React.FC<IssueGroupCardProps> = ({
-  issueType, group, disabled, checkedTickets, onTicketToggle,
-}) => {
+const PageNode: React.FC<PageNodeProps> = ({ page, depth, checkedSet, onToggle }) => {
   const [expanded, setExpanded] = useState(false);
+  const hasChildren = page.children && page.children.length > 0;
+
+  const formattedDate = (() => {
+    try {
+      return new Date(page.last_modified).toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+    } catch {
+      return "";
+    }
+  })();
 
   return (
-    <div className={`${styles.issueGroup} ${expanded ? styles.issueGroupExpanded : ""}`}>
-      <button
-        className={styles.issueGroupHeader}
-        onClick={() => setExpanded((prev) => !prev)}
-        disabled={disabled}
-      >
-        <div className={styles.issueGroupLeft}>
-          {group.icon ? (
-            <img
-              src={group.icon}
-              alt={issueType}
-              className={styles.issueTypeIcon}
-              width={16}
-              height={16}
-              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-            />
-          ) : (
-            <span className={styles.issueTypeIconFallback}>
-              {issueType.charAt(0).toUpperCase()}
-            </span>
-          )}
-          <span className={styles.issueTypeName}>{issueType}</span>
-          <span className={styles.issueTypeCount}>{group.tickets.length}</span>
-        </div>
-        <span className={`${styles.issueGroupChevron} ${expanded ? styles.chevronUp : ""}`}>
-          <ChevronDownIcon />
-        </span>
-      </button>
+    <li className={styles.pageNode} style={{ "--depth": depth } as React.CSSProperties}>
+      <div className={styles.pageRow}>
+        {/* Expand toggle */}
+        <button
+          className={`${styles.expandBtn} ${!hasChildren ? styles.expandBtnHidden : ""} ${expanded ? styles.expandBtnOpen : ""}`}
+          onClick={() => hasChildren && setExpanded((p) => !p)}
+          tabIndex={hasChildren ? 0 : -1}
+        >
+          <ChevronIcon />
+        </button>
 
-      {expanded && (
-        <ul className={styles.ticketList}>
-          {group.tickets.map((ticket) => (
-            <li key={ticket.key} className={styles.ticketItem}>
-              <label className={styles.ticketLabel}>
-                <input
-                  type="checkbox"
-                  className={styles.ticketCheckbox}
-                  checked={checkedTickets.has(ticket.key)}
-                  onChange={() => onTicketToggle(ticket.key)}
-                />
-                <div className={styles.ticketInfo}>
-                  <span className={styles.ticketKey}>{ticket.key}</span>
-                  <span className={styles.ticketSummary}>{ticket.summary}</span>
-                </div>
-              </label>
-            </li>
+        {/* Checkbox */}
+        <input
+          type="checkbox"
+          className={styles.pageCheckbox}
+          checked={checkedSet.has(page.page_id)}
+          onChange={() => onToggle(page.page_id)}
+        />
+
+        {/* Page icon */}
+        <span className={styles.pageIcon}><PageIcon /></span>
+
+        {/* Page info */}
+        <div className={styles.pageInfo}>
+          <a
+            href={page.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={styles.pageTitle}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {page.title}
+          </a>
+          {formattedDate && (
+            <span className={styles.pageDate}>{formattedDate}</span>
+          )}
+        </div>
+      </div>
+
+      {/* Children */}
+      {expanded && hasChildren && (
+        <ul className={styles.childList}>
+          {page.children.map((child) => (
+            <PageNode
+              key={child.page_id}
+              page={child}
+              depth={depth + 1}
+              checkedSet={checkedSet}
+              onToggle={onToggle}
+            />
           ))}
         </ul>
       )}
-    </div>
+    </li>
   );
 };
 
-// ── Project detail panel ──────────────────────────────
+// ── Space detail panel ────────────────────────────────
 
-interface ProjectDetailPanelProps {
-  project: JiraProject;
+interface SpaceDetailPanelProps {
+  space: ConfluenceSpace;
   onBack: () => void;
 }
 
-const ProjectDetailPanel: React.FC<ProjectDetailPanelProps> = ({ project, onBack }) => {
+const SpaceDetailPanel: React.FC<SpaceDetailPanelProps> = ({ space, onBack }) => {
   const dispatch = useDispatch<AppDispatch>();
-  const { projectData, loadingProjectId, checkedTickets, error } = useSelector(
-    (state: RootState) => state.jira
+  const { spaceData, loadingSpaceId, checkedPages, error } = useSelector(
+    (state: RootState) => state.confluence
   );
 
-  const data = projectData[project.id];
-  const isLoading = loadingProjectId === project.id;
-  const anyLoading = loadingProjectId !== null;
-  const checkedSet = new Set(checkedTickets);
+  const data = spaceData[space.id];
+  const isLoading = loadingSpaceId === space.id;
+  const checkedSet = new Set(checkedPages);
 
   useEffect(() => {
     if (!data) {
-      dispatch(fetchProjectData(project));
+      dispatch(fetchSpaceData(space));
     }
-    // Clear checked tickets when leaving this project
     return () => {
-      dispatch(clearCheckedTickets());
+      dispatch(clearCheckedPages());
     };
-  }, [project.id]);
+  }, [space.id]);
 
-  const handleTicketToggle = (key: string) => {
-    dispatch(toggleTicket(key));
+  const handleToggle = (pageId: string) => {
+    dispatch(togglePage(pageId));
   };
 
-  const issueEntries = data ? Object.entries(data) : [];
-
   return (
-    <div className={styles.projectDetailPanel}>
-      {/* Panel header */}
-      <div className={styles.projectDetailHeader}>
-        <div className={styles.projectDetailTitle}>
-          <ProjectAvatar projectKey={project.key} id={project.id} size="md" />
-          <span className={styles.projectDetailName}>{project.key}</span>
+    <div className={styles.spaceDetailPanel}>
+      <div className={styles.spaceDetailHeader}>
+        <div className={styles.spaceDetailTitle}>
+          <SpaceAvatar spaceKey={space.key} id={space.id} size="md" />
+          <span className={styles.spaceDetailName}>{space.key}</span>
         </div>
-        <button className={styles.projectDetailBack} onClick={onBack}>
+        <button className={styles.spaceDetailBack} onClick={onBack}>
           <BackIcon />
-          <span>Projects</span>
+          <span>Spaces</span>
         </button>
       </div>
 
-      {/* Loading */}
       {isLoading && (
         <div className={styles.loadingState}>
           <span className={styles.spinner} />
-          <span>Loading issues…</span>
+          <span>Loading pages…</span>
         </div>
       )}
 
-      {/* Error */}
       {!isLoading && error && (
         <div className={styles.errorState}>{error}</div>
       )}
 
-      {/* Issue groups */}
       {!isLoading && !error && data && (
-        <div className={styles.issueGroupList}>
-          {issueEntries.length === 0 ? (
+        <div className={styles.pageTreeWrapper}>
+          {data.length === 0 ? (
             <div className={styles.emptyState}>
               <div className={styles.emptyIcon}><EmptyFolderIcon /></div>
-              <p>No issues found</p>
-              <span>This project has no issues yet.</span>
+              <p>No pages found</p>
+              <span>This space has no pages yet.</span>
             </div>
           ) : (
-            issueEntries.map(([issueType, group]) => (
-              <IssueGroupCard
-                key={issueType}
-                issueType={issueType}
-                group={group}
-                disabled={anyLoading}
-                checkedTickets={checkedSet}
-                onTicketToggle={handleTicketToggle}
-              />
-            ))
+            <ul className={styles.pageTree}>
+              {data.map((page) => (
+                <PageNode
+                  key={page.page_id}
+                  page={page}
+                  depth={0}
+                  checkedSet={checkedSet}
+                  onToggle={handleToggle}
+                />
+              ))}
+            </ul>
           )}
         </div>
       )}
@@ -274,39 +746,39 @@ const ProjectDetailPanel: React.FC<ProjectDetailPanelProps> = ({ project, onBack
 
 // ── Main component ────────────────────────────────────
 
-export const JiraTool: React.FC<JiraToolProps> = ({ onBack }) => {
+export const ConfluenceTool: React.FC<ConfluenceToolProps> = ({ onBack }) => {
   const dispatch = useDispatch<AppDispatch>();
 
   const { isLoading: isDisconnecting } = useSelector(
     (state: RootState) => state.atlassian
   );
   const {
-    allProjects,
-    favoriteProjects,
-    isLoadingProjects,
+    allSpaces,
+    favoriteSpaces,
+    isLoadingSpaces,
     isFavoriteUpdating,
-    loadingProjectId,
+    loadingSpaceId,
     error,
-  } = useSelector((state: RootState) => state.jira);
+  } = useSelector((state: RootState) => state.confluence);
 
   const [activeTab, setActiveTab] = useState<Tab>("favorites");
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedProject, setSelectedProject] = useState<JiraProject | null>(null);
+  const [selectedSpace, setSelectedSpace] = useState<ConfluenceSpace | null>(null);
 
   useEffect(() => {
-    dispatch(fetchJiraProjects());
+    dispatch(fetchConfluenceSpaces());
   }, [dispatch]);
 
   const handleDisconnect = () => dispatch(disconnectAtlassian());
 
-  const isFavorite = (id: string) => !!favoriteProjects[id];
+  const isFavorite = (id: string) => !!favoriteSpaces[id];
 
-  const handleToggleFavorite = (project: JiraProject) => {
-    if (isFavoriteUpdating[project.id]) return;
-    if (isFavorite(project.id)) {
-      dispatch(removeFavoriteProject(project));
+  const handleToggleFavorite = (space: ConfluenceSpace) => {
+    if (isFavoriteUpdating[space.id]) return;
+    if (isFavorite(space.id)) {
+      dispatch(removeFavoriteSpace(space));
     } else {
-      dispatch(addFavoriteProject(project));
+      dispatch(addFavoriteSpace(space));
     }
   };
 
@@ -315,97 +787,74 @@ export const JiraTool: React.FC<JiraToolProps> = ({ onBack }) => {
     setSearchQuery("");
   };
 
-  const handleProjectClick = (project: JiraProject) => {
-    if (loadingProjectId !== null) return;
-    setSelectedProject(project);
-    dispatch(fetchProjectData(project));
+  const handleSpaceClick = (space: ConfluenceSpace) => {
+    if (loadingSpaceId !== null) return;
+    setSelectedSpace(space);
+    dispatch(fetchSpaceData(space));
   };
 
-  const allProjectsList = Object.values(allProjects);
-  const favoriteProjectsList = Object.values(favoriteProjects);
+  const allSpacesList = Object.values(allSpaces);
+  const favoriteSpacesList = Object.values(favoriteSpaces);
 
   const query = searchQuery.toLowerCase().trim();
   const filteredAll = query
-    ? allProjectsList.filter(
-        (p) => p.key.toLowerCase().includes(query) || p.id.includes(query)
+    ? allSpacesList.filter(
+        (s) => s.key.toLowerCase().includes(query) || s.id.includes(query)
       )
-    : allProjectsList;
+    : allSpacesList;
 
   const filteredFavorites = query
-    ? favoriteProjectsList.filter(
-        (p) => p.key.toLowerCase().includes(query) || p.id.includes(query)
+    ? favoriteSpacesList.filter(
+        (s) => s.key.toLowerCase().includes(query) || s.id.includes(query)
       )
-    : favoriteProjectsList;
+    : favoriteSpacesList;
 
-  // ── Project detail view ───────────────────────────
-  if (selectedProject) {
+  const ToolHeader = ({ showDetail = false }) => (
+    <div className={styles.toolHeader}>
+      <div className={styles.toolHeaderTop}>
+        <div className={styles.breadcrumb}>
+          <button className={styles.breadcrumbLink} onClick={onBack}>Tools</button>
+          <span className={styles.breadcrumbSep}>›</span>
+          <span className={styles.breadcrumbCurrent}>Confluence</span>
+        </div>
+        <button
+          className={styles.logoutBtn}
+          onClick={handleDisconnect}
+          disabled={isDisconnecting}
+          title="Disconnect Confluence"
+        >
+          <LogoutIcon />
+        </button>
+      </div>
+      <div className={styles.toolHeaderBottom}>
+        <div className={styles.toolIcon}>
+          <img src={confluenceIcon} alt="Confluence" width={22} height={22} className={styles.img} />
+        </div>
+        <div className={styles.toolMeta}>
+          <h2 className={styles.toolName}>Confluence</h2>
+        </div>
+        <span className={styles.connectedBadge}>● Connected</span>
+      </div>
+    </div>
+  );
+
+  // ── Space detail view ─────────────────────────────
+  if (selectedSpace) {
     return (
       <div className={styles.wrapper}>
-        <div className={styles.toolHeader}>
-          <div className={styles.toolHeaderTop}>
-            <div className={styles.breadcrumb}>
-              <button className={styles.breadcrumbLink} onClick={onBack}>Tools</button>
-              <span className={styles.breadcrumbSep}>›</span>
-              <span className={styles.breadcrumbCurrent}>Jira</span>
-            </div>
-            <button
-              className={styles.logoutBtn}
-              onClick={handleDisconnect}
-              disabled={isDisconnecting}
-              title="Disconnect Jira"
-            >
-              <LogoutIcon />
-            </button>
-          </div>
-          <div className={styles.toolHeaderBottom}>
-            <div className={styles.toolIcon}>
-              <img src={jiraIcon} alt="Jira" width={22} height={22} className={styles.img} />
-            </div>
-            <div className={styles.toolMeta}>
-              <h2 className={styles.toolName}>Jira</h2>
-            </div>
-            <span className={styles.connectedBadge}>● Connected</span>
-          </div>
-        </div>
-        <ProjectDetailPanel
-          project={selectedProject}
-          onBack={() => setSelectedProject(null)}
+        <ToolHeader showDetail />
+        <SpaceDetailPanel
+          space={selectedSpace}
+          onBack={() => setSelectedSpace(null)}
         />
       </div>
     );
   }
 
-  // ── Project list view ─────────────────────────────
+  // ── Space list view ───────────────────────────────
   return (
     <div className={styles.wrapper}>
-
-      {/* Unified tool header */}
-      <div className={styles.toolHeader}>
-        <div className={styles.toolHeaderTop}>
-          <div className={styles.breadcrumb}>
-            <button className={styles.breadcrumbLink} onClick={onBack}>Tools</button>
-            <span className={styles.breadcrumbSep}>›</span>
-            <span className={styles.breadcrumbCurrent}>Jira</span>
-          </div>
-          <button
-            className={styles.logoutBtn}
-            onClick={handleDisconnect}
-            disabled={isDisconnecting}
-            title="Disconnect Jira"
-          >
-            <LogoutIcon />
-          </button>
-        </div>
-        <div className={styles.toolHeaderBottom}>
-          <div className={styles.toolIcon}>
-            <img src={jiraIcon} alt="Jira" width={22} height={22} className={styles.img} />
-          </div>
-          <div className={styles.toolMeta}>
-            <h2 className={styles.toolName}>Jira</h2>
-          </div>
-          <span className={styles.connectedBadge}>● Connected</span>
-        </div>
-      </div>
+      <ToolHeader />
 
       {/* Tabs */}
       <div className={styles.tabs}>
@@ -413,30 +862,30 @@ export const JiraTool: React.FC<JiraToolProps> = ({ onBack }) => {
           className={`${styles.tab} ${activeTab === "favorites" ? styles.activeTab : ""}`}
           onClick={() => handleTabChange("favorites")}
         >
-          Favorites
-          {favoriteProjectsList.length > 0 && (
-            <span className={styles.tabCount}>{favoriteProjectsList.length}</span>
+          Favorite Spaces
+          {favoriteSpacesList.length > 0 && (
+            <span className={styles.tabCount}>{favoriteSpacesList.length}</span>
           )}
         </button>
         <button
           className={`${styles.tab} ${activeTab === "all" ? styles.activeTab : ""}`}
           onClick={() => handleTabChange("all")}
         >
-          All Projects
-          {allProjectsList.length > 0 && (
-            <span className={styles.tabCount}>{allProjectsList.length}</span>
+          All Spaces
+          {allSpacesList.length > 0 && (
+            <span className={styles.tabCount}>{allSpacesList.length}</span>
           )}
         </button>
       </div>
 
       {/* Search */}
-      {!isLoadingProjects && !error && (
+      {!isLoadingSpaces && !error && (
         <div className={styles.searchBar}>
           <span className={styles.searchIcon}><SearchIcon /></span>
           <input
             type="text"
             className={styles.searchInput}
-            placeholder="Search projects…"
+            placeholder="Search spaces…"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -451,52 +900,52 @@ export const JiraTool: React.FC<JiraToolProps> = ({ onBack }) => {
       {/* Content */}
       <div className={styles.content}>
 
-        {isLoadingProjects && (
+        {isLoadingSpaces && (
           <div className={styles.loadingState}>
             <span className={styles.spinner} />
-            <span>Loading projects…</span>
+            <span>Loading spaces…</span>
           </div>
         )}
 
-        {!isLoadingProjects && error && (
+        {!isLoadingSpaces && error && (
           <div className={styles.errorState}>{error}</div>
         )}
 
-        {/* Favorites tab */}
-        {!isLoadingProjects && !error && activeTab === "favorites" && (
+        {/* Favorite Spaces tab */}
+        {!isLoadingSpaces && !error && activeTab === "favorites" && (
           filteredFavorites.length === 0 ? (
             <div className={styles.emptyState}>
               <div className={styles.emptyIcon}><StarOutlineIcon /></div>
-              <p>{query ? "No matches found" : "No favorites yet"}</p>
+              <p>{query ? "No matches found" : "No favorite spaces yet"}</p>
               <span>
                 {query
-                  ? `No favorite projects match "${searchQuery}".`
-                  : "Star a project in All Projects to pin it here."}
+                  ? `No favorite spaces match "${searchQuery}".`
+                  : "Star a space in All Spaces to pin it here."}
               </span>
             </div>
           ) : (
-            <ul className={styles.projectList}>
-              {filteredFavorites.map((project) => {
-                const isThisLoading = loadingProjectId === project.id;
-                const anyLoading = loadingProjectId !== null;
+            <ul className={styles.spaceList}>
+              {filteredFavorites.map((space) => {
+                const isThisLoading = loadingSpaceId === space.id;
+                const anyLoading = loadingSpaceId !== null;
 
                 return (
-                  <li key={project.id}>
+                  <li key={space.id}>
                     <button
-                      className={`${styles.projectItem} ${styles.projectItemClickable} ${anyLoading && !isThisLoading ? styles.projectItemDisabled : ""}`}
-                      onClick={() => handleProjectClick(project)}
+                      className={`${styles.spaceItem} ${styles.spaceItemClickable} ${anyLoading && !isThisLoading ? styles.spaceItemDisabled : ""}`}
+                      onClick={() => handleSpaceClick(space)}
                       disabled={anyLoading && !isThisLoading}
                     >
                       {isThisLoading ? (
                         <span className={styles.inlineSpinner} />
                       ) : (
-                        <ProjectAvatar projectKey={project.key} id={project.id} />
+                        <SpaceAvatar spaceKey={space.key} id={space.id} />
                       )}
-                      <div className={styles.projectInfo}>
-                        <span className={styles.projectKey}>{project.key}</span>
-                        <span className={styles.projectId}>#{project.id}</span>
+                      <div className={styles.spaceInfo}>
+                        <span className={styles.spaceKey}>{space.key}</span>
+                        <span className={styles.spaceId}>#{space.id}</span>
                       </div>
-                      <span className={styles.projectChevron}>›</span>
+                      <span className={styles.spaceChevron}>›</span>
                     </button>
                   </li>
                 );
@@ -505,34 +954,34 @@ export const JiraTool: React.FC<JiraToolProps> = ({ onBack }) => {
           )
         )}
 
-        {/* All Projects tab */}
-        {!isLoadingProjects && !error && activeTab === "all" && (
+        {/* All Spaces tab */}
+        {!isLoadingSpaces && !error && activeTab === "all" && (
           filteredAll.length === 0 ? (
             <div className={styles.emptyState}>
               <div className={styles.emptyIcon}><EmptyFolderIcon /></div>
-              <p>{query ? "No matches found" : "No projects found"}</p>
+              <p>{query ? "No matches found" : "No spaces found"}</p>
               <span>
                 {query
-                  ? `No projects match "${searchQuery}".`
-                  : "Your Jira projects will appear here."}
+                  ? `No spaces match "${searchQuery}".`
+                  : "Your Confluence spaces will appear here."}
               </span>
             </div>
           ) : (
-            <ul className={styles.projectList}>
-              {filteredAll.map((project) => {
-                const favorited = isFavorite(project.id);
-                const updating = !!isFavoriteUpdating[project.id];
+            <ul className={styles.spaceList}>
+              {filteredAll.map((space) => {
+                const favorited = isFavorite(space.id);
+                const updating = !!isFavoriteUpdating[space.id];
 
                 return (
-                  <li key={project.id} className={styles.projectItem}>
-                    <ProjectAvatar projectKey={project.key} id={project.id} />
-                    <div className={styles.projectInfo}>
-                      <span className={styles.projectKey}>{project.key}</span>
-                      <span className={styles.projectId}>#{project.id}</span>
+                  <li key={space.id} className={styles.spaceItem}>
+                    <SpaceAvatar spaceKey={space.key} id={space.id} />
+                    <div className={styles.spaceInfo}>
+                      <span className={styles.spaceKey}>{space.key}</span>
+                      <span className={styles.spaceId}>#{space.id}</span>
                     </div>
                     <button
                       className={`${styles.favoriteBtn} ${favorited ? styles.favorited : ""}`}
-                      onClick={() => handleToggleFavorite(project)}
+                      onClick={() => handleToggleFavorite(space)}
                       disabled={updating}
                       title={favorited ? "Remove from favorites" : "Add to favorites"}
                     >
@@ -556,7 +1005,7 @@ export const JiraTool: React.FC<JiraToolProps> = ({ onBack }) => {
   );
 };
 
-export default JiraTool;
+export default ConfluenceTool;
 
 
 
@@ -566,7 +1015,14 @@ export default JiraTool;
 
 
 
-// Jira brand palette
+
+
+
+
+
+
+// Confluence palette — using global CSS vars for primaries
+// Confluence brand: teal/blue #0052cc → using accent vars
 $star-gold: #f59e0b;
 $star-gold-hover: #d97706;
 $connected-green: #059669;
@@ -575,6 +1031,8 @@ $connected-border: #a7f3d0;
 $error-red: #dc2626;
 $error-bg: #fef2f2;
 $error-border: #fecaca;
+$confluence-teal: #0065ff;
+$confluence-teal-dark: #0052cc;
 
 // ── Wrapper ───────────────────────────────────────────
 
@@ -588,14 +1046,8 @@ $error-border: #fecaca;
 }
 
 @keyframes fadeSlideIn {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 // ── Unified tool header ───────────────────────────────
@@ -617,7 +1069,7 @@ $error-border: #fecaca;
     top: 0;
     bottom: 0;
     width: 3px;
-    background: linear-gradient(180deg, var(--accent-primary) 0%, var(--accent-hover) 100%);
+    background: linear-gradient(180deg, $confluence-teal 0%, $confluence-teal-dark 100%);
     border-radius: 0 2px 2px 0;
   }
 }
@@ -628,7 +1080,7 @@ $error-border: #fecaca;
   justify-content: space-between;
   padding: 9px 12px 9px 16px;
   border-bottom: 1px solid var(--border-subtle);
-  background: rgba(79, 70, 229, 0.02);
+  background: rgba(0, 101, 255, 0.02);
 }
 
 .toolHeaderBottom {
@@ -639,12 +1091,12 @@ $error-border: #fecaca;
   padding: 10px 12px 10px 16px;
   background: linear-gradient(
     135deg,
-    rgba(79, 70, 229, 0.04) 0%,
-    rgba(79, 70, 229, 0.01) 100%
+    rgba(0, 101, 255, 0.04) 0%,
+    rgba(0, 101, 255, 0.01) 100%
   );
 }
 
-// ── Breadcrumb nav ────────────────────────────────────
+// ── Breadcrumb ────────────────────────────────────────
 
 .breadcrumb {
   display: flex;
@@ -674,11 +1126,8 @@ $error-border: #fecaca;
   }
 
   &:hover {
-    color: var(--accent-primary);
-
-    &::before {
-      transform: translateX(-2px);
-    }
+    color: $confluence-teal;
+    &::before { transform: translateX(-2px); }
   }
 }
 
@@ -686,7 +1135,6 @@ $error-border: #fecaca;
   font-size: 0.75rem;
   color: var(--text-tertiary);
   opacity: 0.4;
-  line-height: 1;
   user-select: none;
 }
 
@@ -695,8 +1143,9 @@ $error-border: #fecaca;
   font-weight: 700;
   color: var(--text-primary);
   letter-spacing: -0.01em;
-  line-height: 1;
 }
+
+// ── Logout button ─────────────────────────────────────
 
 .logoutBtn {
   display: flex;
@@ -720,27 +1169,23 @@ $error-border: #fecaca;
     transform: scale(1.05);
   }
 
-  &:active:not(:disabled) {
-    transform: scale(0.95);
-  }
-
-  &:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
+  &:active:not(:disabled) { transform: scale(0.95); }
+  &:disabled { opacity: 0.4; cursor: not-allowed; }
 }
+
+// ── Tool icon & meta ──────────────────────────────────
 
 .toolIcon {
   width: 34px;
   height: 34px;
   border-radius: 9px;
-  border: 1px solid rgba(79, 70, 229, 0.2);
+  border: 1px solid rgba(0, 101, 255, 0.2);
   background: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  box-shadow: 0 1px 4px rgba(79, 70, 229, 0.15), 0 0 0 3px rgba(79, 70, 229, 0.05);
+  box-shadow: 0 1px 4px rgba(0, 101, 255, 0.15), 0 0 0 3px rgba(0, 101, 255, 0.05);
 }
 
 .img {
@@ -808,25 +1253,17 @@ $error-border: #fecaca;
   font-weight: 500;
   cursor: pointer;
   transition: color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
-  position: relative;
-  z-index: 1;
   letter-spacing: 0.01em;
 
   &:hover:not(.activeTab) {
-    color: var(--text-primary);
     background: var(--bg-hover);
   }
 
   &.activeTab {
     color: #fff;
     font-weight: 600;
-    background: linear-gradient(
-      135deg,
-      var(--accent-primary) 0%,
-      var(--accent-hover) 100%
-    );
-    box-shadow: 0 2px 8px rgba(79, 70, 229, 0.35),
-                0 1px 2px rgba(0, 0, 0, 0.1);
+    background: linear-gradient(135deg, $confluence-teal 0%, $confluence-teal-dark 100%);
+    box-shadow: 0 2px 8px rgba(0, 101, 255, 0.35), 0 1px 2px rgba(0, 0, 0, 0.1);
   }
 }
 
@@ -854,70 +1291,7 @@ $error-border: #fecaca;
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 10px 10px 4px;
-  padding: 0 10px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-  flex-shrink: 0;
-
-  &:focus-within {
-    border-color: rgba(79, 70, 229, 0.4);
-    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.08);
-    background: var(--bg-main);
-  }
-}
-
-.searchIcon {
-  display: flex;
-  align-items: center;
-  color: var(--text-tertiary);
-  flex-shrink: 0;
-  pointer-events: none;
-}
-
-.searchInput {
-  flex: 1;
-  border: none;
-  background: transparent;
-  color: var(--text-primary);
-  font-size: 0.8125rem;
-  padding: 8px 0;
-  outline: none;
-
-  &::placeholder {
-    color: var(--text-tertiary);
-  }
-}
-
-.clearBtn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  border: none;
-  background: var(--text-tertiary);
-  color: var(--bg-main);
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: background 0.15s ease;
-  padding: 0;
-
-  &:hover {
-    background: var(--text-secondary);
-  }
-}
-
-// ── Search bar ────────────────────────────────────────
-
-.searchBar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 10px 10px 2px;
+  margin: 8px 12px 4px;
   padding: 5px 10px;
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
@@ -926,8 +1300,8 @@ $error-border: #fecaca;
   flex-shrink: 0;
 
   &:focus-within {
-    border-color: var(--accent-primary);
-    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+    border-color: $confluence-teal;
+    box-shadow: 0 0 0 3px rgba(0, 101, 255, 0.1);
     background: var(--bg-main);
   }
 }
@@ -939,9 +1313,7 @@ $error-border: #fecaca;
   flex-shrink: 0;
   transition: color 0.15s ease;
 
-  .searchBar:focus-within & {
-    color: var(--accent-primary);
-  }
+  .searchBar:focus-within & { color: $confluence-teal; }
 }
 
 .searchInput {
@@ -953,9 +1325,7 @@ $error-border: #fecaca;
   color: var(--text-primary);
   min-width: 0;
 
-  &::placeholder {
-    color: var(--text-tertiary);
-  }
+  &::placeholder { color: var(--text-tertiary); }
 }
 
 .clearBtn {
@@ -973,10 +1343,7 @@ $error-border: #fecaca;
   opacity: 0.5;
   transition: opacity 0.15s ease, background 0.15s ease;
 
-  &:hover {
-    opacity: 1;
-    background: var(--accent-primary);
-  }
+  &:hover { opacity: 1; background: $confluence-teal; }
 }
 
 // ── Scrollable content ────────────────────────────────
@@ -984,46 +1351,37 @@ $error-border: #fecaca;
 .content {
   flex: 1;
   overflow-y: auto;
-  padding: 10px 10px 16px;
+  padding: 8px 10px 16px;
 
-  &::-webkit-scrollbar {
-    width: 3px;
-  }
-  &::-webkit-scrollbar-track {
-    background: transparent;
-  }
+  &::-webkit-scrollbar { width: 3px; }
+  &::-webkit-scrollbar-track { background: transparent; }
   &::-webkit-scrollbar-thumb {
     background: var(--border-subtle);
     border-radius: 2px;
-
-    &:hover {
-      background: rgba(79, 70, 229, 0.2);
-    }
+    &:hover { background: $confluence-teal; }
   }
 }
 
-// ── Loading / error / empty states ───────────────────
+// ── Empty / loading / error states ────────────────────
 
 .loadingState {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: center;
   gap: 10px;
-  padding: 48px 20px;
+  justify-content: center;
+  padding: 32px 16px;
   color: var(--text-tertiary);
-  font-size: 0.7875rem;
+  font-size: 0.8125rem;
 }
 
 .errorState {
-  margin: 8px 2px 0;
+  margin: 12px 0;
   padding: 10px 12px;
-  font-size: 0.7875rem;
-  color: $error-red;
   background: $error-bg;
   border: 1px solid $error-border;
   border-radius: 8px;
-  line-height: 1.5;
+  color: $error-red;
+  font-size: 0.8125rem;
 }
 
 .emptyState {
@@ -1031,26 +1389,9 @@ $error-border: #fecaca;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 48px 24px;
+  padding: 32px 16px;
   text-align: center;
-
-  .emptyIcon {
-    width: 36px;
-    height: 36px;
-    border-radius: 10px;
-    background: var(--bg-surface);
-    border: 1px solid var(--border-subtle);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--text-tertiary);
-    margin-bottom: 6px;
-
-    svg {
-      opacity: 0.5;
-    }
-  }
+  gap: 6px;
 
   p {
     font-size: 0.875rem;
@@ -1060,15 +1401,28 @@ $error-border: #fecaca;
   }
 
   span {
-    font-size: 0.75rem;
+    font-size: 0.78rem;
     color: var(--text-tertiary);
     line-height: 1.5;
   }
 }
 
-// ── Project list ──────────────────────────────────────
+.emptyIcon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  margin-bottom: 4px;
+}
 
-.projectList {
+// ── Space list ────────────────────────────────────────
+
+.spaceList {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -1077,7 +1431,7 @@ $error-border: #fecaca;
   gap: 3px;
 }
 
-.projectItem {
+.spaceItem {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1089,36 +1443,59 @@ $error-border: #fecaca;
   animation: itemIn 0.2s ease both;
 
   @for $i from 1 through 30 {
-    &:nth-child(#{$i}) {
-      animation-delay: #{$i * 0.03}s;
-    }
+    &:nth-child(#{$i}) { animation-delay: #{$i * 0.03}s; }
   }
 
-  &:hover {
+  &:hover:not(.spaceItemClickable) {
     background: var(--bg-hover);
     border-color: var(--border-subtle);
     box-shadow: var(--shadow-sm);
 
-    .favoriteBtn {
-      opacity: 1;
-    }
+    .favoriteBtn { opacity: 1; }
   }
 }
 
 @keyframes itemIn {
-  from {
-    opacity: 0;
-    transform: translateX(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
+  from { opacity: 0; transform: translateX(-4px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.spaceItemClickable {
+  width: 100%;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  text-align: left;
+
+  &:hover:not(:disabled) {
+    background: var(--bg-hover);
+    border-color: var(--border-subtle);
+    box-shadow: var(--shadow-sm);
+
+    .spaceChevron {
+      color: $confluence-teal;
+      transform: translateX(2px);
+    }
   }
 }
 
-// ── Project avatar ────────────────────────────────────
+.spaceItemDisabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
 
-.projectAvatar {
+.spaceChevron {
+  font-size: 1.1rem;
+  color: var(--text-tertiary);
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+// ── Space avatar ──────────────────────────────────────
+
+.spaceAvatar {
   width: 32px;
   height: 32px;
   border-radius: 8px;
@@ -1135,27 +1512,33 @@ $error-border: #fecaca;
   user-select: none;
 }
 
-// ── Project info ──────────────────────────────────────
+.spaceAvatarMd {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  font-size: 0.9375rem;
+}
 
-.projectInfo {
+// ── Space info ────────────────────────────────────────
+
+.spaceInfo {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
   min-width: 0;
 }
 
-.projectKey {
-  font-size: 0.875rem;
+.spaceKey {
+  font-size: 0.8125rem;
   font-weight: 600;
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  letter-spacing: -0.01em;
 }
 
-.projectId {
+.spaceId {
   font-size: 0.68rem;
   color: var(--text-tertiary);
   font-variant-numeric: tabular-nums;
@@ -1186,34 +1569,36 @@ $error-border: #fecaca;
     transform: scale(1.1);
   }
 
-  &:active:not(:disabled) {
-    transform: scale(0.9);
-  }
+  &:active:not(:disabled) { transform: scale(0.9); }
 
   &.favorited {
     opacity: 1;
     color: $star-gold;
-
-    svg {
-      filter: drop-shadow(0 0 3px rgba($star-gold, 0.4));
-    }
+    svg { filter: drop-shadow(0 0 3px rgba($star-gold, 0.4)); }
 
     &:hover:not(:disabled) {
       background: #fffbeb;
       border-color: #fde68a;
       color: $star-gold-hover;
       transform: scale(1.1);
-
-      svg {
-        filter: none;
-      }
+      svg { filter: none; }
     }
   }
 
-  &:disabled {
-    cursor: not-allowed;
-    opacity: 0.5;
-  }
+  &:disabled { cursor: not-allowed; opacity: 0.5; }
+}
+
+// ── Inline spinner ────────────────────────────────────
+
+.inlineSpinner {
+  width: 32px;
+  height: 32px;
+  border: 2px solid rgba(0, 101, 255, 0.15);
+  border-top-color: $confluence-teal;
+  border-radius: 50%;
+  animation: spin 0.65s linear infinite;
+  display: inline-block;
+  flex-shrink: 0;
 }
 
 // ── Spinners ──────────────────────────────────────────
@@ -1221,8 +1606,8 @@ $error-border: #fecaca;
 .spinner {
   width: 18px;
   height: 18px;
-  border: 2px solid rgba(79, 70, 229, 0.15);
-  border-top-color: var(--accent-primary);
+  border: 2px solid rgba(0, 101, 255, 0.15);
+  border-top-color: $confluence-teal;
   border-radius: 50%;
   animation: spin 0.65s linear infinite;
   display: inline-block;
@@ -1240,78 +1625,19 @@ $error-border: #fecaca;
 }
 
 @keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+  to { transform: rotate(360deg); }
 }
 
-// ── Project item — clickable variant ─────────────────
+// ── Space detail panel ────────────────────────────────
 
-.projectItemClickable {
-  width: 100%;
-  cursor: pointer;
-  border: none;
-  background: transparent;
-  text-align: left;
-
-  &:hover:not(:disabled) {
-    background: var(--bg-hover);
-    border-color: var(--border-subtle);
-    box-shadow: var(--shadow-sm);
-
-    .projectChevron {
-      color: var(--accent-primary);
-      transform: translateX(2px);
-    }
-  }
-}
-
-.projectItemDisabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-  pointer-events: none;
-}
-
-.projectChevron {
-  font-size: 1.1rem;
-  color: var(--text-tertiary);
-  transition: all 0.15s ease;
-  flex-shrink: 0;
-  line-height: 1;
-}
-
-// ── Inline spinner (replaces avatar while loading) ────
-
-.inlineSpinner {
-  width: 32px;
-  height: 32px;
-  border: 2px solid rgba(79, 70, 229, 0.15);
-  border-top-color: var(--accent-primary);
-  border-radius: 50%;
-  animation: spin 0.65s linear infinite;
-  display: inline-block;
-  flex-shrink: 0;
-}
-
-// ── Larger avatar variant ─────────────────────────────
-
-.projectAvatarMd {
-  width: 36px;
-  height: 36px;
-  border-radius: 9px;
-  font-size: 0.9375rem;
-}
-
-// ── Project detail panel ──────────────────────────────
-
-.projectDetailPanel {
+.spaceDetailPanel {
   display: flex;
   flex-direction: column;
   flex: 1;
   overflow: hidden;
 }
 
-.projectDetailHeader {
+.spaceDetailHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1321,7 +1647,25 @@ $error-border: #fecaca;
   background: var(--bg-main);
 }
 
-.projectDetailBack {
+.spaceDetailTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.spaceDetailName {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: -0.01em;
+}
+
+.spaceDetailBack {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -1336,206 +1680,144 @@ $error-border: #fecaca;
   transition: all 0.15s ease;
 
   &:hover {
-    background: var(--accent-light);
-    color: var(--accent-primary);
-    border-color: rgba(79, 70, 229, 0.3);
+    background: rgba(0, 101, 255, 0.06);
+    color: $confluence-teal;
+    border-color: rgba(0, 101, 255, 0.3);
   }
 }
 
-.projectDetailTitle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  overflow: hidden;
-}
+// ── Page tree ─────────────────────────────────────────
 
-.projectDetailName {
-  font-size: 0.9rem;
-  font-weight: 700;
-  color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  letter-spacing: -0.01em;
-}
-
-// ── Issue group list ──────────────────────────────────
-
-.issueGroupList {
+.pageTreeWrapper {
   flex: 1;
   overflow-y: auto;
-  padding: 10px 10px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  padding: 8px 10px 16px;
 
-  &::-webkit-scrollbar {
-    width: 3px;
-  }
-  &::-webkit-scrollbar-track {
-    background: transparent;
-  }
+  &::-webkit-scrollbar { width: 3px; }
+  &::-webkit-scrollbar-track { background: transparent; }
   &::-webkit-scrollbar-thumb {
     background: var(--border-subtle);
     border-radius: 2px;
+    &:hover { background: $confluence-teal; }
   }
 }
 
-// ── Issue group card ──────────────────────────────────
-
-.issueGroup {
-  border: 1px solid var(--border-subtle);
-  border-radius: 10px;
-  background: var(--bg-main);
-  overflow: hidden;
-  transition: box-shadow 0.15s ease;
-
-  &.issueGroupExpanded {
-    box-shadow: var(--shadow-md);
-    border-color: rgba(79, 70, 229, 0.2);
-  }
+.pageTree {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
-.issueGroupHeader {
+.childList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 2px;
+  padding-left: 20px;
+  border-left: 1.5px solid var(--border-subtle);
+  margin-left: 11px;
+}
+
+// ── Page node ─────────────────────────────────────────
+
+.pageNode {
+  display: flex;
+  flex-direction: column;
+  animation: itemIn 0.15s ease both;
+}
+
+.pageRow {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  padding: 10px 12px;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  transition: background 0.12s ease;
-  text-align: left;
+  gap: 6px;
+  padding: 7px 8px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  transition: all 0.12s ease;
+  cursor: default;
 
-  &:hover:not(:disabled) {
+  &:hover {
     background: var(--bg-hover);
-  }
-
-  &:disabled {
-    cursor: not-allowed;
-    opacity: 0.5;
+    border-color: var(--border-subtle);
   }
 }
 
-.issueGroupLeft {
+.expandBtn {
   display: flex;
   align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform 0.2s ease, color 0.15s ease, background 0.15s ease;
+  padding: 0;
+
+  &:hover { color: $confluence-teal; background: rgba(0, 101, 255, 0.08); }
+  &.expandBtnHidden { visibility: hidden; pointer-events: none; }
+  &.expandBtnOpen { transform: rotate(90deg); }
+}
+
+.pageCheckbox {
+  width: 14px;
+  height: 14px;
+  accent-color: $confluence-teal;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.pageIcon {
+  display: flex;
+  align-items: center;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.pageInfo {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
   gap: 8px;
   min-width: 0;
 }
 
-.issueTypeIcon {
-  width: 16px;
-  height: 16px;
-  object-fit: contain;
-  flex-shrink: 0;
-}
-
-.issueTypeIconFallback {
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
-  background: var(--accent-light);
-  color: var(--accent-primary);
-  font-size: 0.6rem;
-  font-weight: 800;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.issueTypeName {
-  font-size: 0.875rem;
-  font-weight: 600;
+.pageTitle {
+  font-size: 0.8125rem;
+  font-weight: 500;
   color: var(--text-primary);
+  text-decoration: none;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.issueTypeCount {
-  font-size: 0.68rem;
-  font-weight: 700;
-  background: var(--bg-surface);
-  color: var(--text-tertiary);
-  border: 1px solid var(--border-subtle);
-  border-radius: 10px;
-  padding: 1px 6px;
-  flex-shrink: 0;
-}
-
-.issueGroupChevron {
-  color: var(--text-tertiary);
-  flex-shrink: 0;
-  transition: transform 0.2s ease;
-  display: flex;
-  align-items: center;
-
-  &.chevronUp {
-    transform: rotate(180deg);
-  }
-}
-
-// ── Ticket list ───────────────────────────────────────
-
-.ticketList {
-  list-style: none;
-  margin: 0;
-  padding: 0 0 6px;
-  border-top: 1px solid var(--border-subtle);
-  background: var(--bg-surface);
-}
-
-.ticketItem {
-  border-bottom: 1px solid var(--border-subtle);
-  animation: itemIn 0.15s ease both;
-
-  &:last-child {
-    border-bottom: none;
-  }
-}
-
-.ticketLabel {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 9px 12px;
-  cursor: pointer;
-  transition: background 0.1s ease;
+  transition: color 0.15s ease;
 
   &:hover {
-    background: var(--bg-hover);
+    color: $confluence-teal;
+    text-decoration: underline;
   }
 }
 
-.ticketCheckbox {
-  width: 14px;
-  height: 14px;
-  accent-color: var(--accent-primary);
-  cursor: pointer;
+.pageDate {
+  font-size: 0.68rem;
+  color: var(--text-tertiary);
+  white-space: nowrap;
   flex-shrink: 0;
-  margin-top: 2px;
 }
 
-.ticketInfo {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
 
-.ticketKey {
-  font-size: 0.7rem;
-  font-weight: 700;
-  color: var(--accent-primary);
-  letter-spacing: 0.01em;
-}
 
-.ticketSummary {
-  font-size: 0.8125rem;
-  color: var(--text-secondary);
-  line-height: 1.4;
-}
+
+
+confluenceSlice.ts
+ConfluenceTool.tsx
+ConfluenceTool.module.scss
