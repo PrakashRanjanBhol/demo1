@@ -1,211 +1,201 @@
-import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
-import {
-  atlassianService,
-  type ConfluenceSpace,
-  type SpacesResult,
-  type ConfluencePage,
-} from "./atlassianService";
+import { createSlice } from "@reduxjs/toolkit";
 
-export interface ConfluenceState {
-  allSpaces: SpacesResult;
-  favoriteSpaces: SpacesResult;
-  isLoadingSpaces: boolean;
-  isFavoriteUpdating: Record<string, boolean>;
-  spaceData: Record<string, ConfluencePage[]>;
-  loadingSpaceId: string | null;
-  checkedPages: string[];
-  spacesError: string | null;  // error loading the spaces list
-  error: string | null;        // error loading space data
+export type ToolId = "jira" | "confluence" | null;
+
+export interface ToolState {
+  activeTool: ToolId;
 }
 
-const initialState: ConfluenceState = {
-  allSpaces: {},
-  favoriteSpaces: {},
-  isLoadingSpaces: false,
-  isFavoriteUpdating: {},
-  spaceData: {},
-  loadingSpaceId: null,
-  checkedPages: [],
-  spacesError: null,
-  error: null,
+const initialState: ToolState = {
+  activeTool: null,
 };
 
-// ── Thunks ────────────────────────────────────────────
-
-export const fetchConfluenceSpaces = createAsyncThunk(
-  "confluence/fetchSpaces",
-  async (_, { rejectWithValue }) => {
-    try {
-      const [allRes, favRes] = await Promise.all([
-        atlassianService.fetchAllSpaces(),
-        atlassianService.fetchFavoriteSpaces(),
-      ]);
-
-      if (allRes.status !== "Success") {
-        return rejectWithValue("Failed to fetch spaces.");
-      }
-      if (favRes.status !== "Success") {
-        return rejectWithValue("Failed to fetch favorite spaces.");
-      }
-
-      return {
-        allSpaces: allRes.result,
-        favoriteSpaces: favRes.result,
-      };
-    } catch (error: any) {
-      return rejectWithValue(
-        error?.response?.data?.message ?? "Failed to load Confluence spaces."
-      );
-    }
-  }
-);
-
-export const addFavoriteSpace = createAsyncThunk(
-  "confluence/addFavorite",
-  async (space: ConfluenceSpace, { rejectWithValue }) => {
-    try {
-      const res = await atlassianService.addFavoriteSpace({
-        space_key: space.key,
-      });
-      if (res.status !== "Success") return rejectWithValue("Failed to add favorite.");
-      return space;
-    } catch (error: any) {
-      return rejectWithValue(
-        error?.response?.data?.message ?? "Failed to add favorite."
-      );
-    }
-  }
-);
-
-export const removeFavoriteSpace = createAsyncThunk(
-  "confluence/removeFavorite",
-  async (space: ConfluenceSpace, { rejectWithValue }) => {
-    try {
-      const res = await atlassianService.removeFavoriteSpace({
-        space_key: space.key,
-      });
-      if (res.status !== "Success") return rejectWithValue("Failed to remove favorite.");
-      return space;
-    } catch (error: any) {
-      return rejectWithValue(
-        error?.response?.data?.message ?? "Failed to remove favorite."
-      );
-    }
-  }
-);
-
-export const fetchSpaceData = createAsyncThunk(
-  "confluence/fetchSpaceData",
-  async (space: ConfluenceSpace, { rejectWithValue }) => {
-    try {
-      const res = await atlassianService.fetchSpaceData(space.key);
-      if (res.status !== "Success") {
-        return rejectWithValue("Failed to load space data.");
-      }
-      return { id: space.id, data: res.result };
-    } catch (error: any) {
-      return rejectWithValue(
-        error?.response?.data?.message ?? "Failed to load space data."
-      );
-    }
-  }
-);
-
-// ── Slice ─────────────────────────────────────────────
-
-const confluenceSlice = createSlice({
-  name: "confluence",
+const toolSlice = createSlice({
+  name: "tool",
   initialState,
   reducers: {
-    clearConfluenceError(state) {
-      state.error = null;
+    setActiveTool(state, action: { payload: ToolId }) {
+      state.activeTool = action.payload;
     },
-    resetConfluenceState() {
-      return initialState;
+    clearActiveTool(state) {
+      state.activeTool = null;
     },
-    togglePage(state, action: { payload: string }) {
-      const key = action.payload;
-      const idx = state.checkedPages.indexOf(key);
-      if (idx === -1) {
-        state.checkedPages.push(key);
-      } else {
-        state.checkedPages.splice(idx, 1);
-      }
-    },
-    clearCheckedPages(state) {
-      state.checkedPages = [];
-    },
-  },
-  extraReducers: (builder) => {
-    // Fetch spaces
-    builder
-      .addCase(fetchConfluenceSpaces.pending, (state) => {
-        state.isLoadingSpaces = true;
-        state.spacesError = null;
-      })
-      .addCase(fetchConfluenceSpaces.fulfilled, (state, action) => {
-        state.isLoadingSpaces = false;
-        state.allSpaces = action.payload.allSpaces;
-        state.favoriteSpaces = action.payload.favoriteSpaces;
-      })
-      .addCase(fetchConfluenceSpaces.rejected, (state, action) => {
-        state.isLoadingSpaces = false;
-        state.spacesError = action.payload as string;
-      });
-
-    // Add favorite
-    builder
-      .addCase(addFavoriteSpace.pending, (state, action) => {
-        state.isFavoriteUpdating[action.meta.arg.id] = true;
-      })
-      .addCase(addFavoriteSpace.fulfilled, (state, action) => {
-        const space = action.payload;
-        state.isFavoriteUpdating[space.id] = false;
-        state.favoriteSpaces[space.id] = space;
-      })
-      .addCase(addFavoriteSpace.rejected, (state, action) => {
-        state.isFavoriteUpdating[action.meta.arg.id] = false;
-        state.error = action.payload as string;
-      });
-
-    // Remove favorite
-    builder
-      .addCase(removeFavoriteSpace.pending, (state, action) => {
-        state.isFavoriteUpdating[action.meta.arg.id] = true;
-      })
-      .addCase(removeFavoriteSpace.fulfilled, (state, action) => {
-        const space = action.payload;
-        state.isFavoriteUpdating[space.id] = false;
-        delete state.favoriteSpaces[space.id];
-        delete state.spaceData[space.id];
-      })
-      .addCase(removeFavoriteSpace.rejected, (state, action) => {
-        state.isFavoriteUpdating[action.meta.arg.id] = false;
-        state.error = action.payload as string;
-      });
-
-    // Fetch space data
-    builder
-      .addCase(fetchSpaceData.pending, (state, action) => {
-        state.loadingSpaceId = action.meta.arg.id;
-        state.error = null;
-      })
-      .addCase(fetchSpaceData.fulfilled, (state, action) => {
-        state.loadingSpaceId = null;
-        state.spaceData[action.payload.id] = action.payload.data;
-      })
-      .addCase(fetchSpaceData.rejected, (state, action) => {
-        state.loadingSpaceId = null;
-        state.error = action.payload as string;
-      });
   },
 });
 
-export const {
-  clearConfluenceError,
-  resetConfluenceState,
-  togglePage,
-  clearCheckedPages,
-} = confluenceSlice.actions;
+export const { setActiveTool, clearActiveTool } = toolSlice.actions;
+export default toolSlice.reducer;
 
-export default confluenceSlice.reducer;
+
+
+
+
+
+
+import React, { useState } from "react";
+import { useDispatch, useSelector } from "react-redux";
+import type { AppDispatch, RootState } from "../../store";
+import styles from "./PanelTools.module.scss";
+
+import { AtlassianConnect } from "./AtlassianConnect";
+import { JiraTool } from "./JiraTool";
+import { ConfluenceTool } from "./ConfluenceTool";
+import { setActiveTool, clearActiveTool } from "./toolSlice";
+import type { ToolId } from "./toolSlice";
+
+import jiraIcon from "../../assets/icons/jira.png";
+import confluenceIcon from "../../assets/icons/confluence.webp";
+
+interface Tool {
+  id: ToolId;
+  name: string;
+  description: string;
+  icon: string;
+}
+
+const tools: Tool[] = [
+  {
+    id: "jira",
+    name: "Jira",
+    description: "Project issues in context",
+    icon: jiraIcon,
+  },
+  {
+    id: "confluence",
+    name: "Confluence",
+    description: "Team knowledge base",
+    icon: confluenceIcon,
+  },
+];
+
+// ── Plus icon ─────────────────────────────────────────
+
+const PlusIcon = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="9"
+    height="9"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="3"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <line x1="12" y1="5" x2="12" y2="19" />
+    <line x1="5" y1="12" x2="19" y2="12" />
+  </svg>
+);
+
+export const PanelTools: React.FC = () => {
+  const dispatch = useDispatch<AppDispatch>();
+  const [selectedToolId, setSelectedToolId] = useState<ToolId>(null);
+
+  const isExpanded: boolean = useSelector(
+    (state: RootState) => state.layout.isRightPanelOpen
+  );
+  const isConnected: boolean = useSelector(
+    (state: RootState) => state.atlassian.isConnected
+  );
+
+  const handleSelect = (id: NonNullable<ToolId>) => {
+    setSelectedToolId(id);
+    dispatch(setActiveTool(id));
+  };
+
+  const handleBack = () => {
+    setSelectedToolId(null);
+    dispatch(clearActiveTool());
+  };
+
+  // ── Collapsed: icon strip ─────────────────────────────
+  if (!isExpanded) {
+    return (
+      <div className={styles.panelCollapsed}>
+        {tools.map((tool) => (
+          <button
+            key={tool.id}
+            className={styles.collapsedBtn}
+            onClick={() => handleSelect(tool.id)}
+            title={tool.name}
+          >
+            <img
+              src={tool.icon}
+              alt={tool.name}
+              className={styles.collapsedIcon}
+              width={20}
+              height={20}
+            />
+            <span className={styles.collapsedPlus}>
+              <PlusIcon />
+            </span>
+          </button>
+        ))}
+      </div>
+    );
+  }
+
+  // ── Expanded: tool selected ───────────────────────────
+  if (selectedToolId) {
+    if (!isConnected) {
+      return (
+        <div className={styles.panel}>
+          <AtlassianConnect toolId={selectedToolId} onBack={handleBack} />
+        </div>
+      );
+    }
+
+    if (selectedToolId === "jira") {
+      return (
+        <div className={styles.panel}>
+          <JiraTool onBack={handleBack} />
+        </div>
+      );
+    }
+
+    if (selectedToolId === "confluence") {
+      return (
+        <div className={styles.panel}>
+          <ConfluenceTool onBack={handleBack} />
+        </div>
+      );
+    }
+  }
+
+  // ── Expanded: tool grid ───────────────────────────────
+  return (
+    <div className={styles.panel}>
+      <div className={styles.panelHeader}>
+        <span className={styles.panelTitle}>Tools</span>
+      </div>
+      <div className={styles.toolGrid}>
+        {tools.map((tool) => (
+          <button
+            key={tool.id}
+            className={styles.toolCard}
+            onClick={() => handleSelect(tool.id)}
+          >
+            <div className={styles.cardTop}>
+              <div className={styles.cardIconWrap}>
+                <img
+                  src={tool.icon}
+                  alt={tool.name}
+                  className={styles.cardIcon}
+                  width={22}
+                  height={22}
+                />
+              </div>
+              <span className={styles.cardPlus}>
+                <PlusIcon />
+              </span>
+            </div>
+            <span className={styles.cardName}>{tool.name}</span>
+            <span className={styles.cardDesc}>{tool.description}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+export default PanelTools;
