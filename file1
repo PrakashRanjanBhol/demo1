@@ -1,47 +1,3 @@
-// Start inference for a specific item
-private startInferenceForItem(queueItem: QueueItem): void {
-  const item = this.historyItems.find(i => i.id === queueItem.id);
-  if (!item) {
-    queueItem.status = 'failed';
-    this.processNextInQueue();
-    return;
-  }
-
-  // Set processing status internally
-  this.processingItemId = queueItem.id;
-
-  const request = {
-    fileID: Number(queueItem.id),
-    model_name: 'ABC',
-    optional_prompt: '',
-    summary_prompt: item.summary_prompt || '',
-    faq_prompt: item.faq_prompt || ''
-  };
-
-  this.uploadGenerateService.generateAnalysis(request).subscribe({
-    next: (response: any) => {
-      console.log('Generation API response for item:', queueItem.name, response);
-      
-      if (response.status === 'Success') {
-        // Start progress polling for this item
-        this.startInferenceProgressPolling(Number(queueItem.id));
-      } else {
-        // Generation failed to start
-        queueItem.status = 'failed';
-        this.processingItemId = null;
-        this.processNextInQueue();
-      }
-    },
-    error: (error) => {
-      console.error('Generation error for item:', queueItem.name, error);
-      queueItem.status = 'failed';
-      this.processingItemId = null;
-      this.processNextInQueue();
-    }
-  });
-}
-
-// Start progress polling for inference item
 private startInferenceProgressPolling(fileId: number): void {
   // Stop any existing polling
   this.stopInferenceProgressPolling();
@@ -83,8 +39,8 @@ private startInferenceProgressPolling(fileId: number): void {
             const historyItem = this.historyItems.find(i => i.id === queueItem.id);
             if (historyItem) {
               historyItem.hasResult = true;
-              historyItem.summary_prompt = item.summary_prompt;
-              historyItem.faq_prompt = item.faq_prompt;
+              // Keep the existing prompts - they're already in historyItem
+              // No need to reassign them
             }
             
             this.stopInferenceProgressPolling();
