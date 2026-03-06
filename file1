@@ -1,72 +1,2740 @@
-private startInferenceProgressPolling(fileId: number): void {
-  // Stop any existing polling
-  this.stopInferenceProgressPolling();
+<div class="panel">
+    <div class="panel-header">
+        <h3 class="panel-title">History</h3>
+        <div class="header-right-group">
+            <div class="date-range">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                    stroke="currentColor" class="date-icon">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                        d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+                </svg>
+                <span class="date-text">{{ startDate }}</span>
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
+                    stroke="currentColor" class="arrow-icon">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+                </svg>
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                    stroke="currentColor" class="date-icon">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                        d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+                </svg>
+                <span class="date-text">{{ endDate }}</span>
+            </div>
+            <button class="filter-toggle-btn" 
+                    (click)="toggleFilter()"
+                    [class.active]="isFilterVisible"
+                    title="Toggle filters">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                    stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                        d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" />
+                </svg>
+            </button>
+        </div>
+    </div>
 
-  const queueItem = this.inferenceQueue.find(item => item.id === fileId.toString());
-  if (!queueItem) return;
+    <!-- Filter Section -->
+    <div class="filter-section" *ngIf="isFilterVisible">
+        <div class="filter-container">
+            <!-- Date Range Filter -->
+            <div class="filter-group">
+                <label class="filter-label">Date Range</label>
+                <div class="date-filter">
+                    <div class="date-input-wrapper">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                            stroke="currentColor" class="input-icon">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+                        </svg>
+                        <input type="date" 
+                               class="date-input" 
+                               [(ngModel)]="filterFromDate"
+                               placeholder="From Date">
+                    </div>
+                    <span class="date-separator">to</span>
+                    <div class="date-input-wrapper">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                            stroke="currentColor" class="input-icon">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+                        </svg>
+                        <input type="date" 
+                               class="date-input" 
+                               [(ngModel)]="filterToDate"
+                               placeholder="To Date">
+                    </div>
+                    <button class="refresh-btn" 
+                            (click)="applyDateFilter()"
+                            [disabled]="isRefreshing"
+                            title="Apply date filter">
+                        <svg xmlns="http://www.w3.org/2000/svg" 
+                             fill="none" 
+                             viewBox="0 0 24 24" 
+                             stroke-width="2"
+                             stroke="currentColor"
+                             [class.spinning]="isRefreshing">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
 
-  // Create a polling observable that checks every 10 seconds
-  this.inferenceProgressSubscription = interval(10000)
-    .pipe(
-      switchMap(() => this.uploadGenerateService.getGenerationProgress(fileId)),
-      takeWhile((response: any) => {
-        // Continue polling while progress is between 0 and 99
-        return response.status === 'Success' && response.progress >= 0 && response.progress < 100;
-      }, true)
-    )
-    .subscribe({
-      next: (response: any) => {
-        console.log('Progress update for item:', queueItem.name, response);
+            <!-- Text Search Filter -->
+            <div class="filter-group">
+                <label class="filter-label">Search</label>
+                <div class="search-input-wrapper">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                        stroke="currentColor" class="input-icon">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                            d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+                    </svg>
+                    <input type="text" 
+                           class="search-input" 
+                           [(ngModel)]="searchText"
+                           (ngModelChange)="onSearchChange()"
+                           placeholder="Search by file name or ID">
+                    <button class="clear-search-btn" 
+                            *ngIf="searchText"
+                            (click)="clearSearch()"
+                            title="Clear search">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 
-        if (response.status === 'Success') {
-          const progress = response.progress;
+    <div class="panel-content">
+        <!-- Empty State - No Files Available -->
+        <div class="empty-state" *ngIf="!isLoading && !isRefreshing && !hasAnyFiles">
+            <div class="empty-state-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z" />
+                </svg>
+            </div>
+            <h3 class="empty-state-title">No History Available</h3>
+            <p class="empty-state-description">Get started by uploading your first file and generating content</p>
+            
+            <!-- Separator with Cross Icon -->
+            <div class="section-separator">
+                <div class="separator-line"></div>
+                <div class="separator-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                    </svg>
+                </div>
+            </div>
+            
+            <div class="user-guide">
+                <h4 class="user-guide-title">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="guide-title-icon">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    How History Works
+                </h4>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="step-number">1</div>
+                        <div class="step-content">
+                            <h5 class="step-title">Upload File</h5>
+                            <p class="step-description">First, upload your .VTT or .SRT file in the <strong>Upload & Generate Section</strong></p>
+                        </div>
+                    </div>
+                    
+                    <div class="guide-step">
+                        <div class="step-number">2</div>
+                        <div class="step-content">
+                            <h5 class="step-title">File Appears in History</h5>
+                            <p class="step-description">On successful upload, your files will appear in the <strong>History Section</strong></p>
+                        </div>
+                    </div>
+                    
+                    <div class="guide-step">
+                        <div class="step-number">3</div>
+                        <div class="step-content">
+                            <h5 class="step-title">Pending Results</h5>
+                            <p class="step-description">Newly uploaded files appear in the <strong>Pending Results</strong> section where content has not been generated yet</p>
+                        </div>
+                    </div>
+                    
+                    <div class="guide-step">
+                        <div class="step-number">4</div>
+                        <div class="step-content">
+                            <h5 class="step-title">Add to Generation</h5>
+                            <p class="step-description">Click the <strong>+ icon</strong> on a history file to add it to the Generate component</p>
+                        </div>
+                    </div>
+                    
+                    <div class="guide-step">
+                        <div class="step-number">5</div>
+                        <div class="step-content">
+                            <h5 class="step-title">Generate Content</h5>
+                            <p class="step-description">Generate summary content based on the audio file in the Generate component</p>
+                        </div>
+                    </div>
+                    
+                    <div class="guide-step">
+                        <div class="step-number">6</div>
+                        <div class="step-content">
+                            <h5 class="step-title">View Results</h5>
+                            <p class="step-description">After generation, the file moves to the <strong>Completed Results</strong> section where you can view the results</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
 
-          if (progress === -1) {
-            // Generation failed
-            queueItem.status = 'failed';
-            queueItem.progress = 0;
-            this.processingItemId = null;
-            
-            this.stopInferenceProgressPolling();
-            this.processNextInQueue();
-          } else if (progress === 100) {
-            // Generation completed successfully
-            queueItem.status = 'completed';
-            queueItem.progress = 100;
-            this.processingItemId = null;
-            
-            // Update the item to move to completed section
-            const historyItem = this.historyItems.find(i => i.id === queueItem.id);
-            if (historyItem) {
-              historyItem.hasResult = true;
-              // Keep the existing prompts - they're already in historyItem
-              // No need to reassign them
-            }
-            
-            this.stopInferenceProgressPolling();
-            
-            // Wait a bit then process next
-            setTimeout(() => {
-              this.processNextInQueue();
-            }, 1000);
-          } else if (progress >= 0 && progress < 100) {
-            // Update progress
-            queueItem.progress = progress;
+        <!-- Existing Content - Show when files exist -->
+        <ng-container *ngIf="hasAnyFiles">
+            <!-- Pending Files Section -->
+            <div class="content-section-header" (click)="togglePendingSection()">
+                <div class="content-header-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                        stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                            d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </div>
+                <h3 class="content-header-title">Pending Results</h3>
+                <span class="content-count">{{ (isLoading || isRefreshing) ? '...' : filteredPendingFiles.length }} files</span>
+                <button class="collapse-toggle-btn" [class.collapsed]="!isPendingExpanded">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
+                        stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                    </svg>
+                </button>
+            </div>
+
+            <div class="history-content" *ngIf="isPendingExpanded">
+                <!-- Skeleton Loader for Pending Files -->
+                <ng-container *ngIf="isLoading || isRefreshing">
+                    <div class="skeleton-item" *ngFor="let item of [1,2,3,4,5]">
+                        <div class="skeleton-icon"></div>
+                        <div class="skeleton-details">
+                            <div class="skeleton-name"></div>
+                            <div class="skeleton-date"></div>
+                        </div>
+                        <div class="skeleton-button"></div>
+                    </div>
+                </ng-container>
+
+                <!-- No Results -->
+                <div class="no-results" *ngIf="!isLoading && !isRefreshing && filteredPendingFiles.length === 0">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                        stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                            d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p>{{ searchText ? 'No matching pending files found' : 'No pending files' }}</p>
+                </div>
+
+                <!-- Actual Data -->
+                <ng-container *ngIf="!isLoading && !isRefreshing">
+                    <div class="history-item" 
+                         *ngFor="let item of filteredPendingFiles"
+                         [attr.data-item-id]="item.id"
+                         [class.selected]="selectedHistoryItem?.id === item.id"
+                         [class.processing]="isProcessing(item.id)"
+                         (click)="onHistoryItemClick(item.id)">
+                        <div class="history-item-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                                stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round"
+                                    d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
+                            </svg>
+                        </div>
+                        <div class="history-item-details">
+                            <h4 class="history-item-name">
+                                <span class="file-id">#{{ item.id }}</span>
+                                <span class="file-name">{{ item.name }}</span>
+                                <!-- Processing Badge -->
+                                <span class="processing-badge" *ngIf="isProcessing(item.id)">
+                                    <svg class="processing-spinner" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                    Processing
+                                </span>
+                            </h4>
+                            <p class="history-item-date">{{ item.displayDate }}</p>
+                        </div>
+                        <div class="history-item-actions">
+                            <button class="add-to-generation-btn" 
+                                    [class.added]="isAddedToGeneration(item.id)"
+                                    [class.disabled-by-processing]="isButtonsDisabled()"
+                                    (click)="onAddToGeneration($event, item)"
+                                    [title]="isFileUploading ? 'Please wait, a file is being uploaded' : (isAnyProcessing() ? 'Please wait, a file is being processed' : (isAddedToGeneration(item.id) ? 'Remove from content generation' : 'Add to content generation'))">
+                                <div class="btn-icon-wrapper">
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
+                                        stroke="currentColor" class="plus-icon" *ngIf="!isAddedToGeneration(item.id)">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                                    </svg>
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
+                                        stroke="currentColor" class="minus-icon" *ngIf="isAddedToGeneration(item.id)">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 12h-15" />
+                                    </svg>
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                                        stroke="currentColor" class="arrow-left-icon" *ngIf="!isAddedToGeneration(item.id)">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+                                    </svg>
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                                        stroke="currentColor" class="arrow-right-icon" *ngIf="isAddedToGeneration(item.id)">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+                                    </svg>
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+                </ng-container>
+            </div>
+
+            <!-- Completed Files Section -->
+            <div class="content-section-header" (click)="toggleCompletedSection()">
+                <div class="content-header-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                        stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                            d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </div>
+                <h3 class="content-header-title">Completed Results</h3>
+                <span class="content-count">{{ (isLoading || isRefreshing) ? '...' : filteredCompletedFiles.length }} files</span>
+                <button class="collapse-toggle-btn" [class.collapsed]="!isCompletedExpanded">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
+                        stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                    </svg>
+                </button>
+            </div>
+
+            <div class="history-content" *ngIf="isCompletedExpanded">
+                <!-- Skeleton Loader for Completed Files -->
+                <ng-container *ngIf="isLoading || isRefreshing">
+                    <div class="skeleton-item" *ngFor="let item of [1,2,3,4,5]">
+                        <div class="skeleton-icon"></div>
+                        <div class="skeleton-details">
+                            <div class="skeleton-name"></div>
+                            <div class="skeleton-date"></div>
+                        </div>
+                        <div class="skeleton-button"></div>
+                    </div>
+                </ng-container>
+
+                <!-- No Results -->
+                <div class="no-results" *ngIf="!isLoading && !isRefreshing && filteredCompletedFiles.length === 0">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                        stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                            d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                    </svg>
+                    <p>{{ searchText ? 'No matching completed files found' : 'No completed files' }}</p>
+                </div>
+
+                <!-- Actual Data -->
+                <ng-container *ngIf="!isLoading && !isRefreshing">
+                    <div class="history-item" 
+                         *ngFor="let item of filteredCompletedFiles"
+                         [attr.data-item-id]="item.id"
+                         [class.selected]="selectedHistoryItem?.id === item.id"
+                         [class.processing]="isProcessing(item.id)"
+                         (click)="onHistoryItemClick(item.id)">
+                        <div class="history-item-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                                stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round"
+                                    d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
+                            </svg>
+                        </div>
+                        <div class="history-item-details">
+                            <h4 class="history-item-name">
+                                <span class="file-id">#{{ item.id }}</span>
+                                <span class="file-name">{{ item.name }}</span>
+                                <!-- Processing Badge -->
+                                <span class="processing-badge" *ngIf="isProcessing(item.id)">
+                                    <svg class="processing-spinner" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                    Processing
+                                </span>
+                            </h4>
+                            <p class="history-item-date">{{ item.displayDate }}</p>
+                        </div>
+                        <div class="history-item-actions">
+                            <button class="add-to-generation-btn" 
+                                    [class.added]="isAddedToGeneration(item.id)"
+                                    [class.disabled-by-processing]="isButtonsDisabled()"
+                                    (click)="onAddToGeneration($event, item)"
+                                    [title]="isFileUploading ? 'Please wait, a file is being uploaded' : (isAnyProcessing() ? 'Please wait, a file is being processed' : (isAddedToGeneration(item.id) ? 'Remove from content generation' : 'Add to content generation'))">
+                                <div class="btn-icon-wrapper">
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
+                                        stroke="currentColor" class="plus-icon" *ngIf="!isAddedToGeneration(item.id)">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                                    </svg>
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
+                                        stroke="currentColor" class="minus-icon" *ngIf="isAddedToGeneration(item.id)">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 12h-15" />
+                                    </svg>
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                                        stroke="currentColor" class="arrow-left-icon" *ngIf="!isAddedToGeneration(item.id)">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+                                    </svg>
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                                        stroke="currentColor" class="arrow-right-icon" *ngIf="isAddedToGeneration(item.id)">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+                                    </svg>
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+                </ng-container>
+            </div>
+        </ng-container>
+    </div>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+/* History Component Styles */
+:host {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+}
+
+.panel {
+    flex: 1;
+    background-color: var(--bg-color);
+    border-right: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
+.panel-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    padding: 20px;
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+    background: linear-gradient(135deg, var(--primary-gradient-light-start), var(--primary-gradient-light-end));
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.panel-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-color);
+    margin: 0;
+    position: relative;
+    padding-left: 16px;
+    flex-shrink: 0;
+}
+
+.panel-title::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    width: 3px;
+    height: 20px;
+    background: var(--primary-gradient);
+    border-radius: 2px;
+}
+
+/* Header Right Group - Contains Date Range and Filter Button */
+.header-right-group {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+}
+
+/* Date Range */
+.date-range {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: linear-gradient(135deg, var(--primary-gradient-light-start), var(--primary-gradient-light-end));
+    border: 1px solid var(--primary-border-color);
+    border-radius: 6px;
+    flex-shrink: 0;
+}
+
+.date-icon {
+    width: 16px;
+    height: 16px;
+    stroke: var(--primary-color);
+    flex-shrink: 0;
+}
+
+.arrow-icon {
+    width: 14px;
+    height: 14px;
+    stroke: var(--primary-color);
+    opacity: 0.6;
+    flex-shrink: 0;
+}
+
+.date-text {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-color);
+    white-space: nowrap;
+    letter-spacing: 0.02em;
+}
+
+/* Filter Toggle Button */
+.filter-toggle-btn {
+    width: 32px;
+    height: 32px;
+    background: linear-gradient(135deg, var(--primary-gradient-light-start), var(--primary-gradient-light-end));
+    border: 1.5px solid var(--primary-border-color);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    flex-shrink: 0;
+}
+
+.filter-toggle-btn svg {
+    width: 18px;
+    height: 18px;
+    stroke: var(--primary-color);
+    transition: all 0.3s ease;
+}
+
+.filter-toggle-btn:hover {
+    background: linear-gradient(135deg, var(--primary-gradient-medium-start), var(--primary-gradient-medium-end));
+    border-color: var(--primary-color);
+    box-shadow: 0 2px 8px var(--primary-shadow-light);
+}
+
+.filter-toggle-btn.active {
+    background: var(--primary-gradient);
+    border-color: var(--primary-color);
+}
+
+.filter-toggle-btn.active svg {
+    stroke: white;
+}
+
+/* Filter Section */
+.filter-section {
+    background: linear-gradient(135deg, var(--primary-gradient-lighter-start), var(--primary-gradient-lighter-end));
+    border-bottom: 1px solid var(--border-color);
+    padding: 16px 20px;
+    animation: slideDown 0.3s ease;
+}
+
+.filter-container {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.filter-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-color);
+    opacity: 0.7;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Date Filter */
+.date-filter {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.date-input-wrapper {
+    position: relative;
+    flex: 1;
+    min-width: 150px;
+}
+
+.date-input {
+    width: 100%;
+    padding: 10px 12px 10px 36px;
+    background-color: var(--bg-color);
+    border: 1.5px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 13px;
+    color: var(--text-color);
+    transition: all 0.2s ease;
+}
+
+.date-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px var(--primary-focus-shadow);
+}
+
+.date-separator {
+    font-size: 13px;
+    color: var(--text-color);
+    opacity: 0.6;
+    font-weight: 500;
+}
+
+.input-icon {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 16px;
+    height: 16px;
+    stroke: var(--primary-color);
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+/* Refresh Button */
+.refresh-btn {
+    width: 40px;
+    height: 40px;
+    background: var(--primary-gradient);
+    border: none;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    flex-shrink: 0;
+}
+
+.refresh-btn:hover:not(:disabled) {
+    box-shadow: 0 4px 12px var(--primary-shadow);
+    transform: translateY(-2px);
+}
+
+.refresh-btn:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.refresh-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.refresh-btn svg {
+    width: 20px;
+    height: 20px;
+    stroke: white;
+    transition: transform 0.3s ease;
+}
+
+.refresh-btn svg.spinning {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Search Input */
+.search-input-wrapper {
+    position: relative;
+    width: 100%;
+}
+
+.search-input {
+    width: 100%;
+    padding: 10px 40px 10px 36px;
+    background-color: var(--bg-color);
+    border: 1.5px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 13px;
+    color: var(--text-color);
+    transition: all 0.2s ease;
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px var(--primary-focus-shadow);
+}
+
+.search-input::placeholder {
+    color: var(--text-color);
+    opacity: 0.5;
+}
+
+.clear-search-btn {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 24px;
+    height: 24px;
+    background: transparent;
+    border: none;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.clear-search-btn:hover {
+    background-color: var(--primary-gradient-light-start);
+}
+
+.clear-search-btn svg {
+    width: 14px;
+    height: 14px;
+    stroke: var(--text-color);
+    opacity: 0.6;
+}
+
+.panel-content {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    color: var(--text-color);
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* Scrollbar Styling */
+.panel-content::-webkit-scrollbar {
+    width: 6px;
+}
+
+.panel-content::-webkit-scrollbar-track {
+    background: var(--scrollbar-track-bg);
+    border-radius: 3px;
+}
+
+.panel-content::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb-bg);
+    border-radius: 3px;
+}
+
+.panel-content::-webkit-scrollbar-thumb:hover {
+    background: var(--primary-color);
+}
+
+/* Empty State Styles - Compact Version */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 24px 24px 0 24px;
+    text-align: center;
+    animation: fadeIn 0.5s ease;
+}
+
+.empty-state-icon {
+    width: 48px;
+    height: 48px;
+    background: linear-gradient(135deg, var(--primary-gradient-light-start), var(--primary-gradient-light-end));
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 12px;
+}
+
+.empty-state-icon svg {
+    width: 28px;
+    height: 28px;
+    stroke: var(--primary-color);
+}
+
+.empty-state-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-color);
+    margin: 0 0 4px 0;
+}
+
+.empty-state-description {
+    font-size: 14px;
+    color: var(--text-color);
+    opacity: 0.7;
+    margin: 0 0 32px 0;
+}
+
+/* Separator with Cross */
+.section-separator {
+    position: relative;
+    width: 100%;
+    max-width: 650px;
+    margin: 0 auto 32px auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.separator-line {
+    position: absolute;
+    width: 100%;
+    height: 1px;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        var(--border-color) 20%,
+        var(--border-color) 80%,
+        transparent 100%
+    );
+}
+
+.separator-icon {
+    position: relative;
+    width: 32px;
+    height: 32px;
+    background: var(--bg-color);
+    border: 1.5px solid var(--border-color);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1;
+}
+
+.separator-icon svg {
+    width: 16px;
+    height: 16px;
+    stroke: var(--primary-color);
+}
+
+/* User Guide Styles */
+.user-guide {
+    width: 100%;
+    max-width: 650px;
+    padding: 0 0 32px 0;
+}
+
+.user-guide-title {
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--text-color);
+    margin: 0 0 20px 0;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+.guide-title-icon {
+    width: 20px;
+    height: 20px;
+    stroke: var(--primary-color);
+}
+
+.guide-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.guide-step {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    text-align: left;
+    padding: 12px;
+    background: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    transition: all 0.3s ease;
+}
+
+.guide-step:hover {
+    border-color: var(--primary-color);
+    box-shadow: 0 2px 8px var(--primary-shadow-lighter);
+    transform: translateX(4px);
+}
+
+.step-number {
+    width: 28px;
+    height: 28px;
+    background: var(--primary-gradient);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+.step-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.step-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-color);
+    margin: 0 0 4px 0;
+}
+
+.step-description {
+    font-size: 13px;
+    color: var(--text-color);
+    opacity: 0.8;
+    margin: 0;
+    line-height: 1.5;
+}
+
+.step-description strong {
+    color: var(--primary-color);
+    font-weight: 600;
+}
+
+/* Content Section Header */
+.content-section-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    background: linear-gradient(135deg, var(--primary-gradient-lighter-start), var(--primary-gradient-lighter-end));
+    border-left: 3px solid var(--primary-color);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.content-section-header:hover {
+    background: linear-gradient(135deg, var(--primary-gradient-light-start), var(--primary-gradient-light-end));
+}
+
+.content-header-icon {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.content-header-icon svg {
+    width: 18px;
+    height: 18px;
+    stroke: var(--primary-color);
+    opacity: 0.8;
+}
+
+.content-header-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-color);
+    margin: 0;
+    flex: 1;
+}
+
+.content-count {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-color);
+    opacity: 0.6;
+    padding: 4px 10px;
+    background-color: var(--primary-gradient-light-start);
+    border-radius: 12px;
+}
+
+/* Collapse Toggle Button */
+.collapse-toggle-btn {
+    width: 24px;
+    height: 24px;
+    background: transparent;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    flex-shrink: 0;
+}
+
+.collapse-toggle-btn svg {
+    width: 18px;
+    height: 18px;
+    stroke: var(--primary-color);
+    transition: transform 0.3s ease;
+}
+
+.collapse-toggle-btn.collapsed svg {
+    transform: rotate(-90deg);
+}
+
+.collapse-toggle-btn:hover svg {
+    stroke: var(--primary-color);
+    opacity: 0.7;
+}
+
+/* History Content */
+.history-content {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* No Results */
+.no-results {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 24px;
+    text-align: center;
+}
+
+.no-results svg {
+    width: 48px;
+    height: 48px;
+    stroke: var(--text-color);
+    opacity: 0.3;
+    margin-bottom: 16px;
+}
+
+.no-results p {
+    font-size: 14px;
+    color: var(--text-color);
+    opacity: 0.6;
+    margin: 0;
+}
+
+/* Skeleton Loader Styles */
+.skeleton-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px;
+    background-color: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    animation: fadeIn 0.3s ease;
+}
+
+.skeleton-icon {
+    width: 40px;
+    height: 40px;
+    background: linear-gradient(
+        90deg,
+        var(--primary-gradient-light-start) 0%,
+        var(--primary-gradient-medium-start) 50%,
+        var(--primary-gradient-light-start) 100%
+    );
+    background-size: 200% 100%;
+    border-radius: 10px;
+    flex-shrink: 0;
+    animation: shimmer 1.5s infinite;
+}
+
+.skeleton-details {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.skeleton-name {
+    height: 16px;
+    width: 70%;
+    background: linear-gradient(
+        90deg,
+        var(--primary-gradient-light-start) 0%,
+        var(--primary-gradient-medium-start) 50%,
+        var(--primary-gradient-light-start) 100%
+    );
+    background-size: 200% 100%;
+    border-radius: 4px;
+    animation: shimmer 1.5s infinite;
+}
+
+.skeleton-date {
+    height: 12px;
+    width: 50%;
+    background: linear-gradient(
+        90deg,
+        var(--primary-gradient-lighter-start) 0%,
+        var(--primary-gradient-light-start) 50%,
+        var(--primary-gradient-lighter-start) 100%
+    );
+    background-size: 200% 100%;
+    border-radius: 4px;
+    animation: shimmer 1.5s infinite 0.2s;
+}
+
+.skeleton-button {
+    width: 36px;
+    height: 36px;
+    background: linear-gradient(
+        90deg,
+        var(--primary-gradient-light-start) 0%,
+        var(--primary-gradient-medium-start) 50%,
+        var(--primary-gradient-light-start) 100%
+    );
+    background-size: 200% 100%;
+    border-radius: 10px;
+    flex-shrink: 0;
+    animation: shimmer 1.5s infinite 0.1s;
+}
+
+/* Shimmer Animation */
+@keyframes shimmer {
+    0% {
+        background-position: -200% 0;
+    }
+    100% {
+        background-position: 200% 0;
+    }
+}
+
+/* Fade In Animation */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+/* History Item */
+.history-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px;
+    background-color: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    transition: all 0.2s ease;
+    cursor: pointer;
+    position: relative;
+}
+
+.history-item:hover {
+    border-color: var(--primary-color);
+    box-shadow: 0 2px 8px var(--primary-shadow-lighter);
+}
+
+.history-item.selected {
+    background: linear-gradient(135deg, var(--primary-gradient-light-start), var(--primary-gradient-light-end));
+    border-color: var(--primary-color);
+    box-shadow: 0 4px 16px var(--primary-shadow-light);
+    animation: scrollHighlight 1s ease-out;
+}
+
+/* Left border accent when selected */
+.history-item.selected::before {
+    content: '';
+    position: absolute;
+    left: -1px;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: var(--primary-gradient);
+    border-radius: 10px 0 0 10px;
+    animation: slideInLeft 0.3s ease;
+}
+
+@keyframes slideInLeft {
+    from {
+        width: 0;
+        opacity: 0;
+    }
+    to {
+        width: 4px;
+        opacity: 1;
+    }
+}
+
+/* Scroll highlight animation */
+@keyframes scrollHighlight {
+    0% {
+        box-shadow: 0 0 0 0 var(--primary-glow-strong);
+    }
+    50% {
+        box-shadow: 0 0 0 10px var(--primary-glow-lighter);
+    }
+    100% {
+        box-shadow: 0 0 0 0 var(--primary-glow-lighter);
+    }
+}
+
+.history-item-icon {
+    width: 40px;
+    height: 40px;
+    background: linear-gradient(135deg, var(--primary-gradient-light-start), var(--primary-gradient-light-end));
+    border: 1px solid var(--primary-border-color);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.2s ease;
+}
+
+.history-item.selected .history-item-icon {
+    background: var(--primary-gradient);
+    border-color: var(--primary-color);
+}
+
+.history-item-icon svg {
+    width: 20px;
+    height: 20px;
+    stroke: var(--primary-color);
+    transition: stroke 0.2s ease;
+}
+
+.history-item.selected .history-item-icon svg {
+    stroke: white;
+}
+
+.history-item-details {
+    flex: 1;
+    min-width: 0;
+}
+
+.history-item-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-color);
+    margin: 0 0 4px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    transition: color 0.2s ease, font-weight 0.2s ease;
+}
+
+.file-id {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--primary-color);
+    background: linear-gradient(135deg, var(--primary-gradient-medium-start), var(--primary-gradient-medium-end));
+    padding: 2px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--primary-border-color);
+    flex-shrink: 0;
+    transition: all 0.2s ease;
+}
+
+.file-name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+    min-width: 0;
+}
+
+.history-item.selected .history-item-name {
+    color: var(--primary-color);
+    font-weight: 700;
+}
+
+.history-item.selected .file-id {
+    background: var(--primary-gradient);
+    color: white;
+    border-color: var(--primary-color);
+    box-shadow: 0 2px 6px var(--primary-shadow);
+}
+
+.history-item-date {
+    font-size: 12px;
+    color: var(--text-color);
+    opacity: 0.6;
+    margin: 0;
+}
+
+/* Processing Badge */
+.processing-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(96, 165, 250, 0.15));
+    border: 1px solid rgba(59, 130, 246, 0.4);
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #3b82f6;
+    animation: fadeInBadge 0.3s ease;
+    flex-shrink: 0;
+}
+
+.processing-spinner {
+    width: 14px;
+    height: 14px;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes fadeInBadge {
+    from {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* Processing state for history item */
+.history-item.processing {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(96, 165, 250, 0.08));
+    border-color: rgba(59, 130, 246, 0.3);
+}
+
+.history-item.processing .history-item-icon {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(96, 165, 250, 0.15));
+    border-color: rgba(59, 130, 246, 0.3);
+}
+
+.history-item.processing .history-item-icon svg {
+    stroke: #3b82f6;
+}
+
+.history-item.processing .file-id {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(96, 165, 250, 0.2));
+    color: #3b82f6;
+    border-color: rgba(59, 130, 246, 0.4);
+}
+
+/* History Item Actions Container */
+.history-item-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+/* Add to Generation Button */
+.add-to-generation-btn {
+    width: 36px;
+    height: 36px;
+    background: linear-gradient(135deg, var(--primary-gradient-light-start), var(--primary-gradient-light-end));
+    border: 1.5px solid var(--primary-border-color);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    flex-shrink: 0;
+    position: relative;
+    overflow: hidden;
+}
+
+.add-to-generation-btn::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: var(--primary-gradient);
+    transform: translate(-50%, -50%);
+    transition: width 0.4s ease, height 0.4s ease;
+    z-index: 0;
+}
+
+.add-to-generation-btn:hover::before {
+    width: 120%;
+    height: 120%;
+}
+
+.add-to-generation-btn:hover {
+    border-color: var(--primary-color);
+    box-shadow: 0 4px 12px var(--primary-shadow);
+    transform: translateX(-2px);
+}
+
+.add-to-generation-btn:active {
+    transform: translateX(-2px) scale(0.95);
+}
+
+/* Added state (minus button) */
+.add-to-generation-btn.added {
+    background: linear-gradient(135deg, rgba(34, 197, 94, 0.15), rgba(74, 222, 128, 0.15));
+    border-color: rgba(34, 197, 94, 0.5);
+}
+
+.add-to-generation-btn.added::before {
+    background: linear-gradient(135deg, #22c55e, #4ade80);
+}
+
+.add-to-generation-btn.added:hover {
+    border-color: #22c55e;
+    box-shadow: 0 4px 12px rgba(34, 197, 94, 0.3);
+    transform: translateX(2px);
+}
+
+/* Disable button when any processing is happening */
+.add-to-generation-btn.disabled-by-processing {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.add-to-generation-btn.disabled-by-processing:hover {
+    transform: none;
+    box-shadow: none;
+    border-color: var(--primary-border-color);
+}
+
+.add-to-generation-btn.disabled-by-processing::before {
+    display: none;
+}
+
+.add-to-generation-btn.disabled-by-processing .plus-icon,
+.add-to-generation-btn.disabled-by-processing .minus-icon {
+    opacity: 0.5;
+}
+
+.btn-icon-wrapper {
+    position: relative;
+    z-index: 1;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Plus Icon (default state) */
+.plus-icon {
+    width: 16px;
+    height: 16px;
+    stroke: var(--primary-color);
+    transition: all 0.3s ease;
+    position: absolute;
+}
+
+/* Minus Icon (added state) */
+.minus-icon {
+    width: 16px;
+    height: 16px;
+    stroke: #22c55e;
+    transition: all 0.3s ease;
+    position: absolute;
+}
+
+/* Arrow Left Icon (hover state for plus) */
+.arrow-left-icon {
+    width: 18px;
+    height: 18px;
+    stroke: var(--primary-color);
+    opacity: 0;
+    transform: translateX(8px);
+    transition: all 0.3s ease;
+    position: absolute;
+}
+
+/* Arrow Right Icon (hover state for minus) */
+.arrow-right-icon {
+    width: 18px;
+    height: 18px;
+    stroke: #22c55e;
+    opacity: 0;
+    transform: translateX(-8px);
+    transition: all 0.3s ease;
+    position: absolute;
+}
+
+/* Hover animations for plus button */
+.add-to-generation-btn:not(.added):hover .plus-icon {
+    opacity: 0;
+    transform: translateX(-8px);
+    stroke: white;
+}
+
+.add-to-generation-btn:not(.added):hover .arrow-left-icon {
+    opacity: 1;
+    transform: translateX(0);
+    stroke: white;
+}
+
+/* Hover animations for minus button */
+.add-to-generation-btn.added:hover .minus-icon {
+    opacity: 0;
+    transform: translateX(8px);
+    stroke: white;
+}
+
+.add-to-generation-btn.added:hover .arrow-right-icon {
+    opacity: 1;
+    transform: translateX(0);
+    stroke: white;
+}
+
+/* Success Flow Animation - Right to Left (Add) */
+@keyframes flowRightToLeft {
+    0% {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    50% {
+        opacity: 1;
+    }
+    100% {
+        transform: translateX(-100%);
+        opacity: 0;
+    }
+}
+
+/* Remove Flow Animation - Left to Right (Remove) */
+@keyframes flowLeftToRight {
+    0% {
+        transform: translateX(-100%);
+        opacity: 0;
+    }
+    50% {
+        opacity: 1;
+    }
+    100% {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+}
+
+/* History Item Success Animation */
+.history-item.adding-animation {
+    position: relative;
+    overflow: hidden;
+}
+
+.history-item.adding-animation::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        var(--primary-glow-medium) 25%,
+        var(--primary-glow-strong) 50%,
+        var(--primary-glow-medium) 75%,
+        transparent 100%
+    );
+    animation: flowRightToLeft 0.8s ease-out;
+    pointer-events: none;
+    z-index: 1;
+}
+
+/* History Item Remove Animation */
+.history-item.removing-animation {
+    position: relative;
+    overflow: hidden;
+}
+
+.history-item.removing-animation::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(239, 68, 68, 0.3) 25%,
+        rgba(248, 113, 113, 0.4) 50%,
+        rgba(239, 68, 68, 0.3) 75%,
+        transparent 100%
+    );
+    animation: flowLeftToRight 0.8s ease-out;
+    pointer-events: none;
+    z-index: 1;
+}
+
+/* Success Animation - Green gradient flow */
+@keyframes successFlow {
+    0% {
+        transform: translateX(100%) scale(1.2);
+        opacity: 0;
+    }
+    50% {
+        opacity: 1;
+    }
+    100% {
+        transform: translateX(-100%) scale(1);
+        opacity: 0;
+    }
+}
+
+/* Failure Animation - Red pulse */
+@keyframes failureFlow {
+    0% {
+        transform: translateX(-100%) scale(1.2);
+        opacity: 0;
+    }
+    50% {
+        opacity: 1;
+    }
+    100% {
+        transform: translateX(100%) scale(1);
+        opacity: 0;
+    }
+}
+
+/* Success Animation Class */
+.history-item.success-animation {
+    position: relative;
+    overflow: hidden;
+}
+
+.history-item.success-animation::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(34, 197, 94, 0.3) 25%,
+        rgba(74, 222, 128, 0.5) 50%,
+        rgba(34, 197, 94, 0.3) 75%,
+        transparent 100%
+    );
+    animation: successFlow 1s ease-out;
+    pointer-events: none;
+    z-index: 1;
+}
+
+/* Failure Animation Class */
+.history-item.failure-animation {
+    position: relative;
+    overflow: hidden;
+}
+
+.history-item.failure-animation::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(239, 68, 68, 0.4) 25%,
+        rgba(248, 113, 113, 0.5) 50%,
+        rgba(239, 68, 68, 0.4) 75%,
+        transparent 100%
+    );
+    animation: failureFlow 1s ease-out;
+    pointer-events: none;
+    z-index: 1;
+}
+
+/* New Item Animation - Slide in from top with highlight */
+@keyframes slideInFromTop {
+    0% {
+        transform: translateY(-20px);
+        opacity: 0;
+    }
+    50% {
+        transform: translateY(0);
+        opacity: 1;
+    }
+    100% {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+@keyframes newItemHighlight {
+    0% {
+        background: linear-gradient(135deg, var(--primary-gradient-medium-start), var(--primary-gradient-medium-end));
+    }
+    100% {
+        background: var(--bg-color);
+    }
+}
+
+.history-item.new-item-animation {
+    animation: slideInFromTop 0.5s ease-out, newItemHighlight 0.8s ease-out;
+}
+
+/* Ensure content stays above animation */
+.history-item > * {
+    position: relative;
+    z-index: 2;
+}
+
+/* Button pulse animation on click */
+@keyframes buttonPulse {
+    0% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.1);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+.add-to-generation-btn.pulse-animation {
+    animation: buttonPulse 0.4s ease;
+}
+
+/* Responsive Design for smaller screens */
+@media screen and (max-width: 1400px) {
+    /* Reduce panel padding */
+    .panel-header {
+        padding: 16px;
+    }
+
+    .panel-content {
+        padding: 16px;
+        gap: 12px;
+    }
+
+    /* Smaller panel title */
+    .panel-title {
+        font-size: 14px;
+        padding-left: 12px;
+    }
+
+    .panel-title::before {
+        width: 2px;
+        height: 16px;
+    }
+
+    /* Header right group */
+    .header-right-group {
+        gap: 8px;
+    }
+
+    /* Smaller date range */
+    .date-range {
+        gap: 6px;
+        padding: 4px 8px;
+    }
+
+    .date-icon {
+        width: 14px;
+        height: 14px;
+    }
+
+    .arrow-icon {
+        width: 12px;
+        height: 12px;
+    }
+
+    .date-text {
+        font-size: 10px;
+    }
+
+    /* Filter section */
+    .filter-section {
+        padding: 12px 16px;
+    }
+
+    .filter-toggle-btn {
+        width: 28px;
+        height: 28px;
+    }
+
+    .filter-toggle-btn svg {
+        width: 16px;
+        height: 16px;
+    }
+
+    .date-filter {
+        gap: 8px;
+    }
+
+    .date-input-wrapper {
+        min-width: 120px;
+    }
+
+    .date-input,
+    .search-input {
+        padding: 8px 10px 8px 32px;
+        font-size: 12px;
+    }
+
+    .refresh-btn {
+        width: 36px;
+        height: 36px;
+    }
+
+    .refresh-btn svg {
+        width: 18px;
+        height: 18px;
+    }
+
+    .filter-label {
+        font-size: 11px;
+    }
+
+    /* Empty state responsive */
+    .empty-state {
+        padding: 20px 20px 0 20px;
+    }
+
+    .empty-state-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        margin-bottom: 10px;
+    }
+
+    .empty-state-icon svg {
+        width: 24px;
+        height: 24px;
+    }
+
+    .empty-state-title {
+        font-size: 16px;
+        margin-bottom: 3px;
+    }
+
+    .empty-state-description {
+        font-size: 13px;
+        margin-bottom: 28px;
+    }
+
+    .section-separator {
+        margin-bottom: 28px;
+    }
+
+    .separator-icon {
+        width: 28px;
+        height: 28px;
+    }
+
+    .separator-icon svg {
+        width: 14px;
+        height: 14px;
+    }
+
+    .user-guide {
+        max-width: 100%;
+        padding: 0 0 24px 0;
+    }
+
+    .user-guide-title {
+        font-size: 15px;
+        margin-bottom: 16px;
+        gap: 8px;
+    }
+
+    .guide-title-icon {
+        width: 18px;
+        height: 18px;
+    }
+
+    .guide-steps {
+        gap: 10px;
+    }
+
+    .guide-step {
+        gap: 10px;
+        padding: 10px;
+    }
+
+    .step-number {
+        width: 26px;
+        height: 26px;
+        font-size: 13px;
+    }
+
+    .step-title {
+        font-size: 13px;
+        margin-bottom: 3px;
+    }
+
+    .step-description {
+        font-size: 12px;
+    }
+
+    /* Smaller section headers */
+    .content-section-header {
+        gap: 8px;
+        padding: 10px 12px;
+    }
+
+    .content-header-icon {
+        width: 24px;
+        height: 24px;
+    }
+
+    .content-header-icon svg {
+        width: 16px;
+        height: 16px;
+    }
+
+    .content-header-title {
+        font-size: 12px;
+    }
+
+    .content-count {
+        font-size: 10px;
+        padding: 3px 8px;
+    }
+
+    .collapse-toggle-btn {
+        width: 20px;
+        height: 20px;
+    }
+
+    .collapse-toggle-btn svg {
+        width: 16px;
+        height: 16px;
+    }
+
+    /* Smaller history items */
+    .history-content {
+        gap: 8px;
+    }
+
+    .history-item {
+        gap: 10px;
+        padding: 10px 12px;
+        border-radius: 8px;
+    }
+
+    .history-item-icon {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+    }
+
+    .history-item-icon svg {
+        width: 16px;
+        height: 16px;
+    }
+
+    .history-item-name {
+        font-size: 12px;
+        margin: 0 0 3px 0;
+        gap: 6px;
+    }
+
+    .file-id {
+        font-size: 11px;
+        padding: 2px 6px;
+        border-radius: 4px;
+    }
+
+    .history-item-date {
+        font-size: 11px;
+    }
+
+    .history-item-actions {
+        gap: 6px;
+    }
+
+    /* Smaller add to generation button */
+    .add-to-generation-btn {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+    }
+
+    .btn-icon-wrapper {
+        width: 18px;
+        height: 18px;
+    }
+
+    .plus-icon,
+    .minus-icon {
+        width: 14px;
+        height: 14px;
+    }
+
+    .arrow-left-icon,
+    .arrow-right-icon {
+        width: 16px;
+        height: 16px;
+    }
+
+    /* Smaller no results message */
+    .no-results {
+        padding: 36px 20px;
+    }
+
+    .no-results svg {
+        width: 40px;
+        height: 40px;
+        margin-bottom: 12px;
+    }
+
+    .no-results p {
+        font-size: 13px;
+    }
+
+    /* Skeleton responsive */
+    .skeleton-item {
+        gap: 10px;
+        padding: 10px 12px;
+        border-radius: 8px;
+    }
+
+    .skeleton-icon {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+    }
+
+    .skeleton-details {
+        gap: 6px;
+    }
+
+    .skeleton-name {
+        height: 14px;
+    }
+
+    .skeleton-date {
+        height: 11px;
+    }
+
+    .skeleton-button {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+    }
+
+    /* Processing badge responsive */
+    .processing-badge {
+        gap: 4px;
+        padding: 2px 8px;
+        font-size: 10px;
+        border-radius: 10px;
+    }
+
+    .processing-spinner {
+        width: 12px;
+        height: 12px;
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import { Component, EventEmitter, Output, Input, OnInit, OnChanges, SimpleChanges } from '@angular/core';
+import { HistoryService, FileItem } from './history.service';
+
+interface HistoryItem {
+  id: string;
+  name: string;
+  displayDate: string;
+  date: Date;
+  hasResult: boolean;
+  summary_prompt: string | null;
+  faq_prompt: string | null;
+}
+
+export interface HistoryItemSelect {
+  id: string;
+  name: string;
+  displayDate: string;
+  date: Date;
+  summary_prompt: string | null;
+  faq_prompt: string | null;
+}
+
+interface RemoveGenerateFile {
+  id: number;
+  name: string;
+}
+
+interface GenerationStatus {
+  id: number;
+  status: 'Success' | 'Failure';
+  summary_prompt?: string;
+  faq_prompt?: string;
+}
+
+interface NewUploadFile {
+  id: number;
+  original_name: string;
+  created_at: string;
+  summary_prompt: string | null;
+  faq_prompt: string | null;
+}
+
+interface ProcessStatus {
+  id: number | null;
+  isProcessing: boolean;
+}
+
+@Component({
+  selector: 'app-history',
+  templateUrl: './history.component.html',
+  styleUrls: ['./history.component.css']
+})
+export class HistoryComponent implements OnInit, OnChanges {
+  @Input() removeGenerateFile: RemoveGenerateFile | null = null;
+  @Input() generationStatus: GenerationStatus | null = null;
+  @Input() newUploadFile: NewUploadFile | null = null;
+  @Input() processStatus: ProcessStatus | null = null;
+  @Input() isFileUploading: boolean = false;
+  
+  @Output() onItemSelect = new EventEmitter<HistoryItemSelect>();
+  @Output() onAddToContentGeneration = new EventEmitter<HistoryItem>();
+  @Output() onRemoveFromContentGeneration = new EventEmitter<string>();
+
+  selectedHistoryItem: HistoryItem | null = null;
+  addedToGenerationId: string | null = null;
+  processingItemId: string | null = null;
+  isPendingExpanded: boolean = true;
+  isCompletedExpanded: boolean = true;
+
+  startDate: string = '';
+  endDate: string = '';
+
+  historyItems: HistoryItem[] = [];
+  isLoading: boolean = false;
+  isRefreshing: boolean = false;
+  errorMessage: string = '';
+
+  // Filter properties
+  isFilterVisible: boolean = false;
+  filterFromDate: string = '';
+  filterToDate: string = '';
+  searchText: string = '';
+
+  constructor(private historyService: HistoryService) {}
+
+  ngOnInit(): void {
+    this.initializeDateRange();
+    this.fetchHistoryData();
+  }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['removeGenerateFile'] && changes['removeGenerateFile'].currentValue) {
+      const fileToRemove = changes['removeGenerateFile'].currentValue as RemoveGenerateFile;
+      this.handleRemoveFromParent(fileToRemove);
+    }
+
+    if (changes['generationStatus'] && changes['generationStatus'].currentValue) {
+      const statusUpdate = changes['generationStatus'].currentValue as GenerationStatus;
+      this.handleGenerationStatusChange(statusUpdate);
+    }
+
+    if (changes['newUploadFile'] && changes['newUploadFile'].currentValue) {
+      const newFile = changes['newUploadFile'].currentValue as NewUploadFile;
+      this.handleNewFileUpload(newFile);
+    }
+
+    if (changes['processStatus'] && changes['processStatus'].currentValue) {
+      const status = changes['processStatus'].currentValue as ProcessStatus;
+      this.handleProcessStatusChange(status);
+    }
+  }
+
+  get pendingFiles(): HistoryItem[] {
+    return this.historyItems.filter(item => !item.hasResult);
+  }
+
+  get completedFiles(): HistoryItem[] {
+    return this.historyItems.filter(item => item.hasResult);
+  }
+
+  get filteredPendingFiles(): HistoryItem[] {
+    return this.applyTextSearch(this.pendingFiles);
+  }
+
+  get filteredCompletedFiles(): HistoryItem[] {
+    return this.applyTextSearch(this.completedFiles);
+  }
+
+  get hasAnyFiles(): boolean {
+    return this.historyItems.length > 0;
+  }
+
+  isProcessing(itemId: string): boolean {
+    return this.processingItemId === itemId;
+  }
+
+  isAnyProcessing(): boolean {
+    return this.processingItemId !== null;
+  }
+
+  isButtonsDisabled(): boolean {
+    return this.isFileUploading || this.isAnyProcessing();
+  }
+
+  onHistoryItemClick(itemId: string): void {
+    const item = this.historyItems.find(i => i.id === itemId);
+    if (item) {
+      this.selectedHistoryItem = item;
+      
+      const itemToEmit: HistoryItemSelect = {
+        id: item.id,
+        name: item.name,
+        displayDate: item.displayDate,
+        date: item.date,
+        summary_prompt: item.summary_prompt,
+        faq_prompt: item.faq_prompt
+      };
+      
+      this.onItemSelect.emit(itemToEmit);
+    }
+  }
+
+  onAddToGeneration(event: Event, item: HistoryItem): void {
+    event.stopPropagation();
+    
+    // Check if file is uploading
+    if (this.isFileUploading) {
+      alert('Cannot perform this action. A file is currently being uploaded. Please wait until the upload is complete.');
+      return;
+    }
+    
+    // Check if any file is currently processing
+    if (this.isAnyProcessing()) {
+      const processingItem = this.historyItems.find(i => i.id === this.processingItemId);
+      const processingFileName = processingItem ? processingItem.name : 'A file';
+      alert(`Cannot perform this action. ${processingFileName} is currently being processed. Please wait until processing is complete.`);
+      return;
+    }
+
+    const button = (event.currentTarget as HTMLElement);
+    const historyItem = button.closest('.history-item') as HTMLElement;
+    
+    if (this.addedToGenerationId === item.id) {
+      this.removeItemWithAnimation(historyItem, button, item.id);
+    } else {
+      this.addItemWithAnimation(historyItem, button, item);
+    }
+  }
+
+  toggleFilter(): void {
+    this.isFilterVisible = !this.isFilterVisible;
+    
+    if (this.isFilterVisible && !this.filterFromDate && !this.filterToDate) {
+      const today = new Date();
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(today.getDate() - 30);
+      
+      this.filterFromDate = this.formatDateForInput(thirtyDaysAgo);
+      this.filterToDate = this.formatDateForInput(today);
+    }
+  }
+
+  applyDateFilter(): void {
+    if (!this.filterFromDate || !this.filterToDate) {
+      console.warn('Please select both from and to dates');
+      return;
+    }
+
+    const fromDate = new Date(this.filterFromDate);
+    const toDate = new Date(this.filterToDate);
+
+    if (fromDate > toDate) {
+      console.warn('From date cannot be after to date');
+      return;
+    }
+
+    this.isRefreshing = true;
+    
+    this.startDate = this.formatDateForDisplay(fromDate);
+    this.endDate = this.formatDateForDisplay(toDate);
+
+    this.historyService.getFilesByDateRange(this.filterFromDate, this.filterToDate)
+      .subscribe({
+        next: (response) => {
+          if (response.status === 'success' && response.data.files) {
+            this.historyItems = this.mapFilesToHistoryItems(response.data.files);
+            console.log('Date filter applied successfully');
           }
-        } else {
-          // Unexpected status
-          queueItem.status = 'failed';
-          this.processingItemId = null;
-          this.stopInferenceProgressPolling();
-          this.processNextInQueue();
+          this.isRefreshing = false;
+        },
+        error: (error) => {
+          console.error('Error applying date filter:', error);
+          this.errorMessage = 'Failed to apply date filter. Please try again.';
+          this.isRefreshing = false;
         }
-      },
-      error: (error) => {
-        console.error('Progress polling error for item:', queueItem.name, error);
-        queueItem.status = 'failed';
-        this.processingItemId = null;
-        this.stopInferenceProgressPolling();
-        this.processNextInQueue();
+      });
+  }
+
+  onSearchChange(): void {
+    console.log('Searching for:', this.searchText);
+  }
+
+  clearSearch(): void {
+    this.searchText = '';
+  }
+
+  togglePendingSection(): void {
+    this.isPendingExpanded = !this.isPendingExpanded;
+  }
+
+  toggleCompletedSection(): void {
+    this.isCompletedExpanded = !this.isCompletedExpanded;
+  }
+
+  isAddedToGeneration(itemId: string): boolean {
+    return this.addedToGenerationId === itemId;
+  }
+
+  clearSelection(): void {
+    this.selectedHistoryItem = null;
+  }
+
+  clearAddedToGeneration(): void {
+    this.addedToGenerationId = null;
+  }
+
+  addHistoryItem(item: HistoryItem): void {
+    this.historyItems.unshift(item);
+  }
+
+  private addItemWithAnimation(historyItem: HTMLElement | null, button: HTMLElement, item: HistoryItem): void {
+    if (historyItem) {
+      historyItem.classList.add('adding-animation');
+      setTimeout(() => {
+        historyItem.classList.remove('adding-animation');
+      }, 800);
+    }
+    
+    button.classList.add('pulse-animation');
+    setTimeout(() => {
+      button.classList.remove('pulse-animation');
+    }, 400);
+    
+    const previousId = this.addedToGenerationId;
+    this.addedToGenerationId = item.id;
+    this.onAddToContentGeneration.emit(item);
+    console.log('Added to content generation:', item.name);
+    
+    if (previousId) {
+      console.log('Previous item removed automatically');
+    }
+  }
+
+  private removeItemWithAnimation(historyItem: HTMLElement | null, button: HTMLElement, itemId: string): void {
+    if (historyItem) {
+      historyItem.classList.add('removing-animation');
+      setTimeout(() => {
+        historyItem.classList.remove('removing-animation');
+      }, 800);
+    }
+    
+    button.classList.add('pulse-animation');
+    setTimeout(() => {
+      button.classList.remove('pulse-animation');
+    }, 400);
+    
+    this.addedToGenerationId = null;
+    this.onRemoveFromContentGeneration.emit(itemId);
+    console.log('Removed from content generation:', itemId);
+  }
+
+  private handleRemoveFromParent(fileToRemove: RemoveGenerateFile): void {
+    const itemId = fileToRemove.id.toString();
+    
+    if (this.addedToGenerationId === itemId) {
+      console.log('Removing file from parent:', fileToRemove.name);
+      
+      const historyItemElement = document.querySelector(
+        `.history-item[data-item-id="${itemId}"]`
+      ) as HTMLElement;
+      
+      if (historyItemElement) {
+        historyItemElement.classList.add('removing-animation');
+        setTimeout(() => {
+          historyItemElement.classList.remove('removing-animation');
+        }, 800);
       }
+      
+      this.addedToGenerationId = null;
+      console.log('File removed successfully:', fileToRemove.name);
+    }
+  }
+
+  private handleGenerationStatusChange(statusUpdate: GenerationStatus): void {
+    const itemId = statusUpdate.id.toString();
+    const item = this.historyItems.find(i => i.id === itemId);
+
+    if (!item) {
+      console.warn('Item not found for status update:', itemId);
+      return;
+    }
+
+    console.log(`Generation status update for item ${itemId}: ${statusUpdate.status}`);
+
+    if (statusUpdate.summary_prompt !== undefined) {
+      item.summary_prompt = statusUpdate.summary_prompt;
+      console.log(`Updated summary_prompt for item ${itemId}:`, statusUpdate.summary_prompt);
+    }
+
+    if (statusUpdate.faq_prompt !== undefined) {
+      item.faq_prompt = statusUpdate.faq_prompt;
+      console.log(`Updated faq_prompt for item ${itemId}:`, statusUpdate.faq_prompt);
+    }
+
+    if (statusUpdate.status === 'Success') {
+      if (!item.hasResult) {
+        console.log(`Moving item ${itemId} to Completed Results`);
+        
+        item.hasResult = true;
+
+        if (!this.isCompletedExpanded) {
+          this.isCompletedExpanded = true;
+        }
+
+        setTimeout(() => {
+          const historyItemElement = document.querySelector(
+            `.history-item[data-item-id="${itemId}"]`
+          ) as HTMLElement;
+
+          if (historyItemElement) {
+            historyItemElement.classList.add('success-animation');
+            setTimeout(() => {
+              historyItemElement.classList.remove('success-animation');
+            }, 1000);
+
+            historyItemElement.scrollIntoView({
+              behavior: 'smooth',
+              block: 'center',
+              inline: 'nearest'
+            });
+
+            setTimeout(() => {
+              this.selectedHistoryItem = item;
+              
+              const itemToEmit: HistoryItemSelect = {
+                id: item.id,
+                name: item.name,
+                displayDate: item.displayDate,
+                date: item.date,
+                summary_prompt: item.summary_prompt,
+                faq_prompt: item.faq_prompt
+              };
+              
+              this.onItemSelect.emit(itemToEmit);
+              console.log(`Card ${itemId} selected and scrolled into view`);
+            }, 300);
+          }
+        }, 100);
+      } else {
+        const historyItemElement = document.querySelector(
+          `.history-item[data-item-id="${itemId}"]`
+        ) as HTMLElement;
+
+        if (historyItemElement) {
+          historyItemElement.classList.add('success-animation');
+          setTimeout(() => {
+            historyItemElement.classList.remove('success-animation');
+          }, 1000);
+
+          historyItemElement.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center',
+            inline: 'nearest'
+          });
+
+          setTimeout(() => {
+            this.selectedHistoryItem = item;
+            
+            const itemToEmit: HistoryItemSelect = {
+              id: item.id,
+              name: item.name,
+              displayDate: item.displayDate,
+              date: item.date,
+              summary_prompt: item.summary_prompt,
+              faq_prompt: item.faq_prompt
+            };
+            
+            this.onItemSelect.emit(itemToEmit);
+            console.log(`Card ${itemId} selected and scrolled into view`);
+          }, 300);
+        }
+      }
+
+      if (this.addedToGenerationId === itemId) {
+        console.log(`Clearing added state for item ${itemId} - restoring plus icon`);
+        this.addedToGenerationId = null;
+      }
+    } else if (statusUpdate.status === 'Failure') {
+      if (item.hasResult) {
+        console.log(`Moving item ${itemId} to Pending Results`);
+        
+        item.hasResult = false;
+
+        if (!this.isPendingExpanded) {
+          this.isPendingExpanded = true;
+        }
+
+        setTimeout(() => {
+          const historyItemElement = document.querySelector(
+            `.history-item[data-item-id="${itemId}"]`
+          ) as HTMLElement;
+
+          if (historyItemElement) {
+            historyItemElement.classList.add('failure-animation');
+            setTimeout(() => {
+              historyItemElement.classList.remove('failure-animation');
+            }, 1000);
+          }
+        }, 100);
+      } else {
+        const historyItemElement = document.querySelector(
+          `.history-item[data-item-id="${itemId}"]`
+        ) as HTMLElement;
+
+        if (historyItemElement) {
+          historyItemElement.classList.add('failure-animation');
+          setTimeout(() => {
+            historyItemElement.classList.remove('failure-animation');
+          }, 1000);
+        }
+      }
+
+      if (this.addedToGenerationId === itemId) {
+        console.log(`Clearing added state for item ${itemId} - restoring plus icon`);
+        this.addedToGenerationId = null;
+      }
+    }
+  }
+
+  private handleNewFileUpload(newFile: NewUploadFile): void {
+    console.log('New file uploaded:', newFile);
+
+    const existingFile = this.historyItems.find(item => item.id === newFile.id.toString());
+    if (existingFile) {
+      console.warn('File already exists in history:', newFile.id);
+      return;
+    }
+
+    const newHistoryItem: HistoryItem = {
+      id: newFile.id.toString(),
+      name: newFile.original_name,
+      displayDate: `Created on ${newFile.created_at}`,
+      date: new Date(newFile.created_at),
+      hasResult: false,
+      summary_prompt: newFile.summary_prompt,
+      faq_prompt: newFile.faq_prompt
+    };
+
+    this.historyItems.unshift(newHistoryItem);
+
+    if (!this.isPendingExpanded) {
+      this.isPendingExpanded = true;
+    }
+
+    console.log('New file added to Pending Results:', newHistoryItem);
+    if (newFile.summary_prompt) {
+      console.log('With summary_prompt:', newFile.summary_prompt);
+    }
+    if (newFile.faq_prompt) {
+      console.log('With faq_prompt:', newFile.faq_prompt);
+    }
+
+    setTimeout(() => {
+      const historyItemElement = document.querySelector(
+        `.history-item[data-item-id="${newFile.id}"]`
+      ) as HTMLElement;
+
+      if (historyItemElement) {
+        historyItemElement.classList.add('new-item-animation');
+        setTimeout(() => {
+          historyItemElement.classList.remove('new-item-animation');
+        }, 800);
+
+        historyItemElement.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+          inline: 'nearest'
+        });
+      }
+    }, 100);
+  }
+
+  private handleProcessStatusChange(status: ProcessStatus): void {
+    if (status.id === null) {
+      console.log('Clearing all processing states');
+      this.processingItemId = null;
+      return;
+    }
+
+    const itemId = status.id.toString();
+    const item = this.historyItems.find(i => i.id === itemId);
+
+    if (!item) {
+      console.warn('Item not found for process status update:', itemId);
+      return;
+    }
+
+    if (status.isProcessing) {
+      console.log(`Setting processing state for item ${itemId}`);
+      this.processingItemId = itemId;
+    } else {
+      console.log(`Clearing processing state for item ${itemId}`);
+      if (this.processingItemId === itemId) {
+        this.processingItemId = null;
+      }
+    }
+  }
+
+  private applyTextSearch(items: HistoryItem[]): HistoryItem[] {
+    if (!this.searchText || this.searchText.trim() === '') {
+      return items;
+    }
+
+    const searchTerm = this.searchText.toLowerCase().trim();
+    
+    return items.filter(item => {
+      const nameMatch = item.name.toLowerCase().includes(searchTerm);
+      const idMatch = item.id.toLowerCase().includes(searchTerm);
+      
+      return nameMatch || idMatch;
     });
+  }
+
+  private initializeDateRange(): void {
+    const today = new Date();
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(today.getDate() - 30);
+
+    this.startDate = this.formatDateForDisplay(thirtyDaysAgo);
+    this.endDate = this.formatDateForDisplay(today);
+  }
+
+  private fetchHistoryData(): void {
+    this.isLoading = true;
+    this.errorMessage = '';
+
+    const today = new Date();
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(today.getDate() - 30);
+
+    const startDateForApi = this.formatDateForApi(thirtyDaysAgo);
+    const endDateForApi = this.formatDateForApi(today);
+
+    this.historyService.getFilesByDateRange(startDateForApi, endDateForApi)
+      .subscribe({
+        next: (response) => {
+          if (response.status === 'success' && response.data.files) {
+            this.historyItems = this.mapFilesToHistoryItems(response.data.files);
+          }
+          this.isLoading = false;
+        },
+        error: (error) => {
+          console.error('Error fetching history data:', error);
+          this.errorMessage = 'Failed to load history data. Please try again.';
+          this.isLoading = false;
+        }
+      });
+  }
+
+  private mapFilesToHistoryItems(files: FileItem[]): HistoryItem[] {
+    return files.map(file => {
+      const hasResult = file.progress === 'completed';
+
+      return {
+        id: file.id.toString(),
+        name: file.original_name,
+        displayDate: `Created on ${file.inserted_at}`,
+        date: this.parseInsertedDate(file.inserted_at),
+        hasResult: hasResult,
+        summary_prompt: file.summary_prompt,
+        faq_prompt: file.faq_prompt
+      };
+    });
+  }
+
+  private parseInsertedDate(dateString: string): Date {
+    return new Date(dateString);
+  }
+
+  private formatDateForDisplay(date: Date): string {
+    const options: Intl.DateTimeFormatOptions = { 
+      month: 'short', 
+      day: 'numeric', 
+      year: 'numeric' 
+    };
+    return date.toLocaleDateString('en-US', options);
+  }
+
+  private formatDateForApi(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  private formatDateForInput(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
 }
