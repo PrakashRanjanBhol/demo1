@@ -1,609 +1,1342 @@
-import axios from "axios";
+SettingsLayout.module.scss
+--------------------------
 
-const LOCAL_STORAGE_KEY = "ATLASIAN_CONNECTION";
 
-// ── Helpers ───────────────────────────────────────────
 
-const getAuthHeader = () => {
-  const token = localStorage.getItem(LOCAL_STORAGE_KEY) ?? "";
-  return { Authorization: `Bearer ${token}` };
-};
-
-// ── 498 Session-expired interceptor ───────────────────
-// Store dispatch is injected at app startup via setupAtlassianInterceptor()
-
-type VoidDispatch = (action: any) => void;
-
-let _dispatch: VoidDispatch | null = null;
-
-export const setupAtlassianInterceptor = (dispatch: VoidDispatch) => {
-  _dispatch = dispatch;
-};
-
-axios.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error?.response?.status === 498) {
-      localStorage.removeItem(LOCAL_STORAGE_KEY);
-      if (_dispatch) {
-        // Dynamically imported to avoid circular dependency
-        import("./atlassianSlice").then(({ forceDisconnect }) => {
-          _dispatch!(forceDisconnect());
-        });
-      }
-    }
-    return Promise.reject(error);
-  }
-);
-
-// ── Types ─────────────────────────────────────────────
-
-export interface ConnectPayload {
-  username: string;
-  password: string;
+.layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  gap: 10px;
+  padding: 0 10px;
+  background: var(--app-bg);
 }
 
-export interface ConnectResponse {
-  status: string;
-  result: string;
+.sidebar {
+  width: 300px;
+  background: var(--sidebar-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  padding: 24px 12px;
+  gap: 4px;
+  position: relative;
+  box-shadow: 0 1px 4px var(--box-shadow);
 }
 
-export interface DisconnectResponse {
-  status: string;
-  result: string;
-}
-
-export interface JiraProject {
-  key: string;
-  id: string;
-  type: "project";
-  icon: string;
-}
-
-export interface ProjectsResult {
-  [id: string]: JiraProject;
-}
-
-export interface ProjectsResponse {
-  status: string;
-  result: ProjectsResult;
-}
-
-export interface JiraTicket {
-  type: string;
-  summary: string;
-  key: string;
-}
-
-export interface JiraIssueGroup {
-  icon: string;
-  tickets: JiraTicket[];
-}
-
-export interface ProjectDataResult {
-  [issueType: string]: JiraIssueGroup;
-}
-
-export interface ProjectDataResponse {
-  status: string;
-  result: ProjectDataResult;
-}
-
-export interface FavoritePayload {
-  project_key: string;
-}
-
-export interface FavoriteResponse {
-  status: string;
-  result: string;
-}
-
-// ── Confluence Types ──────────────────────────────────
-
-export interface ConfluenceSpace {
-  key: string;
-  id: string;
-  type: "space";
-  icon: string;
-}
-
-export interface SpacesResult {
-  [id: string]: ConfluenceSpace;
-}
-
-export interface SpacesResponse {
-  status: string;
-  result: SpacesResult;
-}
-
-export interface SpaceFavoritePayload {
-  space_key: string;
-}
-
-export interface ConfluencePage {
-  page_id: string;
-  key: string;
-  title: string;
-  url: string;
-  last_modified: string;
-  children: ConfluencePage[];
-}
-
-export interface SpaceDataResponse {
-  status: string;
-  result: ConfluencePage[];
-}
-
-// ── Service ───────────────────────────────────────────
-
-export const atlassianService = {
-  // Auth
-  connect: async (payload: ConnectPayload): Promise<ConnectResponse> => {
-    const credentials = btoa(`${payload.username}:${payload.password}`);
-    const response = await axios.post<ConnectResponse>(
-      "/api/atlassian/connect",
-      payload,
-      {
-        headers: {
-          Authorization: `Basic ${credentials}`,
-        },
-      }
-    );
-    return response.data;
-  },
-
-  disconnect: async (): Promise<DisconnectResponse> => {
-    const response = await axios.put<DisconnectResponse>(
-      "/api/atlassian/disconnect",
-      {},
-      { headers: getAuthHeader() }
-    );
-    return response.data;
-  },
-
-  // Jira Projects
-  fetchAllProjects: async (): Promise<ProjectsResponse> => {
-    const response = await axios.get<ProjectsResponse>(
-      "/api/jira/projects",
-      { headers: getAuthHeader() }
-    );
-    return response.data;
-  },
-
-  fetchFavoriteProjects: async (): Promise<ProjectsResponse> => {
-    const response = await axios.get<ProjectsResponse>(
-      "/api/jira/projects/favorites",
-      { headers: getAuthHeader() }
-    );
-    return response.data;
-  },
-
-  addFavoriteProject: async (
-    payload: FavoritePayload
-  ): Promise<FavoriteResponse> => {
-    const response = await axios.post<FavoriteResponse>(
-      "/api/jira/projects/favorites",
-      payload,
-      { headers: getAuthHeader() }
-    );
-    return response.data;
-  },
-
-  removeFavoriteProject: async (
-    payload: FavoritePayload
-  ): Promise<FavoriteResponse> => {
-    const response = await axios.delete<FavoriteResponse>(
-      "/api/jira/projects/favorites",
-      {
-        headers: getAuthHeader(),
-        data: payload,
-      }
-    );
-    return response.data;
-  },
-
-  fetchProjectData: async (id: string): Promise<ProjectDataResponse> => {
-    const response = await axios.get<ProjectDataResponse>(
-      `/api/jira/get_project_data/${id}`,
-      { headers: getAuthHeader() }
-    );
-    return response.data;
-  },
-
-  // ── Confluence Spaces ───────────────────────────────
-
-  fetchAllSpaces: async (): Promise<SpacesResponse> => {
-    const response = await axios.get<SpacesResponse>(
-      "/api/confluence/spaces",
-      { headers: getAuthHeader() }
-    );
-    return response.data;
-  },
-
-  fetchFavoriteSpaces: async (): Promise<SpacesResponse> => {
-    const response = await axios.get<SpacesResponse>(
-      "/api/confluence/spaces/favorites",
-      { headers: getAuthHeader() }
-    );
-    return response.data;
-  },
-
-  addFavoriteSpace: async (
-    payload: SpaceFavoritePayload
-  ): Promise<FavoriteResponse> => {
-    const response = await axios.post<FavoriteResponse>(
-      "/api/confluence/spaces/favorites",
-      payload,
-      { headers: getAuthHeader() }
-    );
-    return response.data;
-  },
-
-  removeFavoriteSpace: async (
-    payload: SpaceFavoritePayload
-  ): Promise<FavoriteResponse> => {
-    const response = await axios.delete<FavoriteResponse>(
-      "/api/confluence/spaces/favorites",
-      {
-        headers: getAuthHeader(),
-        data: payload,
-      }
-    );
-    return response.data;
-  },
-
-  fetchSpaceData: async (key: string): Promise<SpaceDataResponse> => {
-    const response = await axios.get<SpaceDataResponse>(
-      `/api/confluence/get_space_data/${key}`,
-      { headers: getAuthHeader() }
-    );
-    return response.data;
-  },
-};
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
-import { atlassianService } from "./atlassianService";
-
-const LOCAL_STORAGE_KEY = "ATLASIAN_CONNECTION";
-
-export interface AtlassianState {
-  token: string | null;
-  isConnected: boolean;
-  isLoading: boolean;
-  error: string | null;
-}
-
-const loadFromStorage = (): string | null => {
-  try {
-    return localStorage.getItem(LOCAL_STORAGE_KEY);
-  } catch {
-    return null;
-  }
-};
-
-const initialState: AtlassianState = {
-  token: loadFromStorage(),
-  isConnected: !!loadFromStorage(),
-  isLoading: false,
-  error: null,
-};
-
-// ── Connect ───────────────────────────────────────────
-export const connectAtlassian = createAsyncThunk(
-  "atlassian/connect",
-  async (
-    payload: { username: string; password: string },
-    { rejectWithValue }
-  ) => {
-    try {
-      const data = await atlassianService.connect(payload);
-
-      if (data.status !== "Success") {
-        return rejectWithValue("Connection failed. Please check your credentials.");
-      }
-
-      localStorage.setItem(LOCAL_STORAGE_KEY, data.result);
-      return data.result;
-    } catch (error: any) {
-      return rejectWithValue(
-        error?.response?.data?.message ?? "Connection failed. Please try again."
-      );
+.sidebarHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 12px 20px;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 12px;
+
+  .headerIcon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: var(--accent-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    svg {
+      width: 20px;
+      height: 20px;
+      color: #fff;
     }
   }
-);
 
-// ── Disconnect ────────────────────────────────────────
-export const disconnectAtlassian = createAsyncThunk(
-  "atlassian/disconnect",
-  async (_, { rejectWithValue }) => {
-    try {
-      const data = await atlassianService.disconnect();
+  .headerText {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
 
-      if (data.status !== "Success") {
-        return rejectWithValue("Disconnect failed. Please try again.");
-      }
+    .headerTitle {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      letter-spacing: -0.1px;
+    }
 
-      localStorage.removeItem(LOCAL_STORAGE_KEY);
-      return true;
-    } catch (error: any) {
-      return rejectWithValue(
-        error?.response?.data?.message ?? "Disconnect failed. Please try again."
-      );
+    .headerSub {
+      font-size: 0.78125rem;
+      color: var(--text-secondary);
     }
   }
-);
-
-const atlassianSlice = createSlice({
-  name: "atlassian",
-  initialState,
-  reducers: {
-    clearError(state) {
-      state.error = null;
-    },
-    forceDisconnect(state) {
-      state.isConnected = false;
-      state.token = null;
-      state.error = null;
-    },
-  },
-  extraReducers: (builder) => {
-    // Connect
-    builder
-      .addCase(connectAtlassian.pending, (state) => {
-        state.isLoading = true;
-        state.error = null;
-      })
-      .addCase(connectAtlassian.fulfilled, (state, action) => {
-        state.isLoading = false;
-        state.isConnected = true;
-        state.token = action.payload;
-      })
-      .addCase(connectAtlassian.rejected, (state, action) => {
-        state.isLoading = false;
-        state.error = action.payload as string;
-      });
-
-    // Disconnect
-    builder
-      .addCase(disconnectAtlassian.pending, (state) => {
-        state.isLoading = true;
-        state.error = null;
-      })
-      .addCase(disconnectAtlassian.fulfilled, (state) => {
-        state.isLoading = false;
-        state.isConnected = false;
-        state.token = null;
-      })
-      .addCase(disconnectAtlassian.rejected, (state, action) => {
-        state.isLoading = false;
-        state.error = action.payload as string;
-      });
-  },
-});
-
-export const { clearError, forceDisconnect } = atlassianSlice.actions;
-export default atlassianSlice.reducer;
-
-
-
-
-
-
-
-
-
-
-
-
-
-import React, { useEffect, useState } from "react";
-import { useDispatch, useSelector } from "react-redux";
-import type { AppDispatch, RootState } from "../../store";
-import styles from "./PanelTools.module.scss";
-
-import { AtlassianConnect } from "./AtlassianConnect";
-import { JiraTool } from "./JiraTool";
-import { ConfluenceTool } from "./ConfluenceTool";
-import { setActiveTool, clearActiveTool } from "./toolSlice";
-import type { ToolId } from "./toolSlice";
-import { setupAtlassianInterceptor } from "./atlassianService";
-
-import jiraIcon from "../../assets/icons/jira.png";
-import confluenceIcon from "../../assets/icons/confluence.webp";
-
-interface Tool {
-  id: ToolId;
-  name: string;
-  description: string;
-  icon: string;
 }
 
-const tools: Tool[] = [
-  {
-    id: "jira",
-    name: "Jira",
-    description: "Project issues in context",
-    icon: jiraIcon,
-  },
-  {
-    id: "confluence",
-    name: "Confluence",
-    description: "Team knowledge base",
-    icon: confluenceIcon,
-  },
-];
+.sectionLabel {
+  font-size: 0.65625rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  padding: 8px 14px 4px;
+  margin-top: 4px;
+}
 
-// ── Plus icon ─────────────────────────────────────────
+.navList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: relative;
+}
 
-const PlusIcon = () => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="9"
-    height="9"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="3"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <line x1="12" y1="5" x2="12" y2="19" />
-    <line x1="5" y1="12" x2="19" y2="12" />
-  </svg>
-);
+.navLink {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  margin: 0 8px;
+  border-radius: 10px;
+  text-decoration: none;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  position: relative;
+  z-index: 1;
+  transition: color 0.25s ease;
 
-export const PanelTools: React.FC = () => {
-  const dispatch = useDispatch<AppDispatch>();
-  const [selectedToolId, setSelectedToolId] = useState<ToolId>(null);
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 10px;
+    background: transparent;
+    z-index: -1;
+    transition:
+      background 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+      transform 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+      box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+      opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    opacity: 0;
+    transform: scaleX(0.92) scaleY(0.88);
+  }
 
-  const isExpanded: boolean = useSelector(
-    (state: RootState) => state.layout.isRightPanelOpen
+  &:hover {
+    color: var(--text-primary);
+
+    &::before {
+      background: var(--hover-bg);
+      opacity: 1;
+      transform: scaleX(1) scaleY(1);
+    }
+
+    .navIcon {
+      color: var(--accent-primary);
+      border-color: var(--accent-primary);
+      background: var(--hover-bg);
+    }
+  }
+
+  &.active {
+    color: var(--accent-primary);
+    font-weight: 600;
+
+    &::before {
+      background: var(--hover-bg);
+      opacity: 1;
+      transform: scaleX(1) scaleY(1);
+      box-shadow: 0 2px 8px rgba(79, 70, 229, 0.1),
+                  inset 0 0 0 1px rgba(79, 70, 229, 0.12);
+    }
+
+    .navIcon {
+      color: var(--accent-primary);
+      border-color: var(--accent-primary);
+      background: var(--sidebar-bg);
+      box-shadow: 0 1px 4px rgba(79, 70, 229, 0.15);
+    }
+
+    .activePill {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+}
+
+.navIcon {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: var(--app-bg);
+  border: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 1px 2px var(--box-shadow);
+
+  svg {
+    width: 15px;
+    height: 15px;
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+
+.navLink:hover .navIcon svg,
+.navLink.active .navIcon svg {
+  transform: scale(1.1);
+}
+
+.navLabel {
+  flex: 1;
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.navLink.active .navLabel {
+  transform: translateX(2px);
+}
+
+.activePill {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  opacity: 0;
+  transform: scale(0.5);
+  transition:
+    opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+    transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  flex-shrink: 0;
+}
+
+.content {
+  flex: 1;
+  overflow: auto;
+  padding: 36px 44px;
+  background: var(--content-bg);
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 1px 4px var(--box-shadow);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+pages/PageShell.module.scss
+---------------------------
+
+
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+
+  .pageHeader {
+    flex-shrink: 0;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 24px;
+
+    .title {
+      font-size: 1.375rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin: 0 0 6px;
+    }
+
+    .description {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+      margin: 0;
+    }
+  }
+
+  .pageContent {
+    flex: 1;
+    overflow-y: auto;
+    padding-right: 4px;
+
+    &::-webkit-scrollbar {
+      width: 5px;
+    }
+
+    &::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    &::-webkit-scrollbar-thumb {
+      background: var(--border-color);
+      border-radius: 999px;
+
+      &:hover {
+        background: var(--text-secondary);
+      }
+    }
+  }
+
+  .card {
+    background: var(--content-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 1px 4px var(--box-shadow);
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    line-height: 1.6;
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+components/DataTable/DataTable.module.scss
+------------------------------------------
+
+.wrapper {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 1px 4px var(--box-shadow);
+  background: var(--content-bg);
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--content-bg);
+  flex-shrink: 0;
+  gap: 12px;
+
+  .searchBox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--app-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 8px 12px;
+    width: 260px;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+
+    &:focus-within {
+      border-color: var(--accent-primary);
+      box-shadow: 0 0 0 3px var(--hover-bg);
+    }
+
+    svg {
+      width: 15px;
+      height: 15px;
+      color: var(--text-secondary);
+      flex-shrink: 0;
+    }
+
+    input {
+      border: none;
+      background: transparent;
+      outline: none;
+      font-size: 0.84375rem;
+      font-family: system-ui, sans-serif;
+      color: var(--text-primary);
+      width: 100%;
+
+      &::placeholder {
+        color: var(--text-secondary);
+      }
+    }
+  }
+
+  .rowCount {
+    font-size: 0.78125rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    background: var(--app-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 5px 10px;
+  }
+}
+
+.tableScroll {
+  flex: 1;
+  overflow-y: auto;
+
+  &::-webkit-scrollbar {
+    width: 5px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 999px;
+
+    &:hover {
+      background: var(--text-secondary);
+    }
+  }
+}
+
+table {
+  width: auto;
+  min-width: 100%;
+  border-collapse: collapse;
+}
+
+thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--table-thead-bg);
+
+  th {
+    padding: 11px 20px;
+    text-align: left;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border-color);
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+    transition: color 0.15s ease;
+
+    &:hover {
+      color: var(--text-primary);
+    }
+
+    .thInner {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .sortIcon {
+      display: inline-flex;
+      flex-direction: column;
+      gap: 1.5px;
+
+      span {
+        display: block;
+        width: 0;
+        height: 0;
+        border-left: 3.5px solid transparent;
+        border-right: 3.5px solid transparent;
+
+        &.up {
+          border-bottom: 4px solid var(--text-secondary);
+
+          &.active {
+            border-bottom-color: var(--accent-primary);
+          }
+        }
+
+        &.down {
+          border-top: 4px solid var(--text-secondary);
+
+          &.active {
+            border-top-color: var(--accent-primary);
+          }
+        }
+      }
+    }
+  }
+}
+
+tbody {
+  tr {
+    border-bottom: 1px solid var(--border-color);
+    transition: background 0.12s ease;
+
+    &:last-child {
+      border-bottom: none;
+    }
+
+    &:nth-child(even) {
+      background: var(--table-row-even);
+    }
+
+    &:nth-child(odd) {
+      background: var(--table-row-odd);
+    }
+
+    &:hover {
+      background: var(--hover-bg);
+    }
+  }
+
+  td {
+    padding: 13px 20px;
+    font-size: 0.95rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+  }
+}
+
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 56px 20px;
+  gap: 10px;
+
+  svg {
+    width: 36px;
+    height: 36px;
+    color: var(--text-secondary);
+    opacity: 0.5;
+  }
+
+  p {
+    margin: 0;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+  }
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border-color);
+  background: var(--table-thead-bg);
+  flex-shrink: 0;
+
+  .pageInfo {
+    font-size: 0.78125rem;
+    color: var(--text-secondary);
+  }
+
+  .pageControls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .navBtn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: var(--content-bg);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+
+    svg {
+      width: 16px;
+      height: 16px;
+      display: block;
+    }
+
+    &:hover:not(:disabled) {
+      background: var(--hover-bg);
+      border-color: var(--accent-primary);
+      color: var(--accent-primary);
+    }
+
+    &:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+  }
+
+  .pageDots {
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    padding: 0 2px;
+    user-select: none;
+  }
+
+  .pageBtn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    height: 32px;
+    padding: 0 6px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: var(--content-bg);
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+    font-family: system-ui, sans-serif;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+
+    &:hover:not(.activePage) {
+      background: var(--hover-bg);
+      border-color: var(--accent-primary);
+      color: var(--accent-primary);
+    }
+
+    &.activePage {
+      background: var(--accent-primary);
+      border-color: var(--accent-primary);
+      color: #fff;
+      font-weight: 700;
+      box-shadow: 0 2px 8px rgba(79, 70, 229, 0.35);
+    }
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+components/DataTable/DataTableSkeleton.module.scss
+--------------------------------------------------
+
+
+.wrapper {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 1px 4px var(--box-shadow);
+  background: var(--content-bg);
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--content-bg);
+  flex-shrink: 0;
+}
+
+.tableScroll {
+  flex: 1;
+  overflow: hidden;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+thead {
+  background: var(--table-thead-bg);
+
+  th {
+    padding: 11px 20px;
+    border-bottom: 1px solid var(--border-color);
+  }
+}
+
+tbody {
+  tr {
+    border-bottom: 1px solid var(--border-color);
+
+    &:nth-child(even) { background: var(--table-row-even); }
+    &:nth-child(odd)  { background: var(--table-row-odd); }
+
+    &:last-child {
+      border-bottom: none;
+    }
+  }
+
+  td {
+    padding: 14px 20px;
+  }
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border-color);
+  background: var(--table-thead-bg);
+  flex-shrink: 0;
+}
+
+.skeletonBase {
+  border-radius: 6px;
+  background: linear-gradient(
+    90deg,
+    var(--app-bg) 25%,
+    var(--border-color) 50%,
+    var(--app-bg) 75%
   );
-  const isConnected: boolean = useSelector(
-    (state: RootState) => state.atlassian.isConnected
-  );
-  const activeTool = useSelector(
-    (state: RootState) => state.tool.activeTool
-  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
 
-  // Register the 498 interceptor once with store dispatch
-  useEffect(() => {
-    setupAtlassianInterceptor(dispatch);
-  }, [dispatch]);
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
 
-  // When 498 fires, forceDisconnect sets isConnected=false.
-  // If a tool was active, keep selectedToolId set so the user
-  // lands directly on the connect page for that tool.
-  useEffect(() => {
-    if (!isConnected && selectedToolId === null && activeTool) {
-      setSelectedToolId(activeTool);
-    }
-  }, [isConnected]);
+.skeletonSearch {
+  composes: skeletonBase;
+  height: 36px;
+  width: 260px;
+  border-radius: 8px;
+}
 
-  const handleSelect = (id: NonNullable<ToolId>) => {
-    setSelectedToolId(id);
-    dispatch(setActiveTool(id));
-  };
+.skeletonCount {
+  composes: skeletonBase;
+  height: 28px;
+  width: 80px;
+  border-radius: 6px;
+}
 
-  const handleBack = () => {
-    setSelectedToolId(null);
-    dispatch(clearActiveTool());
-  };
+.skeletonHeader {
+  composes: skeletonBase;
+  height: 12px;
+  width: 70%;
+  border-radius: 4px;
+}
 
-  // ── Collapsed: icon strip ─────────────────────────────
-  if (!isExpanded) {
-    return (
-      <div className={styles.panelCollapsed}>
-        {tools.map((tool) => (
-          <button
-            key={tool.id}
-            className={styles.collapsedBtn}
-            onClick={() => handleSelect(tool.id)}
-            title={tool.name}
-          >
-            <img
-              src={tool.icon}
-              alt={tool.name}
-              className={styles.collapsedIcon}
-              width={20}
-              height={20}
-            />
-            <span className={styles.collapsedPlus}>
-              <PlusIcon />
-            </span>
-          </button>
-        ))}
-      </div>
-    );
+.skeletonCell {
+  composes: skeletonBase;
+  height: 13px;
+  border-radius: 4px;
+}
+
+.skeletonBadge {
+  composes: skeletonBase;
+  height: 24px;
+  width: 60px;
+  border-radius: 20px;
+}
+
+.skeletonAction {
+  composes: skeletonBase;
+  height: 32px;
+  width: 32px;
+  border-radius: 8px;
+}
+
+.skeletonPage {
+  composes: skeletonBase;
+  height: 28px;
+  width: 60px;
+  border-radius: 6px;
+}
+
+.skeletonPageBtns {
+  display: flex;
+  gap: 6px;
+}
+
+.skeletonPageBtn {
+  composes: skeletonBase;
+  height: 32px;
+  width: 32px;
+  border-radius: 8px;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+pages/RoleManagement.module.scss
+--------------------------------
+
+
+.roleBadge {
+  display: inline-block;
+  padding: 3px 12px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 600;
+
+  &.admin {
+    background: var(--hover-bg);
+    color: var(--accent-primary);
   }
 
-  // ── Expanded: tool selected ───────────────────────────
-  if (selectedToolId) {
-    if (!isConnected) {
-      return (
-        <div className={styles.panel}>
-          <AtlassianConnect toolId={selectedToolId} onBack={handleBack} />
-        </div>
-      );
-    }
+  &.user {
+    background: #f0fdf4;
+    color: #16a34a;
+  }
+}
 
-    if (selectedToolId === "jira") {
-      return (
-        <div className={styles.panel}>
-          <JiraTool onBack={handleBack} />
-        </div>
-      );
-    }
+.selectWrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
 
-    if (selectedToolId === "confluence") {
-      return (
-        <div className={styles.panel}>
-          <ConfluenceTool onBack={handleBack} />
-        </div>
-      );
+  .selectIcon {
+    position: absolute;
+    right: 10px;
+    pointer-events: none;
+    color: var(--accent-primary);
+
+    svg {
+      width: 13px;
+      height: 13px;
+      display: block;
+    }
+  }
+}
+
+.roleSelect {
+  font-family: system-ui, sans-serif;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--accent-primary);
+  background: var(--content-bg);
+  border: 1.5px solid var(--accent-primary);
+  border-radius: 8px;
+  padding: 6px 32px 6px 12px;
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  box-shadow: 0 0 0 3px var(--hover-bg);
+  transition: all 0.15s ease;
+  min-width: 110px;
+
+  &:focus {
+    border-color: var(--accent-hover);
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+  }
+
+  option {
+    background: var(--content-bg);
+    color: var(--text-primary);
+    font-weight: 500;
+  }
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.actionBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--content-bg);
+  cursor: pointer;
+  transition: all 0.15s ease;
+
+  svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  &.edit {
+    color: var(--text-secondary);
+
+    &:hover {
+      background: var(--hover-bg);
+      border-color: var(--accent-primary);
+      color: var(--accent-primary);
     }
   }
 
-  // ── Expanded: tool grid ───────────────────────────────
-  return (
-    <div className={styles.panel}>
-      <div className={styles.panelHeader}>
-        <span className={styles.panelTitle}>Tools</span>
-      </div>
-      <div className={styles.toolGrid}>
-        {tools.map((tool) => (
-          <button
-            key={tool.id}
-            className={styles.toolCard}
-            onClick={() => handleSelect(tool.id)}
-          >
-            <div className={styles.cardTop}>
-              <div className={styles.cardIconWrap}>
-                <img
-                  src={tool.icon}
-                  alt={tool.name}
-                  className={styles.cardIcon}
-                  width={22}
-                  height={22}
-                />
-              </div>
-              <span className={styles.cardPlus}>
-                <PlusIcon />
-              </span>
-            </div>
-            <span className={styles.cardName}>{tool.name}</span>
-            <span className={styles.cardDesc}>{tool.description}</span>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-};
+  &.save {
+    color: #16a34a;
+    border-color: #bbf7d0;
+    background: #f0fdf4;
 
-export default PanelTools;
+    &:hover {
+      background: #dcfce7;
+      border-color: #16a34a;
+    }
+  }
+
+  &.cancel {
+    color: #dc2626;
+    border-color: #fecaca;
+    background: #fef2f2;
+
+    &:hover {
+      background: #fee2e2;
+      border-color: #dc2626;
+    }
+  }
+}
+
+.stateBox {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 60px 20px;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+
+  p { margin: 0; }
+}
+
+.errorText {
+  color: #dc2626;
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+.retryBtn {
+  padding: 8px 20px;
+  border-radius: 8px;
+  border: 1px solid var(--accent-primary);
+  background: var(--hover-bg);
+  color: var(--accent-primary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: system-ui, sans-serif;
+  transition: all 0.15s ease;
+
+  &:hover {
+    background: var(--accent-primary);
+    color: #fff;
+  }
+}
+
+.spinner {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--hover-bg);
+  border-top-color: var(--accent-primary);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+pages/GeneralSettings.module.scss
+---------------------------------
+
+.formCard {
+  background: var(--content-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  padding: 32px;
+  box-shadow: 0 1px 4px var(--box-shadow);
+  max-width: 540px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.fieldGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.labelRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.label {
+  font-size: 0.84375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.hint {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.inputWrapper {
+  display: flex;
+  align-items: center;
+  border: 1.5px solid var(--border-color);
+  border-radius: 9px;
+  background: var(--content-bg);
+  overflow: hidden;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+
+  &:focus-within {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px var(--hover-bg);
+  }
+
+  &.error {
+    border-color: #dc2626;
+    box-shadow: 0 0 0 3px #fee2e2;
+  }
+}
+
+.input {
+  flex: 1;
+  border: none;
+  outline: none;
+  padding: 10px 14px;
+  font-size: 0.875rem;
+  font-family: system-ui, sans-serif;
+  color: var(--text-primary);
+  background: transparent;
+
+  &::placeholder {
+    color: var(--text-secondary);
+  }
+
+  &::-webkit-outer-spin-button,
+  &::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  &[type='number'] {
+    -moz-appearance: textfield;
+  }
+}
+
+.unit {
+  padding: 10px 14px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--accent-primary);
+  background: var(--hover-bg);
+  border-left: 1.5px solid var(--border-color);
+  user-select: none;
+}
+
+.errorText {
+  font-size: 0.75rem;
+  color: #dc2626;
+  margin-top: 2px;
+}
+
+.divider {
+  height: 1px;
+  background: var(--border-color);
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.saveBtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 24px;
+  border-radius: 9px;
+  border: none;
+  background: var(--accent-primary);
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-family: system-ui, sans-serif;
+  cursor: pointer;
+  transition: background 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+
+  &:hover:not(:disabled) {
+    background: var(--accent-hover);
+    box-shadow: 0 4px 6px -1px var(--box-shadow);
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    background: var(--accent-primary);
+    box-shadow: none;
+  }
+
+  svg {
+    width: 15px;
+    height: 15px;
+  }
+}
+
+.successMsg {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8125rem;
+  color: #16a34a;
+  font-weight: 500;
+
+  svg {
+    width: 15px;
+    height: 15px;
+  }
+}
+
+.saveErrMsg {
+  font-size: 0.8125rem;
+  color: #dc2626;
+}
+
+.spinner {
+  display: inline-block;
+  width: 15px;
+  height: 15px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.skeletonCard {
+  background: var(--content-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  padding: 32px;
+  box-shadow: 0 1px 4px var(--box-shadow);
+  max-width: 540px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.skeletonField {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skeletonLabel {
+  height: 13px;
+  width: 140px;
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    var(--app-bg) 25%,
+    var(--border-color) 50%,
+    var(--app-bg) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+.skeletonInput {
+  height: 42px;
+  border-radius: 9px;
+  background: linear-gradient(
+    90deg,
+    var(--app-bg) 25%,
+    var(--border-color) 50%,
+    var(--app-bg) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+.skeletonBtn {
+  height: 40px;
+  width: 130px;
+  border-radius: 9px;
+  background: linear-gradient(
+    90deg,
+    var(--app-bg) 25%,
+    var(--border-color) 50%,
+    var(--app-bg) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+:root.light-theme {
+
+  /* Root Application Background */
+  --app-bg: #f5f7fb;
+
+  /* Sidebar Background */
+  --sidebar-bg: #ffffff;
+
+  /* Main Content Background */
+  --content-bg: #ffffff;
+
+  /* Text */
+  --text-primary: #1f2937;
+  --text-secondary: #6b7280;
+
+  /* Border */
+  --border-color: #e5e7eb;
+
+  /* Box Shadow */
+  --box-shadow: rgba(0, 0, 0, 0.08);
+
+  /* Table */
+  --table-thead-bg: #f1f5f9;
+  --table-row-even: #ffffff;
+  --table-row-odd: #f9fafb;
+
+  /* Hover */
+  --hover-bg: #eef2ff;
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+.dark-theme {
+
+  /* Root Application Background */
+  --app-bg: #090d16;
+
+  /* Sidebar Background */
+  --sidebar-bg: #0f172a;
+
+  /* Main Content Background */
+  --content-bg: #111827;
+
+  /* Text */
+  --text-primary: #e5e7eb;
+  --text-secondary: #9ca3af;
+
+  /* Border */
+  --border-color: #1f2937;
+
+  /* Box Shadow */
+  --box-shadow: rgba(0, 0, 0, 0.6);
+
+  /* Table */
+  --table-thead-bg: #1f2937;
+  --table-row-even: #111827;
+  --table-row-odd: #0f172a;
+
+  /* Hover */
+  --hover-bg: #1e293b;
+
+}
