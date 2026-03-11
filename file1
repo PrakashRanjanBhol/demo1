@@ -1,500 +1,124 @@
-import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
-import {
-  atlassianService,
-  type JiraProject,
-  type ProjectsResult,
-  type ProjectDataResult,
-} from "./atlassianService";
+import React, { useEffect } from "react";
+import { useDispatch, useSelector } from "react-redux";
+import type { AppDispatch, RootState } from "../../store";
+import styles from "./PanelTools.module.scss";
 
-export interface JiraState {
-  allProjects: ProjectsResult;
-  favoriteProjects: ProjectsResult;
-  isLoadingProjects: boolean;
-  isFavoriteUpdating: Record<string, boolean>;
-  projectData: Record<string, ProjectDataResult>;
-  loadingProjectId: string | null;
-  selectedProjectId: string | null; // persists through panel collapse/expand
-  activeTab: "favorites" | "all";
-  searchQuery: string;
-  expandedGroups: string[];    // issueType keys currently expanded
-  checkedTickets: string[];
-  error: string | null;
+import { AtlassianConnect } from "./AtlassianConnect";
+import { JiraTool } from "./JiraTool";
+import { ConfluenceTool } from "./ConfluenceTool";
+import { setActiveTool, clearActiveTool } from "./toolSlice";
+import { resetJiraState } from "./jiraSlice";
+import { resetConfluenceState } from "./confluenceSlice";
+import type { ToolId } from "./toolSlice";
+import { setupAtlassianInterceptor } from "./atlassianService";
+
+import jiraIcon from "../../assets/icons/jira.png";
+import confluenceIcon from "../../assets/icons/confluence.webp";
+
+interface Tool {
+  id: NonNullable<ToolId>;
+  name: string;
+  icon: string;
 }
 
-const initialState: JiraState = {
-  allProjects: {},
-  favoriteProjects: {},
-  isLoadingProjects: false,
-  isFavoriteUpdating: {},
-  projectData: {},
-  loadingProjectId: null,
-  selectedProjectId: null,
-  activeTab: "favorites",
-  searchQuery: "",
-  expandedGroups: [],
-  checkedTickets: [],
-  error: null,
+const tools: Tool[] = [
+  { id: "jira",       name: "Jira",       icon: jiraIcon },
+  { id: "confluence", name: "Confluence", icon: confluenceIcon },
+];
+
+// ── helpers ───────────────────────────────────────────
+const show = { display: "flex"  } as const;
+const hide = { display: "none"  } as const;
+const vis  = (flag: boolean) => (flag ? show : hide);
+
+// ── Component ─────────────────────────────────────────
+//
+// All views are ALWAYS mounted in the DOM. Collapsing / re-expanding
+// the panel never unmounts JiraTool or ConfluenceTool, so all fetched
+// data, scroll positions, and local state are preserved.
+
+export const PanelTools: React.FC = () => {
+  const dispatch     = useDispatch<AppDispatch>();
+  const isExpanded   = useSelector((s: RootState) => s.layout.isRightPanelOpen);
+  const isConnected  = useSelector((s: RootState) => s.atlassian.isConnected);
+  const selectedTool = useSelector((s: RootState) => s.tool.activeTool);
+
+  useEffect(() => {
+    setupAtlassianInterceptor(dispatch);
+  }, [dispatch]);
+
+  const handleSelect = (id: NonNullable<ToolId>) => dispatch(setActiveTool(id));
+  const handleBack = () => {
+    dispatch(clearActiveTool());
+    dispatch(resetJiraState());
+    dispatch(resetConfluenceState());
+  };
+
+  // ── Which layer is visible ────────────────────────────
+  const showCollapsed  = !isExpanded;
+  const showGrid       =  isExpanded && !selectedTool;
+  const showConnect    =  isExpanded && !!selectedTool && !isConnected;
+  const showJira       =  isExpanded && selectedTool === "jira"        && isConnected;
+  const showConfluence =  isExpanded && selectedTool === "confluence"   && isConnected;
+
+  return (
+    <>
+      {/* ── Collapsed icon strip ─────────────────────────────────────────── */}
+      <div className={styles.panelCollapsed} style={vis(showCollapsed)}>
+        {tools.map(({ id, name, icon }) => (
+          <button
+            key={id}
+            className={`${styles.collapsedBtn} ${selectedTool === id ? styles.collapsedBtnActive : ""}`}
+            onClick={() => handleSelect(id)}
+            title={name}
+          >
+            <img src={icon} alt={name} width={18} height={18} className={styles.collapsedIcon} />
+          </button>
+        ))}
+      </div>
+
+      {/* ── Tool selector grid ───────────────────────────────────────────── */}
+      <div className={styles.panel} style={vis(showGrid)}>
+        <div className={styles.panelHeader}>
+          <span className={styles.panelTitle}>Tools</span>
+        </div>
+        <div className={styles.toolGrid}>
+          {tools.map(({ id, name, icon }) => (
+            <button
+              key={id}
+              className={`${styles.toolCard} ${styles[`toolCard__${id}`]}`}
+              onClick={() => handleSelect(id)}
+            >
+              <span className={styles.cardIconWrap}>
+                <img src={icon} alt={name} width={16} height={16} className={styles.cardIcon} />
+              </span>
+              <span className={styles.cardName}>{name}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Auth connect form ────────────────────────────────────────────── */}
+      {/* Rendered only when a tool has been selected, hidden when not needed */}
+      {selectedTool && (
+        <div className={styles.panel} style={vis(showConnect)}>
+          <AtlassianConnect toolId={selectedTool} onBack={handleBack} />
+        </div>
+      )}
+
+      {/* ── Jira ─────────────────────────────────────────────────────────── */}
+      {/* Always mounted once Jira is first opened; panel collapse just hides it */}
+      <div className={styles.panel} style={vis(showJira)}>
+        <JiraTool onBack={handleBack} />
+      </div>
+
+      {/* ── Confluence ───────────────────────────────────────────────────── */}
+      {/* Same pattern — mounted once, hidden/shown via CSS */}
+      <div className={styles.panel} style={vis(showConfluence)}>
+        <ConfluenceTool onBack={handleBack} />
+      </div>
+    </>
+  );
 };
 
-// ── Thunks ────────────────────────────────────────────
-
-export const fetchJiraProjects = createAsyncThunk(
-  "jira/fetchProjects",
-  async (_, { rejectWithValue }) => {
-    try {
-      const [allRes, favRes] = await Promise.all([
-        atlassianService.fetchAllProjects(),
-        atlassianService.fetchFavoriteProjects(),
-      ]);
-
-      if (allRes.status !== "Success") {
-        return rejectWithValue("Failed to fetch projects.");
-      }
-      if (favRes.status !== "Success") {
-        return rejectWithValue("Failed to fetch favorite projects.");
-      }
-
-      return {
-        allProjects: allRes.result,
-        favoriteProjects: favRes.result,
-      };
-    } catch (error: any) {
-      return rejectWithValue(
-        error?.response?.data?.message ?? "Failed to load Jira projects."
-      );
-    }
-  }
-);
-
-export const addFavoriteProject = createAsyncThunk(
-  "jira/addFavorite",
-  async (project: JiraProject, { rejectWithValue }) => {
-    try {
-      const res = await atlassianService.addFavoriteProject({
-        project_key: project.id,
-      });
-      if (res.status !== "Success") return rejectWithValue("Failed to add favorite.");
-      return project;
-    } catch (error: any) {
-      return rejectWithValue(
-        error?.response?.data?.message ?? "Failed to add favorite."
-      );
-    }
-  }
-);
-
-export const removeFavoriteProject = createAsyncThunk(
-  "jira/removeFavorite",
-  async (project: JiraProject, { rejectWithValue }) => {
-    try {
-      const res = await atlassianService.removeFavoriteProject({
-        project_key: project.id,
-      });
-      if (res.status !== "Success") return rejectWithValue("Failed to remove favorite.");
-      return project;
-    } catch (error: any) {
-      return rejectWithValue(
-        error?.response?.data?.message ?? "Failed to remove favorite."
-      );
-    }
-  }
-);
-
-export const fetchProjectData = createAsyncThunk(
-  "jira/fetchProjectData",
-  async (project: JiraProject, { rejectWithValue }) => {
-    try {
-      const res = await atlassianService.fetchProjectData(project.id);
-      if (res.status !== "Success") {
-        return rejectWithValue("Failed to load project data.");
-      }
-      return { id: project.id, data: res.result };
-    } catch (error: any) {
-      return rejectWithValue(
-        error?.response?.data?.message ?? "Failed to load project data."
-      );
-    }
-  }
-);
-
-// ── Slice ─────────────────────────────────────────────
-
-const jiraSlice = createSlice({
-  name: "jira",
-  initialState,
-  reducers: {
-    clearJiraError(state) {
-      state.error = null;
-    },
-    resetJiraState() {
-      return initialState;
-    },
-    setSelectedProject(state, action: { payload: string | null }) {
-      state.selectedProjectId = action.payload;
-      if (!action.payload) {
-        state.checkedTickets = [];
-        state.expandedGroups = [];
-      }
-    },
-    setJiraTab(state, action: { payload: "favorites" | "all" }) {
-      state.activeTab = action.payload;
-      state.searchQuery = "";
-    },
-    setJiraSearch(state, action: { payload: string }) {
-      state.searchQuery = action.payload;
-    },
-    toggleGroup(state, action: { payload: string }) {
-      const key = action.payload;
-      const idx = state.expandedGroups.indexOf(key);
-      if (idx === -1) {
-        state.expandedGroups.push(key);
-      } else {
-        state.expandedGroups.splice(idx, 1);
-      }
-    },
-    toggleTicket(state, action: { payload: string }) {
-      const key = action.payload;
-      const idx = state.checkedTickets.indexOf(key);
-      if (idx === -1) {
-        state.checkedTickets.push(key);
-      } else {
-        state.checkedTickets.splice(idx, 1);
-      }
-    },
-    clearCheckedTickets(state) {
-      state.checkedTickets = [];
-    },
-  },
-  extraReducers: (builder) => {
-    // Fetch projects
-    builder
-      .addCase(fetchJiraProjects.pending, (state) => {
-        state.isLoadingProjects = true;
-        state.error = null;
-      })
-      .addCase(fetchJiraProjects.fulfilled, (state, action) => {
-        state.isLoadingProjects = false;
-        state.allProjects = action.payload.allProjects;
-        state.favoriteProjects = action.payload.favoriteProjects;
-      })
-      .addCase(fetchJiraProjects.rejected, (state, action) => {
-        state.isLoadingProjects = false;
-        state.error = action.payload as string;
-      });
-
-    // Add favorite
-    builder
-      .addCase(addFavoriteProject.pending, (state, action) => {
-        state.isFavoriteUpdating[action.meta.arg.id] = true;
-      })
-      .addCase(addFavoriteProject.fulfilled, (state, action) => {
-        const project = action.payload;
-        state.isFavoriteUpdating[project.id] = false;
-        state.favoriteProjects[project.id] = project;
-      })
-      .addCase(addFavoriteProject.rejected, (state, action) => {
-        state.isFavoriteUpdating[action.meta.arg.id] = false;
-        state.error = action.payload as string;
-      });
-
-    // Remove favorite
-    builder
-      .addCase(removeFavoriteProject.pending, (state, action) => {
-        state.isFavoriteUpdating[action.meta.arg.id] = true;
-      })
-      .addCase(removeFavoriteProject.fulfilled, (state, action) => {
-        const project = action.payload;
-        state.isFavoriteUpdating[project.id] = false;
-        delete state.favoriteProjects[project.id];
-        // also clear cached project data when removed from favorites
-        delete state.projectData[project.id];
-      })
-      .addCase(removeFavoriteProject.rejected, (state, action) => {
-        state.isFavoriteUpdating[action.meta.arg.id] = false;
-        state.error = action.payload as string;
-      });
-
-    // Fetch project data
-    builder
-      .addCase(fetchProjectData.pending, (state, action) => {
-        state.loadingProjectId = action.meta.arg.id;
-        state.error = null;
-      })
-      .addCase(fetchProjectData.fulfilled, (state, action) => {
-        state.loadingProjectId = null;
-        state.projectData[action.payload.id] = action.payload.data;
-      })
-      .addCase(fetchProjectData.rejected, (state, action) => {
-        state.loadingProjectId = null;
-        state.error = action.payload as string;
-      });
-  },
-});
-
-export const {
-  clearJiraError,
-  resetJiraState,
-  setSelectedProject,
-  setJiraTab,
-  setJiraSearch,
-  toggleGroup,
-  toggleTicket,
-  clearCheckedTickets,
-} = jiraSlice.actions;
-export default jiraSlice.reducer;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
-import {
-  atlassianService,
-  type ConfluenceSpace,
-  type SpacesResult,
-  type ConfluencePage,
-} from "./atlassianService";
-
-export interface ConfluenceState {
-  allSpaces: SpacesResult;
-  favoriteSpaces: SpacesResult;
-  isLoadingSpaces: boolean;
-  isFavoriteUpdating: Record<string, boolean>;
-  spaceData: Record<string, ConfluencePage[]>;
-  loadingSpaceId: string | null;
-  selectedSpaceId: string | null; // persists through panel collapse/expand
-  activeTab: "favorites" | "all";
-  searchQuery: string;
-  checkedPages: string[];
-  spacesError: string | null;
-  error: string | null;
-}
-
-const initialState: ConfluenceState = {
-  allSpaces: {},
-  favoriteSpaces: {},
-  isLoadingSpaces: false,
-  isFavoriteUpdating: {},
-  spaceData: {},
-  loadingSpaceId: null,
-  selectedSpaceId: null,
-  activeTab: "favorites",
-  searchQuery: "",
-  checkedPages: [],
-  spacesError: null,
-  error: null,
-};
-
-// ── Thunks ────────────────────────────────────────────
-
-export const fetchConfluenceSpaces = createAsyncThunk(
-  "confluence/fetchSpaces",
-  async (_, { rejectWithValue }) => {
-    try {
-      const [allRes, favRes] = await Promise.all([
-        atlassianService.fetchAllSpaces(),
-        atlassianService.fetchFavoriteSpaces(),
-      ]);
-
-      if (allRes.status !== "Success") {
-        return rejectWithValue("Failed to fetch spaces.");
-      }
-      if (favRes.status !== "Success") {
-        return rejectWithValue("Failed to fetch favorite spaces.");
-      }
-
-      return {
-        allSpaces: allRes.result,
-        favoriteSpaces: favRes.result,
-      };
-    } catch (error: any) {
-      return rejectWithValue(
-        error?.response?.data?.message ?? "Failed to load Confluence spaces."
-      );
-    }
-  }
-);
-
-export const addFavoriteSpace = createAsyncThunk(
-  "confluence/addFavorite",
-  async (space: ConfluenceSpace, { rejectWithValue }) => {
-    try {
-      const res = await atlassianService.addFavoriteSpace({
-        space_key: space.key,
-      });
-      if (res.status !== "Success") return rejectWithValue("Failed to add favorite.");
-      return space;
-    } catch (error: any) {
-      return rejectWithValue(
-        error?.response?.data?.message ?? "Failed to add favorite."
-      );
-    }
-  }
-);
-
-export const removeFavoriteSpace = createAsyncThunk(
-  "confluence/removeFavorite",
-  async (space: ConfluenceSpace, { rejectWithValue }) => {
-    try {
-      const res = await atlassianService.removeFavoriteSpace({
-        space_key: space.key,
-      });
-      if (res.status !== "Success") return rejectWithValue("Failed to remove favorite.");
-      return space;
-    } catch (error: any) {
-      return rejectWithValue(
-        error?.response?.data?.message ?? "Failed to remove favorite."
-      );
-    }
-  }
-);
-
-export const fetchSpaceData = createAsyncThunk(
-  "confluence/fetchSpaceData",
-  async (space: ConfluenceSpace, { rejectWithValue }) => {
-    try {
-      const res = await atlassianService.fetchSpaceData(space.key);
-      if (res.status !== "Success") {
-        return rejectWithValue("Failed to load space data.");
-      }
-      return { id: space.id, data: res.result };
-    } catch (error: any) {
-      return rejectWithValue(
-        error?.response?.data?.message ?? "Failed to load space data."
-      );
-    }
-  }
-);
-
-// ── Slice ─────────────────────────────────────────────
-
-const confluenceSlice = createSlice({
-  name: "confluence",
-  initialState,
-  reducers: {
-    clearConfluenceError(state) {
-      state.error = null;
-    },
-    resetConfluenceState() {
-      return initialState;
-    },
-    setSelectedSpace(state, action: { payload: string | null }) {
-      state.selectedSpaceId = action.payload;
-      if (!action.payload) state.checkedPages = []; // clear when going back
-    },
-    setConfluenceTab(state, action: { payload: "favorites" | "all" }) {
-      state.activeTab = action.payload;
-      state.searchQuery = "";
-    },
-    setConfluenceSearch(state, action: { payload: string }) {
-      state.searchQuery = action.payload;
-    },
-    togglePage(state, action: { payload: string }) {
-      const key = action.payload;
-      const idx = state.checkedPages.indexOf(key);
-      if (idx === -1) {
-        state.checkedPages.push(key);
-      } else {
-        state.checkedPages.splice(idx, 1);
-      }
-    },
-    clearCheckedPages(state) {
-      state.checkedPages = [];
-    },
-  },
-  extraReducers: (builder) => {
-    // Fetch spaces
-    builder
-      .addCase(fetchConfluenceSpaces.pending, (state) => {
-        state.isLoadingSpaces = true;
-        state.spacesError = null;
-      })
-      .addCase(fetchConfluenceSpaces.fulfilled, (state, action) => {
-        state.isLoadingSpaces = false;
-        state.allSpaces = action.payload.allSpaces;
-        state.favoriteSpaces = action.payload.favoriteSpaces;
-      })
-      .addCase(fetchConfluenceSpaces.rejected, (state, action) => {
-        state.isLoadingSpaces = false;
-        state.spacesError = action.payload as string;
-      });
-
-    // Add favorite
-    builder
-      .addCase(addFavoriteSpace.pending, (state, action) => {
-        state.isFavoriteUpdating[action.meta.arg.id] = true;
-      })
-      .addCase(addFavoriteSpace.fulfilled, (state, action) => {
-        const space = action.payload;
-        state.isFavoriteUpdating[space.id] = false;
-        state.favoriteSpaces[space.id] = space;
-      })
-      .addCase(addFavoriteSpace.rejected, (state, action) => {
-        state.isFavoriteUpdating[action.meta.arg.id] = false;
-        state.error = action.payload as string;
-      });
-
-    // Remove favorite
-    builder
-      .addCase(removeFavoriteSpace.pending, (state, action) => {
-        state.isFavoriteUpdating[action.meta.arg.id] = true;
-      })
-      .addCase(removeFavoriteSpace.fulfilled, (state, action) => {
-        const space = action.payload;
-        state.isFavoriteUpdating[space.id] = false;
-        delete state.favoriteSpaces[space.id];
-        delete state.spaceData[space.id];
-      })
-      .addCase(removeFavoriteSpace.rejected, (state, action) => {
-        state.isFavoriteUpdating[action.meta.arg.id] = false;
-        state.error = action.payload as string;
-      });
-
-    // Fetch space data
-    builder
-      .addCase(fetchSpaceData.pending, (state, action) => {
-        state.loadingSpaceId = action.meta.arg.id;
-        state.error = null;
-      })
-      .addCase(fetchSpaceData.fulfilled, (state, action) => {
-        state.loadingSpaceId = null;
-        state.spaceData[action.payload.id] = action.payload.data;
-      })
-      .addCase(fetchSpaceData.rejected, (state, action) => {
-        state.loadingSpaceId = null;
-        state.error = action.payload as string;
-      });
-  },
-});
-
-export const {
-  clearConfluenceError,
-  resetConfluenceState,
-  setSelectedSpace,
-  setConfluenceTab,
-  setConfluenceSearch,
-  togglePage,
-  clearCheckedPages,
-} = confluenceSlice.actions;
-
-export default confluenceSlice.reducer;
+export default PanelTools;
