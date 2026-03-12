@@ -3,19 +3,19 @@ import { useDispatch, useSelector } from "react-redux";
 import type { AppDispatch, RootState } from "../../store";
 import { disconnectAtlassian } from "./atlassianSlice";
 import {
-  fetchConfluenceSpaces,
-  addFavoriteSpace,
-  removeFavoriteSpace,
-  fetchSpaceData,
-  togglePage,
-  clearCheckedPages,
-} from "./confluenceSlice";
-import type { ConfluenceSpace, ConfluencePage } from "./atlassianService";
-import styles from "./ConfluenceTool.module.scss";
+  fetchJiraProjects,
+  addFavoriteProject,
+  removeFavoriteProject,
+  fetchProjectData,
+  toggleTicket,
+  clearCheckedTickets,
+} from "./jiraSlice";
+import type { JiraProject, JiraIssueGroup, JiraTicket } from "./atlassianService";
+import styles from "./JiraTool.module.scss";
 
-import confluenceIcon from "../../assets/icons/confluence.webp";
+import jiraIcon from "../../assets/icons/jira.png";
 
-interface ConfluenceToolProps {
+interface JiraToolProps {
   onBack: () => void;
 }
 
@@ -57,22 +57,15 @@ const ClearIcon = () => (
   </svg>
 );
 
-const ChevronIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="9 18 15 12 9 6" />
-  </svg>
-);
-
-const PageIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-    <polyline points="14 2 14 8 20 8" />
-  </svg>
-);
-
 const EmptyFolderIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
     <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+  </svg>
+);
+
+const ChevronDownIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="6 9 12 15 18 9" />
   </svg>
 );
 
@@ -85,16 +78,16 @@ const BackIcon = () => (
 // ── Gradient palette ──────────────────────────────────
 
 const GRADIENTS: [string, string][] = [
-  ["#0ea5e9", "#06b6d4"],
   ["#6366f1", "#8b5cf6"],
-  ["#10b981", "#14b8a6"],
-  ["#f59e0b", "#f97316"],
-  ["#ec4899", "#a855f7"],
-  ["#3b82f6", "#6366f1"],
-  ["#84cc16", "#10b981"],
-  ["#8b5cf6", "#ec4899"],
-  ["#06b6d4", "#3b82f6"],
+  ["#0ea5e9", "#2684ff"],
+  ["#10b981", "#06b6d4"],
+  ["#f59e0b", "#ef4444"],
+  ["#ec4899", "#8b5cf6"],
+  ["#14b8a6", "#3b82f6"],
   ["#f97316", "#eab308"],
+  ["#6366f1", "#ec4899"],
+  ["#84cc16", "#10b981"],
+  ["#8b5cf6", "#06b6d4"],
 ];
 
 const getGradient = (key: string, id: string): [string, string] => {
@@ -106,182 +99,176 @@ const getGradient = (key: string, id: string): [string, string] => {
   return GRADIENTS[Math.abs(hash) % GRADIENTS.length];
 };
 
-const SpaceAvatar: React.FC<{ spaceKey: string; id: string; size?: "sm" | "md" }> = ({
-  spaceKey, id, size = "sm",
+// ── Project avatar ────────────────────────────────────
+
+const ProjectAvatar: React.FC<{ projectKey: string; id: string; size?: "sm" | "md" }> = ({
+  projectKey, id, size = "sm",
 }) => {
-  const [from, to] = getGradient(spaceKey, id);
+  const [from, to] = getGradient(projectKey, id);
   return (
     <div
-      className={`${styles.spaceAvatar} ${size === "md" ? styles.spaceAvatarMd : ""}`}
+      className={`${styles.projectAvatar} ${size === "md" ? styles.projectAvatarMd : ""}`}
       style={{ background: `linear-gradient(135deg, ${from} 0%, ${to} 100%)` }}
     >
-      {spaceKey.charAt(0).toUpperCase()}
+      {projectKey.charAt(0).toUpperCase()}
     </div>
   );
 };
 
-// ── Page tree node ────────────────────────────────────
+// ── Issue group card ──────────────────────────────────
 
-interface PageNodeProps {
-  page: ConfluencePage;
-  depth: number;
-  checkedSet: Set<string>;
+interface IssueGroupCardProps {
+  issueType: string;
+  group: JiraIssueGroup;
+  disabled: boolean;
+  checkedTickets: Set<string>;
   atLimit: boolean;
-  onToggle: (key: string) => void;
+  onTicketToggle: (key: string) => void;
 }
 
-const PageNode: React.FC<PageNodeProps> = ({ page, depth, checkedSet, atLimit, onToggle }) => {
+const IssueGroupCard: React.FC<IssueGroupCardProps> = ({
+  issueType, group, disabled, checkedTickets, atLimit, onTicketToggle,
+}) => {
   const [expanded, setExpanded] = useState(false);
-  const hasChildren = page.children && page.children.length > 0;
-
-  const formattedDate = (() => {
-    try {
-      return new Date(page.last_modified).toLocaleDateString(undefined, {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      });
-    } catch {
-      return "";
-    }
-  })();
 
   return (
-    <li className={styles.pageNode} style={{ "--depth": depth } as React.CSSProperties}>
-      <div className={styles.pageRow}>
-        {/* Expand toggle */}
-        <button
-          className={`${styles.expandBtn} ${!hasChildren ? styles.expandBtnHidden : ""} ${expanded ? styles.expandBtnOpen : ""}`}
-          onClick={() => hasChildren && setExpanded((p) => !p)}
-          tabIndex={hasChildren ? 0 : -1}
-        >
-          <ChevronIcon />
-        </button>
-
-        {/* Checkbox */}
-        <input
-          type="checkbox"
-          className={styles.pageCheckbox}
-          checked={checkedSet.has(page.page_id)}
-          disabled={atLimit && !checkedSet.has(page.page_id)}
-          onChange={() => onToggle(page.page_id)}
-        />
-
-        {/* Page icon */}
-        <span className={styles.pageIcon}><PageIcon /></span>
-
-        {/* Page info */}
-        <div className={styles.pageInfo}>
-          <a
-            href={page.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={styles.pageTitle}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {page.title}
-          </a>
-          {formattedDate && (
-            <span className={styles.pageDate}>{formattedDate}</span>
-          )}
-        </div>
-      </div>
-
-      {/* Children */}
-      {expanded && hasChildren && (
-        <ul className={styles.childList}>
-          {page.children.map((child) => (
-            <PageNode
-              key={child.page_id}
-              page={child}
-              depth={depth + 1}
-              checkedSet={checkedSet}
-              atLimit={atLimit}
-              onToggle={onToggle}
+    <div className={`${styles.issueGroup} ${expanded ? styles.issueGroupExpanded : ""}`}>
+      <button
+        className={styles.issueGroupHeader}
+        onClick={() => setExpanded((prev) => !prev)}
+        disabled={disabled}
+      >
+        <div className={styles.issueGroupLeft}>
+          {group.icon ? (
+            <img
+              src={group.icon}
+              alt={issueType}
+              className={styles.issueTypeIcon}
+              width={16}
+              height={16}
+              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
             />
+          ) : (
+            <span className={styles.issueTypeIconFallback}>
+              {issueType.charAt(0).toUpperCase()}
+            </span>
+          )}
+          <span className={styles.issueTypeName}>{issueType}</span>
+          <span className={styles.issueTypeCount}>{group.tickets.length}</span>
+        </div>
+        <span className={`${styles.issueGroupChevron} ${expanded ? styles.chevronUp : ""}`}>
+          <ChevronDownIcon />
+        </span>
+      </button>
+
+      {expanded && (
+        <ul className={styles.ticketList}>
+          {group.tickets.map((ticket) => (
+            <li key={ticket.key} className={styles.ticketItem}>
+              <label className={styles.ticketLabel}>
+                <input
+                  type="checkbox"
+                  className={styles.ticketCheckbox}
+                  checked={checkedTickets.has(ticket.key)}
+                  disabled={atLimit && !checkedTickets.has(ticket.key)}
+                  onChange={() => onTicketToggle(ticket.key)}
+                />
+                <div className={styles.ticketInfo}>
+                  <span className={styles.ticketKey}>{ticket.key}</span>
+                  <span className={styles.ticketSummary}>{ticket.summary}</span>
+                </div>
+              </label>
+            </li>
           ))}
         </ul>
       )}
-    </li>
+    </div>
   );
 };
 
-// ── Space detail panel ────────────────────────────────
+// ── Project detail panel ──────────────────────────────
 
-interface SpaceDetailPanelProps {
-  space: ConfluenceSpace;
+interface ProjectDetailPanelProps {
+  project: JiraProject;
   onBack: () => void;
 }
 
-const SpaceDetailPanel: React.FC<SpaceDetailPanelProps> = ({ space, onBack }) => {
+const ProjectDetailPanel: React.FC<ProjectDetailPanelProps> = ({ project, onBack }) => {
   const dispatch = useDispatch<AppDispatch>();
-  const { spaceData, loadingSpaceId, checkedPages, error } = useSelector(
-    (state: RootState) => state.confluence
+  const { projectData, loadingProjectId, checkedTickets, error } = useSelector(
+    (state: RootState) => state.jira
   );
 
-  const data = spaceData[space.id];
-  const isLoading = loadingSpaceId === space.id;
-  const checkedSet = new Set(checkedPages);
-  const atLimit = checkedPages.length >= 5;
+  const data = projectData[project.id];
+  const isLoading = loadingProjectId === project.id;
+  const anyLoading = loadingProjectId !== null;
+  const checkedSet = new Set(checkedTickets);
+  const atLimit = checkedTickets.length >= 5;
 
   useEffect(() => {
     if (!data) {
-      dispatch(fetchSpaceData(space));
+      dispatch(fetchProjectData(project));
     }
+    // Clear checked tickets when leaving this project
     return () => {
-      dispatch(clearCheckedPages());
+      dispatch(clearCheckedTickets());
     };
-  }, [space.id]);
+  }, [project.id]);
 
-  const handleToggle = (key: string) => {
-    dispatch(togglePage(key));
+  const handleTicketToggle = (key: string) => {
+    dispatch(toggleTicket(key));
   };
 
+  const issueEntries = data ? Object.entries(data) : [];
+
   return (
-    <div className={styles.spaceDetailPanel}>
-      <div className={styles.spaceDetailHeader}>
-        <div className={styles.spaceDetailTitle}>
-          <SpaceAvatar spaceKey={space.key} id={space.id} size="md" />
-          <span className={styles.spaceDetailName}>{space.key}</span>
+    <div className={styles.projectDetailPanel}>
+      {/* Panel header */}
+      <div className={styles.projectDetailHeader}>
+        <div className={styles.projectDetailTitle}>
+          <ProjectAvatar projectKey={project.key} id={project.id} size="md" />
+          <span className={styles.projectDetailName}>{project.key}</span>
         </div>
-        <button className={styles.spaceDetailBack} onClick={onBack}>
+        <button className={styles.projectDetailBack} onClick={onBack}>
           <BackIcon />
-          <span>Spaces</span>
+          <span>Projects</span>
         </button>
       </div>
 
+      {/* Loading */}
       {isLoading && (
         <div className={styles.loadingState}>
           <span className={styles.spinner} />
-          <span>Loading pages…</span>
+          <span>Loading issues…</span>
         </div>
       )}
 
+      {/* Error */}
       {!isLoading && error && (
         <div className={styles.errorState}>{error}</div>
       )}
 
+      {/* Issue groups */}
       {!isLoading && !error && data && (
-        <div className={styles.pageTreeWrapper}>
-          {data.length === 0 ? (
+        <div className={styles.issueGroupList}>
+          {issueEntries.length === 0 ? (
             <div className={styles.emptyState}>
               <div className={styles.emptyIcon}><EmptyFolderIcon /></div>
-              <p>No pages found</p>
-              <span>This space has no pages yet.</span>
+              <p>No issues found</p>
+              <span>This project has no issues yet.</span>
             </div>
           ) : (
-            <ul className={styles.pageTree}>
-              {data.map((page) => (
-                <PageNode
-                  key={page.page_id}
-                  page={page}
-                  depth={0}
-                  checkedSet={checkedSet}
-                  atLimit={atLimit}
-                  onToggle={handleToggle}
-                />
-              ))}
-            </ul>
+            issueEntries.map(([issueType, group]) => (
+              <IssueGroupCard
+                key={issueType}
+                issueType={issueType}
+                group={group}
+                disabled={anyLoading}
+                checkedTickets={checkedSet}
+                atLimit={atLimit}
+                onTicketToggle={handleTicketToggle}
+              />
+            ))
           )}
         </div>
       )}
@@ -291,40 +278,39 @@ const SpaceDetailPanel: React.FC<SpaceDetailPanelProps> = ({ space, onBack }) =>
 
 // ── Main component ────────────────────────────────────
 
-export const ConfluenceTool: React.FC<ConfluenceToolProps> = ({ onBack }) => {
+export const JiraTool: React.FC<JiraToolProps> = ({ onBack }) => {
   const dispatch = useDispatch<AppDispatch>();
 
   const { isLoading: isDisconnecting } = useSelector(
     (state: RootState) => state.atlassian
   );
   const {
-    allSpaces,
-    favoriteSpaces,
-    isLoadingSpaces,
+    allProjects,
+    favoriteProjects,
+    isLoadingProjects,
     isFavoriteUpdating,
-    loadingSpaceId,
-    spacesError,
+    loadingProjectId,
     error,
-  } = useSelector((state: RootState) => state.confluence);
+  } = useSelector((state: RootState) => state.jira);
 
   const [activeTab, setActiveTab] = useState<Tab>("favorites");
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedSpace, setSelectedSpace] = useState<ConfluenceSpace | null>(null);
+  const [selectedProject, setSelectedProject] = useState<JiraProject | null>(null);
 
   useEffect(() => {
-    dispatch(fetchConfluenceSpaces());
+    dispatch(fetchJiraProjects());
   }, [dispatch]);
 
   const handleDisconnect = () => dispatch(disconnectAtlassian());
 
-  const isFavorite = (id: string) => !!favoriteSpaces[id];
+  const isFavorite = (id: string) => !!favoriteProjects[id];
 
-  const handleToggleFavorite = (space: ConfluenceSpace) => {
-    if (isFavoriteUpdating[space.id]) return;
-    if (isFavorite(space.id)) {
-      dispatch(removeFavoriteSpace(space));
+  const handleToggleFavorite = (project: JiraProject) => {
+    if (isFavoriteUpdating[project.id]) return;
+    if (isFavorite(project.id)) {
+      dispatch(removeFavoriteProject(project));
     } else {
-      dispatch(addFavoriteSpace(space));
+      dispatch(addFavoriteProject(project));
     }
   };
 
@@ -333,74 +319,97 @@ export const ConfluenceTool: React.FC<ConfluenceToolProps> = ({ onBack }) => {
     setSearchQuery("");
   };
 
-  const handleSpaceClick = (space: ConfluenceSpace) => {
-    if (loadingSpaceId !== null) return;
-    setSelectedSpace(space);
-    dispatch(fetchSpaceData(space));
+  const handleProjectClick = (project: JiraProject) => {
+    if (loadingProjectId !== null) return;
+    setSelectedProject(project);
+    dispatch(fetchProjectData(project));
   };
 
-  const allSpacesList = Object.values(allSpaces);
-  const favoriteSpacesList = Object.values(favoriteSpaces);
+  const allProjectsList = Object.values(allProjects);
+  const favoriteProjectsList = Object.values(favoriteProjects);
 
   const query = searchQuery.toLowerCase().trim();
   const filteredAll = query
-    ? allSpacesList.filter(
-        (s) => s.key.toLowerCase().includes(query) || s.id.includes(query)
+    ? allProjectsList.filter(
+        (p) => p.key.toLowerCase().includes(query) || p.id.includes(query)
       )
-    : allSpacesList;
+    : allProjectsList;
 
   const filteredFavorites = query
-    ? favoriteSpacesList.filter(
-        (s) => s.key.toLowerCase().includes(query) || s.id.includes(query)
+    ? favoriteProjectsList.filter(
+        (p) => p.key.toLowerCase().includes(query) || p.id.includes(query)
       )
-    : favoriteSpacesList;
+    : favoriteProjectsList;
 
-  const ToolHeader = ({ showDetail = false }) => (
-    <div className={styles.toolHeader}>
-      <div className={styles.toolHeaderTop}>
-        <div className={styles.breadcrumb}>
-          <button className={styles.breadcrumbLink} onClick={onBack}>Tools</button>
-          <span className={styles.breadcrumbSep}>›</span>
-          <span className={styles.breadcrumbCurrent}>Confluence</span>
-        </div>
-        <button
-          className={styles.logoutBtn}
-          onClick={handleDisconnect}
-          disabled={isDisconnecting}
-          title="Disconnect Confluence"
-        >
-          <LogoutIcon />
-        </button>
-      </div>
-      <div className={styles.toolHeaderBottom}>
-        <div className={styles.toolIcon}>
-          <img src={confluenceIcon} alt="Confluence" width={22} height={22} className={styles.img} />
-        </div>
-        <div className={styles.toolMeta}>
-          <h2 className={styles.toolName}>Confluence</h2>
-        </div>
-        <span className={styles.connectedBadge}>● Connected</span>
-      </div>
-    </div>
-  );
-
-  // ── Space detail view ─────────────────────────────
-  if (selectedSpace) {
+  // ── Project detail view ───────────────────────────
+  if (selectedProject) {
     return (
       <div className={styles.wrapper}>
-        <ToolHeader showDetail />
-        <SpaceDetailPanel
-          space={selectedSpace}
-          onBack={() => setSelectedSpace(null)}
+        <div className={styles.toolHeader}>
+          <div className={styles.toolHeaderTop}>
+            <div className={styles.breadcrumb}>
+              <button className={styles.breadcrumbLink} onClick={onBack}>Tools</button>
+              <span className={styles.breadcrumbSep}>›</span>
+              <span className={styles.breadcrumbCurrent}>Jira</span>
+            </div>
+            <button
+              className={styles.logoutBtn}
+              onClick={handleDisconnect}
+              disabled={isDisconnecting}
+              title="Disconnect Jira"
+            >
+              <LogoutIcon />
+            </button>
+          </div>
+          <div className={styles.toolHeaderBottom}>
+            <div className={styles.toolIcon}>
+              <img src={jiraIcon} alt="Jira" width={22} height={22} className={styles.img} />
+            </div>
+            <div className={styles.toolMeta}>
+              <h2 className={styles.toolName}>Jira</h2>
+            </div>
+            <span className={styles.connectedBadge}>● Connected</span>
+          </div>
+        </div>
+        <ProjectDetailPanel
+          project={selectedProject}
+          onBack={() => setSelectedProject(null)}
         />
       </div>
     );
   }
 
-  // ── Space list view ───────────────────────────────
+  // ── Project list view ─────────────────────────────
   return (
     <div className={styles.wrapper}>
-      <ToolHeader />
+
+      {/* Unified tool header */}
+      <div className={styles.toolHeader}>
+        <div className={styles.toolHeaderTop}>
+          <div className={styles.breadcrumb}>
+            <button className={styles.breadcrumbLink} onClick={onBack}>Tools</button>
+            <span className={styles.breadcrumbSep}>›</span>
+            <span className={styles.breadcrumbCurrent}>Jira</span>
+          </div>
+          <button
+            className={styles.logoutBtn}
+            onClick={handleDisconnect}
+            disabled={isDisconnecting}
+            title="Disconnect Jira"
+          >
+            <LogoutIcon />
+          </button>
+        </div>
+        <div className={styles.toolHeaderBottom}>
+          <div className={styles.toolIcon}>
+            <img src={jiraIcon} alt="Jira" width={22} height={22} className={styles.img} />
+          </div>
+          <div className={styles.toolMeta}>
+            <h2 className={styles.toolName}>Jira</h2>
+          </div>
+          <span className={styles.connectedBadge}>● Connected</span>
+        </div>
+      </div>
 
       {/* Tabs */}
       <div className={styles.tabs}>
@@ -408,30 +417,30 @@ export const ConfluenceTool: React.FC<ConfluenceToolProps> = ({ onBack }) => {
           className={`${styles.tab} ${activeTab === "favorites" ? styles.activeTab : ""}`}
           onClick={() => handleTabChange("favorites")}
         >
-          Favorite Spaces
-          {favoriteSpacesList.length > 0 && (
-            <span className={styles.tabCount}>{favoriteSpacesList.length}</span>
+          Favorites
+          {favoriteProjectsList.length > 0 && (
+            <span className={styles.tabCount}>{favoriteProjectsList.length}</span>
           )}
         </button>
         <button
           className={`${styles.tab} ${activeTab === "all" ? styles.activeTab : ""}`}
           onClick={() => handleTabChange("all")}
         >
-          All Spaces
-          {allSpacesList.length > 0 && (
-            <span className={styles.tabCount}>{allSpacesList.length}</span>
+          All Projects
+          {allProjectsList.length > 0 && (
+            <span className={styles.tabCount}>{allProjectsList.length}</span>
           )}
         </button>
       </div>
 
       {/* Search */}
-      {!isLoadingSpaces && !spacesError && (
+      {!isLoadingProjects && !error && (
         <div className={styles.searchBar}>
           <span className={styles.searchIcon}><SearchIcon /></span>
           <input
             type="text"
             className={styles.searchInput}
-            placeholder="Search spaces…"
+            placeholder="Search projects…"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -446,52 +455,52 @@ export const ConfluenceTool: React.FC<ConfluenceToolProps> = ({ onBack }) => {
       {/* Content */}
       <div className={styles.content}>
 
-        {isLoadingSpaces && (
+        {isLoadingProjects && (
           <div className={styles.loadingState}>
             <span className={styles.spinner} />
-            <span>Loading spaces…</span>
+            <span>Loading projects…</span>
           </div>
         )}
 
-        {!isLoadingSpaces && spacesError && (
-          <div className={styles.errorState}>{spacesError}</div>
+        {!isLoadingProjects && error && (
+          <div className={styles.errorState}>{error}</div>
         )}
 
-        {/* Favorite Spaces tab */}
-        {!isLoadingSpaces && !spacesError && activeTab === "favorites" && (
+        {/* Favorites tab */}
+        {!isLoadingProjects && !error && activeTab === "favorites" && (
           filteredFavorites.length === 0 ? (
             <div className={styles.emptyState}>
               <div className={styles.emptyIcon}><StarOutlineIcon /></div>
-              <p>{query ? "No matches found" : "No favorite spaces yet"}</p>
+              <p>{query ? "No matches found" : "No favorites yet"}</p>
               <span>
                 {query
-                  ? `No favorite spaces match "${searchQuery}".`
-                  : "Star a space in All Spaces to pin it here."}
+                  ? `No favorite projects match "${searchQuery}".`
+                  : "Star a project in All Projects to pin it here."}
               </span>
             </div>
           ) : (
-            <ul className={styles.spaceList}>
-              {filteredFavorites.map((space) => {
-                const isThisLoading = loadingSpaceId === space.id;
-                const anyLoading = loadingSpaceId !== null;
+            <ul className={styles.projectList}>
+              {filteredFavorites.map((project) => {
+                const isThisLoading = loadingProjectId === project.id;
+                const anyLoading = loadingProjectId !== null;
 
                 return (
-                  <li key={space.id}>
+                  <li key={project.id}>
                     <button
-                      className={`${styles.spaceItem} ${styles.spaceItemClickable} ${anyLoading && !isThisLoading ? styles.spaceItemDisabled : ""}`}
-                      onClick={() => handleSpaceClick(space)}
+                      className={`${styles.projectItem} ${styles.projectItemClickable} ${anyLoading && !isThisLoading ? styles.projectItemDisabled : ""}`}
+                      onClick={() => handleProjectClick(project)}
                       disabled={anyLoading && !isThisLoading}
                     >
                       {isThisLoading ? (
                         <span className={styles.inlineSpinner} />
                       ) : (
-                        <SpaceAvatar spaceKey={space.key} id={space.id} />
+                        <ProjectAvatar projectKey={project.key} id={project.id} />
                       )}
-                      <div className={styles.spaceInfo}>
-                        <span className={styles.spaceKey}>{space.key}</span>
-                        <span className={styles.spaceId}>#{space.id}</span>
+                      <div className={styles.projectInfo}>
+                        <span className={styles.projectKey}>{project.key}</span>
+                        <span className={styles.projectId}>#{project.id}</span>
                       </div>
-                      <span className={styles.spaceChevron}>›</span>
+                      <span className={styles.projectChevron}>›</span>
                     </button>
                   </li>
                 );
@@ -500,34 +509,34 @@ export const ConfluenceTool: React.FC<ConfluenceToolProps> = ({ onBack }) => {
           )
         )}
 
-        {/* All Spaces tab */}
-        {!isLoadingSpaces && !spacesError && activeTab === "all" && (
+        {/* All Projects tab */}
+        {!isLoadingProjects && !error && activeTab === "all" && (
           filteredAll.length === 0 ? (
             <div className={styles.emptyState}>
               <div className={styles.emptyIcon}><EmptyFolderIcon /></div>
-              <p>{query ? "No matches found" : "No spaces found"}</p>
+              <p>{query ? "No matches found" : "No projects found"}</p>
               <span>
                 {query
-                  ? `No spaces match "${searchQuery}".`
-                  : "Your Confluence spaces will appear here."}
+                  ? `No projects match "${searchQuery}".`
+                  : "Your Jira projects will appear here."}
               </span>
             </div>
           ) : (
-            <ul className={styles.spaceList}>
-              {filteredAll.map((space) => {
-                const favorited = isFavorite(space.id);
-                const updating = !!isFavoriteUpdating[space.id];
+            <ul className={styles.projectList}>
+              {filteredAll.map((project) => {
+                const favorited = isFavorite(project.id);
+                const updating = !!isFavoriteUpdating[project.id];
 
                 return (
-                  <li key={space.id} className={styles.spaceItem}>
-                    <SpaceAvatar spaceKey={space.key} id={space.id} />
-                    <div className={styles.spaceInfo}>
-                      <span className={styles.spaceKey}>{space.key}</span>
-                      <span className={styles.spaceId}>#{space.id}</span>
+                  <li key={project.id} className={styles.projectItem}>
+                    <ProjectAvatar projectKey={project.key} id={project.id} />
+                    <div className={styles.projectInfo}>
+                      <span className={styles.projectKey}>{project.key}</span>
+                      <span className={styles.projectId}>#{project.id}</span>
                     </div>
                     <button
                       className={`${styles.favoriteBtn} ${favorited ? styles.favorited : ""}`}
-                      onClick={() => handleToggleFavorite(space)}
+                      onClick={() => handleToggleFavorite(project)}
                       disabled={updating}
                       title={favorited ? "Remove from favorites" : "Add to favorites"}
                     >
@@ -551,4 +560,4 @@ export const ConfluenceTool: React.FC<ConfluenceToolProps> = ({ onBack }) => {
   );
 };
 
-export default ConfluenceTool;
+export default JiraTool;
