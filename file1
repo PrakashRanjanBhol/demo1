@@ -1,234 +1,570 @@
-import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
+import React, { useEffect, useState } from "react";
+import { useDispatch, useSelector } from "react-redux";
+import type { AppDispatch, RootState } from "../../store";
+import { disconnectAtlassian } from "./atlassianSlice";
 import {
-  atlassianService,
-  type ConfluenceSpace,
-  type SpacesResult,
-  type ConfluencePage,
-} from "./atlassianService";
+  fetchJiraProjects,
+  addFavoriteProject,
+  removeFavoriteProject,
+  fetchProjectData,
+  toggleTicket,
+  clearCheckedTickets,
+} from "./jiraSlice";
+import type { JiraProject, JiraIssueGroup, JiraTicket } from "./atlassianService";
+import styles from "./JiraTool.module.scss";
 
-export interface ConfluenceState {
-  allSpaces: SpacesResult;
-  favoriteSpaces: SpacesResult;
-  isLoadingSpaces: boolean;
-  isFavoriteUpdating: Record<string, boolean>;
-  spaceData: Record<string, ConfluencePage[]>;
-  loadingSpaceId: string | null;
-  selectedSpaceId: string | null; // persists through panel collapse/expand
-  activeTab: "favorites" | "all";
-  searchQuery: string;
-  checkedPages: string[];
-  spacesError: string | null;
-  error: string | null;
+import jiraIcon from "../../assets/icons/jira.png";
+
+interface JiraToolProps {
+  onBack: () => void;
 }
 
-const initialState: ConfluenceState = {
-  allSpaces: {},
-  favoriteSpaces: {},
-  isLoadingSpaces: false,
-  isFavoriteUpdating: {},
-  spaceData: {},
-  loadingSpaceId: null,
-  selectedSpaceId: null,
-  activeTab: "favorites",
-  searchQuery: "",
-  checkedPages: [],
-  spacesError: null,
-  error: null,
+type Tab = "favorites" | "all";
+
+// \u2500\u2500 Icons \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+const StarFilledIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+  </svg>
+);
+
+const StarOutlineIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+  </svg>
+);
+
+const LogoutIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+    <polyline points="16 17 21 12 16 7" />
+    <line x1="21" y1="12" x2="9" y2="12" />
+  </svg>
+);
+
+const SearchIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="11" cy="11" r="8" />
+    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+  </svg>
+);
+
+const ClearIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="18" y1="6" x2="6" y2="18" />
+    <line x1="6" y1="6" x2="18" y2="18" />
+  </svg>
+);
+
+const EmptyFolderIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+  </svg>
+);
+
+const ChevronDownIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="6 9 12 15 18 9" />
+  </svg>
+);
+
+const BackIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="15 18 9 12 15 6" />
+  </svg>
+);
+
+// \u2500\u2500 Gradient palette \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+const GRADIENTS: [string, string][] = [
+  ["#6366f1", "#8b5cf6"],
+  ["#0ea5e9", "#2684ff"],
+  ["#10b981", "#06b6d4"],
+  ["#f59e0b", "#ef4444"],
+  ["#ec4899", "#8b5cf6"],
+  ["#14b8a6", "#3b82f6"],
+  ["#f97316", "#eab308"],
+  ["#6366f1", "#ec4899"],
+  ["#84cc16", "#10b981"],
+  ["#8b5cf6", "#06b6d4"],
+];
+
+const getGradient = (key: string, id: string): [string, string] => {
+  const combined = `${key}_${id}`;
+  let hash = 0;
+  for (let i = 0; i < combined.length; i++) {
+    hash = combined.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return GRADIENTS[Math.abs(hash) % GRADIENTS.length];
 };
 
-// ── Thunks ────────────────────────────────────────────
+// \u2500\u2500 Project avatar \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
-export const fetchConfluenceSpaces = createAsyncThunk(
-  "confluence/fetchSpaces",
-  async (_, { rejectWithValue }) => {
-    try {
-      const [allRes, favRes] = await Promise.all([
-        atlassianService.fetchAllSpaces(),
-        atlassianService.fetchFavoriteSpaces(),
-      ]);
+const ProjectAvatar: React.FC<{ projectKey: string; id: string; size?: "sm" | "md" }> = ({
+  projectKey, id, size = "sm",
+}) => {
+  const [from, to] = getGradient(projectKey, id);
+  return (
+    <div
+      className={`${styles.projectAvatar} ${size === "md" ? styles.projectAvatarMd : ""}`}
+      style={{ background: `linear-gradient(135deg, ${from} 0%, ${to} 100%)` }}
+    >
+      {projectKey.charAt(0).toUpperCase()}
+    </div>
+  );
+};
 
-      if (allRes.status !== "Success") {
-        return rejectWithValue("Failed to fetch spaces.");
-      }
-      if (favRes.status !== "Success") {
-        return rejectWithValue("Failed to fetch favorite spaces.");
-      }
+// \u2500\u2500 Issue group card \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
-      return {
-        allSpaces: allRes.result,
-        favoriteSpaces: favRes.result,
-      };
-    } catch (error: any) {
-      return rejectWithValue(
-        error?.response?.data?.message ?? "Failed to load Confluence spaces."
-      );
+interface IssueGroupCardProps {
+  issueType: string;
+  group: JiraIssueGroup;
+  disabled: boolean;
+  checkedTickets: Set<string>;
+  onTicketToggle: (key: string) => void;
+}
+
+const IssueGroupCard: React.FC<IssueGroupCardProps> = ({
+  issueType, group, disabled, checkedTickets, onTicketToggle,
+}) => {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className={`${styles.issueGroup} ${expanded ? styles.issueGroupExpanded : ""}`}>
+      <button
+        className={styles.issueGroupHeader}
+        onClick={() => setExpanded((prev) => !prev)}
+        disabled={disabled}
+      >
+        <div className={styles.issueGroupLeft}>
+          {group.icon ? (
+            <img
+              src={group.icon}
+              alt={issueType}
+              className={styles.issueTypeIcon}
+              width={16}
+              height={16}
+              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+            />
+          ) : (
+            <span className={styles.issueTypeIconFallback}>
+              {issueType.charAt(0).toUpperCase()}
+            </span>
+          )}
+          <span className={styles.issueTypeName}>{issueType}</span>
+          <span className={styles.issueTypeCount}>{group.tickets.length}</span>
+        </div>
+        <span className={`${styles.issueGroupChevron} ${expanded ? styles.chevronUp : ""}`}>
+          <ChevronDownIcon />
+        </span>
+      </button>
+
+      {expanded && (
+        <ul className={styles.ticketList}>
+          {group.tickets.map((ticket) => (
+            <li key={ticket.key} className={styles.ticketItem}>
+              <label className={styles.ticketLabel}>
+                <input
+                  type="checkbox"
+                  className={styles.ticketCheckbox}
+                  checked={checkedTickets.has(ticket.key)}
+                  onChange={() => onTicketToggle(ticket.key)}
+                />
+                <div className={styles.ticketInfo}>
+                  <span className={styles.ticketKey}>{ticket.key}</span>
+                  <span className={styles.ticketSummary}>{ticket.summary}</span>
+                </div>
+              </label>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+};
+
+// \u2500\u2500 Project detail panel \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+interface ProjectDetailPanelProps {
+  project: JiraProject;
+  onBack: () => void;
+}
+
+const ProjectDetailPanel: React.FC<ProjectDetailPanelProps> = ({ project, onBack }) => {
+  const dispatch = useDispatch<AppDispatch>();
+  const { projectData, loadingProjectId, checkedTickets, error } = useSelector(
+    (state: RootState) => state.jira
+  );
+
+  const data = projectData[project.id];
+  const isLoading = loadingProjectId === project.id;
+  const anyLoading = loadingProjectId !== null;
+  const checkedSet = new Set(checkedTickets);
+
+  useEffect(() => {
+    if (!data) {
+      dispatch(fetchProjectData(project));
     }
-  }
-);
+    // Clear checked tickets when leaving this project
+    return () => {
+      dispatch(clearCheckedTickets());
+    };
+  }, [project.id]);
 
-export const addFavoriteSpace = createAsyncThunk(
-  "confluence/addFavorite",
-  async (space: ConfluenceSpace, { rejectWithValue }) => {
-    try {
-      const res = await atlassianService.addFavoriteSpace({
-        space_key: space.key,
-      });
-      if (res.status !== "Success") return rejectWithValue("Failed to add favorite.");
-      return space;
-    } catch (error: any) {
-      return rejectWithValue(
-        error?.response?.data?.message ?? "Failed to add favorite."
-      );
+  const handleTicketToggle = (key: string) => {
+    dispatch(toggleTicket(key));
+  };
+
+  const issueEntries = data ? Object.entries(data) : [];
+
+  return (
+    <div className={styles.projectDetailPanel}>
+      {/* Panel header */}
+      <div className={styles.projectDetailHeader}>
+        <div className={styles.projectDetailTitle}>
+          <ProjectAvatar projectKey={project.key} id={project.id} size="md" />
+          <span className={styles.projectDetailName}>{project.key}</span>
+        </div>
+        <button className={styles.projectDetailBack} onClick={onBack}>
+          <BackIcon />
+          <span>Projects</span>
+        </button>
+      </div>
+
+      {/* Loading */}
+      {isLoading && (
+        <div className={styles.loadingState}>
+          <span className={styles.spinner} />
+          <span>Loading issues\u2026</span>
+        </div>
+      )}
+
+      {/* Error */}
+      {!isLoading && error && (
+        <div className={styles.errorState}>{error}</div>
+      )}
+
+      {/* Issue groups */}
+      {!isLoading && !error && data && (
+        <div className={styles.issueGroupList}>
+          {issueEntries.length === 0 ? (
+            <div className={styles.emptyState}>
+              <div className={styles.emptyIcon}><EmptyFolderIcon /></div>
+              <p>No issues found</p>
+              <span>This project has no issues yet.</span>
+            </div>
+          ) : (
+            issueEntries.map(([issueType, group]) => (
+              <IssueGroupCard
+                key={issueType}
+                issueType={issueType}
+                group={group}
+                disabled={anyLoading}
+                checkedTickets={checkedSet}
+                onTicketToggle={handleTicketToggle}
+              />
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// \u2500\u2500 Main component \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+export const JiraTool: React.FC<JiraToolProps> = ({ onBack }) => {
+  const dispatch = useDispatch<AppDispatch>();
+
+  const { isLoading: isDisconnecting } = useSelector(
+    (state: RootState) => state.atlassian
+  );
+  const {
+    allProjects,
+    favoriteProjects,
+    isLoadingProjects,
+    isFavoriteUpdating,
+    loadingProjectId,
+    error,
+  } = useSelector((state: RootState) => state.jira);
+
+  const [activeTab, setActiveTab] = useState<Tab>("favorites");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedProject, setSelectedProject] = useState<JiraProject | null>(null);
+
+  useEffect(() => {
+    dispatch(fetchJiraProjects());
+  }, [dispatch]);
+
+  const handleDisconnect = () => dispatch(disconnectAtlassian());
+
+  const isFavorite = (id: string) => !!favoriteProjects[id];
+
+  const handleToggleFavorite = (project: JiraProject) => {
+    if (isFavoriteUpdating[project.id]) return;
+    if (isFavorite(project.id)) {
+      dispatch(removeFavoriteProject(project));
+    } else {
+      dispatch(addFavoriteProject(project));
     }
+  };
+
+  const handleTabChange = (tab: Tab) => {
+    setActiveTab(tab);
+    setSearchQuery("");
+  };
+
+  const handleProjectClick = (project: JiraProject) => {
+    if (loadingProjectId !== null) return;
+    setSelectedProject(project);
+    dispatch(fetchProjectData(project));
+  };
+
+  const allProjectsList = Object.values(allProjects);
+  const favoriteProjectsList = Object.values(favoriteProjects);
+
+  const query = searchQuery.toLowerCase().trim();
+  const filteredAll = query
+    ? allProjectsList.filter(
+        (p) => p.key.toLowerCase().includes(query) || p.id.includes(query)
+      )
+    : allProjectsList;
+
+  const filteredFavorites = query
+    ? favoriteProjectsList.filter(
+        (p) => p.key.toLowerCase().includes(query) || p.id.includes(query)
+      )
+    : favoriteProjectsList;
+
+  // \u2500\u2500 Project detail view \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  if (selectedProject) {
+    return (
+      <div className={styles.wrapper}>
+        <div className={styles.toolHeader}>
+          <div className={styles.toolHeaderTop}>
+            <div className={styles.breadcrumb}>
+              <button className={styles.breadcrumbLink} onClick={onBack}>Tools</button>
+              <span className={styles.breadcrumbSep}>\u203a</span>
+              <span className={styles.breadcrumbCurrent}>Jira</span>
+            </div>
+            <button
+              className={styles.logoutBtn}
+              onClick={handleDisconnect}
+              disabled={isDisconnecting}
+              title="Disconnect Jira"
+            >
+              <LogoutIcon />
+            </button>
+          </div>
+          <div className={styles.toolHeaderBottom}>
+            <div className={styles.toolIcon}>
+              <img src={jiraIcon} alt="Jira" width={22} height={22} className={styles.img} />
+            </div>
+            <div className={styles.toolMeta}>
+              <h2 className={styles.toolName}>Jira</h2>
+            </div>
+            <span className={styles.connectedBadge}>\u25cf Connected</span>
+          </div>
+        </div>
+        <ProjectDetailPanel
+          project={selectedProject}
+          onBack={() => setSelectedProject(null)}
+        />
+      </div>
+    );
   }
-);
 
-export const removeFavoriteSpace = createAsyncThunk(
-  "confluence/removeFavorite",
-  async (space: ConfluenceSpace, { rejectWithValue }) => {
-    try {
-      const res = await atlassianService.removeFavoriteSpace({
-        space_key: space.key,
-      });
-      if (res.status !== "Success") return rejectWithValue("Failed to remove favorite.");
-      return space;
-    } catch (error: any) {
-      return rejectWithValue(
-        error?.response?.data?.message ?? "Failed to remove favorite."
-      );
-    }
-  }
-);
+  // \u2500\u2500 Project list view \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  return (
+    <div className={styles.wrapper}>
 
-export const fetchSpaceData = createAsyncThunk(
-  "confluence/fetchSpaceData",
-  async (space: ConfluenceSpace, { rejectWithValue }) => {
-    try {
-      const res = await atlassianService.fetchSpaceData(space.key);
-      if (res.status !== "Success") {
-        return rejectWithValue("Failed to load space data.");
-      }
-      return { id: space.id, data: res.result };
-    } catch (error: any) {
-      return rejectWithValue(
-        error?.response?.data?.message ?? "Failed to load space data."
-      );
-    }
-  }
-);
+      {/* Unified tool header */}
+      <div className={styles.toolHeader}>
+        <div className={styles.toolHeaderTop}>
+          <div className={styles.breadcrumb}>
+            <button className={styles.breadcrumbLink} onClick={onBack}>Tools</button>
+            <span className={styles.breadcrumbSep}>\u203a</span>
+            <span className={styles.breadcrumbCurrent}>Jira</span>
+          </div>
+          <button
+            className={styles.logoutBtn}
+            onClick={handleDisconnect}
+            disabled={isDisconnecting}
+            title="Disconnect Jira"
+          >
+            <LogoutIcon />
+          </button>
+        </div>
+        <div className={styles.toolHeaderBottom}>
+          <div className={styles.toolIcon}>
+            <img src={jiraIcon} alt="Jira" width={22} height={22} className={styles.img} />
+          </div>
+          <div className={styles.toolMeta}>
+            <h2 className={styles.toolName}>Jira</h2>
+          </div>
+          <span className={styles.connectedBadge}>\u25cf Connected</span>
+        </div>
+      </div>
 
-// ── Slice ─────────────────────────────────────────────
+      {/* Tabs */}
+      <div className={styles.tabs}>
+        <button
+          className={`${styles.tab} ${activeTab === "favorites" ? styles.activeTab : ""}`}
+          onClick={() => handleTabChange("favorites")}
+        >
+          Favorites
+          {favoriteProjectsList.length > 0 && (
+            <span className={styles.tabCount}>{favoriteProjectsList.length}</span>
+          )}
+        </button>
+        <button
+          className={`${styles.tab} ${activeTab === "all" ? styles.activeTab : ""}`}
+          onClick={() => handleTabChange("all")}
+        >
+          All Projects
+          {allProjectsList.length > 0 && (
+            <span className={styles.tabCount}>{allProjectsList.length}</span>
+          )}
+        </button>
+      </div>
 
-const confluenceSlice = createSlice({
-  name: "confluence",
-  initialState,
-  reducers: {
-    clearConfluenceError(state) {
-      state.error = null;
-    },
-    resetConfluenceState() {
-      return initialState;
-    },
-    setSelectedSpace(state, action: { payload: string | null }) {
-      state.selectedSpaceId = action.payload;
-      if (!action.payload) state.checkedPages = []; // clear when going back
-    },
-    setConfluenceTab(state, action: { payload: "favorites" | "all" }) {
-      state.activeTab = action.payload;
-      state.searchQuery = "";
-    },
-    setConfluenceSearch(state, action: { payload: string }) {
-      state.searchQuery = action.payload;
-    },
-    togglePage(state, action: { payload: string }) {
-      const key = action.payload;
-      const idx = state.checkedPages.indexOf(key);
-      if (idx === -1) {
-        state.checkedPages.push(key);
-      } else {
-        state.checkedPages.splice(idx, 1);
-      }
-    },
-    clearCheckedPages(state) {
-      state.checkedPages = [];
-    },
-  },
-  extraReducers: (builder) => {
-    // Fetch spaces
-    builder
-      .addCase(fetchConfluenceSpaces.pending, (state) => {
-        state.isLoadingSpaces = true;
-        state.spacesError = null;
-      })
-      .addCase(fetchConfluenceSpaces.fulfilled, (state, action) => {
-        state.isLoadingSpaces = false;
-        state.allSpaces = action.payload.allSpaces;
-        state.favoriteSpaces = action.payload.favoriteSpaces;
-      })
-      .addCase(fetchConfluenceSpaces.rejected, (state, action) => {
-        state.isLoadingSpaces = false;
-        state.spacesError = action.payload as string;
-      });
+      {/* Search */}
+      {!isLoadingProjects && !error && (
+        <div className={styles.searchBar}>
+          <span className={styles.searchIcon}><SearchIcon /></span>
+          <input
+            type="text"
+            className={styles.searchInput}
+            placeholder="Search projects\u2026"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          {searchQuery && (
+            <button className={styles.clearBtn} onClick={() => setSearchQuery("")} title="Clear">
+              <ClearIcon />
+            </button>
+          )}
+        </div>
+      )}
 
-    // Add favorite
-    builder
-      .addCase(addFavoriteSpace.pending, (state, action) => {
-        state.isFavoriteUpdating[action.meta.arg.id] = true;
-      })
-      .addCase(addFavoriteSpace.fulfilled, (state, action) => {
-        const space = action.payload;
-        state.isFavoriteUpdating[space.id] = false;
-        state.favoriteSpaces[space.id] = space;
-      })
-      .addCase(addFavoriteSpace.rejected, (state, action) => {
-        state.isFavoriteUpdating[action.meta.arg.id] = false;
-        state.error = action.payload as string;
-      });
+      {/* Content */}
+      <div className={styles.content}>
 
-    // Remove favorite
-    builder
-      .addCase(removeFavoriteSpace.pending, (state, action) => {
-        state.isFavoriteUpdating[action.meta.arg.id] = true;
-      })
-      .addCase(removeFavoriteSpace.fulfilled, (state, action) => {
-        const space = action.payload;
-        state.isFavoriteUpdating[space.id] = false;
-        delete state.favoriteSpaces[space.id];
-        delete state.spaceData[space.id];
-      })
-      .addCase(removeFavoriteSpace.rejected, (state, action) => {
-        state.isFavoriteUpdating[action.meta.arg.id] = false;
-        state.error = action.payload as string;
-      });
+        {isLoadingProjects && (
+          <div className={styles.loadingState}>
+            <span className={styles.spinner} />
+            <span>Loading projects\u2026</span>
+          </div>
+        )}
 
-    // Fetch space data
-    builder
-      .addCase(fetchSpaceData.pending, (state, action) => {
-        state.loadingSpaceId = action.meta.arg.id;
-        state.error = null;
-      })
-      .addCase(fetchSpaceData.fulfilled, (state, action) => {
-        state.loadingSpaceId = null;
-        state.spaceData[action.payload.id] = action.payload.data;
-      })
-      .addCase(fetchSpaceData.rejected, (state, action) => {
-        state.loadingSpaceId = null;
-        state.error = action.payload as string;
-      });
-  },
-});
+        {!isLoadingProjects && error && (
+          <div className={styles.errorState}>{error}</div>
+        )}
 
-export const {
-  clearConfluenceError,
-  resetConfluenceState,
-  setSelectedSpace,
-  setConfluenceTab,
-  setConfluenceSearch,
-  togglePage,
-  clearCheckedPages,
-} = confluenceSlice.actions;
+        {/* Favorites tab */}
+        {!isLoadingProjects && !error && activeTab === "favorites" && (
+          filteredFavorites.length === 0 ? (
+            <div className={styles.emptyState}>
+              <div className={styles.emptyIcon}><StarOutlineIcon /></div>
+              <p>{query ? "No matches found" : "No favorites yet"}</p>
+              <span>
+                {query
+                  ? `No favorite projects match "${searchQuery}".`
+                  : "Star a project in All Projects to pin it here."}
+              </span>
+            </div>
+          ) : (
+            <ul className={styles.projectList}>
+              {filteredFavorites.map((project) => {
+                const isThisLoading = loadingProjectId === project.id;
+                const anyLoading = loadingProjectId !== null;
 
-export default confluenceSlice.reducer;
+                return (
+                  <li key={project.id}>
+                    <button
+                      className={`${styles.projectItem} ${styles.projectItemClickable} ${anyLoading && !isThisLoading ? styles.projectItemDisabled : ""}`}
+                      onClick={() => handleProjectClick(project)}
+                      disabled={anyLoading && !isThisLoading}
+                    >
+                      {isThisLoading ? (
+                        <span className={styles.inlineSpinner} />
+                      ) : (
+                        <ProjectAvatar projectKey={project.key} id={project.id} />
+                      )}
+                      <div className={styles.projectInfo}>
+                        <span className={styles.projectKey}>{project.key}</span>
+                        <span className={styles.projectId}>#{project.id}</span>
+                      </div>
+                      <span className={styles.projectChevron}>\u203a</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )
+        )}
+
+        {/* All Projects tab */}
+        {!isLoadingProjects && !error && activeTab === "all" && (
+          filteredAll.length === 0 ? (
+            <div className={styles.emptyState}>
+              <div className={styles.emptyIcon}><EmptyFolderIcon /></div>
+              <p>{query ? "No matches found" : "No projects found"}</p>
+              <span>
+                {query
+                  ? `No projects match "${searchQuery}".`
+                  : "Your Jira projects will appear here."}
+              </span>
+            </div>
+          ) : (
+            <ul className={styles.projectList}>
+              {filteredAll.map((project) => {
+                const favorited = isFavorite(project.id);
+                const updating = !!isFavoriteUpdating[project.id];
+
+                return (
+                  <li key={project.id} className={styles.projectItem}>
+                    <ProjectAvatar projectKey={project.key} id={project.id} />
+                    <div className={styles.projectInfo}>
+                      <span className={styles.projectKey}>{project.key}</span>
+                      <span className={styles.projectId}>#{project.id}</span>
+                    </div>
+                    <button
+                      className={`${styles.favoriteBtn} ${favorited ? styles.favorited : ""}`}
+                      onClick={() => handleToggleFavorite(project)}
+                      disabled={updating}
+                      title={favorited ? "Remove from favorites" : "Add to favorites"}
+                    >
+                      {updating ? (
+                        <span className={styles.miniSpinner} />
+                      ) : favorited ? (
+                        <StarFilledIcon />
+                      ) : (
+                        <StarOutlineIcon />
+                      )}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )
+        )}
+
+      </div>
+    </div>
+  );
+};
+
+export default JiraTool;
+
+
+
+
+
+
+
+
 
 
 
@@ -244,9 +580,6 @@ import {
   addFavoriteSpace,
   removeFavoriteSpace,
   fetchSpaceData,
-  setSelectedSpace,
-  setConfluenceTab,
-  setConfluenceSearch,
   togglePage,
   clearCheckedPages,
 } from "./confluenceSlice";
@@ -261,9 +594,7 @@ interface ConfluenceToolProps {
 
 type Tab = "favorites" | "all";
 
-const MAX_SELECTION = 5;
-
-// ── Icons ─────────────────────────────────────────────
+// \u2500\u2500 Icons \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
 const StarFilledIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
@@ -324,7 +655,7 @@ const BackIcon = () => (
   </svg>
 );
 
-// ── Gradient palette ──────────────────────────────────
+// \u2500\u2500 Gradient palette \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
 const GRADIENTS: [string, string][] = [
   ["#0ea5e9", "#06b6d4"],
@@ -362,27 +693,25 @@ const SpaceAvatar: React.FC<{ spaceKey: string; id: string; size?: "sm" | "md" }
   );
 };
 
-// ── Page tree node ────────────────────────────────────
+// \u2500\u2500 Page tree node \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
 interface PageNodeProps {
   page: ConfluencePage;
   depth: number;
   checkedSet: Set<string>;
-  atLimit: boolean;          // true when MAX_SELECTION already reached
   onToggle: (pageId: string) => void;
 }
 
-const PageNode: React.FC<PageNodeProps> = ({ page, depth, checkedSet, atLimit, onToggle }) => {
+const PageNode: React.FC<PageNodeProps> = ({ page, depth, checkedSet, onToggle }) => {
   const [expanded, setExpanded] = useState(false);
   const hasChildren = page.children && page.children.length > 0;
-  const isChecked = checkedSet.has(page.page_id);
-  // Disable unchecked pages once limit is hit
-  const isDisabled = atLimit && !isChecked;
 
   const formattedDate = (() => {
     try {
       return new Date(page.last_modified).toLocaleDateString(undefined, {
-        month: "short", day: "numeric", year: "numeric",
+        month: "short",
+        day: "numeric",
+        year: "numeric",
       });
     } catch {
       return "";
@@ -391,7 +720,7 @@ const PageNode: React.FC<PageNodeProps> = ({ page, depth, checkedSet, atLimit, o
 
   return (
     <li className={styles.pageNode} style={{ "--depth": depth } as React.CSSProperties}>
-      <div className={`${styles.pageRow} ${isDisabled ? styles.pageRowDisabled : ""}`}>
+      <div className={styles.pageRow}>
         {/* Expand toggle */}
         <button
           className={`${styles.expandBtn} ${!hasChildren ? styles.expandBtnHidden : ""} ${expanded ? styles.expandBtnOpen : ""}`}
@@ -401,13 +730,12 @@ const PageNode: React.FC<PageNodeProps> = ({ page, depth, checkedSet, atLimit, o
           <ChevronIcon />
         </button>
 
-        {/* Checkbox — disabled when at limit and not already checked */}
+        {/* Checkbox */}
         <input
           type="checkbox"
           className={styles.pageCheckbox}
-          checked={isChecked}
+          checked={checkedSet.has(page.page_id)}
           onChange={() => onToggle(page.page_id)}
-          disabled={isDisabled}
         />
 
         {/* Page icon */}
@@ -430,7 +758,7 @@ const PageNode: React.FC<PageNodeProps> = ({ page, depth, checkedSet, atLimit, o
         </div>
       </div>
 
-      {/* Children — pass atLimit down through the tree */}
+      {/* Children */}
       {expanded && hasChildren && (
         <ul className={styles.childList}>
           {page.children.map((child) => (
@@ -439,7 +767,6 @@ const PageNode: React.FC<PageNodeProps> = ({ page, depth, checkedSet, atLimit, o
               page={child}
               depth={depth + 1}
               checkedSet={checkedSet}
-              atLimit={atLimit}
               onToggle={onToggle}
             />
           ))}
@@ -449,7 +776,7 @@ const PageNode: React.FC<PageNodeProps> = ({ page, depth, checkedSet, atLimit, o
   );
 };
 
-// ── Space detail panel ────────────────────────────────
+// \u2500\u2500 Space detail panel \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
 interface SpaceDetailPanelProps {
   space: ConfluenceSpace;
@@ -465,7 +792,6 @@ const SpaceDetailPanel: React.FC<SpaceDetailPanelProps> = ({ space, onBack }) =>
   const data = spaceData[space.id];
   const isLoading = loadingSpaceId === space.id;
   const checkedSet = new Set(checkedPages);
-  const atLimit = checkedPages.length >= MAX_SELECTION;
 
   useEffect(() => {
     if (!data) {
@@ -482,41 +808,28 @@ const SpaceDetailPanel: React.FC<SpaceDetailPanelProps> = ({ space, onBack }) =>
 
   return (
     <div className={styles.spaceDetailPanel}>
-      {/* Panel header */}
       <div className={styles.spaceDetailHeader}>
         <div className={styles.spaceDetailTitle}>
           <SpaceAvatar spaceKey={space.key} id={space.id} size="md" />
           <span className={styles.spaceDetailName}>{space.key}</span>
         </div>
-        <div className={styles.spaceDetailActions}>
-          {/* Selection counter badge */}
-          <span
-            className={`${styles.selectionBadge} ${atLimit ? styles.selectionBadgeAtLimit : ""}`}
-            title={atLimit ? `Maximum ${MAX_SELECTION} pages selected` : `${checkedPages.length} of ${MAX_SELECTION} selected`}
-          >
-            {checkedPages.length}/{MAX_SELECTION}
-          </span>
-          <button className={styles.spaceDetailBack} onClick={onBack}>
-            <BackIcon />
-            <span>Spaces</span>
-          </button>
-        </div>
+        <button className={styles.spaceDetailBack} onClick={onBack}>
+          <BackIcon />
+          <span>Spaces</span>
+        </button>
       </div>
 
-      {/* Loading */}
       {isLoading && (
         <div className={styles.loadingState}>
           <span className={styles.spinner} />
-          <span>Loading pages…</span>
+          <span>Loading pages\u2026</span>
         </div>
       )}
 
-      {/* Error */}
       {!isLoading && error && (
         <div className={styles.errorState}>{error}</div>
       )}
 
-      {/* Page tree */}
       {!isLoading && !error && data && (
         <div className={styles.pageTreeWrapper}>
           {data.length === 0 ? (
@@ -533,7 +846,6 @@ const SpaceDetailPanel: React.FC<SpaceDetailPanelProps> = ({ space, onBack }) =>
                   page={page}
                   depth={0}
                   checkedSet={checkedSet}
-                  atLimit={atLimit}
                   onToggle={handleToggle}
                 />
               ))}
@@ -545,7 +857,7 @@ const SpaceDetailPanel: React.FC<SpaceDetailPanelProps> = ({ space, onBack }) =>
   );
 };
 
-// ── Main component ────────────────────────────────────
+// \u2500\u2500 Main component \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
 export const ConfluenceTool: React.FC<ConfluenceToolProps> = ({ onBack }) => {
   const dispatch = useDispatch<AppDispatch>();
@@ -559,24 +871,20 @@ export const ConfluenceTool: React.FC<ConfluenceToolProps> = ({ onBack }) => {
     isLoadingSpaces,
     isFavoriteUpdating,
     loadingSpaceId,
-    selectedSpaceId,
-    activeTab,
-    searchQuery,
     spacesError,
+    error,
   } = useSelector((state: RootState) => state.confluence);
 
-  const selectedSpace = selectedSpaceId
-    ? (allSpaces[selectedSpaceId] ?? favoriteSpaces[selectedSpaceId] ?? null)
-    : null;
+  const [activeTab, setActiveTab] = useState<Tab>("favorites");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedSpace, setSelectedSpace] = useState<ConfluenceSpace | null>(null);
 
   useEffect(() => {
-    // Fetch when first mounted OR when state was reset (allSpaces becomes empty after back-navigation)
-    if (!isLoadingSpaces && Object.keys(allSpaces).length === 0) {
-      dispatch(fetchConfluenceSpaces());
-    }
-  }, [allSpaces, dispatch]);
+    dispatch(fetchConfluenceSpaces());
+  }, [dispatch]);
 
   const handleDisconnect = () => dispatch(disconnectAtlassian());
+
   const isFavorite = (id: string) => !!favoriteSpaces[id];
 
   const handleToggleFavorite = (space: ConfluenceSpace) => {
@@ -588,11 +896,14 @@ export const ConfluenceTool: React.FC<ConfluenceToolProps> = ({ onBack }) => {
     }
   };
 
-  const handleTabChange = (tab: Tab) => dispatch(setConfluenceTab(tab));
+  const handleTabChange = (tab: Tab) => {
+    setActiveTab(tab);
+    setSearchQuery("");
+  };
 
   const handleSpaceClick = (space: ConfluenceSpace) => {
     if (loadingSpaceId !== null) return;
-    dispatch(setSelectedSpace(space.id));
+    setSelectedSpace(space);
     dispatch(fetchSpaceData(space));
   };
 
@@ -612,13 +923,12 @@ export const ConfluenceTool: React.FC<ConfluenceToolProps> = ({ onBack }) => {
       )
     : favoriteSpacesList;
 
-  // ── Shared tool header ────────────────────────────
-  const ToolHeader = () => (
+  const ToolHeader = ({ showDetail = false }) => (
     <div className={styles.toolHeader}>
       <div className={styles.toolHeaderTop}>
         <div className={styles.breadcrumb}>
           <button className={styles.breadcrumbLink} onClick={onBack}>Tools</button>
-          <span className={styles.breadcrumbSep}>›</span>
+          <span className={styles.breadcrumbSep}>\u203a</span>
           <span className={styles.breadcrumbCurrent}>Confluence</span>
         </div>
         <button
@@ -637,25 +947,25 @@ export const ConfluenceTool: React.FC<ConfluenceToolProps> = ({ onBack }) => {
         <div className={styles.toolMeta}>
           <h2 className={styles.toolName}>Confluence</h2>
         </div>
-        <span className={styles.connectedBadge}>● Connected</span>
+        <span className={styles.connectedBadge}>\u25cf Connected</span>
       </div>
     </div>
   );
 
-  // ── Space detail view ─────────────────────────────
+  // \u2500\u2500 Space detail view \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
   if (selectedSpace) {
     return (
       <div className={styles.wrapper}>
-        <ToolHeader />
+        <ToolHeader showDetail />
         <SpaceDetailPanel
           space={selectedSpace}
-          onBack={() => dispatch(setSelectedSpace(null))}
+          onBack={() => setSelectedSpace(null)}
         />
       </div>
     );
   }
 
-  // ── Space list view ───────────────────────────────
+  // \u2500\u2500 Space list view \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
   return (
     <div className={styles.wrapper}>
       <ToolHeader />
@@ -689,12 +999,12 @@ export const ConfluenceTool: React.FC<ConfluenceToolProps> = ({ onBack }) => {
           <input
             type="text"
             className={styles.searchInput}
-            placeholder="Search spaces…"
+            placeholder="Search spaces\u2026"
             value={searchQuery}
-            onChange={(e) => dispatch(setConfluenceSearch(e.target.value))}
+            onChange={(e) => setSearchQuery(e.target.value)}
           />
           {searchQuery && (
-            <button className={styles.clearBtn} onClick={() => dispatch(setConfluenceSearch(""))} title="Clear">
+            <button className={styles.clearBtn} onClick={() => setSearchQuery("")} title="Clear">
               <ClearIcon />
             </button>
           )}
@@ -707,7 +1017,7 @@ export const ConfluenceTool: React.FC<ConfluenceToolProps> = ({ onBack }) => {
         {isLoadingSpaces && (
           <div className={styles.loadingState}>
             <span className={styles.spinner} />
-            <span>Loading spaces…</span>
+            <span>Loading spaces\u2026</span>
           </div>
         )}
 
@@ -732,6 +1042,7 @@ export const ConfluenceTool: React.FC<ConfluenceToolProps> = ({ onBack }) => {
               {filteredFavorites.map((space) => {
                 const isThisLoading = loadingSpaceId === space.id;
                 const anyLoading = loadingSpaceId !== null;
+
                 return (
                   <li key={space.id}>
                     <button
@@ -748,7 +1059,7 @@ export const ConfluenceTool: React.FC<ConfluenceToolProps> = ({ onBack }) => {
                         <span className={styles.spaceKey}>{space.key}</span>
                         <span className={styles.spaceId}>#{space.id}</span>
                       </div>
-                      <span className={styles.spaceChevron}>›</span>
+                      <span className={styles.spaceChevron}>\u203a</span>
                     </button>
                   </li>
                 );
@@ -774,6 +1085,7 @@ export const ConfluenceTool: React.FC<ConfluenceToolProps> = ({ onBack }) => {
               {filteredAll.map((space) => {
                 const favorited = isFavorite(space.id);
                 const updating = !!isFavoriteUpdating[space.id];
+
                 return (
                   <li key={space.id} className={styles.spaceItem}>
                     <SpaceAvatar spaceKey={space.key} id={space.id} />
@@ -825,589 +1137,6 @@ export default ConfluenceTool;
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-import React, { useEffect, useState } from "react";
-import { useDispatch, useSelector } from "react-redux";
-import type { AppDispatch, RootState } from "../../store";
-import { disconnectAtlassian } from "./atlassianSlice";
-import {
-  fetchJiraProjects,
-  addFavoriteProject,
-  removeFavoriteProject,
-  fetchProjectData,
-  setSelectedProject,
-  setJiraTab,
-  setJiraSearch,
-  toggleTicket,
-  clearCheckedTickets,
-} from "./jiraSlice";
-import type { JiraProject, JiraIssueGroup, JiraTicket } from "./atlassianService";
-import styles from "./JiraTool.module.scss";
-
-import jiraIcon from "../../assets/icons/jira.png";
-
-interface JiraToolProps {
-  onBack: () => void;
-}
-
-type Tab = "favorites" | "all";
-
-const MAX_SELECTION = 5;
-
-// ── Icons ─────────────────────────────────────────────
-
-const StarFilledIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-  </svg>
-);
-
-const StarOutlineIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-  </svg>
-);
-
-const LogoutIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-    <polyline points="16 17 21 12 16 7" />
-    <line x1="21" y1="12" x2="9" y2="12" />
-  </svg>
-);
-
-const SearchIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="11" cy="11" r="8" />
-    <line x1="21" y1="21" x2="16.65" y2="16.65" />
-  </svg>
-);
-
-const ClearIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="18" y1="6" x2="6" y2="18" />
-    <line x1="6" y1="6" x2="18" y2="18" />
-  </svg>
-);
-
-const EmptyFolderIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-  </svg>
-);
-
-const ChevronDownIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="6 9 12 15 18 9" />
-  </svg>
-);
-
-const BackIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="15 18 9 12 15 6" />
-  </svg>
-);
-
-// ── Gradient palette ──────────────────────────────────
-
-const GRADIENTS: [string, string][] = [
-  ["#6366f1", "#8b5cf6"],
-  ["#0ea5e9", "#2684ff"],
-  ["#10b981", "#06b6d4"],
-  ["#f59e0b", "#ef4444"],
-  ["#ec4899", "#8b5cf6"],
-  ["#14b8a6", "#3b82f6"],
-  ["#f97316", "#eab308"],
-  ["#6366f1", "#ec4899"],
-  ["#84cc16", "#10b981"],
-  ["#8b5cf6", "#06b6d4"],
-];
-
-const getGradient = (key: string, id: string): [string, string] => {
-  const combined = `${key}_${id}`;
-  let hash = 0;
-  for (let i = 0; i < combined.length; i++) {
-    hash = combined.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return GRADIENTS[Math.abs(hash) % GRADIENTS.length];
-};
-
-// ── Project avatar ────────────────────────────────────
-
-const ProjectAvatar: React.FC<{ projectKey: string; id: string; size?: "sm" | "md" }> = ({
-  projectKey, id, size = "sm",
-}) => {
-  const [from, to] = getGradient(projectKey, id);
-  return (
-    <div
-      className={`${styles.projectAvatar} ${size === "md" ? styles.projectAvatarMd : ""}`}
-      style={{ background: `linear-gradient(135deg, ${from} 0%, ${to} 100%)` }}
-    >
-      {projectKey.charAt(0).toUpperCase()}
-    </div>
-  );
-};
-
-// ── Issue group card ──────────────────────────────────
-
-interface IssueGroupCardProps {
-  issueType: string;
-  group: JiraIssueGroup;
-  disabled: boolean;
-  checkedTickets: Set<string>;
-  atLimit: boolean;          // true when MAX_SELECTION already reached
-  onTicketToggle: (key: string) => void;
-}
-
-const IssueGroupCard: React.FC<IssueGroupCardProps> = ({
-  issueType, group, disabled, checkedTickets, atLimit, onTicketToggle,
-}) => {
-  const [expanded, setExpanded] = useState(false);
-
-  return (
-    <div className={`${styles.issueGroup} ${expanded ? styles.issueGroupExpanded : ""}`}>
-      <button
-        className={styles.issueGroupHeader}
-        onClick={() => setExpanded((prev) => !prev)}
-        disabled={disabled}
-      >
-        <div className={styles.issueGroupLeft}>
-          {group.icon ? (
-            <img
-              src={group.icon}
-              alt={issueType}
-              className={styles.issueTypeIcon}
-              width={16}
-              height={16}
-              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-            />
-          ) : (
-            <span className={styles.issueTypeIconFallback}>
-              {issueType.charAt(0).toUpperCase()}
-            </span>
-          )}
-          <span className={styles.issueTypeName}>{issueType}</span>
-          <span className={styles.issueTypeCount}>{group.tickets.length}</span>
-        </div>
-        <span className={`${styles.issueGroupChevron} ${expanded ? styles.chevronUp : ""}`}>
-          <ChevronDownIcon />
-        </span>
-      </button>
-
-      {expanded && (
-        <ul className={styles.ticketList}>
-          {group.tickets.map((ticket) => {
-            const isChecked = checkedTickets.has(ticket.key);
-            // Disable unchecked boxes once the limit is hit
-            const isDisabled = disabled || (atLimit && !isChecked);
-            return (
-              <li key={ticket.key} className={styles.ticketItem}>
-                <label className={`${styles.ticketLabel} ${isDisabled ? styles.ticketLabelDisabled : ""}`}>
-                  <input
-                    type="checkbox"
-                    className={styles.ticketCheckbox}
-                    checked={isChecked}
-                    onChange={() => onTicketToggle(ticket.key)}
-                    disabled={isDisabled}
-                  />
-                  <div className={styles.ticketInfo}>
-                    <span className={styles.ticketKey}>{ticket.key}</span>
-                    <span className={styles.ticketSummary}>{ticket.summary}</span>
-                  </div>
-                </label>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </div>
-  );
-};
-
-// ── Project detail panel ──────────────────────────────
-
-interface ProjectDetailPanelProps {
-  project: JiraProject;
-  onBack: () => void;
-}
-
-const ProjectDetailPanel: React.FC<ProjectDetailPanelProps> = ({ project, onBack }) => {
-  const dispatch = useDispatch<AppDispatch>();
-  const { projectData, loadingProjectId, checkedTickets, error } = useSelector(
-    (state: RootState) => state.jira
-  );
-
-  const data = projectData[project.id];
-  const isLoading = loadingProjectId === project.id;
-  const anyLoading = loadingProjectId !== null;
-  const checkedSet = new Set(checkedTickets);
-  const atLimit = checkedTickets.length >= MAX_SELECTION;
-
-  useEffect(() => {
-    if (!data) {
-      dispatch(fetchProjectData(project));
-    }
-    return () => {
-      dispatch(clearCheckedTickets());
-    };
-  }, [project.id]);
-
-  const handleTicketToggle = (key: string) => {
-    dispatch(toggleTicket(key));
-  };
-
-  const issueEntries = data ? Object.entries(data) : [];
-
-  return (
-    <div className={styles.projectDetailPanel}>
-      {/* Panel header */}
-      <div className={styles.projectDetailHeader}>
-        <div className={styles.projectDetailTitle}>
-          <ProjectAvatar projectKey={project.key} id={project.id} size="md" />
-          <span className={styles.projectDetailName}>{project.key}</span>
-        </div>
-        <div className={styles.projectDetailActions}>
-          {/* Selection counter badge */}
-          <span
-            className={`${styles.selectionBadge} ${atLimit ? styles.selectionBadgeAtLimit : ""}`}
-            title={atLimit ? `Maximum ${MAX_SELECTION} tickets selected` : `${checkedTickets.length} of ${MAX_SELECTION} selected`}
-          >
-            {checkedTickets.length}/{MAX_SELECTION}
-          </span>
-          <button className={styles.projectDetailBack} onClick={onBack}>
-            <BackIcon />
-            <span>Projects</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Loading */}
-      {isLoading && (
-        <div className={styles.loadingState}>
-          <span className={styles.spinner} />
-          <span>Loading issues…</span>
-        </div>
-      )}
-
-      {/* Error */}
-      {!isLoading && error && (
-        <div className={styles.errorState}>{error}</div>
-      )}
-
-      {/* Issue groups */}
-      {!isLoading && !error && data && (
-        <div className={styles.issueGroupList}>
-          {issueEntries.length === 0 ? (
-            <div className={styles.emptyState}>
-              <div className={styles.emptyIcon}><EmptyFolderIcon /></div>
-              <p>No issues found</p>
-              <span>This project has no issues yet.</span>
-            </div>
-          ) : (
-            issueEntries.map(([issueType, group]) => (
-              <IssueGroupCard
-                key={issueType}
-                issueType={issueType}
-                group={group}
-                disabled={anyLoading}
-                checkedTickets={checkedSet}
-                atLimit={atLimit}
-                onTicketToggle={handleTicketToggle}
-              />
-            ))
-          )}
-        </div>
-      )}
-    </div>
-  );
-};
-
-// ── Main component ────────────────────────────────────
-
-export const JiraTool: React.FC<JiraToolProps> = ({ onBack }) => {
-  const dispatch = useDispatch<AppDispatch>();
-
-  const { isLoading: isDisconnecting } = useSelector(
-    (state: RootState) => state.atlassian
-  );
-  const {
-    allProjects,
-    favoriteProjects,
-    isLoadingProjects,
-    isFavoriteUpdating,
-    loadingProjectId,
-    selectedProjectId,
-    activeTab,
-    searchQuery,
-    error,
-  } = useSelector((state: RootState) => state.jira);
-
-  const selectedProject = selectedProjectId
-    ? (allProjects[selectedProjectId] ?? favoriteProjects[selectedProjectId] ?? null)
-    : null;
-
-  useEffect(() => {
-    // Fetch when first mounted OR when state was reset (allProjects becomes empty after back-navigation)
-    if (!isLoadingProjects && Object.keys(allProjects).length === 0) {
-      dispatch(fetchJiraProjects());
-    }
-  }, [allProjects, dispatch]);
-
-  const handleDisconnect = () => dispatch(disconnectAtlassian());
-  const isFavorite = (id: string) => !!favoriteProjects[id];
-
-  const handleToggleFavorite = (project: JiraProject) => {
-    if (isFavoriteUpdating[project.id]) return;
-    if (isFavorite(project.id)) {
-      dispatch(removeFavoriteProject(project));
-    } else {
-      dispatch(addFavoriteProject(project));
-    }
-  };
-
-  const handleTabChange = (tab: Tab) => dispatch(setJiraTab(tab));
-
-  const handleProjectClick = (project: JiraProject) => {
-    if (loadingProjectId !== null) return;
-    dispatch(setSelectedProject(project.id));
-    dispatch(fetchProjectData(project));
-  };
-
-  const allProjectsList = Object.values(allProjects);
-  const favoriteProjectsList = Object.values(favoriteProjects);
-
-  const query = searchQuery.toLowerCase().trim();
-  const filteredAll = query
-    ? allProjectsList.filter(
-        (p) => p.key.toLowerCase().includes(query) || p.id.includes(query)
-      )
-    : allProjectsList;
-
-  const filteredFavorites = query
-    ? favoriteProjectsList.filter(
-        (p) => p.key.toLowerCase().includes(query) || p.id.includes(query)
-      )
-    : favoriteProjectsList;
-
-  // ── Shared tool header ────────────────────────────
-  const ToolHeader = () => (
-    <div className={styles.toolHeader}>
-      <div className={styles.toolHeaderTop}>
-        <div className={styles.breadcrumb}>
-          <button className={styles.breadcrumbLink} onClick={onBack}>Tools</button>
-          <span className={styles.breadcrumbSep}>›</span>
-          <span className={styles.breadcrumbCurrent}>Jira</span>
-        </div>
-        <button
-          className={styles.logoutBtn}
-          onClick={handleDisconnect}
-          disabled={isDisconnecting}
-          title="Disconnect Jira"
-        >
-          <LogoutIcon />
-        </button>
-      </div>
-      <div className={styles.toolHeaderBottom}>
-        <div className={styles.toolIcon}>
-          <img src={jiraIcon} alt="Jira" width={22} height={22} className={styles.img} />
-        </div>
-        <div className={styles.toolMeta}>
-          <h2 className={styles.toolName}>Jira</h2>
-        </div>
-        <span className={styles.connectedBadge}>● Connected</span>
-      </div>
-    </div>
-  );
-
-  // ── Project detail view ───────────────────────────
-  if (selectedProject) {
-    return (
-      <div className={styles.wrapper}>
-        <ToolHeader />
-        <ProjectDetailPanel
-          project={selectedProject}
-          onBack={() => dispatch(setSelectedProject(null))}
-        />
-      </div>
-    );
-  }
-
-  // ── Project list view ─────────────────────────────
-  return (
-    <div className={styles.wrapper}>
-      <ToolHeader />
-
-      {/* Tabs */}
-      <div className={styles.tabs}>
-        <button
-          className={`${styles.tab} ${activeTab === "favorites" ? styles.activeTab : ""}`}
-          onClick={() => handleTabChange("favorites")}
-        >
-          Favorites
-          {favoriteProjectsList.length > 0 && (
-            <span className={styles.tabCount}>{favoriteProjectsList.length}</span>
-          )}
-        </button>
-        <button
-          className={`${styles.tab} ${activeTab === "all" ? styles.activeTab : ""}`}
-          onClick={() => handleTabChange("all")}
-        >
-          All Projects
-          {allProjectsList.length > 0 && (
-            <span className={styles.tabCount}>{allProjectsList.length}</span>
-          )}
-        </button>
-      </div>
-
-      {/* Search */}
-      {!isLoadingProjects && !error && (
-        <div className={styles.searchBar}>
-          <span className={styles.searchIcon}><SearchIcon /></span>
-          <input
-            type="text"
-            className={styles.searchInput}
-            placeholder="Search projects…"
-            value={searchQuery}
-            onChange={(e) => dispatch(setJiraSearch(e.target.value))}
-          />
-          {searchQuery && (
-            <button className={styles.clearBtn} onClick={() => dispatch(setJiraSearch(""))} title="Clear">
-              <ClearIcon />
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Content */}
-      <div className={styles.content}>
-
-        {isLoadingProjects && (
-          <div className={styles.loadingState}>
-            <span className={styles.spinner} />
-            <span>Loading projects…</span>
-          </div>
-        )}
-
-        {!isLoadingProjects && error && (
-          <div className={styles.errorState}>{error}</div>
-        )}
-
-        {/* Favorites tab */}
-        {!isLoadingProjects && !error && activeTab === "favorites" && (
-          filteredFavorites.length === 0 ? (
-            <div className={styles.emptyState}>
-              <div className={styles.emptyIcon}><StarOutlineIcon /></div>
-              <p>{query ? "No matches found" : "No favorites yet"}</p>
-              <span>
-                {query
-                  ? `No favorite projects match "${searchQuery}".`
-                  : "Star a project in All Projects to pin it here."}
-              </span>
-            </div>
-          ) : (
-            <ul className={styles.projectList}>
-              {filteredFavorites.map((project) => {
-                const isThisLoading = loadingProjectId === project.id;
-                const anyLoading = loadingProjectId !== null;
-                return (
-                  <li key={project.id}>
-                    <button
-                      className={`${styles.projectItem} ${styles.projectItemClickable} ${anyLoading && !isThisLoading ? styles.projectItemDisabled : ""}`}
-                      onClick={() => handleProjectClick(project)}
-                      disabled={anyLoading && !isThisLoading}
-                    >
-                      {isThisLoading ? (
-                        <span className={styles.inlineSpinner} />
-                      ) : (
-                        <ProjectAvatar projectKey={project.key} id={project.id} />
-                      )}
-                      <div className={styles.projectInfo}>
-                        <span className={styles.projectKey}>{project.key}</span>
-                        <span className={styles.projectId}>#{project.id}</span>
-                      </div>
-                      <span className={styles.projectChevron}>›</span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )
-        )}
-
-        {/* All Projects tab */}
-        {!isLoadingProjects && !error && activeTab === "all" && (
-          filteredAll.length === 0 ? (
-            <div className={styles.emptyState}>
-              <div className={styles.emptyIcon}><EmptyFolderIcon /></div>
-              <p>{query ? "No matches found" : "No projects found"}</p>
-              <span>
-                {query
-                  ? `No projects match "${searchQuery}".`
-                  : "Your Jira projects will appear here."}
-              </span>
-            </div>
-          ) : (
-            <ul className={styles.projectList}>
-              {filteredAll.map((project) => {
-                const favorited = isFavorite(project.id);
-                const updating = !!isFavoriteUpdating[project.id];
-                return (
-                  <li key={project.id} className={styles.projectItem}>
-                    <ProjectAvatar projectKey={project.key} id={project.id} />
-                    <div className={styles.projectInfo}>
-                      <span className={styles.projectKey}>{project.key}</span>
-                      <span className={styles.projectId}>#{project.id}</span>
-                    </div>
-                    <button
-                      className={`${styles.favoriteBtn} ${favorited ? styles.favorited : ""}`}
-                      onClick={() => handleToggleFavorite(project)}
-                      disabled={updating}
-                      title={favorited ? "Remove from favorites" : "Add to favorites"}
-                    >
-                      {updating ? (
-                        <span className={styles.miniSpinner} />
-                      ) : favorited ? (
-                        <StarFilledIcon />
-                      ) : (
-                        <StarOutlineIcon />
-                      )}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )
-        )}
-
-      </div>
-    </div>
-  );
-};
-
-export default JiraTool;
-
-
-
-
-
-
-
-
-
-
-
-
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import {
   atlassianService,
@@ -1421,13 +1150,9 @@ export interface JiraState {
   favoriteProjects: ProjectsResult;
   isLoadingProjects: boolean;
   isFavoriteUpdating: Record<string, boolean>;
+  // project data (issue groups) keyed by project id
   projectData: Record<string, ProjectDataResult>;
-  loadingProjectId: string | null;
-  selectedProjectId: string | null; // persists through panel collapse/expand
-  activeTab: "favorites" | "all";
-  searchQuery: string;
-  expandedGroups: string[];    // issueType keys currently expanded
-  checkedTickets: string[];
+  loadingProjectId: string | null; // which project is currently loading data
   error: string | null;
 }
 
@@ -1438,15 +1163,10 @@ const initialState: JiraState = {
   isFavoriteUpdating: {},
   projectData: {},
   loadingProjectId: null,
-  selectedProjectId: null,
-  activeTab: "favorites",
-  searchQuery: "",
-  expandedGroups: [],
-  checkedTickets: [],
   error: null,
 };
 
-// ── Thunks ────────────────────────────────────────────
+// \u2500\u2500 Thunks \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
 export const fetchJiraProjects = createAsyncThunk(
   "jira/fetchProjects",
@@ -1527,7 +1247,7 @@ export const fetchProjectData = createAsyncThunk(
   }
 );
 
-// ── Slice ─────────────────────────────────────────────
+// \u2500\u2500 Slice \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
 const jiraSlice = createSlice({
   name: "jira",
@@ -1538,41 +1258,6 @@ const jiraSlice = createSlice({
     },
     resetJiraState() {
       return initialState;
-    },
-    setSelectedProject(state, action: { payload: string | null }) {
-      state.selectedProjectId = action.payload;
-      if (!action.payload) {
-        state.checkedTickets = [];
-        state.expandedGroups = [];
-      }
-    },
-    setJiraTab(state, action: { payload: "favorites" | "all" }) {
-      state.activeTab = action.payload;
-      state.searchQuery = "";
-    },
-    setJiraSearch(state, action: { payload: string }) {
-      state.searchQuery = action.payload;
-    },
-    toggleGroup(state, action: { payload: string }) {
-      const key = action.payload;
-      const idx = state.expandedGroups.indexOf(key);
-      if (idx === -1) {
-        state.expandedGroups.push(key);
-      } else {
-        state.expandedGroups.splice(idx, 1);
-      }
-    },
-    toggleTicket(state, action: { payload: string }) {
-      const key = action.payload;
-      const idx = state.checkedTickets.indexOf(key);
-      if (idx === -1) {
-        state.checkedTickets.push(key);
-      } else {
-        state.checkedTickets.splice(idx, 1);
-      }
-    },
-    clearCheckedTickets(state) {
-      state.checkedTickets = [];
     },
   },
   extraReducers: (builder) => {
@@ -1641,14 +1326,237 @@ const jiraSlice = createSlice({
   },
 });
 
-export const {
-  clearJiraError,
-  resetJiraState,
-  setSelectedProject,
-  setJiraTab,
-  setJiraSearch,
-  toggleGroup,
-  toggleTicket,
-  clearCheckedTickets,
-} = jiraSlice.actions;
+export const { clearJiraError, resetJiraState } = jiraSlice.actions;
 export default jiraSlice.reducer;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
+import {
+  atlassianService,
+  type ConfluenceSpace,
+  type SpacesResult,
+  type ConfluencePage,
+} from "./atlassianService";
+
+export interface ConfluenceState {
+  allSpaces: SpacesResult;
+  favoriteSpaces: SpacesResult;
+  isLoadingSpaces: boolean;
+  isFavoriteUpdating: Record<string, boolean>;
+  spaceData: Record<string, ConfluencePage[]>;
+  loadingSpaceId: string | null;
+  checkedPages: string[];
+  spacesError: string | null;  // error loading the spaces list
+  error: string | null;        // error loading space data
+}
+
+const initialState: ConfluenceState = {
+  allSpaces: {},
+  favoriteSpaces: {},
+  isLoadingSpaces: false,
+  isFavoriteUpdating: {},
+  spaceData: {},
+  loadingSpaceId: null,
+  checkedPages: [],
+  spacesError: null,
+  error: null,
+};
+
+// \u2500\u2500 Thunks \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+export const fetchConfluenceSpaces = createAsyncThunk(
+  "confluence/fetchSpaces",
+  async (_, { rejectWithValue }) => {
+    try {
+      const [allRes, favRes] = await Promise.all([
+        atlassianService.fetchAllSpaces(),
+        atlassianService.fetchFavoriteSpaces(),
+      ]);
+
+      if (allRes.status !== "Success") {
+        return rejectWithValue("Failed to fetch spaces.");
+      }
+      if (favRes.status !== "Success") {
+        return rejectWithValue("Failed to fetch favorite spaces.");
+      }
+
+      return {
+        allSpaces: allRes.result,
+        favoriteSpaces: favRes.result,
+      };
+    } catch (error: any) {
+      return rejectWithValue(
+        error?.response?.data?.message ?? "Failed to load Confluence spaces."
+      );
+    }
+  }
+);
+
+export const addFavoriteSpace = createAsyncThunk(
+  "confluence/addFavorite",
+  async (space: ConfluenceSpace, { rejectWithValue }) => {
+    try {
+      const res = await atlassianService.addFavoriteSpace({
+        space_key: space.key,
+      });
+      if (res.status !== "Success") return rejectWithValue("Failed to add favorite.");
+      return space;
+    } catch (error: any) {
+      return rejectWithValue(
+        error?.response?.data?.message ?? "Failed to add favorite."
+      );
+    }
+  }
+);
+
+export const removeFavoriteSpace = createAsyncThunk(
+  "confluence/removeFavorite",
+  async (space: ConfluenceSpace, { rejectWithValue }) => {
+    try {
+      const res = await atlassianService.removeFavoriteSpace({
+        space_key: space.key,
+      });
+      if (res.status !== "Success") return rejectWithValue("Failed to remove favorite.");
+      return space;
+    } catch (error: any) {
+      return rejectWithValue(
+        error?.response?.data?.message ?? "Failed to remove favorite."
+      );
+    }
+  }
+);
+
+export const fetchSpaceData = createAsyncThunk(
+  "confluence/fetchSpaceData",
+  async (space: ConfluenceSpace, { rejectWithValue }) => {
+    try {
+      const res = await atlassianService.fetchSpaceData(space.key);
+      if (res.status !== "Success") {
+        return rejectWithValue("Failed to load space data.");
+      }
+      return { id: space.id, data: res.result };
+    } catch (error: any) {
+      return rejectWithValue(
+        error?.response?.data?.message ?? "Failed to load space data."
+      );
+    }
+  }
+);
+
+// \u2500\u2500 Slice \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+const confluenceSlice = createSlice({
+  name: "confluence",
+  initialState,
+  reducers: {
+    clearConfluenceError(state) {
+      state.error = null;
+    },
+    resetConfluenceState() {
+      return initialState;
+    },
+    togglePage(state, action: { payload: string }) {
+      const id = action.payload;
+      const idx = state.checkedPages.indexOf(id);
+      if (idx === -1) {
+        state.checkedPages.push(id);
+      } else {
+        state.checkedPages.splice(idx, 1);
+      }
+    },
+    clearCheckedPages(state) {
+      state.checkedPages = [];
+    },
+  },
+  extraReducers: (builder) => {
+    // Fetch spaces
+    builder
+      .addCase(fetchConfluenceSpaces.pending, (state) => {
+        state.isLoadingSpaces = true;
+        state.spacesError = null;
+      })
+      .addCase(fetchConfluenceSpaces.fulfilled, (state, action) => {
+        state.isLoadingSpaces = false;
+        state.allSpaces = action.payload.allSpaces;
+        state.favoriteSpaces = action.payload.favoriteSpaces;
+      })
+      .addCase(fetchConfluenceSpaces.rejected, (state, action) => {
+        state.isLoadingSpaces = false;
+        state.spacesError = action.payload as string;
+      });
+
+    // Add favorite
+    builder
+      .addCase(addFavoriteSpace.pending, (state, action) => {
+        state.isFavoriteUpdating[action.meta.arg.id] = true;
+      })
+      .addCase(addFavoriteSpace.fulfilled, (state, action) => {
+        const space = action.payload;
+        state.isFavoriteUpdating[space.id] = false;
+        state.favoriteSpaces[space.id] = space;
+      })
+      .addCase(addFavoriteSpace.rejected, (state, action) => {
+        state.isFavoriteUpdating[action.meta.arg.id] = false;
+        state.error = action.payload as string;
+      });
+
+    // Remove favorite
+    builder
+      .addCase(removeFavoriteSpace.pending, (state, action) => {
+        state.isFavoriteUpdating[action.meta.arg.id] = true;
+      })
+      .addCase(removeFavoriteSpace.fulfilled, (state, action) => {
+        const space = action.payload;
+        state.isFavoriteUpdating[space.id] = false;
+        delete state.favoriteSpaces[space.id];
+        delete state.spaceData[space.id];
+      })
+      .addCase(removeFavoriteSpace.rejected, (state, action) => {
+        state.isFavoriteUpdating[action.meta.arg.id] = false;
+        state.error = action.payload as string;
+      });
+
+    // Fetch space data
+    builder
+      .addCase(fetchSpaceData.pending, (state, action) => {
+        state.loadingSpaceId = action.meta.arg.id;
+        state.error = null;
+      })
+      .addCase(fetchSpaceData.fulfilled, (state, action) => {
+        state.loadingSpaceId = null;
+        state.spaceData[action.payload.id] = action.payload.data;
+      })
+      .addCase(fetchSpaceData.rejected, (state, action) => {
+        state.loadingSpaceId = null;
+        state.error = action.payload as string;
+      });
+  },
+});
+
+export const {
+  clearConfluenceError,
+  resetConfluenceState,
+  togglePage,
+  clearCheckedPages,
+} = confluenceSlice.actions;
+
+export default confluenceSlice.reducer;
+
