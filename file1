@@ -66,10 +66,19 @@ export const PanelTools: React.FC = () => {
     dispatch(clearActiveTool());
   };
 
-  // ── Collapsed ─────────────────────────────────────────
-  if (!isExpanded) {
-    return (
-      <div className={styles.panelCollapsed}>
+  // Determine which detail view to show inside the expanded panel
+  const showConnect    = isExpanded && !!selectedToolId && !isConnected;
+  const showJira       = isExpanded && selectedToolId === "jira"       && isConnected;
+  const showConfluence = isExpanded && selectedToolId === "confluence" && isConnected;
+  const showGrid       = isExpanded && !selectedToolId;
+
+  return (
+    <>
+      {/* ── Collapsed view ─────────────────────────────── */}
+      <div
+        className={styles.panelCollapsed}
+        style={{ display: isExpanded ? "none" : undefined }}
+      >
         {tools.map(({ id, name, icon }) => (
           <button
             key={id}
@@ -77,55 +86,94 @@ export const PanelTools: React.FC = () => {
             onClick={() => handleSelect(id)}
             title={name}
           >
-            <img src={icon} alt={name} width={18} height={18} className={styles.collapsedIcon} />
+            <img
+              src={icon}
+              alt={name}
+              width={18}
+              height={18}
+              className={styles.collapsedIcon}
+            />
           </button>
         ))}
       </div>
-    );
-  }
 
-  // ── Tool selected ─────────────────────────────────────
-  if (selectedToolId) {
-    if (!isConnected) return <div className={styles.panel}><AtlassianConnect toolId={selectedToolId} onBack={handleBack} /></div>;
-    if (selectedToolId === "jira") return <div className={styles.panel}><JiraTool onBack={handleBack} /></div>;
-    if (selectedToolId === "confluence") return <div className={styles.panel}><ConfluenceTool onBack={handleBack} /></div>;
-  }
+      {/* ── Expanded view ──────────────────────────────── */}
+      <div
+        className={styles.panel}
+        style={{ display: isExpanded ? undefined : "none" }}
+      >
+        {/* AtlassianConnect — shown when a tool is selected but not yet connected */}
+        <div style={{ display: showConnect ? undefined : "none" }}>
+          <AtlassianConnect toolId={selectedToolId} onBack={handleBack} />
+        </div>
 
-  // ── Tool grid ─────────────────────────────────────────
-  return (
-    <div className={styles.panel}>
-      <div className={styles.panelHeader}>
-        <span className={styles.panelTitle}>Tools</span>
-      </div>
-      <div className={styles.toolGrid}>
-        {tools.map(({ id, name, icon }) => (
-          <button
-            key={id}
-            className={`${styles.toolCard} ${styles[`toolCard__${id}`]}`}
-            onClick={() => handleSelect(id)}
-          >
-            <span className={styles.cardIconWrap}>
-              <img src={icon} alt={name} width={16} height={16} className={styles.cardIcon} />
+        {/* JiraTool */}
+        <div style={{ display: showJira ? undefined : "none" }}>
+          <JiraTool onBack={handleBack} />
+        </div>
+
+        {/* ConfluenceTool */}
+        <div style={{ display: showConfluence ? undefined : "none" }}>
+          <ConfluenceTool onBack={handleBack} />
+        </div>
+
+        {/* Tool grid + hint — shown when no tool is selected */}
+        <div style={{ display: showGrid ? undefined : "none" }}>
+          <div className={styles.panelHeader}>
+            <span className={styles.panelTitle}>Tools</span>
+          </div>
+
+          <div className={styles.toolGrid}>
+            {tools.map(({ id, name, icon }) => (
+              <button
+                key={id}
+                className={`${styles.toolCard} ${styles[`toolCard__${id}`]}`}
+                onClick={() => handleSelect(id)}
+              >
+                <span className={styles.cardIconWrap}>
+                  <img
+                    src={icon}
+                    alt={name}
+                    width={16}
+                    height={16}
+                    className={styles.cardIcon}
+                  />
+                </span>
+                <span className={styles.cardName}>{name}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className={styles.panelSeparator} />
+
+          <div className={styles.panelHint}>
+            <span className={styles.panelHintIcon}>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M15 4V2" /><path d="M15 16v-2" />
+                <path d="M8 9h2" /><path d="M20 9h2" />
+                <path d="M17.8 11.8 19 13" /><path d="M15 9h.01" />
+                <path d="M17.8 6.2 19 5" /><path d="m3 21 9-9" />
+                <path d="M12.2 6.2 11 5" />
+              </svg>
             </span>
-            <span className={styles.cardName}>{name}</span>
-          </button>
-        ))}
+            <span className={styles.panelHintTagline}>Tool output will be saved here.</span>
+            <span className={styles.panelHintSub}>
+              Select a tool to view results alongside your workspace.
+            </span>
+          </div>
+        </div>
       </div>
-
-      <div className={styles.panelSeparator} />
-
-      <div className={styles.panelHint}>
-        <span className={styles.panelHintIcon}>
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M15 4V2" /><path d="M15 16v-2" /><path d="M8 9h2" /><path d="M20 9h2" />
-            <path d="M17.8 11.8 19 13" /><path d="M15 9h.01" /><path d="M17.8 6.2 19 5" />
-            <path d="m3 21 9-9" /><path d="M12.2 6.2 11 5" />
-          </svg>
-        </span>
-        <span className={styles.panelHintTagline}>Tool output will be saved here.</span>
-        <span className={styles.panelHintSub}>Select a tool to view results alongside your workspace.</span>
-      </div>
-    </div>
+    </>
   );
 };
 
