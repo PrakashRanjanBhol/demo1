@@ -1,75 +1,62 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
-import { Subject, takeUntil, finalize } from 'rxjs';
-import { DatePickerModule } from 'primeng/datepicker';
-import { ButtonModule } from 'primeng/button';
-import { ProgressBarModule } from 'primeng/progressbar';
-
-import { StatsService } from '../../services/stats.service';
+import { Subject } from 'rxjs';
+import { takeUntil, finalize } from 'rxjs/operators';
 import {
-  QaStatsResult,
+  StatisticsService,
+  QaResult,
   BitbucketResult,
   PrCommentsResult,
   DateRange,
-  LoadState,
-} from '../../core/models/stats.models';
+} from './statistics.service';
 
-interface SectionState<T> {
-  data: T | null;
-  loadState: LoadState;
-  dateRange: DateRange;
+type SectionState = 'idle' | 'loading' | 'error';
+
+function toIsoDate(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+function defaultRange(): DateRange {
+  const end = new Date();
+  const start = new Date();
+  start.setFullYear(start.getFullYear() - 1);
+  return { start: toIsoDate(start), end: toIsoDate(end) };
 }
 
 @Component({
   selector: 'app-stats-dashboard',
-  standalone: true,
-  imports: [
-    CommonModule,
-    FormsModule,
-    DatePickerModule,
-    ButtonModule,
-    ProgressBarModule,
-  ],
   templateUrl: './stats-dashboard.component.html',
-  styleUrls: ['./stats-dashboard.component.scss'],
+  styleUrls: ['./stats-dashboard.component.css'],
 })
 export class StatsDashboardComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>();
 
-  private defaultRange(): DateRange {
-    const end = new Date();
-    const start = new Date();
-    start.setFullYear(start.getFullYear() - 1);
-    return { start, end };
-  }
+  today = toIsoDate(new Date());
 
-  qa: SectionState<QaStatsResult> = {
-    data: null,
-    loadState: 'idle',
-    dateRange: this.defaultRange(),
-  };
+  // ── QA ──────────────────────────────────────────────────────────────────────
+  qaRange: DateRange = defaultRange();
+  qaData: QaResult | null = null;
+  qaState: SectionState = 'idle';
+  qaError = '';
 
-  bitbucket: SectionState<BitbucketResult> = {
-    data: null,
-    loadState: 'idle',
-    dateRange: this.defaultRange(),
-  };
+  // ── Bitbucket ────────────────────────────────────────────────────────────────
+  bbRange: DateRange = defaultRange();
+  bbData: BitbucketResult | null = null;
+  bbState: SectionState = 'idle';
+  bbError = '';
 
-  pr: SectionState<PrCommentsResult> = {
-    data: null,
-    loadState: 'idle',
-    dateRange: this.defaultRange(),
-  };
+  // ── PR Comments ──────────────────────────────────────────────────────────────
+  prRange: DateRange = defaultRange();
+  prData: PrCommentsResult | null = null;
+  prState: SectionState = 'idle';
+  prError = '';
 
-  readonly today = new Date();
-
-  constructor(private statsService: StatsService) {}
+  constructor(private statsService: StatisticsService) {}
 
   ngOnInit(): void {
-    this.fetchQa();
-    this.fetchBitbucket();
-    this.fetchPr();
+    // Optionally auto-load on init — comment out if you prefer manual Apply
+    this.loadQa();
+    this.loadBitbucket();
+    this.loadPr();
   }
 
   ngOnDestroy(): void {
@@ -77,121 +64,104 @@ export class StatsDashboardComponent implements OnInit, OnDestroy {
     this.destroy$.complete();
   }
 
-  private formatDate(date: Date | null): string {
-    if (!date) return '';
-    return date.toISOString().slice(0, 10);
-  }
+  // ── Fetch methods ────────────────────────────────────────────────────────────
 
-  fetchQa(): void {
-    const { start, end } = this.qa.dateRange;
-    if (!start || !end) return;
-    this.qa.loadState = 'loading';
+  loadQa(): void {
+    this.qaState = 'loading';
+    this.qaError = '';
     this.statsService
-      .getQaStats(this.formatDate(start), this.formatDate(end))
+      .getQaStats(this.qaRange)
       .pipe(
         takeUntil(this.destroy$),
         finalize(() => {
-          if (this.qa.loadState === 'loading') this.qa.loadState = 'idle';
+          if (this.qaState === 'loading') this.qaState = 'idle';
         })
       )
       .subscribe({
         next: (res) => {
-          if (res.status === 'Success') {
-            this.qa.data = res.result;
-            this.qa.loadState = 'success';
-          } else {
-            this.qa.loadState = 'error';
+          if (res.status !== 'Success') {
+            this.qaState = 'error';
+            this.qaError = 'API returned a non-success status.';
+            return;
           }
+          this.qaData = res.result;
+          this.qaState = 'idle';
         },
-        error: () => (this.qa.loadState = 'error'),
+        error: () => {
+          this.qaState = 'error';
+          this.qaError = 'Failed to load questions data. Please try again.';
+        },
       });
   }
 
-  fetchBitbucket(): void {
-    const { start, end } = this.bitbucket.dateRange;
-    if (!start || !end) return;
-    this.bitbucket.loadState = 'loading';
+  loadBitbucket(): void {
+    this.bbState = 'loading';
+    this.bbError = '';
     this.statsService
-      .getBitbucketAnalysis(this.formatDate(start), this.formatDate(end))
+      .getBitbucketAnalysis(this.bbRange)
       .pipe(
         takeUntil(this.destroy$),
         finalize(() => {
-          if (this.bitbucket.loadState === 'loading')
-            this.bitbucket.loadState = 'idle';
+          if (this.bbState === 'loading') this.bbState = 'idle';
         })
       )
       .subscribe({
         next: (res) => {
-          if (res.status === 'Success') {
-            this.bitbucket.data = res.result;
-            this.bitbucket.loadState = 'success';
-          } else {
-            this.bitbucket.loadState = 'error';
+          if (res.status !== 'Success') {
+            this.bbState = 'error';
+            this.bbError = 'API returned a non-success status.';
+            return;
           }
+          this.bbData = res.result;
+          this.bbState = 'idle';
         },
-        error: () => (this.bitbucket.loadState = 'error'),
+        error: () => {
+          this.bbState = 'error';
+          this.bbError = 'Failed to load Bitbucket data. Please try again.';
+        },
       });
   }
 
-  fetchPr(): void {
-    const { start, end } = this.pr.dateRange;
-    if (!start || !end) return;
-    this.pr.loadState = 'loading';
+  loadPr(): void {
+    this.prState = 'loading';
+    this.prError = '';
     this.statsService
-      .getPrCommentsAnalysis(this.formatDate(start), this.formatDate(end))
+      .getPrComments(this.prRange)
       .pipe(
         takeUntil(this.destroy$),
         finalize(() => {
-          if (this.pr.loadState === 'loading') this.pr.loadState = 'idle';
+          if (this.prState === 'loading') this.prState = 'idle';
         })
       )
       .subscribe({
         next: (res) => {
-          if (res.status === 'Success') {
-            this.pr.data = res.result;
-            this.pr.loadState = 'success';
-          } else {
-            this.pr.loadState = 'error';
+          if (res.status !== 'Success') {
+            this.prState = 'error';
+            this.prError = 'API returned a non-success status.';
+            return;
           }
+          this.prData = res.result;
+          this.prState = 'idle';
         },
-        error: () => (this.pr.loadState = 'error'),
+        error: () => {
+          this.prState = 'error';
+          this.prError = 'Failed to load PR comments data. Please try again.';
+        },
       });
   }
 
-  isLoading(state: LoadState): boolean {
-    return state === 'loading';
-  }
+  // ── Utilities ─────────────────────────────────────────────────────────────────
 
-  isError(state: LoadState): boolean {
-    return state === 'error';
-  }
-
-  formatPct(value: number | undefined): string {
+  formatPct(value: number | null | undefined): string {
     if (value == null) return '—';
     return `${Math.round(value)}%`;
   }
+
+  barWidth(value: number | null | undefined): string {
+    if (value == null) return '0%';
+    return `${Math.min(Math.round(value), 100)}%`;
+  }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -229,240 +199,228 @@ export class StatsDashboardComponent implements OnInit, OnDestroy {
 
 <div class="sldc-dashboard">
 
-  <!-- ── Questions Overview ── -->
+  <!-- ── Questions Overview ─────────────────────────────────────────────────── -->
   <div class="sldc-card">
     <div class="sldc-card__header">
       <div class="sldc-card__title-block">
-        <span class="sldc-card__label">Knowledge Base</span>
-        <h2 class="sldc-card__title">Questions Overview</h2>
+        <p class="sldc-section-label">Knowledge Base</p>
+        <p class="sldc-section-title">Questions Overview</p>
       </div>
       <div class="sldc-date-row">
         <div class="sldc-date-group">
-          <label class="sldc-date-label">From</label>
-          <p-datepicker
-            [(ngModel)]="qa.dateRange.start"
-            [maxDate]="qa.dateRange.end ?? today"
-            dateFormat="dd-mm-yy"
-            [showIcon]="true"
-            appendTo="body"
-            placeholder="Start date"
-            styleClass="sldc-datepicker"
+          <label class="sldc-date-label" for="qa-start">From</label>
+          <input
+            id="qa-start"
+            type="date"
+            class="sldc-date-input"
+            [(ngModel)]="qaRange.start"
+            [max]="qaRange.end"
           />
         </div>
         <span class="sldc-date-sep">—</span>
         <div class="sldc-date-group">
-          <label class="sldc-date-label">To</label>
-          <p-datepicker
-            [(ngModel)]="qa.dateRange.end"
-            [minDate]="qa.dateRange.start ?? undefined"
-            [maxDate]="today"
-            dateFormat="dd-mm-yy"
-            [showIcon]="true"
-            appendTo="body"
-            placeholder="End date"
-            styleClass="sldc-datepicker"
+          <label class="sldc-date-label" for="qa-end">To</label>
+          <input
+            id="qa-end"
+            type="date"
+            class="sldc-date-input"
+            [(ngModel)]="qaRange.end"
+            [min]="qaRange.start"
+            [max]="today"
           />
         </div>
-        <p-button
-          label="Apply"
-          [loading]="isLoading(qa.loadState)"
-          [disabled]="!qa.dateRange.start || !qa.dateRange.end"
-          (onClick)="fetchQa()"
-          styleClass="sldc-apply-btn"
-          size="small"
-        />
+        <button
+          class="sldc-apply-btn"
+          [disabled]="qaState === 'loading'"
+          (click)="loadQa()"
+        >
+          <span *ngIf="qaState !== 'loading'">Apply</span>
+          <span *ngIf="qaState === 'loading'" class="sldc-spinner" aria-hidden="true"></span>
+        </button>
       </div>
     </div>
 
     <div class="sldc-divider"></div>
 
-    <div class="sldc-error" *ngIf="isError(qa.loadState)">
+    <div *ngIf="qaState === 'error'" class="sldc-error-banner">
       <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
         <circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.2"/>
         <path d="M8 5v4M8 11v.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
       </svg>
-      Failed to load questions data. Please try again.
+      {{ qaError }}
     </div>
 
-    <div class="sldc-metrics-grid sldc-metrics-grid--2">
+    <div class="sldc-grid sldc-grid--2">
       <div class="sldc-metric">
         <p class="sldc-metric__label">Total questions on Jira</p>
-        <p class="sldc-metric__value">{{ qa.data?.jira_count ?? '—' }}</p>
+        <p class="sldc-metric__value">{{ qaData?.jira_count ?? '—' }}</p>
         <span class="sldc-badge sldc-badge--blue">Jira</span>
       </div>
       <div class="sldc-metric">
         <p class="sldc-metric__label">Total questions on Confluence</p>
-        <p class="sldc-metric__value">{{ qa.data?.confluence_count ?? '—' }}</p>
+        <p class="sldc-metric__value">{{ qaData?.confluence_count ?? '—' }}</p>
         <span class="sldc-badge sldc-badge--blue">Confluence</span>
       </div>
     </div>
   </div>
 
-  <!-- ── Bitbucket Analysis ── -->
+  <!-- ── Bitbucket Analysis ──────────────────────────────────────────────────── -->
   <div class="sldc-card">
     <div class="sldc-card__header">
       <div class="sldc-card__title-block">
-        <span class="sldc-card__label">Repository</span>
-        <h2 class="sldc-card__title">Bitbucket Analysis</h2>
+        <p class="sldc-section-label">Repository</p>
+        <p class="sldc-section-title">Bitbucket Analysis</p>
       </div>
       <div class="sldc-date-row">
         <div class="sldc-date-group">
-          <label class="sldc-date-label">From</label>
-          <p-datepicker
-            [(ngModel)]="bitbucket.dateRange.start"
-            [maxDate]="bitbucket.dateRange.end ?? today"
-            dateFormat="dd-mm-yy"
-            [showIcon]="true"
-            appendTo="body"
-            placeholder="Start date"
-            styleClass="sldc-datepicker"
+          <label class="sldc-date-label" for="bb-start">From</label>
+          <input
+            id="bb-start"
+            type="date"
+            class="sldc-date-input"
+            [(ngModel)]="bbRange.start"
+            [max]="bbRange.end"
           />
         </div>
         <span class="sldc-date-sep">—</span>
         <div class="sldc-date-group">
-          <label class="sldc-date-label">To</label>
-          <p-datepicker
-            [(ngModel)]="bitbucket.dateRange.end"
-            [minDate]="bitbucket.dateRange.start ?? undefined"
-            [maxDate]="today"
-            dateFormat="dd-mm-yy"
-            [showIcon]="true"
-            appendTo="body"
-            placeholder="End date"
-            styleClass="sldc-datepicker"
+          <label class="sldc-date-label" for="bb-end">To</label>
+          <input
+            id="bb-end"
+            type="date"
+            class="sldc-date-input"
+            [(ngModel)]="bbRange.end"
+            [min]="bbRange.start"
+            [max]="today"
           />
         </div>
-        <p-button
-          label="Apply"
-          [loading]="isLoading(bitbucket.loadState)"
-          [disabled]="!bitbucket.dateRange.start || !bitbucket.dateRange.end"
-          (onClick)="fetchBitbucket()"
-          styleClass="sldc-apply-btn"
-          size="small"
-        />
+        <button
+          class="sldc-apply-btn"
+          [disabled]="bbState === 'loading'"
+          (click)="loadBitbucket()"
+        >
+          <span *ngIf="bbState !== 'loading'">Apply</span>
+          <span *ngIf="bbState === 'loading'" class="sldc-spinner" aria-hidden="true"></span>
+        </button>
       </div>
     </div>
 
     <div class="sldc-divider"></div>
 
-    <div class="sldc-error" *ngIf="isError(bitbucket.loadState)">
+    <div *ngIf="bbState === 'error'" class="sldc-error-banner">
       <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
         <circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.2"/>
         <path d="M8 5v4M8 11v.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
       </svg>
-      Failed to load Bitbucket data. Please try again.
+      {{ bbError }}
     </div>
 
-    <div class="sldc-metrics-grid sldc-metrics-grid--2">
+    <div class="sldc-grid sldc-grid--2">
       <div class="sldc-metric">
         <p class="sldc-metric__label">PR reviewed ratio</p>
-        <p class="sldc-metric__value">{{ formatPct(bitbucket.data?.pr_reviewed_ratio) }}</p>
+        <p class="sldc-metric__value">{{ formatPct(bbData?.pr_reviewed_ratio) }}</p>
         <div class="sldc-bar-track">
-          <div class="sldc-bar-fill" [style.width.%]="bitbucket.data?.pr_reviewed_ratio ?? 0"></div>
+          <div class="sldc-bar-fill" [style.width]="barWidth(bbData?.pr_reviewed_ratio)"></div>
         </div>
       </div>
       <div class="sldc-metric">
         <p class="sldc-metric__label">PR summary ratio</p>
-        <p class="sldc-metric__value">{{ formatPct(bitbucket.data?.pr_summary_ratio) }}</p>
+        <p class="sldc-metric__value">{{ formatPct(bbData?.pr_summary_ratio) }}</p>
         <div class="sldc-bar-track">
-          <div class="sldc-bar-fill" [style.width.%]="bitbucket.data?.pr_summary_ratio ?? 0"></div>
+          <div class="sldc-bar-fill" [style.width]="barWidth(bbData?.pr_summary_ratio)"></div>
         </div>
       </div>
     </div>
 
-    <div class="sldc-info-note" *ngIf="bitbucket.data?.info">
+    <div *ngIf="bbData?.info" class="sldc-info-note">
       <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
         <circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.1"/>
         <path d="M8 7v5M8 5.5v-.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
       </svg>
-      {{ bitbucket.data?.info }}
+      {{ bbData?.info }}
     </div>
   </div>
 
-  <!-- ── PR Comments Analysis ── -->
+  <!-- ── PR Comments Analysis ───────────────────────────────────────────────── -->
   <div class="sldc-card">
     <div class="sldc-card__header">
       <div class="sldc-card__title-block">
-        <span class="sldc-card__label">Code Review</span>
-        <h2 class="sldc-card__title">PR Comments Analysis</h2>
+        <p class="sldc-section-label">Code Review</p>
+        <p class="sldc-section-title">PR Comments Analysis</p>
       </div>
       <div class="sldc-date-row">
         <div class="sldc-date-group">
-          <label class="sldc-date-label">From</label>
-          <p-datepicker
-            [(ngModel)]="pr.dateRange.start"
-            [maxDate]="pr.dateRange.end ?? today"
-            dateFormat="dd-mm-yy"
-            [showIcon]="true"
-            appendTo="body"
-            placeholder="Start date"
-            styleClass="sldc-datepicker"
+          <label class="sldc-date-label" for="pr-start">From</label>
+          <input
+            id="pr-start"
+            type="date"
+            class="sldc-date-input"
+            [(ngModel)]="prRange.start"
+            [max]="prRange.end"
           />
         </div>
         <span class="sldc-date-sep">—</span>
         <div class="sldc-date-group">
-          <label class="sldc-date-label">To</label>
-          <p-datepicker
-            [(ngModel)]="pr.dateRange.end"
-            [minDate]="pr.dateRange.start ?? undefined"
-            [maxDate]="today"
-            dateFormat="dd-mm-yy"
-            [showIcon]="true"
-            appendTo="body"
-            placeholder="End date"
-            styleClass="sldc-datepicker"
+          <label class="sldc-date-label" for="pr-end">To</label>
+          <input
+            id="pr-end"
+            type="date"
+            class="sldc-date-input"
+            [(ngModel)]="prRange.end"
+            [min]="prRange.start"
+            [max]="today"
           />
         </div>
-        <p-button
-          label="Apply"
-          [loading]="isLoading(pr.loadState)"
-          [disabled]="!pr.dateRange.start || !pr.dateRange.end"
-          (onClick)="fetchPr()"
-          styleClass="sldc-apply-btn"
-          size="small"
-        />
+        <button
+          class="sldc-apply-btn"
+          [disabled]="prState === 'loading'"
+          (click)="loadPr()"
+        >
+          <span *ngIf="prState !== 'loading'">Apply</span>
+          <span *ngIf="prState === 'loading'" class="sldc-spinner" aria-hidden="true"></span>
+        </button>
       </div>
     </div>
 
     <div class="sldc-divider"></div>
 
-    <div class="sldc-error" *ngIf="isError(pr.loadState)">
+    <div *ngIf="prState === 'error'" class="sldc-error-banner">
       <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
         <circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.2"/>
         <path d="M8 5v4M8 11v.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
       </svg>
-      Failed to load PR comments data. Please try again.
+      {{ prError }}
     </div>
 
-    <div class="sldc-metrics-grid sldc-metrics-grid--4">
+    <div class="sldc-grid sldc-grid--4">
       <div class="sldc-metric">
         <p class="sldc-metric__label">Total PRs</p>
-        <p class="sldc-metric__value">{{ pr.data?.total_prs ?? '—' }}</p>
+        <p class="sldc-metric__value">{{ prData?.total_prs ?? '—' }}</p>
       </div>
       <div class="sldc-metric">
         <p class="sldc-metric__label">Total comments</p>
-        <p class="sldc-metric__value">{{ pr.data?.comment_count ?? '—' }}</p>
+        <p class="sldc-metric__value">{{ prData?.comment_count ?? '—' }}</p>
       </div>
       <div class="sldc-metric">
         <p class="sldc-metric__label">AI comments</p>
-        <p class="sldc-metric__value">{{ pr.data?.ai_comments ?? '—' }}</p>
+        <p class="sldc-metric__value">{{ prData?.ai_comments ?? '—' }}</p>
         <span class="sldc-badge sldc-badge--green">AI</span>
       </div>
       <div class="sldc-metric">
         <p class="sldc-metric__label">AI comment ratio</p>
-        <p class="sldc-metric__value">{{ formatPct(pr.data?.ratio) }}</p>
+        <p class="sldc-metric__value">{{ formatPct(prData?.ratio) }}</p>
         <div class="sldc-bar-track">
-          <div class="sldc-bar-fill" [style.width.%]="pr.data?.ratio ?? 0"></div>
+          <div class="sldc-bar-fill" [style.width]="barWidth(prData?.ratio)"></div>
         </div>
       </div>
     </div>
 
-    <div class="sldc-info-note" *ngIf="pr.data?.info">
+    <div *ngIf="prData?.info" class="sldc-info-note">
       <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
         <circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.1"/>
         <path d="M8 7v5M8 5.5v-.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
       </svg>
-      {{ pr.data?.info }}
+      {{ prData?.info }}
     </div>
   </div>
 
@@ -503,161 +461,206 @@ export class StatsDashboardComponent implements OnInit, OnDestroy {
 
 
 
-// ─────────────────────────────────────────────────────────────
-// SLDC Statistics — CSS Custom Properties
-// Light mode (default)
-// ─────────────────────────────────────────────────────────────
-:root {
-  // Layout
-  --sldc-statistics-bg-card:            #ffffff;
-  --sldc-statistics-bg-metric:          #f5f5f5;
-  --sldc-statistics-bg-page:            #fafafa;
 
-  // Borders
-  --sldc-statistics-border-card:        #bfbfbf;
-  --sldc-statistics-border-divider:     #e5e5e5;
-  --sldc-statistics-border-input:       #bfbfbf;
 
-  // Text
-  --sldc-statistics-text-primary:       #111113;
-  --sldc-statistics-text-secondary:     #555558;
-  --sldc-statistics-text-tertiary:      #8f8f93;
-  --sldc-statistics-text-label:         #8f8f93;
 
-  // Accent — bar fill
-  --sldc-statistics-accent-bar:         #378add;
 
-  // Badges
-  --sldc-statistics-badge-blue-bg:      #dbeafe;
-  --sldc-statistics-badge-blue-text:    #1e40af;
-  --sldc-statistics-badge-green-bg:     #dcfce7;
-  --sldc-statistics-badge-green-text:   #166534;
 
-  // Error
-  --sldc-statistics-error-bg:           #fef2f2;
-  --sldc-statistics-error-border:       #fca5a5;
-  --sldc-statistics-error-text:         #b91c1c;
 
-  // PrimeNG datepicker overrides (scoped via styleClass)
-  --sldc-statistics-input-bg:           #ffffff;
-  --sldc-statistics-input-text:         #111113;
+/* ═══════════════════════════════════════════════════════════════════════════
+   SLDC Statistics — CSS Custom Properties
+   Light mode (default)
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root,
+[data-theme="light"] {
+  /* Surfaces */
+  --sldc-statistics-bg-page:          #f4f4f5;
+  --sldc-statistics-bg-card:          #ffffff;
+  --sldc-statistics-bg-metric:        #f9f9f9;
+  --sldc-statistics-bg-input:         #f4f4f5;
 
-  // Button
-  --sldc-statistics-btn-bg:             #ffffff;
-  --sldc-statistics-btn-border:         #bfbfbf;
-  --sldc-statistics-btn-text:           #111113;
-  --sldc-statistics-btn-hover-bg:       #f5f5f5;
+  /* Borders */
+  --sldc-statistics-border-card:      #bfbfbf;
+  --sldc-statistics-border-input:     #bfbfbf;
+  --sldc-statistics-border-divider:   #e5e5e5;
+  --sldc-statistics-border-btn:       #bfbfbf;
+
+  /* Text */
+  --sldc-statistics-text-primary:     #0a0a0a;
+  --sldc-statistics-text-secondary:   #52525b;
+  --sldc-statistics-text-tertiary:    #a1a1aa;
+  --sldc-statistics-text-label:       #71717a;
+
+  /* Accent — progress bar */
+  --sldc-statistics-accent-bar:       #2563eb;
+
+  /* Badge — blue (Jira / Confluence) */
+  --sldc-statistics-badge-blue-bg:    #dbeafe;
+  --sldc-statistics-badge-blue-text:  #1e40af;
+
+  /* Badge — green (AI) */
+  --sldc-statistics-badge-green-bg:   #dcfce7;
+  --sldc-statistics-badge-green-text: #166534;
+
+  /* Error */
+  --sldc-statistics-error-bg:         #fef2f2;
+  --sldc-statistics-error-border:     #fca5a5;
+  --sldc-statistics-error-text:       #991b1b;
+
+  /* Info note */
+  --sldc-statistics-info-text:        #a1a1aa;
+  --sldc-statistics-info-border:      #e5e5e5;
+
+  /* Apply button */
+  --sldc-statistics-btn-bg:           #ffffff;
+  --sldc-statistics-btn-bg-hover:     #f4f4f5;
+  --sldc-statistics-btn-text:         #0a0a0a;
+
+  /* Misc */
+  --sldc-statistics-radius-card:      14px;
+  --sldc-statistics-radius-element:   8px;
+  --sldc-statistics-radius-badge:     20px;
 }
 
-// ─────────────────────────────────────────────────────────────
-// Dark mode
-// ─────────────────────────────────────────────────────────────
-[data-theme='dark'],
-.p-dark,
+/* ═══════════════════════════════════════════════════════════════════════════
+   Dark mode
+   ═══════════════════════════════════════════════════════════════════════════ */
+[data-theme="dark"],
 @media (prefers-color-scheme: dark) {
   :root {
-    // Layout
-    --sldc-statistics-bg-card:            #111113;
-    --sldc-statistics-bg-metric:          #1c1c1f;
-    --sldc-statistics-bg-page:            #0a0a0b;
+    --sldc-statistics-bg-page:          #0d0d0f;
+    --sldc-statistics-bg-card:          #111113;
+    --sldc-statistics-bg-metric:        #1c1c1f;
+    --sldc-statistics-bg-input:         #1c1c1f;
 
-    // Borders
-    --sldc-statistics-border-card:        #27272a;
-    --sldc-statistics-border-divider:     #27272a;
-    --sldc-statistics-border-input:       #27272a;
+    --sldc-statistics-border-card:      #27272a;
+    --sldc-statistics-border-input:     #27272a;
+    --sldc-statistics-border-divider:   #27272a;
+    --sldc-statistics-border-btn:       #27272a;
 
-    // Text
-    --sldc-statistics-text-primary:       #f4f4f5;
-    --sldc-statistics-text-secondary:     #a1a1aa;
-    --sldc-statistics-text-tertiary:      #71717a;
-    --sldc-statistics-text-label:         #71717a;
+    --sldc-statistics-text-primary:     #fafafa;
+    --sldc-statistics-text-secondary:   #a1a1aa;
+    --sldc-statistics-text-tertiary:    #52525b;
+    --sldc-statistics-text-label:       #71717a;
 
-    // Accent
-    --sldc-statistics-accent-bar:         #60a5fa;
+    --sldc-statistics-accent-bar:       #3b82f6;
 
-    // Badges
-    --sldc-statistics-badge-blue-bg:      #1e3a5f;
-    --sldc-statistics-badge-blue-text:    #93c5fd;
-    --sldc-statistics-badge-green-bg:     #14532d;
-    --sldc-statistics-badge-green-text:   #86efac;
+    --sldc-statistics-badge-blue-bg:    #1e3a5f;
+    --sldc-statistics-badge-blue-text:  #93c5fd;
 
-    // Error
-    --sldc-statistics-error-bg:           #2d1515;
-    --sldc-statistics-error-border:       #7f1d1d;
-    --sldc-statistics-error-text:         #fca5a5;
+    --sldc-statistics-badge-green-bg:   #14532d;
+    --sldc-statistics-badge-green-text: #86efac;
 
-    // PrimeNG datepicker overrides
-    --sldc-statistics-input-bg:           #1c1c1f;
-    --sldc-statistics-input-text:         #f4f4f5;
+    --sldc-statistics-error-bg:         #3b0f0f;
+    --sldc-statistics-error-border:     #7f1d1d;
+    --sldc-statistics-error-text:       #fca5a5;
 
-    // Button
-    --sldc-statistics-btn-bg:             #111113;
-    --sldc-statistics-btn-border:         #27272a;
-    --sldc-statistics-btn-text:           #f4f4f5;
-    --sldc-statistics-btn-hover-bg:       #1c1c1f;
+    --sldc-statistics-info-text:        #52525b;
+    --sldc-statistics-info-border:      #27272a;
+
+    --sldc-statistics-btn-bg:           #111113;
+    --sldc-statistics-btn-bg-hover:     #1c1c1f;
+    --sldc-statistics-btn-text:         #fafafa;
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Dashboard layout
-// ─────────────────────────────────────────────────────────────
+/* Override with explicit attribute (takes precedence over media query) */
+[data-theme="dark"] {
+  --sldc-statistics-bg-page:          #0d0d0f;
+  --sldc-statistics-bg-card:          #111113;
+  --sldc-statistics-bg-metric:        #1c1c1f;
+  --sldc-statistics-bg-input:         #1c1c1f;
+
+  --sldc-statistics-border-card:      #27272a;
+  --sldc-statistics-border-input:     #27272a;
+  --sldc-statistics-border-divider:   #27272a;
+  --sldc-statistics-border-btn:       #27272a;
+
+  --sldc-statistics-text-primary:     #fafafa;
+  --sldc-statistics-text-secondary:   #a1a1aa;
+  --sldc-statistics-text-tertiary:    #52525b;
+  --sldc-statistics-text-label:       #71717a;
+
+  --sldc-statistics-accent-bar:       #3b82f6;
+
+  --sldc-statistics-badge-blue-bg:    #1e3a5f;
+  --sldc-statistics-badge-blue-text:  #93c5fd;
+
+  --sldc-statistics-badge-green-bg:   #14532d;
+  --sldc-statistics-badge-green-text: #86efac;
+
+  --sldc-statistics-error-bg:         #3b0f0f;
+  --sldc-statistics-error-border:     #7f1d1d;
+  --sldc-statistics-error-text:       #fca5a5;
+
+  --sldc-statistics-info-text:        #52525b;
+  --sldc-statistics-info-border:      #27272a;
+
+  --sldc-statistics-btn-bg:           #111113;
+  --sldc-statistics-btn-bg-hover:     #1c1c1f;
+  --sldc-statistics-btn-text:         #fafafa;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Component styles
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 .sldc-dashboard {
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
   padding: 1.5rem 0;
+  font-family: 'DM Sans', system-ui, sans-serif;
   background: var(--sldc-statistics-bg-page);
 }
 
-// ─────────────────────────────────────────────────────────────
-// Card
-// ─────────────────────────────────────────────────────────────
+/* ── Card ───────────────────────────────────────────────────────────────────── */
 .sldc-card {
   background: var(--sldc-statistics-bg-card);
   border: 1px solid var(--sldc-statistics-border-card);
-  border-radius: 14px;
+  border-radius: var(--sldc-statistics-radius-card);
   padding: 1.25rem 1.5rem;
-
-  &__header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 1rem;
-    margin-bottom: 1.25rem;
-  }
-
-  &__label {
-    display: block;
-    font-size: 11px;
-    font-weight: 500;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--sldc-statistics-text-label);
-    margin-bottom: 4px;
-  }
-
-  &__title {
-    font-size: 16px;
-    font-weight: 500;
-    color: var(--sldc-statistics-text-primary);
-    margin: 0;
-  }
 }
 
+.sldc-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+/* ── Section labels ─────────────────────────────────────────────────────────── */
+.sldc-section-label {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sldc-statistics-text-tertiary);
+  margin: 0 0 4px;
+}
+
+.sldc-section-title {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--sldc-statistics-text-primary);
+  margin: 0;
+}
+
+/* ── Divider ────────────────────────────────────────────────────────────────── */
 .sldc-divider {
   height: 1px;
   background: var(--sldc-statistics-border-divider);
   margin-bottom: 1.25rem;
 }
 
-// ─────────────────────────────────────────────────────────────
-// Date row
-// ─────────────────────────────────────────────────────────────
+/* ── Date row ───────────────────────────────────────────────────────────────── */
 .sldc-date-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
@@ -674,92 +677,77 @@ export class StatsDashboardComponent implements OnInit, OnDestroy {
 }
 
 .sldc-date-sep {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--sldc-statistics-text-tertiary);
 }
 
-// ─────────────────────────────────────────────────────────────
-// PrimeNG DatePicker overrides — scoped via styleClass
-// ─────────────────────────────────────────────────────────────
-:host ::ng-deep .sldc-datepicker {
-  .p-datepicker-input {
-    font-size: 13px;
-    height: 34px;
-    padding: 0 10px;
-    background: var(--sldc-statistics-input-bg);
-    border: 1px solid var(--sldc-statistics-border-input);
-    border-radius: 8px;
-    color: var(--sldc-statistics-input-text);
-    width: 140px;
-    transition: border-color 0.15s;
-
-    &::placeholder {
-      color: var(--sldc-statistics-text-tertiary);
-    }
-
-    &:focus {
-      outline: none;
-      border-color: var(--sldc-statistics-accent-bar);
-      box-shadow: 0 0 0 2px color-mix(in srgb, var(--sldc-statistics-accent-bar) 20%, transparent);
-    }
-  }
-
-  .p-datepicker-dropdown {
-    background: var(--sldc-statistics-input-bg);
-    border: 1px solid var(--sldc-statistics-border-input);
-    border-left: none;
-    border-radius: 0 8px 8px 0;
-    color: var(--sldc-statistics-text-secondary);
-    height: 34px;
-    width: 34px;
-
-    &:hover {
-      background: var(--sldc-statistics-bg-metric);
-    }
-  }
-
-  &.p-inputwrapper-focus .p-datepicker-input,
-  &.p-inputwrapper-focus .p-datepicker-dropdown {
-    border-color: var(--sldc-statistics-accent-bar);
-  }
+.sldc-date-input {
+  font-family: inherit;
+  font-size: 13px;
+  padding: 5px 9px;
+  border: 1px solid var(--sldc-statistics-border-input);
+  border-radius: var(--sldc-statistics-radius-element);
+  background: var(--sldc-statistics-bg-input);
+  color: var(--sldc-statistics-text-primary);
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.15s;
 }
 
-// ─────────────────────────────────────────────────────────────
-// Apply Button overrides
-// ─────────────────────────────────────────────────────────────
-:host ::ng-deep .sldc-apply-btn.p-button {
-  background: var(--sldc-statistics-btn-bg);
-  border: 1px solid var(--sldc-statistics-btn-border);
-  color: var(--sldc-statistics-btn-text);
+.sldc-date-input:focus {
+  border-color: var(--sldc-statistics-accent-bar);
+}
+
+/* ── Apply button ───────────────────────────────────────────────────────────── */
+.sldc-apply-btn {
+  font-family: inherit;
   font-size: 13px;
   font-weight: 500;
-  height: 34px;
-  padding: 0 16px;
-  border-radius: 8px;
+  padding: 5px 16px;
+  border-radius: var(--sldc-statistics-radius-element);
+  border: 1px solid var(--sldc-statistics-border-btn);
+  background: var(--sldc-statistics-btn-bg);
+  color: var(--sldc-statistics-btn-text);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
   transition: background 0.15s, transform 0.1s;
-
-  &:not(:disabled):hover {
-    background: var(--sldc-statistics-btn-hover-bg);
-  }
-
-  &:not(:disabled):active {
-    transform: scale(0.97);
-  }
-
-  &:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
-  }
-
-  .p-button-label {
-    font-weight: 500;
-  }
+  min-width: 68px;
+  justify-content: center;
 }
 
-// ─────────────────────────────────────────────────────────────
-// Error banner
-// ─────────────────────────────────────────────────────────────
-.sldc-error {
+.sldc-apply-btn:hover:not(:disabled) {
+  background: var(--sldc-statistics-btn-bg-hover);
+}
+
+.sldc-apply-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.sldc-apply-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* ── Spinner ────────────────────────────────────────────────────────────────── */
+.sldc-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--sldc-statistics-border-input);
+  border-top-color: var(--sldc-statistics-text-primary);
+  border-radius: 50%;
+  animation: sldc-spin 0.7s linear infinite;
+}
+
+@keyframes sldc-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Error banner ───────────────────────────────────────────────────────────── */
+.sldc-error-banner {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -767,71 +755,68 @@ export class StatsDashboardComponent implements OnInit, OnDestroy {
   color: var(--sldc-statistics-error-text);
   background: var(--sldc-statistics-error-bg);
   border: 1px solid var(--sldc-statistics-error-border);
-  border-radius: 8px;
+  border-radius: var(--sldc-statistics-radius-element);
   padding: 8px 12px;
   margin-bottom: 1rem;
 }
 
-// ─────────────────────────────────────────────────────────────
-// Metric grid
-// ─────────────────────────────────────────────────────────────
-.sldc-metrics-grid {
+/* ── Metric grid ────────────────────────────────────────────────────────────── */
+.sldc-grid {
   display: grid;
   gap: 10px;
-
-  &--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  &--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Metric card
-// ─────────────────────────────────────────────────────────────
+.sldc-grid--2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.sldc-grid--4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+/* ── Metric card ────────────────────────────────────────────────────────────── */
 .sldc-metric {
   background: var(--sldc-statistics-bg-metric);
-  border-radius: 8px;
+  border-radius: var(--sldc-statistics-radius-element);
   padding: 14px 16px;
-
-  &__label {
-    font-size: 12px;
-    color: var(--sldc-statistics-text-secondary);
-    margin: 0 0 6px;
-    line-height: 1.4;
-  }
-
-  &__value {
-    font-size: 26px;
-    font-weight: 500;
-    color: var(--sldc-statistics-text-primary);
-    line-height: 1;
-    margin: 0;
-  }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Badge
-// ─────────────────────────────────────────────────────────────
+.sldc-metric__label {
+  font-size: 12px;
+  color: var(--sldc-statistics-text-label);
+  margin: 0 0 6px;
+  line-height: 1.4;
+}
+
+.sldc-metric__value {
+  font-size: 26px;
+  font-weight: 500;
+  color: var(--sldc-statistics-text-primary);
+  margin: 0;
+  line-height: 1;
+}
+
+/* ── Badges ─────────────────────────────────────────────────────────────────── */
 .sldc-badge {
   display: inline-block;
   font-size: 11px;
   font-weight: 500;
   padding: 2px 8px;
-  border-radius: 20px;
+  border-radius: var(--sldc-statistics-radius-badge);
   margin-top: 8px;
-
-  &--blue {
-    background: var(--sldc-statistics-badge-blue-bg);
-    color: var(--sldc-statistics-badge-blue-text);
-  }
-
-  &--green {
-    background: var(--sldc-statistics-badge-green-bg);
-    color: var(--sldc-statistics-badge-green-text);
-  }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Progress bar
-// ─────────────────────────────────────────────────────────────
+.sldc-badge--blue {
+  background: var(--sldc-statistics-badge-blue-bg);
+  color: var(--sldc-statistics-badge-blue-text);
+}
+
+.sldc-badge--green {
+  background: var(--sldc-statistics-badge-green-bg);
+  color: var(--sldc-statistics-badge-green-text);
+}
+
+/* ── Progress bar ───────────────────────────────────────────────────────────── */
 .sldc-bar-track {
   height: 5px;
   background: var(--sldc-statistics-border-divider);
@@ -847,45 +832,45 @@ export class StatsDashboardComponent implements OnInit, OnDestroy {
   transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-// ─────────────────────────────────────────────────────────────
-// Info note
-// ─────────────────────────────────────────────────────────────
+/* ── Info note ──────────────────────────────────────────────────────────────── */
 .sldc-info-note {
   display: flex;
   align-items: flex-start;
   gap: 6px;
   font-size: 12px;
-  color: var(--sldc-statistics-text-tertiary);
+  color: var(--sldc-statistics-info-text);
   margin-top: 1rem;
   padding-top: 1rem;
-  border-top: 1px solid var(--sldc-statistics-border-divider);
+  border-top: 1px solid var(--sldc-statistics-info-border);
 }
 
-// ─────────────────────────────────────────────────────────────
-// Responsive
-// ─────────────────────────────────────────────────────────────
-@media (max-width: 768px) {
-  .sldc-metrics-grid--4 {
+/* ── Responsive ─────────────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .sldc-grid--4 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-}
 
-@media (max-width: 540px) {
-  .sldc-card {
-    padding: 1rem;
-
-    &__header {
-      flex-direction: column;
-    }
+  .sldc-card__header {
+    flex-direction: column;
   }
 
   .sldc-date-row {
     flex-direction: column;
     align-items: flex-start;
+    width: 100%;
   }
 
-  .sldc-metrics-grid--2,
-  .sldc-metrics-grid--4 {
+  .sldc-date-input {
+    width: 100%;
+  }
+
+  .sldc-apply-btn {
+    width: 100%;
+  }
+}
+
+@media (max-width: 400px) {
+  .sldc-grid--2 {
     grid-template-columns: 1fr;
   }
 }
@@ -910,68 +895,30 @@ export class StatsDashboardComponent implements OnInit, OnDestroy {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { environment } from '../../environments/environment';
-import {
-  ApiResponse,
-  QaStatsResult,
-  BitbucketResult,
-  PrCommentsResult,
-} from '../core/models/stats.models';
 
-@Injectable({ providedIn: 'root' })
-export class StatsService {
-  private readonly base = environment.apiBaseUrl;
-
-  constructor(private http: HttpClient) {}
-
-  private params(start: string, end: string): HttpParams {
-    return new HttpParams().set('start_date', start).set('end_date', end);
-  }
-
-  getQaStats(
-    start: string,
-    end: string
-  ): Observable<ApiResponse<QaStatsResult>> {
-    return this.http.get<ApiResponse<QaStatsResult>>(
-      `${this.base}/qa-stats`,
-      { params: this.params(start, end) }
-    );
-  }
-
-  getBitbucketAnalysis(
-    start: string,
-    end: string
-  ): Observable<ApiResponse<BitbucketResult>> {
-    return this.http.get<ApiResponse<BitbucketResult>>(
-      `${this.base}/bitbucket-analysis`,
-      { params: this.params(start, end) }
-    );
-  }
-
-  getPrCommentsAnalysis(
-    start: string,
-    end: string
-  ): Observable<ApiResponse<PrCommentsResult>> {
-    return this.http.get<ApiResponse<PrCommentsResult>>(
-      `${this.base}/pr-comments-analysis`,
-      { params: this.params(start, end) }
-    );
-  }
-}
-
-
-
-
+// ── Response interfaces ────────────────────────────────────────────────────────
 
 export interface ApiResponse<T> {
   status: 'Success' | 'Error';
   result: T;
 }
 
-export interface QaStatsResult {
+export interface QaResult {
   jira_count: number;
   confluence_count: number;
 }
@@ -992,31 +939,37 @@ export interface PrCommentsResult {
 }
 
 export interface DateRange {
-  start: Date | null;
-  end: Date | null;
+  start: string;
+  end: string;
 }
 
-export type LoadState = 'idle' | 'loading' | 'error' | 'success';
+// ── Service ────────────────────────────────────────────────────────────────────
 
+@Injectable({ providedIn: 'root' })
+export class StatisticsService {
+  // Replace with your actual base URL (e.g. from environment.ts)
+  private readonly baseUrl = '/api';
 
+  constructor(private http: HttpClient) {}
 
+  getQaStats(range: DateRange): Observable<ApiResponse<QaResult>> {
+    const params = new HttpParams()
+      .set('start', range.start)
+      .set('end', range.end);
+    return this.http.get<ApiResponse<QaResult>>(`${this.baseUrl}/qa-stats`, { params });
+  }
 
+  getBitbucketAnalysis(range: DateRange): Observable<ApiResponse<BitbucketResult>> {
+    const params = new HttpParams()
+      .set('start', range.start)
+      .set('end', range.end);
+    return this.http.get<ApiResponse<BitbucketResult>>(`${this.baseUrl}/bitbucket-analysis`, { params });
+  }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+  getPrComments(range: DateRange): Observable<ApiResponse<PrCommentsResult>> {
+    const params = new HttpParams()
+      .set('start', range.start)
+      .set('end', range.end);
+    return this.http.get<ApiResponse<PrCommentsResult>>(`${this.baseUrl}/pr-comments`, { params });
+  }
+}
