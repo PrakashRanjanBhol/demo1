@@ -64,6 +64,33 @@
 <!-- ── Dashboard (shown only when connected) ──────────────────────────────────── -->
 <ng-container *ngIf="isConnected">
 
+<!-- ── Dashboard Header ──────────────────────────────────────────────────────── -->
+<div class="sldc-header">
+  <div class="sldc-header__icon">
+    <svg width="28" height="28" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- Grid of dots representing a dashboard -->
+      <rect x="3" y="3" width="11" height="11" rx="2.5" fill="currentColor" opacity="0.9"/>
+      <rect x="18" y="3" width="11" height="11" rx="2.5" fill="currentColor" opacity="0.6"/>
+      <rect x="3" y="18" width="11" height="11" rx="2.5" fill="currentColor" opacity="0.6"/>
+      <rect x="18" y="18" width="11" height="11" rx="2.5" fill="currentColor" opacity="0.35"/>
+      <!-- Activity line on bottom-right tile -->
+      <path d="M20.5 26.5l2.5-3 2 2 3-4.5" stroke="white" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </div>
+
+  <div class="sldc-header__body">
+    <h1 class="sldc-header__title">AI Metrics Dashboard</h1>
+    <p class="sldc-header__desc">
+      A unified view of your team's AI activity across five domains —
+      <span class="sldc-header__tag">Q&amp;A Coverage</span>
+      <span class="sldc-header__tag">Bitbucket Analysis</span>
+      <span class="sldc-header__tag">PR Comments</span>
+      <span class="sldc-header__tag">SLDC Generation</span>
+      <span class="sldc-header__tag">AHSI Coding Stats</span>
+    </p>
+  </div>
+</div>
+
 <div class="sldc-dashboard">
 
   <!-- ── Q&A Coverage ──────────────────────────────────────────────────────── -->
@@ -580,282 +607,92 @@
 
 
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   Dashboard Header
+   ═══════════════════════════════════════════════════════════════════════════ */
 
-
-import { Component, OnInit, OnDestroy } from '@angular/core';
-import { Subject } from 'rxjs';
-import { takeUntil, finalize } from 'rxjs/operators';
-import {
-  StatisticsService,
-  QaResult,
-  BitbucketResult,
-  PrCommentsResult,
-  SldcResult,
-  AhsiResult,
-  DateRange,
-} from './statistics.service';
-
-type SectionState = 'idle' | 'loading' | 'error';
-
-const ATLASSIAN_KEY = 'ATLASSIAN_CONNECTION';
-
-function toIsoDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
+.sldc-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.25rem 1.75rem;
+  margin-bottom: 0.25rem;
+  background: var(--sldc-statistics-bg-card);
+  border: 1px solid var(--sldc-statistics-border-card);
+  border-radius: var(--sldc-statistics-radius-card);
+  font-family: 'DM Sans', system-ui, sans-serif;
 }
 
-function defaultRange(): DateRange {
-  const end = new Date();
-  const start = new Date();
-  start.setFullYear(start.getFullYear() - 1);
-  return { start: toIsoDate(start), end: toIsoDate(end) };
+.sldc-header__icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  background: var(--sldc-statistics-theme-gradient);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  flex-shrink: 0;
 }
 
-@Component({
-  selector: 'app-stats-dashboard',
-  templateUrl: './stats-dashboard.component.html',
-  styleUrls: ['./stats-dashboard.component.css'],
-})
-export class StatsDashboardComponent implements OnInit, OnDestroy {
-  private destroy$ = new Subject<void>();
-
-  today = toIsoDate(new Date());
-
-  // ── Atlassian connection ──────────────────────────────────────────────────────
-  isConnected = false;
-  connectUsername = '';
-  connectPassword = '';
-  connectState: SectionState = 'idle';
-  connectError = '';
-
-  // ── QA ──────────────────────────────────────────────────────────────────────
-  qaRange: DateRange = defaultRange();
-  qaData: QaResult | null = null;
-  qaState: SectionState = 'idle';
-  qaError = '';
-
-  // ── Bitbucket ────────────────────────────────────────────────────────────────
-  bbRange: DateRange = defaultRange();
-  bbData: BitbucketResult | null = null;
-  bbState: SectionState = 'idle';
-  bbError = '';
-
-  // ── PR Comments ──────────────────────────────────────────────────────────────
-  prRange: DateRange = defaultRange();
-  prData: PrCommentsResult | null = null;
-  prState: SectionState = 'idle';
-  prError = '';
-
-  // ── SLDC Analysis ────────────────────────────────────────────────────────────
-  sldcRange: DateRange = defaultRange();
-  sldcData: SldcResult | null = null;
-  sldcState: SectionState = 'idle';
-  sldcError = '';
-
-  // ── AHSI Coding Stats ────────────────────────────────────────────────────────
-  ahsiRange: DateRange = defaultRange();
-  ahsiData: AhsiResult | null = null;
-  ahsiState: SectionState = 'idle';
-  ahsiError = '';
-
-  constructor(private statsService: StatisticsService) {}
-
-  ngOnInit(): void {
-    const stored = localStorage.getItem(ATLASSIAN_KEY);
-    if (stored) {
-      this.isConnected = true;
-      this.loadAllSections();
-    }
-  }
-
-  ngOnDestroy(): void {
-    this.destroy$.next();
-    this.destroy$.complete();
-  }
-
-  // ── Atlassian connect ─────────────────────────────────────────────────────────
-
-  connect(): void {
-    if (!this.connectUsername.trim() || !this.connectPassword.trim()) {
-      this.connectError = 'Please enter both username and password.';
-      return;
-    }
-    this.connectState = 'loading';
-    this.connectError = '';
-
-    this.statsService
-      .connectAtlassian({ username: this.connectUsername, password: this.connectPassword })
-      .pipe(
-        takeUntil(this.destroy$),
-        finalize(() => { if (this.connectState === 'loading') this.connectState = 'idle'; })
-      )
-      .subscribe({
-        next: (res) => {
-          if (res.status !== 'Success') {
-            this.connectState = 'error';
-            this.connectError = 'Connection failed. Please check your credentials.';
-            return;
-          }
-          localStorage.setItem(ATLASSIAN_KEY, res.result);
-          this.connectState = 'idle';
-          this.isConnected = true;
-          this.loadAllSections();
-        },
-        error: () => {
-          this.connectState = 'error';
-          this.connectError = 'Unable to reach the server. Please try again.';
-        },
-      });
-  }
-
-  // ── Load all dashboard sections ───────────────────────────────────────────────
-
-  private loadAllSections(): void {
-    this.loadQa();
-    this.loadBitbucket();
-    this.loadPr();
-    this.loadSldc();
-    this.loadAhsi();
-  }
-
-  // ── Fetch methods ─────────────────────────────────────────────────────────────
-
-  loadQa(): void {
-    this.qaState = 'loading';
-    this.qaError = '';
-    this.statsService
-      .getQaStats(this.qaRange)
-      .pipe(
-        takeUntil(this.destroy$),
-        finalize(() => { if (this.qaState === 'loading') this.qaState = 'idle'; })
-      )
-      .subscribe({
-        next: (res) => {
-          if (res.status !== 'Success') { this.qaState = 'error'; this.qaError = 'API returned a non-success status.'; return; }
-          this.qaData = res.result;
-          this.qaState = 'idle';
-        },
-        error: () => { this.qaState = 'error'; this.qaError = 'Failed to load questions data. Please try again.'; },
-      });
-  }
-
-  loadBitbucket(): void {
-    this.bbState = 'loading';
-    this.bbError = '';
-    this.statsService
-      .getBitbucketAnalysis(this.bbRange)
-      .pipe(
-        takeUntil(this.destroy$),
-        finalize(() => { if (this.bbState === 'loading') this.bbState = 'idle'; })
-      )
-      .subscribe({
-        next: (res) => {
-          if (res.status !== 'Success') { this.bbState = 'error'; this.bbError = 'API returned a non-success status.'; return; }
-          this.bbData = res.result;
-          this.bbState = 'idle';
-        },
-        error: () => { this.bbState = 'error'; this.bbError = 'Failed to load Bitbucket data. Please try again.'; },
-      });
-  }
-
-  loadPr(): void {
-    this.prState = 'loading';
-    this.prError = '';
-    this.statsService
-      .getPrComments(this.prRange)
-      .pipe(
-        takeUntil(this.destroy$),
-        finalize(() => { if (this.prState === 'loading') this.prState = 'idle'; })
-      )
-      .subscribe({
-        next: (res) => {
-          if (res.status !== 'Success') { this.prState = 'error'; this.prError = 'API returned a non-success status.'; return; }
-          this.prData = res.result;
-          this.prState = 'idle';
-        },
-        error: () => { this.prState = 'error'; this.prError = 'Failed to load PR comments data. Please try again.'; },
-      });
-  }
-
-  loadSldc(): void {
-    this.sldcState = 'loading';
-    this.sldcError = '';
-    this.statsService
-      .getSldcAnalysis(this.sldcRange)
-      .pipe(
-        takeUntil(this.destroy$),
-        finalize(() => { if (this.sldcState === 'loading') this.sldcState = 'idle'; })
-      )
-      .subscribe({
-        next: (res) => {
-          if (res.status !== 'Success') { this.sldcState = 'error'; this.sldcError = 'API returned a non-success status.'; return; }
-          this.sldcData = res.result;
-          this.sldcState = 'idle';
-        },
-        error: () => { this.sldcState = 'error'; this.sldcError = 'Failed to load SLDC analysis data. Please try again.'; },
-      });
-  }
-
-  loadAhsi(): void {
-    this.ahsiState = 'loading';
-    this.ahsiError = '';
-    this.statsService
-      .getAhsiCodingStats(this.ahsiRange)
-      .pipe(
-        takeUntil(this.destroy$),
-        finalize(() => { if (this.ahsiState === 'loading') this.ahsiState = 'idle'; })
-      )
-      .subscribe({
-        next: (res) => {
-          if (res.status !== 'Success') { this.ahsiState = 'error'; this.ahsiError = 'API returned a non-success status.'; return; }
-          this.ahsiData = res.result;
-          this.ahsiState = 'idle';
-        },
-        error: () => { this.ahsiState = 'error'; this.ahsiError = 'Failed to load AHSI coding stats. Please try again.'; },
-      });
-  }
-
-  // ── QA computed helpers ───────────────────────────────────────────────────────
-
-  get qaTotal(): number {
-    return (this.qaData?.jira_count ?? 0) + (this.qaData?.confluence_count ?? 0);
-  }
-
-  // ── Utilities ─────────────────────────────────────────────────────────────────
-
-  formatPct(value: number | string | null | undefined): string {
-    if (value == null) return '—';
-    const num = typeof value === 'string' ? parseFloat(value) : value;
-    if (isNaN(num)) return '—';
-    return `${num.toFixed(1)}%`;
-  }
-
-  formatDecimal(value: number | null | undefined, decimals = 2): string {
-    if (value == null) return '—';
-    return value.toFixed(decimals);
-  }
-
-  barWidth(value: number | string | null | undefined): string {
-    if (value == null) return '0%';
-    const num = typeof value === 'string' ? parseFloat(value) : value;
-    if (isNaN(num)) return '0%';
-    return `${Math.min(Math.round(num), 100)}%`;
-  }
+.sldc-header__body {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
 }
 
+.sldc-header__title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--sldc-statistics-text-primary);
+  margin: 0;
+  line-height: 1.2;
+}
 
+.sldc-header__desc {
+  font-size: 13px;
+  color: var(--sldc-statistics-text-tertiary);
+  margin: 0;
+  line-height: 1.6;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
 
+.sldc-header__desc::before {
+  content: '';
+}
 
+.sldc-header__tag {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--sldc-statistics-text-secondary);
+  background: var(--sldc-statistics-bg-metric);
+  border: 1px solid var(--sldc-statistics-border-divider);
+  border-radius: 20px;
+  padding: 1px 9px;
+  white-space: nowrap;
+}
 
+@media (max-width: 700px) {
+  .sldc-header {
+    padding: 1rem 1.25rem;
+  }
 
+  .sldc-header__icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 11px;
+  }
 
-
-
-
-
-
-
-
-
+  .sldc-header__title {
+    font-size: 16px;
+  }
+}
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Atlassian Connection Page
@@ -1924,173 +1761,5 @@ export class StatsDashboardComponent implements OnInit, OnDestroy {
 @media (max-width: 400px) {
   .sldc-grid--2 {
     grid-template-columns: 1fr;
-  }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { Observable } from 'rxjs';
-
-// ── Response interfaces ────────────────────────────────────────────────────────
-
-export interface ApiResponse<T> {
-  status: 'Success' | 'Error';
-  result: T;
-}
-
-export interface QaResult {
-  jira_count: number;
-  confluence_count: number;
-}
-
-export interface BitbucketResult {
-  date_range: { start_date: string; end_date: string };
-  pr_reviewed_ratio: number;
-  pr_summary_ratio: number;
-  info: string;
-}
-
-export interface PrCommentsResult {
-  total_prs: number;
-  comment_count: number;
-  ai_comments: number;
-  ratio: number;
-  info: string;
-}
-
-export interface SldcOverall {
-  accepted: number;
-  rejected: number;
-  generated: number;
-}
-
-export interface SldcResult {
-  project: string;
-  overall: SldcOverall;
-  acceptance_rate: string;
-  rejection_rate: string;
-  crs_ratio: number;
-  srs_ratio: number;
-  task_ratio: number;
-  info: string;
-}
-
-export interface AhsiResult {
-  pr_analyzed: number;
-  ahsi: number;
-  coverage: number;
-  avg_similarity: number;
-  matched_blocks: number;
-  total_human_blocks: number;
-  total_ai_blocks: number;
-  info: string;
-}
-
-export interface DateRange {
-  start: string; // internal format: yyyy-mm-dd (from native date input)
-  end: string;   // internal format: yyyy-mm-dd (from native date input)
-}
-
-export interface AtlassianConnectPayload {
-  username: string;
-  password: string;
-}
-
-// ── Request body shape sent to every endpoint ──────────────────────────────────
-interface DateRangePayload {
-  start_date: string; // API format: dd-mm-yyyy
-  end_date: string;   // API format: dd-mm-yyyy
-}
-
-// ── Service ────────────────────────────────────────────────────────────────────
-
-@Injectable({ providedIn: 'root' })
-export class StatisticsService {
-  // Replace with your actual base URL (e.g. from environment.ts)
-  private readonly baseUrl = '/api';
-
-  constructor(private http: HttpClient) {}
-
-  /**
-   * Converts native date input format (yyyy-mm-dd) to API format (dd-mm-yyyy).
-   * e.g. "2025-03-17" -> "17-03-2025"
-   */
-  private formatDate(isoDate: string): string {
-    const [yyyy, mm, dd] = isoDate.split('-');
-    return `${dd}-${mm}-${yyyy}`;
-  }
-
-  private buildPayload(range: DateRange): DateRangePayload {
-    return {
-      start_date: this.formatDate(range.start),
-      end_date: this.formatDate(range.end),
-    };
-  }
-
-  connectAtlassian(payload: AtlassianConnectPayload): Observable<ApiResponse<string>> {
-    return this.http.post<ApiResponse<string>>(
-      `${this.baseUrl}/atlassian-connect`,
-      payload
-    );
-  }
-
-  getQaStats(range: DateRange): Observable<ApiResponse<QaResult>> {
-    return this.http.post<ApiResponse<QaResult>>(
-      `${this.baseUrl}/qa-stats`,
-      this.buildPayload(range)
-    );
-  }
-
-  getBitbucketAnalysis(range: DateRange): Observable<ApiResponse<BitbucketResult>> {
-    return this.http.post<ApiResponse<BitbucketResult>>(
-      `${this.baseUrl}/bitbucket-analysis`,
-      this.buildPayload(range)
-    );
-  }
-
-  getPrComments(range: DateRange): Observable<ApiResponse<PrCommentsResult>> {
-    return this.http.post<ApiResponse<PrCommentsResult>>(
-      `${this.baseUrl}/pr-comments`,
-      this.buildPayload(range)
-    );
-  }
-
-  getSldcAnalysis(range: DateRange): Observable<ApiResponse<SldcResult>> {
-    return this.http.post<ApiResponse<SldcResult>>(
-      `${this.baseUrl}/sldc-analysis`,
-      this.buildPayload(range)
-    );
-  }
-
-  getAhsiCodingStats(range: DateRange): Observable<ApiResponse<AhsiResult>> {
-    return this.http.post<ApiResponse<AhsiResult>>(
-      `${this.baseUrl}/ahsi-coding-stats`,
-      this.buildPayload(range)
-    );
   }
 }
