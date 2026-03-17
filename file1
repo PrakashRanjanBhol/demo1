@@ -1,3 +1,572 @@
+import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Subject } from 'rxjs';
+import { takeUntil, finalize } from 'rxjs/operators';
+import {
+  StatisticsService,
+  QaResult,
+  BitbucketResult,
+  PrCommentsResult,
+  SldcResult,
+  AhsiResult,
+  DateRange,
+} from './statistics.service';
+
+type SectionState = 'idle' | 'loading' | 'error';
+
+function toIsoDate(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+function defaultRange(): DateRange {
+  const end = new Date();
+  const start = new Date();
+  start.setFullYear(start.getFullYear() - 1);
+  return { start: toIsoDate(start), end: toIsoDate(end) };
+}
+
+@Component({
+  selector: 'app-stats-dashboard',
+  templateUrl: './stats-dashboard.component.html',
+  styleUrls: ['./stats-dashboard.component.css'],
+})
+export class StatsDashboardComponent implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>();
+
+  today = toIsoDate(new Date());
+
+  // ── QA ──────────────────────────────────────────────────────────────────────
+  qaRange: DateRange = defaultRange();
+  qaData: QaResult | null = null;
+  qaState: SectionState = 'idle';
+  qaError = '';
+
+  // ── Bitbucket ────────────────────────────────────────────────────────────────
+  bbRange: DateRange = defaultRange();
+  bbData: BitbucketResult | null = null;
+  bbState: SectionState = 'idle';
+  bbError = '';
+
+  // ── PR Comments ──────────────────────────────────────────────────────────────
+  prRange: DateRange = defaultRange();
+  prData: PrCommentsResult | null = null;
+  prState: SectionState = 'idle';
+  prError = '';
+
+  // ── SLDC Analysis ────────────────────────────────────────────────────────────
+  sldcRange: DateRange = defaultRange();
+  sldcData: SldcResult | null = null;
+  sldcState: SectionState = 'idle';
+  sldcError = '';
+
+  // ── AHSI Coding Stats ────────────────────────────────────────────────────────
+  ahsiRange: DateRange = defaultRange();
+  ahsiData: AhsiResult | null = null;
+  ahsiState: SectionState = 'idle';
+  ahsiError = '';
+
+  constructor(private statsService: StatisticsService) {}
+
+  ngOnInit(): void {
+    this.loadQa();
+    this.loadBitbucket();
+    this.loadPr();
+    this.loadSldc();
+    this.loadAhsi();
+  }
+
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
+  }
+
+  // ── Fetch methods ────────────────────────────────────────────────────────────
+
+  loadQa(): void {
+    this.qaState = 'loading';
+    this.qaError = '';
+    this.statsService
+      .getQaStats(this.qaRange)
+      .pipe(
+        takeUntil(this.destroy$),
+        finalize(() => { if (this.qaState === 'loading') this.qaState = 'idle'; })
+      )
+      .subscribe({
+        next: (res) => {
+          if (res.status !== 'Success') { this.qaState = 'error'; this.qaError = 'API returned a non-success status.'; return; }
+          this.qaData = res.result;
+          this.qaState = 'idle';
+        },
+        error: () => { this.qaState = 'error'; this.qaError = 'Failed to load questions data. Please try again.'; },
+      });
+  }
+
+  loadBitbucket(): void {
+    this.bbState = 'loading';
+    this.bbError = '';
+    this.statsService
+      .getBitbucketAnalysis(this.bbRange)
+      .pipe(
+        takeUntil(this.destroy$),
+        finalize(() => { if (this.bbState === 'loading') this.bbState = 'idle'; })
+      )
+      .subscribe({
+        next: (res) => {
+          if (res.status !== 'Success') { this.bbState = 'error'; this.bbError = 'API returned a non-success status.'; return; }
+          this.bbData = res.result;
+          this.bbState = 'idle';
+        },
+        error: () => { this.bbState = 'error'; this.bbError = 'Failed to load Bitbucket data. Please try again.'; },
+      });
+  }
+
+  loadPr(): void {
+    this.prState = 'loading';
+    this.prError = '';
+    this.statsService
+      .getPrComments(this.prRange)
+      .pipe(
+        takeUntil(this.destroy$),
+        finalize(() => { if (this.prState === 'loading') this.prState = 'idle'; })
+      )
+      .subscribe({
+        next: (res) => {
+          if (res.status !== 'Success') { this.prState = 'error'; this.prError = 'API returned a non-success status.'; return; }
+          this.prData = res.result;
+          this.prState = 'idle';
+        },
+        error: () => { this.prState = 'error'; this.prError = 'Failed to load PR comments data. Please try again.'; },
+      });
+  }
+
+  loadSldc(): void {
+    this.sldcState = 'loading';
+    this.sldcError = '';
+    this.statsService
+      .getSldcAnalysis(this.sldcRange)
+      .pipe(
+        takeUntil(this.destroy$),
+        finalize(() => { if (this.sldcState === 'loading') this.sldcState = 'idle'; })
+      )
+      .subscribe({
+        next: (res) => {
+          if (res.status !== 'Success') { this.sldcState = 'error'; this.sldcError = 'API returned a non-success status.'; return; }
+          this.sldcData = res.result;
+          this.sldcState = 'idle';
+        },
+        error: () => { this.sldcState = 'error'; this.sldcError = 'Failed to load SLDC analysis data. Please try again.'; },
+      });
+  }
+
+  loadAhsi(): void {
+    this.ahsiState = 'loading';
+    this.ahsiError = '';
+    this.statsService
+      .getAhsiCodingStats(this.ahsiRange)
+      .pipe(
+        takeUntil(this.destroy$),
+        finalize(() => { if (this.ahsiState === 'loading') this.ahsiState = 'idle'; })
+      )
+      .subscribe({
+        next: (res) => {
+          if (res.status !== 'Success') { this.ahsiState = 'error'; this.ahsiError = 'API returned a non-success status.'; return; }
+          this.ahsiData = res.result;
+          this.ahsiState = 'idle';
+        },
+        error: () => { this.ahsiState = 'error'; this.ahsiError = 'Failed to load AHSI coding stats. Please try again.'; },
+      });
+  }
+
+  // ── Utilities ─────────────────────────────────────────────────────────────────
+
+  formatPct(value: number | string | null | undefined): string {
+    if (value == null) return '—';
+    const num = typeof value === 'string' ? parseFloat(value) : value;
+    if (isNaN(num)) return '—';
+    return `${num.toFixed(1)}%`;
+  }
+
+  formatDecimal(value: number | null | undefined, decimals = 2): string {
+    if (value == null) return '—';
+    return value.toFixed(decimals);
+  }
+
+  barWidth(value: number | string | null | undefined): string {
+    if (value == null) return '0%';
+    const num = typeof value === 'string' ? parseFloat(value) : value;
+    if (isNaN(num)) return '0%';
+    return `${Math.min(Math.round(num), 100)}%`;
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="sldc-dashboard">
+
+  <!-- ── Questions Overview ─────────────────────────────────────────────────── -->
+  <div class="sldc-card">
+    <div class="sldc-card__header">
+      <div class="sldc-card__title-block">
+        <p class="sldc-section-label">Knowledge Base</p>
+        <p class="sldc-section-title">Questions Overview</p>
+      </div>
+      <div class="sldc-date-row">
+        <div class="sldc-date-group">
+          <label class="sldc-date-label" for="qa-start">From</label>
+          <input id="qa-start" type="date" class="sldc-date-input" [(ngModel)]="qaRange.start" [max]="qaRange.end" />
+        </div>
+        <span class="sldc-date-sep">—</span>
+        <div class="sldc-date-group">
+          <label class="sldc-date-label" for="qa-end">To</label>
+          <input id="qa-end" type="date" class="sldc-date-input" [(ngModel)]="qaRange.end" [min]="qaRange.start" [max]="today" />
+        </div>
+        <button class="sldc-apply-btn" [disabled]="qaState === 'loading'" (click)="loadQa()">
+          <span *ngIf="qaState !== 'loading'">Apply</span>
+          <span *ngIf="qaState === 'loading'" class="sldc-spinner" aria-hidden="true"></span>
+        </button>
+      </div>
+    </div>
+    <div class="sldc-divider"></div>
+    <div *ngIf="qaState === 'error'" class="sldc-error-banner">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.2"/><path d="M8 5v4M8 11v.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      {{ qaError }}
+    </div>
+    <div class="sldc-grid sldc-grid--2">
+      <div class="sldc-metric">
+        <p class="sldc-metric__label">Total questions on Jira</p>
+        <p class="sldc-metric__value">{{ qaData?.jira_count ?? '—' }}</p>
+        <span class="sldc-badge sldc-badge--blue">Jira</span>
+      </div>
+      <div class="sldc-metric">
+        <p class="sldc-metric__label">Total questions on Confluence</p>
+        <p class="sldc-metric__value">{{ qaData?.confluence_count ?? '—' }}</p>
+        <span class="sldc-badge sldc-badge--blue">Confluence</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Bitbucket Analysis ──────────────────────────────────────────────────── -->
+  <div class="sldc-card">
+    <div class="sldc-card__header">
+      <div class="sldc-card__title-block">
+        <p class="sldc-section-label">Repository</p>
+        <p class="sldc-section-title">Bitbucket Analysis</p>
+      </div>
+      <div class="sldc-date-row">
+        <div class="sldc-date-group">
+          <label class="sldc-date-label" for="bb-start">From</label>
+          <input id="bb-start" type="date" class="sldc-date-input" [(ngModel)]="bbRange.start" [max]="bbRange.end" />
+        </div>
+        <span class="sldc-date-sep">—</span>
+        <div class="sldc-date-group">
+          <label class="sldc-date-label" for="bb-end">To</label>
+          <input id="bb-end" type="date" class="sldc-date-input" [(ngModel)]="bbRange.end" [min]="bbRange.start" [max]="today" />
+        </div>
+        <button class="sldc-apply-btn" [disabled]="bbState === 'loading'" (click)="loadBitbucket()">
+          <span *ngIf="bbState !== 'loading'">Apply</span>
+          <span *ngIf="bbState === 'loading'" class="sldc-spinner" aria-hidden="true"></span>
+        </button>
+      </div>
+    </div>
+    <div class="sldc-divider"></div>
+    <div *ngIf="bbState === 'error'" class="sldc-error-banner">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.2"/><path d="M8 5v4M8 11v.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      {{ bbError }}
+    </div>
+    <div class="sldc-grid sldc-grid--2">
+      <div class="sldc-metric">
+        <p class="sldc-metric__label">PR reviewed ratio</p>
+        <p class="sldc-metric__value">{{ formatPct(bbData?.pr_reviewed_ratio) }}</p>
+        <div class="sldc-bar-track"><div class="sldc-bar-fill" [style.width]="barWidth(bbData?.pr_reviewed_ratio)"></div></div>
+      </div>
+      <div class="sldc-metric">
+        <p class="sldc-metric__label">PR summary ratio</p>
+        <p class="sldc-metric__value">{{ formatPct(bbData?.pr_summary_ratio) }}</p>
+        <div class="sldc-bar-track"><div class="sldc-bar-fill" [style.width]="barWidth(bbData?.pr_summary_ratio)"></div></div>
+      </div>
+    </div>
+    <div *ngIf="bbData?.info" class="sldc-info-note">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.1"/><path d="M8 7v5M8 5.5v-.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+      {{ bbData?.info }}
+    </div>
+  </div>
+
+  <!-- ── PR Comments Analysis ───────────────────────────────────────────────── -->
+  <div class="sldc-card">
+    <div class="sldc-card__header">
+      <div class="sldc-card__title-block">
+        <p class="sldc-section-label">Code Review</p>
+        <p class="sldc-section-title">PR Comments Analysis</p>
+      </div>
+      <div class="sldc-date-row">
+        <div class="sldc-date-group">
+          <label class="sldc-date-label" for="pr-start">From</label>
+          <input id="pr-start" type="date" class="sldc-date-input" [(ngModel)]="prRange.start" [max]="prRange.end" />
+        </div>
+        <span class="sldc-date-sep">—</span>
+        <div class="sldc-date-group">
+          <label class="sldc-date-label" for="pr-end">To</label>
+          <input id="pr-end" type="date" class="sldc-date-input" [(ngModel)]="prRange.end" [min]="prRange.start" [max]="today" />
+        </div>
+        <button class="sldc-apply-btn" [disabled]="prState === 'loading'" (click)="loadPr()">
+          <span *ngIf="prState !== 'loading'">Apply</span>
+          <span *ngIf="prState === 'loading'" class="sldc-spinner" aria-hidden="true"></span>
+        </button>
+      </div>
+    </div>
+    <div class="sldc-divider"></div>
+    <div *ngIf="prState === 'error'" class="sldc-error-banner">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.2"/><path d="M8 5v4M8 11v.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      {{ prError }}
+    </div>
+    <div class="sldc-grid sldc-grid--4">
+      <div class="sldc-metric">
+        <p class="sldc-metric__label">Total PRs</p>
+        <p class="sldc-metric__value">{{ prData?.total_prs ?? '—' }}</p>
+      </div>
+      <div class="sldc-metric">
+        <p class="sldc-metric__label">Total comments</p>
+        <p class="sldc-metric__value">{{ prData?.comment_count ?? '—' }}</p>
+      </div>
+      <div class="sldc-metric">
+        <p class="sldc-metric__label">AI comments</p>
+        <p class="sldc-metric__value">{{ prData?.ai_comments ?? '—' }}</p>
+        <span class="sldc-badge sldc-badge--green">AI</span>
+      </div>
+      <div class="sldc-metric">
+        <p class="sldc-metric__label">AI comment ratio</p>
+        <p class="sldc-metric__value">{{ formatPct(prData?.ratio) }}</p>
+        <div class="sldc-bar-track"><div class="sldc-bar-fill" [style.width]="barWidth(prData?.ratio)"></div></div>
+      </div>
+    </div>
+    <div *ngIf="prData?.info" class="sldc-info-note">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.1"/><path d="M8 7v5M8 5.5v-.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+      {{ prData?.info }}
+    </div>
+  </div>
+
+  <!-- ── SLDC Analysis ──────────────────────────────────────────────────────── -->
+  <div class="sldc-card">
+    <div class="sldc-card__header">
+      <div class="sldc-card__title-block">
+        <p class="sldc-section-label">AI Generation</p>
+        <p class="sldc-section-title">SLDC Analysis</p>
+      </div>
+      <div class="sldc-date-row">
+        <div class="sldc-date-group">
+          <label class="sldc-date-label" for="sldc-start">From</label>
+          <input id="sldc-start" type="date" class="sldc-date-input" [(ngModel)]="sldcRange.start" [max]="sldcRange.end" />
+        </div>
+        <span class="sldc-date-sep">—</span>
+        <div class="sldc-date-group">
+          <label class="sldc-date-label" for="sldc-end">To</label>
+          <input id="sldc-end" type="date" class="sldc-date-input" [(ngModel)]="sldcRange.end" [min]="sldcRange.start" [max]="today" />
+        </div>
+        <button class="sldc-apply-btn" [disabled]="sldcState === 'loading'" (click)="loadSldc()">
+          <span *ngIf="sldcState !== 'loading'">Apply</span>
+          <span *ngIf="sldcState === 'loading'" class="sldc-spinner" aria-hidden="true"></span>
+        </button>
+      </div>
+    </div>
+    <div class="sldc-divider"></div>
+    <div *ngIf="sldcState === 'error'" class="sldc-error-banner">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.2"/><path d="M8 5v4M8 11v.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      {{ sldcError }}
+    </div>
+
+    <!-- Project badge row -->
+    <div *ngIf="sldcData?.project" class="sldc-project-row">
+      <span class="sldc-section-label" style="margin: 0;">Project</span>
+      <span class="sldc-badge sldc-badge--blue" style="margin: 0;">{{ sldcData?.project }}</span>
+    </div>
+
+    <!-- Overall counts -->
+    <div class="sldc-grid sldc-grid--3" style="margin-bottom: 10px;">
+      <div class="sldc-metric">
+        <p class="sldc-metric__label">Generated</p>
+        <p class="sldc-metric__value">{{ sldcData?.overall?.generated ?? '—' }}</p>
+      </div>
+      <div class="sldc-metric sldc-metric--success">
+        <p class="sldc-metric__label">Accepted</p>
+        <p class="sldc-metric__value">{{ sldcData?.overall?.accepted ?? '—' }}</p>
+      </div>
+      <div class="sldc-metric sldc-metric--danger">
+        <p class="sldc-metric__label">Rejected</p>
+        <p class="sldc-metric__value">{{ sldcData?.overall?.rejected ?? '—' }}</p>
+      </div>
+    </div>
+
+    <!-- Acceptance / rejection rates -->
+    <div class="sldc-grid sldc-grid--2" style="margin-bottom: 10px;">
+      <div class="sldc-metric">
+        <p class="sldc-metric__label">Acceptance rate</p>
+        <p class="sldc-metric__value sldc-metric__value--success">{{ formatPct(sldcData?.acceptance_rate) }}</p>
+        <div class="sldc-bar-track"><div class="sldc-bar-fill sldc-bar-fill--success" [style.width]="barWidth(sldcData?.acceptance_rate)"></div></div>
+      </div>
+      <div class="sldc-metric">
+        <p class="sldc-metric__label">Rejection rate</p>
+        <p class="sldc-metric__value sldc-metric__value--danger">{{ formatPct(sldcData?.rejecttion_rate) }}</p>
+        <div class="sldc-bar-track"><div class="sldc-bar-fill sldc-bar-fill--danger" [style.width]="barWidth(sldcData?.rejecttion_rate)"></div></div>
+      </div>
+    </div>
+
+    <!-- Ratios -->
+    <div class="sldc-grid sldc-grid--3">
+      <div class="sldc-metric">
+        <p class="sldc-metric__label">CRS ratio</p>
+        <p class="sldc-metric__value">{{ formatPct(sldcData?.crs_ratio) }}</p>
+        <div class="sldc-bar-track"><div class="sldc-bar-fill" [style.width]="barWidth(sldcData?.crs_ratio)"></div></div>
+      </div>
+      <div class="sldc-metric">
+        <p class="sldc-metric__label">SRS ratio</p>
+        <p class="sldc-metric__value">{{ formatPct(sldcData?.srs_ratio) }}</p>
+        <div class="sldc-bar-track"><div class="sldc-bar-fill" [style.width]="barWidth(sldcData?.srs_ratio)"></div></div>
+      </div>
+      <div class="sldc-metric">
+        <p class="sldc-metric__label">Task ratio</p>
+        <p class="sldc-metric__value">{{ formatPct(sldcData?.task_ratio) }}</p>
+        <div class="sldc-bar-track"><div class="sldc-bar-fill" [style.width]="barWidth(sldcData?.task_ratio)"></div></div>
+      </div>
+    </div>
+
+    <div *ngIf="sldcData?.info" class="sldc-info-note">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.1"/><path d="M8 7v5M8 5.5v-.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+      {{ sldcData?.info }}
+    </div>
+  </div>
+
+  <!-- ── AHSI Coding Stats ──────────────────────────────────────────────────── -->
+  <div class="sldc-card">
+    <div class="sldc-card__header">
+      <div class="sldc-card__title-block">
+        <p class="sldc-section-label">Code Intelligence</p>
+        <p class="sldc-section-title">AHSI Coding Stats</p>
+      </div>
+      <div class="sldc-date-row">
+        <div class="sldc-date-group">
+          <label class="sldc-date-label" for="ahsi-start">From</label>
+          <input id="ahsi-start" type="date" class="sldc-date-input" [(ngModel)]="ahsiRange.start" [max]="ahsiRange.end" />
+        </div>
+        <span class="sldc-date-sep">—</span>
+        <div class="sldc-date-group">
+          <label class="sldc-date-label" for="ahsi-end">To</label>
+          <input id="ahsi-end" type="date" class="sldc-date-input" [(ngModel)]="ahsiRange.end" [min]="ahsiRange.start" [max]="today" />
+        </div>
+        <button class="sldc-apply-btn" [disabled]="ahsiState === 'loading'" (click)="loadAhsi()">
+          <span *ngIf="ahsiState !== 'loading'">Apply</span>
+          <span *ngIf="ahsiState === 'loading'" class="sldc-spinner" aria-hidden="true"></span>
+        </button>
+      </div>
+    </div>
+    <div class="sldc-divider"></div>
+    <div *ngIf="ahsiState === 'error'" class="sldc-error-banner">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.2"/><path d="M8 5v4M8 11v.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      {{ ahsiError }}
+    </div>
+
+    <!-- Top row: key headline numbers -->
+    <div class="sldc-grid sldc-grid--3" style="margin-bottom: 10px;">
+      <div class="sldc-metric">
+        <p class="sldc-metric__label">PRs analyzed</p>
+        <p class="sldc-metric__value">{{ ahsiData?.pr_analyzed ?? '—' }}</p>
+      </div>
+      <div class="sldc-metric">
+        <p class="sldc-metric__label">AHSI score</p>
+        <p class="sldc-metric__value">{{ formatDecimal(ahsiData?.ahsi) }}</p>
+        <span class="sldc-badge sldc-badge--blue">Score</span>
+      </div>
+      <div class="sldc-metric">
+        <p class="sldc-metric__label">Avg similarity</p>
+        <p class="sldc-metric__value">{{ formatDecimal(ahsiData?.avg_similarity, 3) }}</p>
+      </div>
+    </div>
+
+    <!-- Coverage + matched blocks -->
+    <div class="sldc-grid sldc-grid--2" style="margin-bottom: 10px;">
+      <div class="sldc-metric">
+        <p class="sldc-metric__label">Coverage</p>
+        <p class="sldc-metric__value">{{ formatPct(ahsiData?.coverage !== null && ahsiData?.coverage !== undefined ? ahsiData!.coverage * 100 : null) }}</p>
+        <div class="sldc-bar-track"><div class="sldc-bar-fill" [style.width]="barWidth(ahsiData?.coverage !== null && ahsiData?.coverage !== undefined ? ahsiData!.coverage * 100 : null)"></div></div>
+      </div>
+      <div class="sldc-metric">
+        <p class="sldc-metric__label">Matched blocks</p>
+        <p class="sldc-metric__value">{{ ahsiData?.matched_blocks ?? '—' }}</p>
+      </div>
+    </div>
+
+    <!-- Block breakdown -->
+    <div class="sldc-grid sldc-grid--2">
+      <div class="sldc-metric">
+        <p class="sldc-metric__label">Total human blocks</p>
+        <p class="sldc-metric__value">{{ ahsiData?.total_human_blocks ?? '—' }}</p>
+        <span class="sldc-badge sldc-badge--blue">Human</span>
+      </div>
+      <div class="sldc-metric">
+        <p class="sldc-metric__label">Total AI blocks</p>
+        <p class="sldc-metric__value">{{ ahsiData?.total_ai_blocks ?? '—' }}</p>
+        <span class="sldc-badge sldc-badge--green">AI</span>
+      </div>
+    </div>
+
+    <div *ngIf="ahsiData?.info" class="sldc-info-note">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.1"/><path d="M8 7v5M8 5.5v-.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+      {{ ahsiData?.info }}
+    </div>
+  </div>
+
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* ═══════════════════════════════════════════════════════════════════════════
    SLDC Statistics — CSS Custom Properties
    Light mode (default)
@@ -51,6 +620,16 @@
   --sldc-statistics-theme-gradient:   linear-gradient(135deg, #6366f1, #8b5cf6, #a855f7);
   --sldc-statistics-theme-text:       #ffffff;
 
+  /* Success metric */
+  --sldc-statistics-success-bg:       #f0fdf4;
+  --sldc-statistics-success-text:     #16a34a;
+  --sldc-statistics-success-bar:      #22c55e;
+
+  /* Danger metric */
+  --sldc-statistics-danger-bg:        #fff7f7;
+  --sldc-statistics-danger-text:      #dc2626;
+  --sldc-statistics-danger-bar:       #ef4444;
+
   /* Misc */
   --sldc-statistics-radius-card:      14px;
   --sldc-statistics-radius-element:   8px;
@@ -96,6 +675,14 @@
     --sldc-statistics-btn-bg:           #111113;
     --sldc-statistics-btn-bg-hover:     #1c1c1f;
     --sldc-statistics-btn-text:         #fafafa;
+
+    --sldc-statistics-success-bg:       #052e16;
+    --sldc-statistics-success-text:     #4ade80;
+    --sldc-statistics-success-bar:      #22c55e;
+
+    --sldc-statistics-danger-bg:        #2d0a0a;
+    --sldc-statistics-danger-text:      #f87171;
+    --sldc-statistics-danger-bar:       #ef4444;
   }
 }
 
@@ -134,6 +721,14 @@
   --sldc-statistics-btn-bg:           #111113;
   --sldc-statistics-btn-bg-hover:     #1c1c1f;
   --sldc-statistics-btn-text:         #fafafa;
+
+  --sldc-statistics-success-bg:       #052e16;
+  --sldc-statistics-success-text:     #4ade80;
+  --sldc-statistics-success-bar:      #22c55e;
+
+  --sldc-statistics-danger-bg:        #2d0a0a;
+  --sldc-statistics-danger-text:      #f87171;
+  --sldc-statistics-danger-bar:       #ef4444;
 }
 
 
@@ -379,6 +974,45 @@
   border-top: 1px solid var(--sldc-statistics-info-border);
 }
 
+/* ── 3-column grid ──────────────────────────────────────────────────────────── */
+.sldc-grid--3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* ── Project badge row ──────────────────────────────────────────────────────── */
+.sldc-project-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+/* ── Success / danger metric variants ───────────────────────────────────────── */
+.sldc-metric--success {
+  background: var(--sldc-statistics-success-bg);
+}
+
+.sldc-metric--danger {
+  background: var(--sldc-statistics-danger-bg);
+}
+
+.sldc-metric__value--success {
+  color: var(--sldc-statistics-success-text);
+}
+
+.sldc-metric__value--danger {
+  color: var(--sldc-statistics-danger-text);
+}
+
+/* ── Colored bar fill variants ───────────────────────────────────────────────── */
+.sldc-bar-fill--success {
+  background: var(--sldc-statistics-success-bar) !important;
+}
+
+.sldc-bar-fill--danger {
+  background: var(--sldc-statistics-danger-bar) !important;
+}
+
 /* ── Responsive ─────────────────────────────────────────────────────────────── */
 @media (max-width: 900px) {
   .sldc-dashboard {
@@ -387,6 +1021,7 @@
 }
 
 @media (max-width: 640px) {
+  .sldc-grid--3,
   .sldc-grid--4 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -413,5 +1048,157 @@
 @media (max-width: 400px) {
   .sldc-grid--2 {
     grid-template-columns: 1fr;
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import { Injectable } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Observable } from 'rxjs';
+
+// ── Response interfaces ────────────────────────────────────────────────────────
+
+export interface ApiResponse<T> {
+  status: 'Success' | 'Error';
+  result: T;
+}
+
+export interface QaResult {
+  jira_count: number;
+  confluence_count: number;
+}
+
+export interface BitbucketResult {
+  date_range: { start_date: string; end_date: string };
+  pr_reviewed_ratio: number;
+  pr_summary_ratio: number;
+  info: string;
+}
+
+export interface PrCommentsResult {
+  total_prs: number;
+  comment_count: number;
+  ai_comments: number;
+  ratio: number;
+  info: string;
+}
+
+export interface SldcOverall {
+  accepted: number;
+  rejected: number;
+  generated: number;
+}
+
+export interface SldcResult {
+  project: string;
+  overall: SldcOverall;
+  acceptance_rate: string;
+  rejecttion_rate: string;
+  crs_ratio: number;
+  srs_ratio: number;
+  task_ratio: number;
+  info: string;
+}
+
+export interface AhsiResult {
+  pr_analyzed: number;
+  ahsi: number;
+  coverage: number;
+  avg_similarity: number;
+  matched_blocks: number;
+  total_human_blocks: number;
+  total_ai_blocks: number;
+  info: string;
+}
+
+export interface DateRange {
+  start: string; // internal format: yyyy-mm-dd (from native date input)
+  end: string;   // internal format: yyyy-mm-dd (from native date input)
+}
+
+// ── Request body shape sent to every endpoint ──────────────────────────────────
+interface DateRangePayload {
+  start_date: string; // API format: dd-mm-yyyy
+  end_date: string;   // API format: dd-mm-yyyy
+}
+
+// ── Service ────────────────────────────────────────────────────────────────────
+
+@Injectable({ providedIn: 'root' })
+export class StatisticsService {
+  // Replace with your actual base URL (e.g. from environment.ts)
+  private readonly baseUrl = '/api';
+
+  constructor(private http: HttpClient) {}
+
+  /**
+   * Converts native date input format (yyyy-mm-dd) to API format (dd-mm-yyyy).
+   * e.g. "2025-03-17" -> "17-03-2025"
+   */
+  private formatDate(isoDate: string): string {
+    const [yyyy, mm, dd] = isoDate.split('-');
+    return `${dd}-${mm}-${yyyy}`;
+  }
+
+  private buildPayload(range: DateRange): DateRangePayload {
+    return {
+      start_date: this.formatDate(range.start),
+      end_date: this.formatDate(range.end),
+    };
+  }
+
+  getQaStats(range: DateRange): Observable<ApiResponse<QaResult>> {
+    return this.http.post<ApiResponse<QaResult>>(
+      `${this.baseUrl}/qa-stats`,
+      this.buildPayload(range)
+    );
+  }
+
+  getBitbucketAnalysis(range: DateRange): Observable<ApiResponse<BitbucketResult>> {
+    return this.http.post<ApiResponse<BitbucketResult>>(
+      `${this.baseUrl}/bitbucket-analysis`,
+      this.buildPayload(range)
+    );
+  }
+
+  getPrComments(range: DateRange): Observable<ApiResponse<PrCommentsResult>> {
+    return this.http.post<ApiResponse<PrCommentsResult>>(
+      `${this.baseUrl}/pr-comments`,
+      this.buildPayload(range)
+    );
+  }
+
+  getSldcAnalysis(range: DateRange): Observable<ApiResponse<SldcResult>> {
+    return this.http.post<ApiResponse<SldcResult>>(
+      `${this.baseUrl}/sldc-analysis`,
+      this.buildPayload(range)
+    );
+  }
+
+  getAhsiCodingStats(range: DateRange): Observable<ApiResponse<AhsiResult>> {
+    return this.http.post<ApiResponse<AhsiResult>>(
+      `${this.baseUrl}/ahsi-coding-stats`,
+      this.buildPayload(range)
+    );
   }
 }
