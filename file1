@@ -1,218 +1,133 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
-import { Subject } from 'rxjs';
-import { takeUntil, finalize } from 'rxjs/operators';
-import {
-  StatisticsService,
-  QaResult,
-  BitbucketResult,
-  PrCommentsResult,
-  SldcResult,
-  AhsiResult,
-  DateRange,
-} from './statistics.service';
+import { Injectable } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Observable } from 'rxjs';
 
-type SectionState = 'idle' | 'loading' | 'error';
+// ── Response interfaces ────────────────────────────────────────────────────────
 
-function toIsoDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
+export interface ApiResponse<T> {
+  status: 'Success' | 'Error';
+  result: T;
 }
 
-function defaultRange(): DateRange {
-  const end = new Date();
-  const start = new Date();
-  start.setFullYear(start.getFullYear() - 1);
-  return { start: toIsoDate(start), end: toIsoDate(end) };
+export interface QaResult {
+  jira_count: number;
+  confluence_count: number;
 }
 
-@Component({
-  selector: 'app-stats-dashboard',
-  templateUrl: './stats-dashboard.component.html',
-  styleUrls: ['./stats-dashboard.component.css'],
-})
-export class StatsDashboardComponent implements OnInit, OnDestroy {
-  private destroy$ = new Subject<void>();
-
-  today = toIsoDate(new Date());
-
-  // ── QA ──────────────────────────────────────────────────────────────────────
-  qaRange: DateRange = defaultRange();
-  qaData: QaResult | null = null;
-  qaState: SectionState = 'idle';
-  qaError = '';
-
-  // ── Bitbucket ────────────────────────────────────────────────────────────────
-  bbRange: DateRange = defaultRange();
-  bbData: BitbucketResult | null = null;
-  bbState: SectionState = 'idle';
-  bbError = '';
-
-  // ── PR Comments ──────────────────────────────────────────────────────────────
-  prRange: DateRange = defaultRange();
-  prData: PrCommentsResult | null = null;
-  prState: SectionState = 'idle';
-  prError = '';
-
-  // ── SLDC Analysis ────────────────────────────────────────────────────────────
-  sldcRange: DateRange = defaultRange();
-  sldcData: SldcResult | null = null;
-  sldcState: SectionState = 'idle';
-  sldcError = '';
-
-  // ── AHSI Coding Stats ────────────────────────────────────────────────────────
-  ahsiRange: DateRange = defaultRange();
-  ahsiData: AhsiResult | null = null;
-  ahsiState: SectionState = 'idle';
-  ahsiError = '';
-
-  constructor(private statsService: StatisticsService) {}
-
-  ngOnInit(): void {
-    this.loadQa();
-    this.loadBitbucket();
-    this.loadPr();
-    this.loadSldc();
-    this.loadAhsi();
-  }
-
-  ngOnDestroy(): void {
-    this.destroy$.next();
-    this.destroy$.complete();
-  }
-
-  // ── Fetch methods ────────────────────────────────────────────────────────────
-
-  loadQa(): void {
-    this.qaState = 'loading';
-    this.qaError = '';
-    this.statsService
-      .getQaStats(this.qaRange)
-      .pipe(
-        takeUntil(this.destroy$),
-        finalize(() => { if (this.qaState === 'loading') this.qaState = 'idle'; })
-      )
-      .subscribe({
-        next: (res) => {
-          if (res.status !== 'Success') { this.qaState = 'error'; this.qaError = 'API returned a non-success status.'; return; }
-          this.qaData = res.result;
-          this.qaState = 'idle';
-        },
-        error: () => { this.qaState = 'error'; this.qaError = 'Failed to load questions data. Please try again.'; },
-      });
-  }
-
-  loadBitbucket(): void {
-    this.bbState = 'loading';
-    this.bbError = '';
-    this.statsService
-      .getBitbucketAnalysis(this.bbRange)
-      .pipe(
-        takeUntil(this.destroy$),
-        finalize(() => { if (this.bbState === 'loading') this.bbState = 'idle'; })
-      )
-      .subscribe({
-        next: (res) => {
-          if (res.status !== 'Success') { this.bbState = 'error'; this.bbError = 'API returned a non-success status.'; return; }
-          this.bbData = res.result;
-          this.bbState = 'idle';
-        },
-        error: () => { this.bbState = 'error'; this.bbError = 'Failed to load Bitbucket data. Please try again.'; },
-      });
-  }
-
-  loadPr(): void {
-    this.prState = 'loading';
-    this.prError = '';
-    this.statsService
-      .getPrComments(this.prRange)
-      .pipe(
-        takeUntil(this.destroy$),
-        finalize(() => { if (this.prState === 'loading') this.prState = 'idle'; })
-      )
-      .subscribe({
-        next: (res) => {
-          if (res.status !== 'Success') { this.prState = 'error'; this.prError = 'API returned a non-success status.'; return; }
-          this.prData = res.result;
-          this.prState = 'idle';
-        },
-        error: () => { this.prState = 'error'; this.prError = 'Failed to load PR comments data. Please try again.'; },
-      });
-  }
-
-  loadSldc(): void {
-    this.sldcState = 'loading';
-    this.sldcError = '';
-    this.statsService
-      .getSldcAnalysis(this.sldcRange)
-      .pipe(
-        takeUntil(this.destroy$),
-        finalize(() => { if (this.sldcState === 'loading') this.sldcState = 'idle'; })
-      )
-      .subscribe({
-        next: (res) => {
-          if (res.status !== 'Success') { this.sldcState = 'error'; this.sldcError = 'API returned a non-success status.'; return; }
-          this.sldcData = res.result;
-          this.sldcState = 'idle';
-        },
-        error: () => { this.sldcState = 'error'; this.sldcError = 'Failed to load SLDC analysis data. Please try again.'; },
-      });
-  }
-
-  loadAhsi(): void {
-    this.ahsiState = 'loading';
-    this.ahsiError = '';
-    this.statsService
-      .getAhsiCodingStats(this.ahsiRange)
-      .pipe(
-        takeUntil(this.destroy$),
-        finalize(() => { if (this.ahsiState === 'loading') this.ahsiState = 'idle'; })
-      )
-      .subscribe({
-        next: (res) => {
-          if (res.status !== 'Success') { this.ahsiState = 'error'; this.ahsiError = 'API returned a non-success status.'; return; }
-          this.ahsiData = res.result;
-          this.ahsiState = 'idle';
-        },
-        error: () => { this.ahsiState = 'error'; this.ahsiError = 'Failed to load AHSI coding stats. Please try again.'; },
-      });
-  }
-
-  // ── Utilities ─────────────────────────────────────────────────────────────────
-
-  formatPct(value: number | string | null | undefined): string {
-    if (value == null) return '—';
-    const num = typeof value === 'string' ? parseFloat(value) : value;
-    if (isNaN(num)) return '—';
-    return `${num.toFixed(1)}%`;
-  }
-
-  formatDecimal(value: number | null | undefined, decimals = 2): string {
-    if (value == null) return '—';
-    return value.toFixed(decimals);
-  }
-
-  barWidth(value: number | string | null | undefined): string {
-    if (value == null) return '0%';
-    const num = typeof value === 'string' ? parseFloat(value) : value;
-    if (isNaN(num)) return '0%';
-    return `${Math.min(Math.round(num), 100)}%`;
-  }
+export interface BitbucketResult {
+  date_range: { start_date: string; end_date: string };
+  pr_reviewed_ratio: number;
+  pr_summary_ratio: number;
+  info: string;
 }
 
+export interface PrCommentsResult {
+  total_prs: number;
+  comment_count: number;
+  ai_comments: number;
+  ratio: number;
+  info: string;
+}
 
+export interface SldcOverall {
+  accepted: number;
+  rejected: number;
+  generated: number;
+}
 
+export interface SldcResult {
+  project: string;
+  overall: SldcOverall;
+  acceptance_rate: string;
+  rejection_rate: string;
+  crs_ratio: number;
+  srs_ratio: number;
+  task_ratio: number;
+  info: string;
+}
 
+export interface AhsiResult {
+  pr_analyzed: number;
+  ahsi: number;
+  coverage: number;
+  avg_similarity: number;
+  matched_blocks: number;
+  total_human_blocks: number;
+  total_ai_blocks: number;
+  info: string;
+}
 
+export interface DateRange {
+  start: string; // internal format: yyyy-mm-dd (from native date input)
+  end: string;   // internal format: yyyy-mm-dd (from native date input)
+}
 
+// ── Request body shape sent to every endpoint ──────────────────────────────────
+interface DateRangePayload {
+  start_date: string; // API format: dd-mm-yyyy
+  end_date: string;   // API format: dd-mm-yyyy
+}
 
+// ── Service ────────────────────────────────────────────────────────────────────
 
+@Injectable({ providedIn: 'root' })
+export class StatisticsService {
+  // Replace with your actual base URL (e.g. from environment.ts)
+  private readonly baseUrl = '/api';
 
+  constructor(private http: HttpClient) {}
 
+  /**
+   * Converts native date input format (yyyy-mm-dd) to API format (dd-mm-yyyy).
+   * e.g. "2025-03-17" -> "17-03-2025"
+   */
+  private formatDate(isoDate: string): string {
+    const [yyyy, mm, dd] = isoDate.split('-');
+    return `${dd}-${mm}-${yyyy}`;
+  }
 
+  private buildPayload(range: DateRange): DateRangePayload {
+    return {
+      start_date: this.formatDate(range.start),
+      end_date: this.formatDate(range.end),
+    };
+  }
 
+  getQaStats(range: DateRange): Observable<ApiResponse<QaResult>> {
+    return this.http.post<ApiResponse<QaResult>>(
+      `${this.baseUrl}/qa-stats`,
+      this.buildPayload(range)
+    );
+  }
 
+  getBitbucketAnalysis(range: DateRange): Observable<ApiResponse<BitbucketResult>> {
+    return this.http.post<ApiResponse<BitbucketResult>>(
+      `${this.baseUrl}/bitbucket-analysis`,
+      this.buildPayload(range)
+    );
+  }
 
+  getPrComments(range: DateRange): Observable<ApiResponse<PrCommentsResult>> {
+    return this.http.post<ApiResponse<PrCommentsResult>>(
+      `${this.baseUrl}/pr-comments`,
+      this.buildPayload(range)
+    );
+  }
 
+  getSldcAnalysis(range: DateRange): Observable<ApiResponse<SldcResult>> {
+    return this.http.post<ApiResponse<SldcResult>>(
+      `${this.baseUrl}/sldc-analysis`,
+      this.buildPayload(range)
+    );
+  }
 
+  getAhsiCodingStats(range: DateRange): Observable<ApiResponse<AhsiResult>> {
+    return this.http.post<ApiResponse<AhsiResult>>(
+      `${this.baseUrl}/ahsi-coding-stats`,
+      this.buildPayload(range)
+    );
+  }
+}
 
 
 
@@ -431,8 +346,8 @@ export class StatsDashboardComponent implements OnInit, OnDestroy {
       </div>
       <div class="sldc-metric">
         <p class="sldc-metric__label">Rejection rate</p>
-        <p class="sldc-metric__value sldc-metric__value--danger">{{ formatPct(sldcData?.rejecttion_rate) }}</p>
-        <div class="sldc-bar-track"><div class="sldc-bar-fill sldc-bar-fill--danger" [style.width]="barWidth(sldcData?.rejecttion_rate)"></div></div>
+        <p class="sldc-metric__value sldc-metric__value--danger">{{ formatPct(sldcData?.rejection_rate) }}</p>
+        <div class="sldc-bar-track"><div class="sldc-bar-fill sldc-bar-fill--danger" [style.width]="barWidth(sldcData?.rejection_rate)"></div></div>
       </div>
     </div>
 
@@ -541,664 +456,3 @@ export class StatsDashboardComponent implements OnInit, OnDestroy {
   </div>
 
 </div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   SLDC Statistics — CSS Custom Properties
-   Light mode (default)
-   ═══════════════════════════════════════════════════════════════════════════ */
-:root,
-[data-theme="light"] {
-  /* Surfaces */
-  --sldc-statistics-bg-page:          #f4f4f5;
-  --sldc-statistics-bg-card:          #ffffff;
-  --sldc-statistics-bg-metric:        #f9f9f9;
-  --sldc-statistics-bg-input:         #f4f4f5;
-
-  /* Borders */
-  --sldc-statistics-border-card:      #bfbfbf;
-  --sldc-statistics-border-input:     #bfbfbf;
-  --sldc-statistics-border-divider:   #e5e5e5;
-  --sldc-statistics-border-btn:       #bfbfbf;
-
-  /* Text */
-  --sldc-statistics-text-primary:     #0a0a0a;
-  --sldc-statistics-text-secondary:   #52525b;
-  --sldc-statistics-text-tertiary:    #a1a1aa;
-  --sldc-statistics-text-label:       #71717a;
-
-  /* Accent — progress bar */
-  --sldc-statistics-accent-bar:       #2563eb;
-
-  /* Badge — blue (Jira / Confluence) */
-  --sldc-statistics-badge-blue-bg:    #dbeafe;
-  --sldc-statistics-badge-blue-text:  #1e40af;
-
-  /* Badge — green (AI) */
-  --sldc-statistics-badge-green-bg:   #dcfce7;
-  --sldc-statistics-badge-green-text: #166534;
-
-  /* Error */
-  --sldc-statistics-error-bg:         #fef2f2;
-  --sldc-statistics-error-border:     #fca5a5;
-  --sldc-statistics-error-text:       #991b1b;
-
-  /* Info note */
-  --sldc-statistics-info-text:        #a1a1aa;
-  --sldc-statistics-info-border:      #e5e5e5;
-
-  /* Apply button */
-  --sldc-statistics-btn-bg:           #ffffff;
-  --sldc-statistics-btn-bg-hover:     #f4f4f5;
-  --sldc-statistics-btn-text:         #0a0a0a;
-
-  /* Theme gradient — button, badges, bar fill */
-  --sldc-statistics-theme-gradient:   linear-gradient(135deg, #6366f1, #8b5cf6, #a855f7);
-  --sldc-statistics-theme-text:       #ffffff;
-
-  /* Success metric */
-  --sldc-statistics-success-bg:       #f0fdf4;
-  --sldc-statistics-success-text:     #16a34a;
-  --sldc-statistics-success-bar:      #22c55e;
-
-  /* Danger metric */
-  --sldc-statistics-danger-bg:        #fff7f7;
-  --sldc-statistics-danger-text:      #dc2626;
-  --sldc-statistics-danger-bar:       #ef4444;
-
-  /* Misc */
-  --sldc-statistics-radius-card:      14px;
-  --sldc-statistics-radius-element:   8px;
-  --sldc-statistics-radius-badge:     20px;
-}
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   Dark mode
-   ═══════════════════════════════════════════════════════════════════════════ */
-[data-theme="dark"],
-@media (prefers-color-scheme: dark) {
-  :root {
-    --sldc-statistics-bg-page:          #0d0d0f;
-    --sldc-statistics-bg-card:          #111113;
-    --sldc-statistics-bg-metric:        #1c1c1f;
-    --sldc-statistics-bg-input:         #1c1c1f;
-
-    --sldc-statistics-border-card:      #27272a;
-    --sldc-statistics-border-input:     #27272a;
-    --sldc-statistics-border-divider:   #27272a;
-    --sldc-statistics-border-btn:       #27272a;
-
-    --sldc-statistics-text-primary:     #fafafa;
-    --sldc-statistics-text-secondary:   #a1a1aa;
-    --sldc-statistics-text-tertiary:    #52525b;
-    --sldc-statistics-text-label:       #71717a;
-
-    --sldc-statistics-accent-bar:       #3b82f6;
-
-    --sldc-statistics-badge-blue-bg:    #1e3a5f;
-    --sldc-statistics-badge-blue-text:  #93c5fd;
-
-    --sldc-statistics-badge-green-bg:   #14532d;
-    --sldc-statistics-badge-green-text: #86efac;
-
-    --sldc-statistics-error-bg:         #3b0f0f;
-    --sldc-statistics-error-border:     #7f1d1d;
-    --sldc-statistics-error-text:       #fca5a5;
-
-    --sldc-statistics-info-text:        #52525b;
-    --sldc-statistics-info-border:      #27272a;
-
-    --sldc-statistics-btn-bg:           #111113;
-    --sldc-statistics-btn-bg-hover:     #1c1c1f;
-    --sldc-statistics-btn-text:         #fafafa;
-
-    --sldc-statistics-success-bg:       #052e16;
-    --sldc-statistics-success-text:     #4ade80;
-    --sldc-statistics-success-bar:      #22c55e;
-
-    --sldc-statistics-danger-bg:        #2d0a0a;
-    --sldc-statistics-danger-text:      #f87171;
-    --sldc-statistics-danger-bar:       #ef4444;
-  }
-}
-
-/* Override with explicit attribute (takes precedence over media query) */
-[data-theme="dark"] {
-  --sldc-statistics-bg-page:          #0d0d0f;
-  --sldc-statistics-bg-card:          #111113;
-  --sldc-statistics-bg-metric:        #1c1c1f;
-  --sldc-statistics-bg-input:         #1c1c1f;
-
-  --sldc-statistics-border-card:      #27272a;
-  --sldc-statistics-border-input:     #27272a;
-  --sldc-statistics-border-divider:   #27272a;
-  --sldc-statistics-border-btn:       #27272a;
-
-  --sldc-statistics-text-primary:     #fafafa;
-  --sldc-statistics-text-secondary:   #a1a1aa;
-  --sldc-statistics-text-tertiary:    #52525b;
-  --sldc-statistics-text-label:       #71717a;
-
-  --sldc-statistics-accent-bar:       #3b82f6;
-
-  --sldc-statistics-badge-blue-bg:    #1e3a5f;
-  --sldc-statistics-badge-blue-text:  #93c5fd;
-
-  --sldc-statistics-badge-green-bg:   #14532d;
-  --sldc-statistics-badge-green-text: #86efac;
-
-  --sldc-statistics-error-bg:         #3b0f0f;
-  --sldc-statistics-error-border:     #7f1d1d;
-  --sldc-statistics-error-text:       #fca5a5;
-
-  --sldc-statistics-info-text:        #52525b;
-  --sldc-statistics-info-border:      #27272a;
-
-  --sldc-statistics-btn-bg:           #111113;
-  --sldc-statistics-btn-bg-hover:     #1c1c1f;
-  --sldc-statistics-btn-text:         #fafafa;
-
-  --sldc-statistics-success-bg:       #052e16;
-  --sldc-statistics-success-text:     #4ade80;
-  --sldc-statistics-success-bar:      #22c55e;
-
-  --sldc-statistics-danger-bg:        #2d0a0a;
-  --sldc-statistics-danger-text:      #f87171;
-  --sldc-statistics-danger-bar:       #ef4444;
-}
-
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   Component styles
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-.sldc-dashboard {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1.25rem;
-  padding: 1.5rem 0;
-  font-family: 'DM Sans', system-ui, sans-serif;
-  background: var(--sldc-statistics-bg-page);
-}
-
-/* ── Card ───────────────────────────────────────────────────────────────────── */
-.sldc-card {
-  background: var(--sldc-statistics-bg-card);
-  border: 1px solid var(--sldc-statistics-border-card);
-  border-radius: var(--sldc-statistics-radius-card);
-  padding: 1.25rem 1.5rem;
-}
-
-.sldc-card__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 1rem;
-  margin-bottom: 1.25rem;
-}
-
-/* ── Section labels ─────────────────────────────────────────────────────────── */
-.sldc-section-label {
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--sldc-statistics-text-tertiary);
-  margin: 0 0 4px;
-}
-
-.sldc-section-title {
-  font-size: 16px;
-  font-weight: 500;
-  color: var(--sldc-statistics-text-primary);
-  margin: 0;
-}
-
-/* ── Divider ────────────────────────────────────────────────────────────────── */
-.sldc-divider {
-  height: 1px;
-  background: var(--sldc-statistics-border-divider);
-  margin-bottom: 1.25rem;
-}
-
-/* ── Date row ───────────────────────────────────────────────────────────────── */
-.sldc-date-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.sldc-date-group {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.sldc-date-label {
-  font-size: 12px;
-  color: var(--sldc-statistics-text-secondary);
-  white-space: nowrap;
-}
-
-.sldc-date-sep {
-  font-size: 12px;
-  color: var(--sldc-statistics-text-tertiary);
-}
-
-.sldc-date-input {
-  font-family: inherit;
-  font-size: 13px;
-  padding: 5px 9px;
-  border: 1px solid var(--sldc-statistics-border-input);
-  border-radius: var(--sldc-statistics-radius-element);
-  background: var(--sldc-statistics-bg-input);
-  color: var(--sldc-statistics-text-primary);
-  outline: none;
-  cursor: pointer;
-  transition: border-color 0.15s;
-}
-
-.sldc-date-input:focus {
-  border-color: var(--sldc-statistics-accent-bar);
-}
-
-/* ── Apply button ───────────────────────────────────────────────────────────── */
-.sldc-apply-btn {
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 500;
-  padding: 5px 16px;
-  border-radius: var(--sldc-statistics-radius-element);
-  border: none;
-  background: var(--sldc-statistics-theme-gradient);
-  color: var(--sldc-statistics-theme-text);
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-  transition: opacity 0.15s, transform 0.1s;
-  min-width: 68px;
-  justify-content: center;
-}
-
-.sldc-apply-btn:hover:not(:disabled) {
-  opacity: 0.88;
-}
-
-.sldc-apply-btn:active:not(:disabled) {
-  transform: scale(0.97);
-}
-
-.sldc-apply-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-/* ── Spinner ────────────────────────────────────────────────────────────────── */
-.sldc-spinner {
-  display: inline-block;
-  width: 14px;
-  height: 14px;
-  border: 1.5px solid rgba(255, 255, 255, 0.35);
-  border-top-color: #ffffff;
-  border-radius: 50%;
-  animation: sldc-spin 0.7s linear infinite;
-}
-
-@keyframes sldc-spin {
-  to { transform: rotate(360deg); }
-}
-
-/* ── Error banner ───────────────────────────────────────────────────────────── */
-.sldc-error-banner {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--sldc-statistics-error-text);
-  background: var(--sldc-statistics-error-bg);
-  border: 1px solid var(--sldc-statistics-error-border);
-  border-radius: var(--sldc-statistics-radius-element);
-  padding: 8px 12px;
-  margin-bottom: 1rem;
-}
-
-/* ── Metric grid ────────────────────────────────────────────────────────────── */
-.sldc-grid {
-  display: grid;
-  gap: 10px;
-}
-
-.sldc-grid--2 {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.sldc-grid--4 {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-/* ── Metric card ────────────────────────────────────────────────────────────── */
-.sldc-metric {
-  background: var(--sldc-statistics-bg-metric);
-  border-radius: var(--sldc-statistics-radius-element);
-  padding: 14px 16px;
-}
-
-.sldc-metric__label {
-  font-size: 12px;
-  color: var(--sldc-statistics-text-label);
-  margin: 0 0 6px;
-  line-height: 1.4;
-}
-
-.sldc-metric__value {
-  font-size: 26px;
-  font-weight: 500;
-  color: var(--sldc-statistics-text-primary);
-  margin: 0;
-  line-height: 1;
-}
-
-/* ── Badges ─────────────────────────────────────────────────────────────────── */
-.sldc-badge {
-  display: inline-block;
-  font-size: 11px;
-  font-weight: 500;
-  padding: 2px 8px;
-  border-radius: var(--sldc-statistics-radius-badge);
-  margin-top: 8px;
-}
-
-.sldc-badge--blue {
-  background: var(--sldc-statistics-badge-blue-bg);
-  color: var(--sldc-statistics-badge-blue-text);
-}
-
-.sldc-badge--green {
-  background: var(--sldc-statistics-badge-green-bg);
-  color: var(--sldc-statistics-badge-green-text);
-}
-
-/* ── Progress bar ───────────────────────────────────────────────────────────── */
-.sldc-bar-track {
-  height: 5px;
-  background: var(--sldc-statistics-border-divider);
-  border-radius: 20px;
-  overflow: hidden;
-  margin-top: 10px;
-}
-
-.sldc-bar-fill {
-  height: 100%;
-  border-radius: 20px;
-  background: var(--sldc-statistics-accent-bar);
-  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-/* ── Info note ──────────────────────────────────────────────────────────────── */
-.sldc-info-note {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--sldc-statistics-info-text);
-  margin-top: 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--sldc-statistics-info-border);
-}
-
-/* ── 3-column grid ──────────────────────────────────────────────────────────── */
-.sldc-grid--3 {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-/* ── Project badge row ──────────────────────────────────────────────────────── */
-.sldc-project-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 14px;
-}
-
-/* ── Success / danger metric variants ───────────────────────────────────────── */
-.sldc-metric--success {
-  background: var(--sldc-statistics-success-bg);
-}
-
-.sldc-metric--danger {
-  background: var(--sldc-statistics-danger-bg);
-}
-
-.sldc-metric__value--success {
-  color: var(--sldc-statistics-success-text);
-}
-
-.sldc-metric__value--danger {
-  color: var(--sldc-statistics-danger-text);
-}
-
-/* ── Colored bar fill variants ───────────────────────────────────────────────── */
-.sldc-bar-fill--success {
-  background: var(--sldc-statistics-success-bar) !important;
-}
-
-.sldc-bar-fill--danger {
-  background: var(--sldc-statistics-danger-bar) !important;
-}
-
-/* ── Responsive ─────────────────────────────────────────────────────────────── */
-@media (max-width: 900px) {
-  .sldc-dashboard {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 640px) {
-  .sldc-grid--3,
-  .sldc-grid--4 {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .sldc-card__header {
-    flex-direction: column;
-  }
-
-  .sldc-date-row {
-    flex-direction: column;
-    align-items: flex-start;
-    width: 100%;
-  }
-
-  .sldc-date-input {
-    width: 100%;
-  }
-
-  .sldc-apply-btn {
-    width: 100%;
-  }
-}
-
-@media (max-width: 400px) {
-  .sldc-grid--2 {
-    grid-template-columns: 1fr;
-  }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { Observable } from 'rxjs';
-
-// ── Response interfaces ────────────────────────────────────────────────────────
-
-export interface ApiResponse<T> {
-  status: 'Success' | 'Error';
-  result: T;
-}
-
-export interface QaResult {
-  jira_count: number;
-  confluence_count: number;
-}
-
-export interface BitbucketResult {
-  date_range: { start_date: string; end_date: string };
-  pr_reviewed_ratio: number;
-  pr_summary_ratio: number;
-  info: string;
-}
-
-export interface PrCommentsResult {
-  total_prs: number;
-  comment_count: number;
-  ai_comments: number;
-  ratio: number;
-  info: string;
-}
-
-export interface SldcOverall {
-  accepted: number;
-  rejected: number;
-  generated: number;
-}
-
-export interface SldcResult {
-  project: string;
-  overall: SldcOverall;
-  acceptance_rate: string;
-  rejecttion_rate: string;
-  crs_ratio: number;
-  srs_ratio: number;
-  task_ratio: number;
-  info: string;
-}
-
-export interface AhsiResult {
-  pr_analyzed: number;
-  ahsi: number;
-  coverage: number;
-  avg_similarity: number;
-  matched_blocks: number;
-  total_human_blocks: number;
-  total_ai_blocks: number;
-  info: string;
-}
-
-export interface DateRange {
-  start: string; // internal format: yyyy-mm-dd (from native date input)
-  end: string;   // internal format: yyyy-mm-dd (from native date input)
-}
-
-// ── Request body shape sent to every endpoint ──────────────────────────────────
-interface DateRangePayload {
-  start_date: string; // API format: dd-mm-yyyy
-  end_date: string;   // API format: dd-mm-yyyy
-}
-
-// ── Service ────────────────────────────────────────────────────────────────────
-
-@Injectable({ providedIn: 'root' })
-export class StatisticsService {
-  // Replace with your actual base URL (e.g. from environment.ts)
-  private readonly baseUrl = '/api';
-
-  constructor(private http: HttpClient) {}
-
-  /**
-   * Converts native date input format (yyyy-mm-dd) to API format (dd-mm-yyyy).
-   * e.g. "2025-03-17" -> "17-03-2025"
-   */
-  private formatDate(isoDate: string): string {
-    const [yyyy, mm, dd] = isoDate.split('-');
-    return `${dd}-${mm}-${yyyy}`;
-  }
-
-  private buildPayload(range: DateRange): DateRangePayload {
-    return {
-      start_date: this.formatDate(range.start),
-      end_date: this.formatDate(range.end),
-    };
-  }
-
-  getQaStats(range: DateRange): Observable<ApiResponse<QaResult>> {
-    return this.http.post<ApiResponse<QaResult>>(
-      `${this.baseUrl}/qa-stats`,
-      this.buildPayload(range)
-    );
-  }
-
-  getBitbucketAnalysis(range: DateRange): Observable<ApiResponse<BitbucketResult>> {
-    return this.http.post<ApiResponse<BitbucketResult>>(
-      `${this.baseUrl}/bitbucket-analysis`,
-      this.buildPayload(range)
-    );
-  }
-
-  getPrComments(range: DateRange): Observable<ApiResponse<PrCommentsResult>> {
-    return this.http.post<ApiResponse<PrCommentsResult>>(
-      `${this.baseUrl}/pr-comments`,
-      this.buildPayload(range)
-    );
-  }
-
-  getSldcAnalysis(range: DateRange): Observable<ApiResponse<SldcResult>> {
-    return this.http.post<ApiResponse<SldcResult>>(
-      `${this.baseUrl}/sldc-analysis`,
-      this.buildPayload(range)
-    );
-  }
-
-  getAhsiCodingStats(range: DateRange): Observable<ApiResponse<AhsiResult>> {
-    return this.http.post<ApiResponse<AhsiResult>>(
-      `${this.baseUrl}/ahsi-coding-stats`,
-      this.buildPayload(range)
-    );
-  }
-}
