@@ -1,4 +1,4 @@
-// ── Tool card — 3D base ───────────────────────────────
+// ── Tool card base — tinted bg always on ─────────────
 
 .toolCard {
   display: flex;
@@ -9,123 +9,125 @@
   height: 56px;
   border-radius: 12px;
   border: 1px solid var(--border-color);
-  background: var(--app-bg);
   cursor: pointer;
   text-align: left;
-
-  /* 3D foundation */
-  position: relative;
-  transform-style: preserve-3d;
-  transform: perspective(600px) rotateX(0deg) rotateY(0deg) translateY(0);
-  box-shadow:
-    0 1px 2px  rgba(0,0,0,0.08),
-    0 4px 8px  rgba(0,0,0,0.06),
-    0 0 0 1px  rgba(255,255,255,0.04) inset; /* top-edge glass catch */
-
-  transition:
-    transform    0.22s cubic-bezier(0.34, 1.56, 0.64, 1),
-    box-shadow   0.22s ease,
-    border-color 0.15s ease,
-    background   0.15s ease;
+  position: relative;           /* needed for ::before pseudo */
+  overflow: hidden;             /* clips the travelling border */
+  transition: box-shadow 0.2s ease, transform 0.15s ease;
 
   &:active {
-    transform: perspective(600px) rotateX(2deg) translateY(1px) scale(0.97);
-    box-shadow:
-      0 1px 2px rgba(0,0,0,0.12),
-      0 2px 4px rgba(0,0,0,0.08);
+    transform: translateY(0);
+    box-shadow: none;
+  }
+
+  // Travelling gradient border — hidden at rest
+  &::before {
+    content: '';
+    position: absolute;
+    inset: -2px;                /* sits just outside the card edge */
+    border-radius: 14px;        /* slightly larger than card radius */
+    background: conic-gradient(
+      from var(--angle, 0deg),
+      transparent    0%,
+      transparent   30%,
+      var(--card-travel-a) 45%,
+      var(--card-travel-b) 50%,
+      var(--card-travel-a) 55%,
+      transparent   70%,
+      transparent  100%
+    );
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    z-index: 0;
+    animation: borderSpin 2.4s linear infinite paused;
+  }
+
+  // Inner fill sits on top, covering the conic bg except at edges
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 1.5px;
+    border-radius: 11px;
+    background: var(--card-inner-bg);  /* per-tool, set below */
+    z-index: 1;
+  }
+
+  // All children above the pseudo layers
+  > * { position: relative; z-index: 2; }
+
+  &:hover {
+    box-shadow: 0 4px 16px var(--card-travel-shadow);
+    transform: translateY(-1px);
+    border-color: transparent;  /* hide static border, show animated one */
+
+    &::before {
+      opacity: 1;
+      animation-play-state: running;
+    }
+
+    .cardName { color: var(--card-accent); }
+    .cardIconWrap { border-color: var(--card-hover-border); }
   }
 }
 
-// ── Per-tool: 3D hover with tilt direction ────────────
+@property --angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes borderSpin {
+  to { --angle: 360deg; }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ── Per-tool tokens (set card-specific vars) ──────────
 
 .toolCard__jira {
   border-left: 3px solid var(--card-jira-accent);
-
-  &:hover {
-    background: var(--card-jira-hover-bg);
-    border-color: var(--card-jira-hover-border);
-    border-left-color: var(--card-jira-accent);
-
-    /* tilts slightly left — feels like card leans toward the accent */
-    transform: perspective(600px) rotateX(-4deg) rotateY(3deg) translateY(-3px);
-    box-shadow:
-      0 2px 4px   rgba(0,0,0,0.08),
-      0 8px 20px  rgba(8,145,178, 0.22),   /* jira cyan glow */
-      0 16px 32px rgba(8,145,178, 0.10),
-      -4px 6px 16px rgba(8,145,178, 0.12), /* left-depth shadow */
-      0 0 0 1px rgba(255,255,255,0.06) inset;
-
-    .cardIconWrap { border-color: var(--card-jira-hover-border); }
-    .cardName     { color: var(--card-jira-accent); }
-  }
+  --card-accent:         var(--card-jira-accent);
+  --card-hover-border:   var(--card-jira-hover-border);
+  --card-inner-bg:       var(--card-jira-hover-bg);       /* always tinted */
+  --card-travel-a:       var(--card-jira-accent);
+  --card-travel-b:       #22d3ee;
+  --card-travel-shadow:  rgba(8, 145, 178, 0.18);
+  background:            var(--card-jira-hover-bg);       /* default = hover bg */
 }
 
 .toolCard__confluence {
   border-left: 3px solid var(--card-confluence-accent);
-
-  &:hover {
-    background: var(--card-confluence-hover-bg);
-    border-color: var(--card-confluence-hover-border);
-    border-left-color: var(--card-confluence-accent);
-
-    transform: perspective(600px) rotateX(-4deg) rotateY(3deg) translateY(-3px);
-    box-shadow:
-      0 2px 4px   rgba(0,0,0,0.08),
-      0 8px 20px  rgba(79,70,229, 0.22),   /* indigo glow */
-      0 16px 32px rgba(79,70,229, 0.10),
-      -4px 6px 16px rgba(79,70,229, 0.12),
-      0 0 0 1px rgba(255,255,255,0.06) inset;
-
-    .cardIconWrap { border-color: var(--card-confluence-hover-border); }
-    .cardName     { color: var(--card-confluence-accent); }
-  }
+  --card-accent:         var(--card-confluence-accent);
+  --card-hover-border:   var(--card-confluence-hover-border);
+  --card-inner-bg:       var(--card-confluence-hover-bg);
+  --card-travel-a:       var(--card-confluence-accent);
+  --card-travel-b:       #a5b4fc;
+  --card-travel-shadow:  rgba(79, 70, 229, 0.18);
+  background:            var(--card-confluence-hover-bg);
 }
 
 .toolCard__summary {
   border-left: 3px solid var(--card-summary-accent);
-
-  &:hover {
-    background: var(--card-summary-hover-bg);
-    border-color: var(--card-summary-hover-border);
-    border-left-color: var(--card-summary-accent);
-
-    transform: perspective(600px) rotateX(-4deg) rotateY(3deg) translateY(-3px);
-    box-shadow:
-      0 2px 4px   rgba(0,0,0,0.08),
-      0 8px 20px  rgba(217,119,6, 0.22),   /* amber glow */
-      0 16px 32px rgba(217,119,6, 0.10),
-      -4px 6px 16px rgba(217,119,6, 0.12),
-      0 0 0 1px rgba(255,255,255,0.06) inset;
-
-    .cardIconWrap { border-color: var(--card-summary-hover-border); }
-    .cardName     { color: var(--card-summary-accent); }
-  }
+  --card-accent:         var(--card-summary-accent);
+  --card-hover-border:   var(--card-summary-hover-border);
+  --card-inner-bg:       var(--card-summary-hover-bg);
+  --card-travel-a:       var(--card-summary-accent);
+  --card-travel-b:       #fde68a;
+  --card-travel-shadow:  rgba(217, 119, 6, 0.16);
+  background:            var(--card-summary-hover-bg);
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// Add to each tool card button
-onMouseMove={(e) => {
-  const card = e.currentTarget;
-  const { left, top, width, height } = card.getBoundingClientRect();
-  const x = (e.clientX - left) / width  - 0.5;  // -0.5 to 0.5
-  const y = (e.clientY - top)  / height - 0.5;
-  card.style.transform =
-    `perspective(600px) rotateX(${-y * 10}deg) rotateY(${x * 10}deg) translateY(-3px)`;
-}}
-onMouseLeave={(e) => {
-  e.currentTarget.style.transform = '';
-}}
