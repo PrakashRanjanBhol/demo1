@@ -1,228 +1,383 @@
-/* ── Tool card accent tokens ─────────────────────────────
-   Add these inside your existing :root.light-theme
-   and .dark-theme blocks.
-   ─────────────────────────────────────────────────────── */
+import React, { useState } from "react";
+import styles from "./SummaryTool.module.scss";
 
-:root.light-theme {
-  /* Jira — cyan blue */
-  --card-jira-accent:            #0891b2;
-  --card-jira-hover-bg:          #ecfcff;
-  --card-jira-hover-border:      #06b6d4;
+import summaryIcon from "../../assets/icons/summary.png";
 
-  /* Confluence — indigo */
-  --card-confluence-accent:      #4f46e5;
-  --card-confluence-hover-bg:    #eef2ff;
-  --card-confluence-hover-border:#6366f1;
-
-  /* Summary — amber */
-  --card-summary-accent:         #d97706;
-  --card-summary-hover-bg:       #fffbeb;
-  --card-summary-hover-border:   #f59e0b;
-
-  /* Translation — emerald */
-  --card-translation-accent:         #059669;
-  --card-translation-hover-bg:       #ecfdf5;
-  --card-translation-hover-border:   #10b981;
+interface SummaryToolProps {
+  onBack: () => void;
+  fileJobId: string;
 }
 
-.dark-theme {
-  /* Jira — lighter cyan for dark bg */
-  --card-jira-accent:            #22d3ee;
-  --card-jira-hover-bg:          #0c1f26;
-  --card-jira-hover-border:      #06b6d4;
+type Language = "ENGLISH" | "KOREAN";
 
-  /* Confluence — lighter indigo for dark bg */
-  --card-confluence-accent:      #818cf8;
-  --card-confluence-hover-bg:    #13132a;
-  --card-confluence-hover-border:#6366f1;
+const LANGUAGES: { value: Language; label: string; flag: string }[] = [
+  { value: "ENGLISH", label: "English", flag: "🇺🇸" },
+  { value: "KOREAN",  label: "Korean",  flag: "🇰🇷" },
+];
 
-  /* Summary — lighter amber for dark bg */
-  --card-summary-accent:         #fbbf24;
-  --card-summary-hover-bg:       #1c1500;
-  --card-summary-hover-border:   #f59e0b;
+// ── Icons ─────────────────────────────────────────────
 
-  /* Translation — lighter emerald for dark bg */
-  --card-translation-accent:         #34d399;
-  --card-translation-hover-bg:       #021f14;
-  --card-translation-hover-border:   #10b981;
+const LogoutIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+    <polyline points="16 17 21 12 16 7" />
+    <line x1="21" y1="12" x2="9" y2="12" />
+  </svg>
+);
+
+const SparkleIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M15 4V2" /><path d="M15 16v-2" /><path d="M8 9h2" /><path d="M20 9h2" />
+    <path d="M17.8 11.8 19 13" /><path d="M15 9h.01" /><path d="M17.8 6.2 19 5" />
+    <path d="m3 21 9-9" /><path d="M12.2 6.2 11 5" />
+  </svg>
+);
+
+const ChevronIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="6 9 12 15 18 9" />
+  </svg>
+);
+
+const CheckIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="20 6 9 17 4 12" />
+  </svg>
+);
+
+const SwapIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M7 16V4m0 0L3 8m4-4 4 4" />
+    <path d="M17 8v12m0 0 4-4m-4 4-4-4" />
+  </svg>
+);
+
+// ── Language dropdown ─────────────────────────────────
+
+interface LangDropdownProps {
+  label: string;
+  value: Language;
+  onChange: (v: Language) => void;
 }
 
+const LangDropdown: React.FC<LangDropdownProps> = ({ label, value, onChange }) => {
+  const [open, setOpen] = useState(false);
+  const selected = LANGUAGES.find((l) => l.value === value)!;
 
-// ── Panel wrapper ─────────────────────────────────────
+  return (
+    <div className={styles.dropdownWrap}>
+      <span className={styles.dropdownLabel}>{label}</span>
+      <button
+        className={`${styles.dropdown} ${open ? styles.dropdownOpen : ""}`}
+        onClick={() => setOpen((p) => !p)}
+      >
+        <span className={styles.dropdownSelected}>
+          <span className={styles.dropdownFlag}>{selected.flag}</span>
+          <span className={styles.dropdownText}>{selected.label}</span>
+        </span>
+        <span className={`${styles.dropdownChevron} ${open ? styles.dropdownChevronOpen : ""}`}>
+          <ChevronIcon />
+        </span>
+      </button>
 
-.panel {
-  width: 100%;
-  height: 100%;
-  background: var(--sidebar-bg);
+      {open && (
+        <ul className={styles.dropdownMenu}>
+          {LANGUAGES.map((lang) => (
+            <li key={lang.value}>
+              <button
+                className={`${styles.dropdownOption} ${lang.value === value ? styles.dropdownOptionActive : ""}`}
+                onClick={() => { onChange(lang.value); setOpen(false); }}
+              >
+                <span className={styles.dropdownFlag}>{lang.flag}</span>
+                <span className={styles.dropdownText}>{lang.label}</span>
+                {lang.value === value && (
+                  <span className={styles.dropdownCheck}><CheckIcon /></span>
+                )}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+};
+
+// ── Main component ────────────────────────────────────
+
+export const SummaryTool: React.FC<SummaryToolProps> = ({ onBack, fileJobId }) => {
+  const [sourceLang, setSourceLang] = useState<Language>("ENGLISH");
+  const [targetLang, setTargetLang] = useState<Language>("KOREAN");
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError]         = useState<string | null>(null);
+  const [warning, setWarning]     = useState<string | null>(null);
+  const [success, setSuccess]     = useState(false);
+
+  const handleSwap = () => {
+    setSourceLang(targetLang);
+    setTargetLang(sourceLang);
+  };
+
+  const handleSummarize = async () => {
+    setIsLoading(true);
+    setError(null);
+    setSuccess(false);
+
+    try {
+      const res = await fetch("/api/summary/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          file_job_id:     fileJobId,
+          tool_type_id:    6,
+          target_language: targetLang,
+          source_Language: sourceLang,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.message ?? "Failed to generate summary.");
+      }
+
+      setSuccess(true);
+    } catch (err: any) {
+      setError(err?.message ?? "Something went wrong.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className={styles.wrapper}>
+
+      {/* ── Header ── */}
+      <div className={styles.toolHeader}>
+        <div className={styles.toolHeaderTop}>
+          <div className={styles.breadcrumb}>
+            <button className={styles.breadcrumbLink} onClick={onBack}>Tools</button>
+            <span className={styles.breadcrumbSep}>›</span>
+            <span className={styles.breadcrumbCurrent}>Summary</span>
+          </div>
+        </div>
+        <div className={styles.toolHeaderBottom}>
+          <div className={styles.toolIcon}>
+            <img src={summaryIcon} alt="Summary" width={22} height={22} className={styles.img} />
+          </div>
+          <div className={styles.toolMeta}>
+            <h2 className={styles.toolName}>Summary</h2>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Body ── */}
+      <div className={styles.body}>
+
+        <p className={styles.description}>
+          Choose source and target languages, then generate a summary of the current file.
+        </p>
+
+        {/* Language selectors */}
+        <div className={styles.langRow}>
+          <LangDropdown
+            label="Source"
+            value={sourceLang}
+            onChange={setSourceLang}
+          />
+
+          <button className={styles.swapBtn} onClick={handleSwap} title="Swap languages">
+            <SwapIcon />
+          </button>
+
+          <LangDropdown
+            label="Target"
+            value={targetLang}
+            onChange={setTargetLang}
+          />
+        </div>
+
+        {/* Warning */}
+        {warning && (
+          <div className={styles.warningState}>{warning}</div>
+        )}
+
+        {/* Error */}
+        {error && (
+          <div className={styles.errorState}>{error}</div>
+        )}
+
+        {/* Success */}
+        {success && !error && (
+          <div className={styles.successState}>
+            Summary generated successfully!
+          </div>
+        )}
+
+        {/* Summarize button */}
+        <button
+          className={styles.summarizeBtn}
+          onClick={handleSummarize}
+          disabled={isLoading}
+        >
+          {isLoading ? (
+            <>
+              <span className={styles.spinner} />
+              <span>Generating…</span>
+            </>
+          ) : (
+            <>
+              <SparkleIcon />
+              <span>Summarize</span>
+            </>
+          )}
+        </button>
+
+      </div>
+    </div>
+  );
+};
+
+export default SummaryTool;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  SCSS-only palette
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+$error-red:    #dc2626;
+$error-bg:     #fef2f2;
+$error-border: #fecaca;
+
+$success-green:  #16a34a;
+$success-bg:     #f0fdf4;
+$success-border: #bbf7d0;
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  COMPONENT STYLES
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+.wrapper {
   display: flex;
   flex-direction: column;
+  height: 100%;
   overflow: hidden;
-  font-family: "DM Sans", "Segoe UI", sans-serif;
+  background: var(--sidebar-bg);
+  animation: fadeSlideIn 0.2s ease both;
 }
 
-// ── Panel header ──────────────────────────────────────
-
-.panelHeader {
-  padding: 14px 14px 8px;
-  flex-shrink: 0;
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-.panelTitle {
-  font-size: 0.68rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--text-secondary);
-}
+// ── Tool header ───────────────────────────────────────
 
-// ── 2-column grid ─────────────────────────────────────
-
-.toolGrid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  padding: 2px 10px 12px;
-  overflow-y: auto;
-
-  &::-webkit-scrollbar { width: 3px; }
-  &::-webkit-scrollbar-track { background: transparent; }
-  &::-webkit-scrollbar-thumb {
-    background: var(--border-color);
-    border-radius: 2px;
-  }
-}
-
-// ── Tool card base — position relative for pseudo ──────
-
-.toolCard {
+.toolHeader {
   display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-  padding: 0 12px;
-  height: 56px;
-  border-radius: 12px;
-  border: 1px solid var(--border-color);
+  flex-direction: column;
+  padding: 0;
   background: var(--app-bg);
-  cursor: pointer;
-  text-align: left;
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
   position: relative;
   overflow: hidden;
-  z-index: 0;
-  transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
 
-  &:active {
-    transform: translateY(0);
-    box-shadow: none;
-  }
-
-  /* ── Animated gradient border layer ── */
-  &::before {
-    content: '';
-    position: absolute;
-    inset: -2px;
-    border-radius: 13px;
-    background: conic-gradient(
-      from var(--angle, 0deg),
-      transparent   0%,
-      transparent  35%,
-      currentColor 45%,
-      currentColor 55%,
-      transparent  65%,
-      transparent 100%
-    );
-    z-index: -1;
-    opacity: 0;
-    transition: opacity 0.25s ease;
-  }
-
-  /* Inner mask — punches out the card body so only border shows */
   &::after {
-    content: '';
+    content: "";
     position: absolute;
-    inset: 1.5px;
-    border-radius: 11px;
-    background: var(--app-bg);
-    z-index: -1;
-    transition: background 0.15s ease;
-  }
-
-  &:hover::before {
-    opacity: 1;
-    animation: borderSpin 2s linear infinite;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: linear-gradient(180deg, var(--card-summary-accent) 0%, var(--card-summary-hover-border) 100%);
+    border-radius: 0 2px 2px 0;
   }
 }
 
-@property --angle {
-  syntax: '<angle>';
-  initial-value: 0deg;
-  inherits: false;
-}
-
-@keyframes borderSpin {
-  to { --angle: 360deg; }
-}
-
-// ── Per-tool accent color (drives conic-gradient currentColor) ──
-
-.toolCard__jira:hover        { color: var(--card-jira-accent); }
-.toolCard__confluence:hover  { color: var(--card-confluence-accent); }
-.toolCard__translation:hover { color: var(--card-translation-accent); }
-.toolCard__summary:hover     { color: var(--card-summary-accent); }
-
-// ── Per-tool left accent stripe ───────────────────────
-
-.toolCard__jira        { border-left: 3px solid var(--card-jira-accent); }
-.toolCard__confluence  { border-left: 3px solid var(--card-confluence-accent); }
-.toolCard__translation { border-left: 3px solid var(--card-translation-accent); }
-.toolCard__summary     { border-left: 3px solid var(--card-summary-accent); }
-
-
-// ── Icon wrap ─────────────────────────────────────────
-
-.cardIconWrap {
-  width: 28px;
-  height: 28px;
-  border-radius: 7px;
-  border: 1px solid var(--border-color);
-  background: var(--sidebar-bg);
+.toolHeaderTop {
   display: flex;
   align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  transition: border-color 0.15s ease;
+  justify-content: space-between;
+  padding: 8px 12px 8px 16px;
+  background: var(--app-bg);
+  border-bottom: 1px solid var(--border-color);
 }
 
-.cardIcon {
-  object-fit: contain;
-  display: block;
+.toolHeaderBottom {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px 10px 16px;
+  background: var(--sidebar-bg);
+  box-shadow: inset 0 1px 0 var(--border-color);
 }
 
-// ── Card name ─────────────────────────────────────────
+// ── Breadcrumb ────────────────────────────────────────
 
-.cardName {
-  flex: 1;
-  font-size: 0.8125rem;
-  font-weight: 600;
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.breadcrumbLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 0.15s ease;
+  line-height: 1;
+
+  &::before {
+    content: "←";
+    font-size: 0.75rem;
+    transition: transform 0.15s ease;
+    display: inline-block;
+  }
+
+  &:hover {
+    color: var(--text-primary);
+    &::before { transform: translateX(-2px); }
+  }
+}
+
+.breadcrumbSep {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  user-select: none;
+}
+
+.breadcrumbCurrent {
+  font-size: 0.8rem;
+  font-weight: 700;
   color: var(--text-primary);
   letter-spacing: -0.01em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  transition: color 0.15s ease;
 }
 
-// ── Collapsed: icon strip ─────────────────────────────
+// ── Tool icon & meta ──────────────────────────────────
 
-.panelCollapsed {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 8px 0;
-  gap: 6px;
-}
-
-.collapsedBtn {
+.toolIcon {
   width: 34px;
   height: 34px;
   border-radius: 9px;
@@ -231,74 +386,975 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  box-shadow: 0 1px 2px var(--box-shadow);
-
-  &:hover {
-    background: var(--card-hover-bg);
-    border-color: var(--btn-bg);
-    box-shadow: 0 2px 8px var(--box-shadow);
-    transform: translateY(-1px);
-  }
-
-  &:active { transform: translateY(0); }
+  flex-shrink: 0;
+  box-shadow: 0 1px 3px var(--box-shadow);
 }
 
-.collapsedIcon {
+.img {
   object-fit: contain;
   display: block;
 }
 
-// ── Separator ─────────────────────────────────────────
-
-.panelSeparator {
-  height: 1px;
-  background: var(--border-color);
-  margin: 4px 10px 0;
-  flex-shrink: 0;
-}
-
-// ── Bottom hint ───────────────────────────────────────
-
-.panelHint {
+.toolMeta {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 5px;
-  padding: 14px 16px 18px;
-  text-align: center;
-  flex-shrink: 0;
+  gap: 2px;
+  min-width: 0;
 }
 
-.panelHintIcon {
+.toolName {
+  font-size: 0.9625rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+
+// ── Body ──────────────────────────────────────────────
+
+.body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 14px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.description {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0;
+}
+
+// ── Language row ──────────────────────────────────────
+
+.langRow {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+// ── Dropdown ──────────────────────────────────────────
+
+.dropdownWrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  position: relative;
+}
+
+.dropdownLabel {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-secondary);
+  padding-left: 2px;
+}
+
+.dropdown {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--app-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 9px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+
+  &:hover,
+  &.dropdownOpen {
+    border-color: var(--card-summary-accent);
+    box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.1);
+  }
+}
+
+.dropdownSelected {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.dropdownFlag {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.dropdownText {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.dropdownChevron {
+  display: flex;
+  align-items: center;
+  color: var(--text-secondary);
+  transition: transform 0.2s ease;
+
+  &.dropdownChevronOpen { transform: rotate(180deg); }
+}
+
+.dropdownMenu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--sidebar-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 9px;
+  box-shadow: 0 4px 16px var(--box-shadow);
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  z-index: 50;
+  animation: dropIn 0.15s ease both;
+}
+
+@keyframes dropIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.dropdownOption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+
+  &:hover { background: var(--row-hover-bg); }
+
+  &.dropdownOptionActive {
+    background: var(--card-summary-hover-bg);
+    color: var(--card-summary-accent);
+  }
+}
+
+.dropdownCheck {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  color: var(--card-summary-accent);
+}
+
+// ── Swap button ───────────────────────────────────────
+
+.swapBtn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, var(--card-jira-hover-bg), var(--card-confluence-hover-bg));
+  width: 32px;
+  height: 36px;
+  border-radius: 9px;
   border: 1px solid var(--border-color);
-  color: var(--card-confluence-accent);
-  margin-bottom: 2px;
+  background: var(--app-bg);
+  color: var(--text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+  margin-bottom: 0;
+
+  &:hover {
+    border-color: var(--card-summary-accent);
+    color: var(--card-summary-accent);
+    background: var(--card-summary-hover-bg);
+    transform: rotate(180deg);
+  }
+}
+
+// ── Summarize button ──────────────────────────────────
+
+.summarizeBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 11px 16px;
+  border-radius: 10px;
+  border: none;
+  background: linear-gradient(135deg, var(--card-summary-accent) 0%, var(--card-summary-hover-border) 100%);
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: -0.01em;
+  transition: opacity 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 2px 10px rgba(217, 119, 6, 0.3);
+
+  &:hover:not(:disabled) {
+    opacity: 0.92;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px rgba(217, 119, 6, 0.4);
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: none;
+  }
+
+  &:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+  }
+}
+
+// ── Spinner ───────────────────────────────────────────
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.65s linear infinite;
+  display: inline-block;
   flex-shrink: 0;
 }
 
-.panelHintTagline {
-  font-size: 0.75rem;
-  font-weight: 700;
-  background: linear-gradient(135deg, var(--card-jira-accent), var(--card-confluence-accent));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  letter-spacing: -0.01em;
-  line-height: 1.3;
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
-.panelHintSub {
-  font-size: 0.7rem;
-  color: var(--text-secondary);
+// ── Error / success states ────────────────────────────
+
+.warningState {
+  padding: 10px 12px;
+  font-size: 0.7875rem;
+  color: #92400e;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
   line-height: 1.5;
-  max-width: 160px;
+}
+
+.errorState {
+  padding: 10px 12px;
+  font-size: 0.7875rem;
+  color: $error-red;
+  background: $error-bg;
+  border: 1px solid $error-border;
+  border-radius: 8px;
+  line-height: 1.5;
+}
+
+.successState {
+  padding: 10px 12px;
+  font-size: 0.7875rem;
+  color: $success-green;
+  background: $success-bg;
+  border: 1px solid $success-border;
+  border-radius: 8px;
+  line-height: 1.5;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import React, { useState } from "react";
+import styles from "./TranslationTool.module.scss";
+
+import translationIcon from "../../assets/icons/translation.png";
+
+interface TranslationToolProps {
+  onBack: () => void;
+  fileJobId: string;
+}
+
+type Language = "ENGLISH" | "KOREAN";
+
+const LANGUAGES: { value: Language; label: string; flag: string }[] = [
+  { value: "ENGLISH", label: "English", flag: "🇺🇸" },
+  { value: "KOREAN",  label: "Korean",  flag: "🇰🇷" },
+];
+
+// ── Icons ─────────────────────────────────────────────
+
+const SparkleIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M15 4V2" /><path d="M15 16v-2" /><path d="M8 9h2" /><path d="M20 9h2" />
+    <path d="M17.8 11.8 19 13" /><path d="M15 9h.01" /><path d="M17.8 6.2 19 5" />
+    <path d="m3 21 9-9" /><path d="M12.2 6.2 11 5" />
+  </svg>
+);
+
+const ChevronIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="6 9 12 15 18 9" />
+  </svg>
+);
+
+const CheckIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="20 6 9 17 4 12" />
+  </svg>
+);
+
+const SwapIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M7 16V4m0 0L3 8m4-4 4 4" />
+    <path d="M17 8v12m0 0 4-4m-4 4-4-4" />
+  </svg>
+);
+
+// ── Language dropdown ─────────────────────────────────
+
+interface LangDropdownProps {
+  label: string;
+  value: Language;
+  onChange: (v: Language) => void;
+}
+
+const LangDropdown: React.FC<LangDropdownProps> = ({ label, value, onChange }) => {
+  const [open, setOpen] = useState(false);
+  const selected = LANGUAGES.find((l) => l.value === value)!;
+
+  return (
+    <div className={styles.dropdownWrap}>
+      <span className={styles.dropdownLabel}>{label}</span>
+      <button
+        className={`${styles.dropdown} ${open ? styles.dropdownOpen : ""}`}
+        onClick={() => setOpen((p) => !p)}
+      >
+        <span className={styles.dropdownSelected}>
+          <span className={styles.dropdownFlag}>{selected.flag}</span>
+          <span className={styles.dropdownText}>{selected.label}</span>
+        </span>
+        <span className={`${styles.dropdownChevron} ${open ? styles.dropdownChevronOpen : ""}`}>
+          <ChevronIcon />
+        </span>
+      </button>
+
+      {open && (
+        <ul className={styles.dropdownMenu}>
+          {LANGUAGES.map((lang) => (
+            <li key={lang.value}>
+              <button
+                className={`${styles.dropdownOption} ${lang.value === value ? styles.dropdownOptionActive : ""}`}
+                onClick={() => { onChange(lang.value); setOpen(false); }}
+              >
+                <span className={styles.dropdownFlag}>{lang.flag}</span>
+                <span className={styles.dropdownText}>{lang.label}</span>
+                {lang.value === value && (
+                  <span className={styles.dropdownCheck}><CheckIcon /></span>
+                )}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+};
+
+// ── Main component ────────────────────────────────────
+
+export const TranslationTool: React.FC<TranslationToolProps> = ({ onBack, fileJobId }) => {
+  const [sourceLang, setSourceLang] = useState<Language>("ENGLISH");
+  const [targetLang, setTargetLang] = useState<Language>("KOREAN");
+  const [isLoading, setIsLoading]   = useState(false);
+  const [error, setError]           = useState<string | null>(null);
+  const [warning, setWarning]       = useState<string | null>(null);
+  const [success, setSuccess]       = useState(false);
+
+  const handleSwap = () => {
+    setSourceLang(targetLang);
+    setTargetLang(sourceLang);
+  };
+
+  const handleTranslate = async () => {
+    setIsLoading(true);
+    setError(null);
+    setSuccess(false);
+
+    try {
+      const res = await fetch("/api/translation/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          file_job_id:     fileJobId,
+          tool_type_id:    6,
+          target_language: targetLang,
+          source_Language: sourceLang,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.message ?? "Failed to generate translation.");
+      }
+
+      setSuccess(true);
+    } catch (err: any) {
+      setError(err?.message ?? "Something went wrong.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className={styles.wrapper}>
+
+      {/* ── Header ── */}
+      <div className={styles.toolHeader}>
+        <div className={styles.toolHeaderTop}>
+          <div className={styles.breadcrumb}>
+            <button className={styles.breadcrumbLink} onClick={onBack}>Tools</button>
+            <span className={styles.breadcrumbSep}>›</span>
+            <span className={styles.breadcrumbCurrent}>Translation</span>
+          </div>
+        </div>
+        <div className={styles.toolHeaderBottom}>
+          <div className={styles.toolIcon}>
+            <img src={translationIcon} alt="Translation" width={22} height={22} className={styles.img} />
+          </div>
+          <div className={styles.toolMeta}>
+            <h2 className={styles.toolName}>Translation</h2>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Body ── */}
+      <div className={styles.body}>
+
+        <p className={styles.description}>
+          Choose source and target languages, then translate the current file.
+        </p>
+
+        {/* Language selectors */}
+        <div className={styles.langRow}>
+          <LangDropdown
+            label="Source"
+            value={sourceLang}
+            onChange={setSourceLang}
+          />
+
+          <button className={styles.swapBtn} onClick={handleSwap} title="Swap languages">
+            <SwapIcon />
+          </button>
+
+          <LangDropdown
+            label="Target"
+            value={targetLang}
+            onChange={setTargetLang}
+          />
+        </div>
+
+        {/* Warning */}
+        {warning && (
+          <div className={styles.warningState}>{warning}</div>
+        )}
+
+        {/* Error */}
+        {error && (
+          <div className={styles.errorState}>{error}</div>
+        )}
+
+        {/* Success */}
+        {success && !error && (
+          <div className={styles.successState}>
+            Translation generated successfully!
+          </div>
+        )}
+
+        {/* Translate button */}
+        <button
+          className={styles.translateBtn}
+          onClick={handleTranslate}
+          disabled={isLoading}
+        >
+          {isLoading ? (
+            <>
+              <span className={styles.spinner} />
+              <span>Translating…</span>
+            </>
+          ) : (
+            <>
+              <SparkleIcon />
+              <span>Translate</span>
+            </>
+          )}
+        </button>
+
+      </div>
+    </div>
+  );
+};
+
+export default TranslationTool;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  SCSS-only palette
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+$error-red:    #dc2626;
+$error-bg:     #fef2f2;
+$error-border: #fecaca;
+
+$success-green:  #16a34a;
+$success-bg:     #f0fdf4;
+$success-border: #bbf7d0;
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  COMPONENT STYLES
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background: var(--sidebar-bg);
+  animation: fadeSlideIn 0.2s ease both;
+}
+
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+// ── Tool header ───────────────────────────────────────
+
+.toolHeader {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  background: var(--app-bg);
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+
+  &::after {
+    content: "";
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: linear-gradient(180deg, var(--card-translation-accent) 0%, var(--card-translation-hover-border) 100%);
+    border-radius: 0 2px 2px 0;
+  }
+}
+
+.toolHeaderTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px 8px 16px;
+  background: var(--app-bg);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.toolHeaderBottom {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px 10px 16px;
+  background: var(--sidebar-bg);
+  box-shadow: inset 0 1px 0 var(--border-color);
+}
+
+// ── Breadcrumb ────────────────────────────────────────
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.breadcrumbLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 0.15s ease;
+  line-height: 1;
+
+  &::before {
+    content: "←";
+    font-size: 0.75rem;
+    transition: transform 0.15s ease;
+    display: inline-block;
+  }
+
+  &:hover {
+    color: var(--text-primary);
+    &::before { transform: translateX(-2px); }
+  }
+}
+
+.breadcrumbSep {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  user-select: none;
+}
+
+.breadcrumbCurrent {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+// ── Tool icon & meta ──────────────────────────────────
+
+.toolIcon {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  border: 1px solid var(--border-color);
+  background: var(--app-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 1px 3px var(--box-shadow);
+}
+
+.img {
+  object-fit: contain;
+  display: block;
+}
+
+.toolMeta {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.toolName {
+  font-size: 0.9625rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+
+// ── Body ──────────────────────────────────────────────
+
+.body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 14px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.description {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0;
+}
+
+// ── Language row ──────────────────────────────────────
+
+.langRow {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+// ── Dropdown ──────────────────────────────────────────
+
+.dropdownWrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  position: relative;
+}
+
+.dropdownLabel {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-secondary);
+  padding-left: 2px;
+}
+
+.dropdown {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--app-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 9px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+
+  &:hover,
+  &.dropdownOpen {
+    border-color: var(--card-translation-accent);
+    box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.1);
+  }
+}
+
+.dropdownSelected {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.dropdownFlag {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.dropdownText {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.dropdownChevron {
+  display: flex;
+  align-items: center;
+  color: var(--text-secondary);
+  transition: transform 0.2s ease;
+
+  &.dropdownChevronOpen { transform: rotate(180deg); }
+}
+
+.dropdownMenu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--sidebar-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 9px;
+  box-shadow: 0 4px 16px var(--box-shadow);
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  z-index: 50;
+  animation: dropIn 0.15s ease both;
+}
+
+@keyframes dropIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.dropdownOption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+
+  &:hover { background: var(--row-hover-bg); }
+
+  &.dropdownOptionActive {
+    background: var(--card-translation-hover-bg);
+    color: var(--card-translation-accent);
+  }
+}
+
+.dropdownCheck {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  color: var(--card-translation-accent);
+}
+
+// ── Swap button ───────────────────────────────────────
+
+.swapBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 36px;
+  border-radius: 9px;
+  border: 1px solid var(--border-color);
+  background: var(--app-bg);
+  color: var(--text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+
+  &:hover {
+    border-color: var(--card-translation-accent);
+    color: var(--card-translation-accent);
+    background: var(--card-translation-hover-bg);
+    transform: rotate(180deg);
+  }
+}
+
+// ── Translate button ──────────────────────────────────
+
+.translateBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 11px 16px;
+  border-radius: 10px;
+  border: none;
+  background: linear-gradient(135deg, var(--card-translation-accent) 0%, var(--card-translation-hover-border) 100%);
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: -0.01em;
+  transition: opacity 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 2px 10px rgba(5, 150, 105, 0.3);
+
+  &:hover:not(:disabled) {
+    opacity: 0.92;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px rgba(5, 150, 105, 0.4);
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: none;
+  }
+
+  &:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+  }
+}
+
+// ── Spinner ───────────────────────────────────────────
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.65s linear infinite;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+// ── Error / success states ────────────────────────────
+
+.warningState {
+  padding: 10px 12px;
+  font-size: 0.7875rem;
+  color: #92400e;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  line-height: 1.5;
+}
+
+.errorState {
+  padding: 10px 12px;
+  font-size: 0.7875rem;
+  color: $error-red;
+  background: $error-bg;
+  border: 1px solid $error-border;
+  border-radius: 8px;
+  line-height: 1.5;
+}
+
+.successState {
+  padding: 10px 12px;
+  font-size: 0.7875rem;
+  color: $success-green;
+  background: $success-bg;
+  border: 1px solid $success-border;
+  border-radius: 8px;
+  line-height: 1.5;
 }
