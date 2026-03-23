@@ -1,227 +1,259 @@
-SettingsLayout.module.scss
---------------------------
+import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Subject } from 'rxjs';
+import { takeUntil, finalize } from 'rxjs/operators';
+import {
+  StatisticsService,
+  QaResult,
+  BitbucketResult,
+  PrCommentsResult,
+  SldcResult,
+  AhsiResult,
+  DateRange,
+} from './statistics.service';
 
+type SectionState = 'idle' | 'loading' | 'error';
 
-.sidebarHeader {
-  .headerTitle {
-    font-size: 0.9375rem; // was 1rem
-  }
+const ATLASSIAN_KEY = 'ATLASSIAN_CONNECTION';
 
-  .headerSub {
-    font-size: 0.71875rem; // was 0.78125rem
-  }
+function toIsoDate(d: Date): string {
+  return d.toISOString().slice(0, 10);
 }
 
-.sectionLabel {
-  font-size: 0.625rem; // was 0.65625rem
+function defaultRange(): DateRange {
+  const end = new Date();
+  const start = new Date();
+  start.setMonth(start.getMonth() - 2);
+  return { start: toIsoDate(start), end: toIsoDate(end) };
 }
 
-.navLink {
-  font-size: 0.875rem; // was 0.95rem
-}
+@Component({
+  selector: 'app-stats-dashboard',
+  templateUrl: './stats-dashboard.component.html',
+  styleUrls: ['./stats-dashboard.component.css'],
+})
+export class StatsDashboardComponent implements OnInit, OnDestroy {
+  private destroy$ = new Subject<void>();
 
-@media (min-width: 1400px) {
-  .navLink {
-    font-size: 0.9375rem; // was 1rem
-  }
+  today = toIsoDate(new Date());
 
-  .sidebarHeader {
-    .headerTitle {
-      font-size: 1rem; // was 1.0625rem
-    }
+  // ── Atlassian connection ──────────────────────────────────────────────────────
+  isConnected = false;
+  connectUsername = '';
+  connectPassword = '';
+  connectState: SectionState = 'idle';
+  connectError = '';
 
-    .headerSub {
-      font-size: 0.75rem; // was 0.8125rem
-    }
-  }
+  // ── QA ──────────────────────────────────────────────────────────────────────
+  qaRange: DateRange = defaultRange();
+  qaData: QaResult | null = null;
+  qaState: SectionState = 'idle';
+  qaError = '';
 
-  .sectionLabel {
-    font-size: 0.6875rem; // was already 0.6875rem at 1400px
-  }
-}
+  // ── Bitbucket ────────────────────────────────────────────────────────────────
+  bbRange: DateRange = defaultRange();
+  bbData: BitbucketResult | null = null;
+  bbState: SectionState = 'idle';
+  bbError = '';
 
+  // ── PR Comments ──────────────────────────────────────────────────────────────
+  prRange: DateRange = defaultRange();
+  prData: PrCommentsResult | null = null;
+  prState: SectionState = 'idle';
+  prError = '';
 
+  // ── SLDC Analysis ────────────────────────────────────────────────────────────
+  sldcRange: DateRange = defaultRange();
+  sldcData: SldcResult | null = null;
+  sldcState: SectionState = 'idle';
+  sldcError = '';
 
+  // ── AHSI Coding Stats ────────────────────────────────────────────────────────
+  ahsiRange: DateRange = defaultRange();
+  ahsiData: AhsiResult | null = null;
+  ahsiState: SectionState = 'idle';
+  ahsiError = '';
 
+  constructor(private statsService: StatisticsService) {}
 
-
-
-
-
-
-
-
-
-DataTable.module.scss
----------------------
-
-
-
-.toolbar {
-  .searchBox {
-    input {
-      font-size: 0.8125rem; // was 0.84375rem
-    }
-  }
-
-  .rowCount {
-    font-size: 0.71875rem; // was 0.78125rem
-  }
-}
-
-thead th {
-  font-size: 0.71875rem; // was 0.8rem
-}
-
-tbody td {
-  font-size: 0.875rem; // was 0.95rem
-}
-
-.emptyState {
-  p {
-    font-size: 0.8125rem; // was 0.875rem
-  }
-}
-
-.pagination {
-  .pageInfo {
-    font-size: 0.71875rem; // was 0.78125rem
-  }
-
-  .pageDots {
-    font-size: 0.75rem; // was 0.8125rem
-  }
-
-  .pageBtn {
-    font-size: 0.75rem; // was 0.8125rem
-  }
-}
-
-@media (min-width: 1400px) {
-  thead th {
-    font-size: 0.75rem; // was 0.8125rem
-  }
-
-  tbody td {
-    font-size: 0.9375rem; // was 1rem
-  }
-
-  .pagination {
-    .pageInfo {
-      font-size: 0.75rem; // was 0.8125rem
+  ngOnInit(): void {
+    const stored = localStorage.getItem(ATLASSIAN_KEY);
+    if (stored) {
+      this.isConnected = true;
+      this.loadAllSections();
     }
   }
 
-  .toolbar {
-    .rowCount {
-      font-size: 0.75rem; // was 0.8125rem
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
+  }
+
+  // ── Atlassian connect ─────────────────────────────────────────────────────────
+
+  connect(): void {
+    if (!this.connectUsername.trim() || !this.connectPassword.trim()) {
+      this.connectError = 'Please enter both username and password.';
+      return;
     }
-  }
-}
+    this.connectState = 'loading';
+    this.connectError = '';
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-RoleManagement.module.scss
---------------------------
-
-
-
-.roleBadge {
-  font-size: 0.6875rem; // was 0.75rem
-}
-
-.roleSelect {
-  font-size: 0.75rem; // was 0.8125rem
-}
-
-.stateBox {
-  font-size: 0.8125rem; // was 0.875rem
-}
-
-.errorText {
-  font-size: 0.8125rem; // was 0.875rem
-}
-
-.retryBtn {
-  font-size: 0.75rem; // was 0.8125rem
-}
-
-
-
-
-
-
-
-
-
-
-
-GeneralSettings.module.scss
----------------------------
-
-
-
-.label {
-  font-size: 0.8125rem; // was 0.84375rem
-}
-
-.hint {
-  font-size: 0.6875rem; // was 0.75rem
-}
-
-.input {
-  font-size: 0.8125rem; // was 0.9rem
-}
-
-.unit {
-  font-size: 0.75rem; // was 0.8125rem
-}
-
-.errorText {
-  font-size: 0.6875rem; // was 0.75rem
-}
-
-.saveBtn {
-  font-size: 0.8125rem; // was 0.875rem
-}
-
-.successMsg {
-  font-size: 0.75rem; // was 0.8125rem
-}
-
-.saveErrMsg {
-  font-size: 0.75rem; // was 0.8125rem
-}
-
-@media (min-width: 1400px) {
-  .label {
-    font-size: 0.875rem; // was 0.9375rem
+    this.statsService
+      .connectAtlassian({ username: this.connectUsername, password: this.connectPassword })
+      .pipe(
+        takeUntil(this.destroy$),
+        finalize(() => { if (this.connectState === 'loading') this.connectState = 'idle'; })
+      )
+      .subscribe({
+        next: (res) => {
+          if (res.status !== 'Success') {
+            this.connectState = 'error';
+            this.connectError = 'Connection failed. Please check your credentials.';
+            return;
+          }
+          localStorage.setItem(ATLASSIAN_KEY, res.result);
+          this.connectState = 'idle';
+          this.isConnected = true;
+          this.loadAllSections();
+        },
+        error: () => {
+          this.connectState = 'error';
+          this.connectError = 'Unable to reach the server. Please try again.';
+        },
+      });
   }
 
-  .hint {
-    font-size: 0.75rem; // was 0.8125rem
+  // ── Load all dashboard sections ───────────────────────────────────────────────
+
+  private loadAllSections(): void {
+    this.loadQa();
+    this.loadBitbucket();
+    this.loadPr();
+    this.loadSldc();
+    this.loadAhsi();
   }
 
-  .input {
-    font-size: 0.875rem; // was 0.9375rem
+  // ── Fetch methods ─────────────────────────────────────────────────────────────
+
+  loadQa(): void {
+    this.qaState = 'loading';
+    this.qaError = '';
+    this.statsService
+      .getQaStats(this.qaRange)
+      .pipe(
+        takeUntil(this.destroy$),
+        finalize(() => { if (this.qaState === 'loading') this.qaState = 'idle'; })
+      )
+      .subscribe({
+        next: (res) => {
+          if (res.status !== 'Success') { this.qaState = 'error'; this.qaError = 'API returned a non-success status.'; return; }
+          this.qaData = res.result;
+          this.qaState = 'idle';
+        },
+        error: () => { this.qaState = 'error'; this.qaError = 'Failed to load questions data. Please try again.'; },
+      });
   }
 
-  .unit {
-    font-size: 0.8125rem; // was 0.875rem
+  loadBitbucket(): void {
+    this.bbState = 'loading';
+    this.bbError = '';
+    this.statsService
+      .getBitbucketAnalysis(this.bbRange)
+      .pipe(
+        takeUntil(this.destroy$),
+        finalize(() => { if (this.bbState === 'loading') this.bbState = 'idle'; })
+      )
+      .subscribe({
+        next: (res) => {
+          if (res.status !== 'Success') { this.bbState = 'error'; this.bbError = 'API returned a non-success status.'; return; }
+          this.bbData = res.result;
+          this.bbState = 'idle';
+        },
+        error: () => { this.bbState = 'error'; this.bbError = 'Failed to load Bitbucket data. Please try again.'; },
+      });
   }
 
-  .saveBtn {
-    font-size: 0.875rem; // was 0.9375rem
+  loadPr(): void {
+    this.prState = 'loading';
+    this.prError = '';
+    this.statsService
+      .getPrComments(this.prRange)
+      .pipe(
+        takeUntil(this.destroy$),
+        finalize(() => { if (this.prState === 'loading') this.prState = 'idle'; })
+      )
+      .subscribe({
+        next: (res) => {
+          if (res.status !== 'Success') { this.prState = 'error'; this.prError = 'API returned a non-success status.'; return; }
+          this.prData = res.result;
+          this.prState = 'idle';
+        },
+        error: () => { this.prState = 'error'; this.prError = 'Failed to load PR comments data. Please try again.'; },
+      });
+  }
+
+  loadSldc(): void {
+    this.sldcState = 'loading';
+    this.sldcError = '';
+    this.statsService
+      .getSldcAnalysis(this.sldcRange)
+      .pipe(
+        takeUntil(this.destroy$),
+        finalize(() => { if (this.sldcState === 'loading') this.sldcState = 'idle'; })
+      )
+      .subscribe({
+        next: (res) => {
+          if (res.status !== 'Success') { this.sldcState = 'error'; this.sldcError = 'API returned a non-success status.'; return; }
+          this.sldcData = res.result;
+          this.sldcState = 'idle';
+        },
+        error: () => { this.sldcState = 'error'; this.sldcError = 'Failed to load SLDC analysis data. Please try again.'; },
+      });
+  }
+
+  loadAhsi(): void {
+    this.ahsiState = 'loading';
+    this.ahsiError = '';
+    this.statsService
+      .getAhsiCodingStats(this.ahsiRange)
+      .pipe(
+        takeUntil(this.destroy$),
+        finalize(() => { if (this.ahsiState === 'loading') this.ahsiState = 'idle'; })
+      )
+      .subscribe({
+        next: (res) => {
+          if (res.status !== 'Success') { this.ahsiState = 'error'; this.ahsiError = 'API returned a non-success status.'; return; }
+          this.ahsiData = res.result;
+          this.ahsiState = 'idle';
+        },
+        error: () => { this.ahsiState = 'error'; this.ahsiError = 'Failed to load AHSI coding stats. Please try again.'; },
+      });
+  }
+
+  // ── QA computed helpers ───────────────────────────────────────────────────────
+
+  get qaTotal(): number {
+    return (this.qaData?.jira_count ?? 0) + (this.qaData?.confluence_count ?? 0);
+  }
+
+  // ── Utilities ─────────────────────────────────────────────────────────────────
+
+  formatPct(value: number | string | null | undefined): string {
+    if (value == null) return '—';
+    const num = typeof value === 'string' ? parseFloat(value) : value;
+    if (isNaN(num)) return '—';
+    return `${num.toFixed(1)}%`;
+  }
+
+  formatDecimal(value: number | null | undefined, decimals = 2): string {
+    if (value == null) return '—';
+    return value.toFixed(decimals);
+  }
+
+  barWidth(value: number | string | null | undefined): string {
+    if (value == null) return '0%';
+    const num = typeof value === 'string' ? parseFloat(value) : value;
+    if (isNaN(num)) return '0%';
+    return `${Math.min(Math.round(num), 100)}%`;
   }
 }
