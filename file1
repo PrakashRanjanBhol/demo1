@@ -1,12 +1,84 @@
-outputFiles?.map(file => (
-  <GeneratedCard
-    key={file.state_id}
-    file={file}
-    isExpanded={isExpanded}
-    isLoading={isLoading}
-    openGeneratedFile={openGeneratedFile}
-  />
-))
+import GeneratedCard        from './GeneratedCard';
+import GeneratedCardSkeleton from './GeneratedCardSkeleton';
+
+// In your JSX:
+{isLoading
+  ? <GeneratedCardSkeleton isExpanded={isExpanded} />
+  : outputFiles?.map(file => (
+      <GeneratedCard
+        key={file.state_id}
+        file={file}
+        isExpanded={isExpanded}
+        openGeneratedFile={openGeneratedFile}
+      />
+    ))
+}
+
+
+
+
+import React from 'react';
+import styles from './GeneratedCard.module.scss';
+
+interface GeneratedCardSkeletonProps {
+  isExpanded: boolean;
+  count?:     number; // defaults to 3
+}
+
+const SkeletonItem: React.FC<{ isExpanded: boolean; index: number }> = ({
+  isExpanded,
+  index,
+}) => (
+  <div
+    className={[
+      styles.generatedCard,
+      styles.skeleton,
+      !isExpanded ? styles.collapsed : '',
+    ].filter(Boolean).join(' ')}
+    style={{ animationDelay: `${index * 0.12}s` }}
+  >
+    {/* Icon placeholder */}
+    <div className={styles.skeletonIcon} />
+
+    {isExpanded && (
+      <>
+        <div className={styles.skeletonBody}>
+          {/* Staggered widths so cards don't look identical */}
+          <div
+            className={styles.skeletonLine}
+            style={{ width: `${62 + index * 9}%` }}
+          />
+          <div className={styles.skeletonMeta}>
+            <div className={`${styles.skeletonLine} ${styles.skeletonBadge}`} />
+            <div className={`${styles.skeletonLine} ${styles.skeletonSize}`}  />
+          </div>
+        </div>
+
+        {/* Download button placeholder */}
+        <div className={styles.skeletonBtn} />
+      </>
+    )}
+  </div>
+);
+
+const GeneratedCardSkeleton: React.FC<GeneratedCardSkeletonProps> = ({
+  isExpanded,
+  count = 3,
+}) => (
+  <>
+    {Array.from({ length: count }, (_, i) => (
+      <SkeletonItem key={i} isExpanded={isExpanded} index={i} />
+    ))}
+  </>
+);
+
+export default GeneratedCardSkeleton;
+
+
+
+
+
+
 
 
 
@@ -39,7 +111,6 @@ export interface EmbeddingFile {
 interface GeneratedCardProps {
   file:              EmbeddingFile;
   isExpanded:        boolean;
-  isLoading?:        boolean;
   openGeneratedFile: (file: EmbeddingFile) => void;
 }
 
@@ -59,41 +130,6 @@ const STATUS_LABEL: Record<EmbeddingFile['status'], string> = {
   SUCCESS:   'Done',
   FAILURE:   'Failed',
 };
-
-// ─── Skeleton card ────────────────────────────────────────────────────────────
-
-const SkeletonCard: React.FC<{ isExpanded: boolean; index: number }> = ({
-  isExpanded,
-  index,
-}) => (
-  <div
-    className={[
-      styles.generatedCard,
-      styles.skeleton,
-      !isExpanded ? styles.collapsed : '',
-    ].filter(Boolean).join(' ')}
-    style={{ animationDelay: `${index * 0.12}s` }}
-  >
-    <div className={styles.skeletonIcon} />
-
-    {isExpanded && (
-      <>
-        <div className={styles.skeletonBody}>
-          {/* Staggered widths so the 3 cards don't look identical */}
-          <div
-            className={styles.skeletonLine}
-            style={{ width: `${62 + index * 9}%` }}
-          />
-          <div className={styles.skeletonMeta}>
-            <div className={`${styles.skeletonLine} ${styles.skeletonBadge}`} />
-            <div className={`${styles.skeletonLine} ${styles.skeletonSize}`} />
-          </div>
-        </div>
-        <div className={styles.skeletonBtn} />
-      </>
-    )}
-  </div>
-);
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -150,100 +186,90 @@ const ProgressBar: React.FC<{ progress: number }> = ({ progress }) => (
 const GeneratedCard: React.FC<GeneratedCardProps> = ({
   file,
   isExpanded,
-  isLoading = false,
   openGeneratedFile,
-}) => {
-  if (isLoading) {
-    return (
-      <>
-        {Array.from({ length: 3 }, (_, i) => (
-          <SkeletonCard key={i} isExpanded={isExpanded} index={i} />
-        ))}
-      </>
-    );
-  }
+}) => (
+  <div
+    key={file.state_id}
+    title={file.file_name}
+    className={[
+      styles.generatedCard,
+      styles[file.status],
+      file.isSelected ? styles.selected  : '',
+      !isExpanded     ? styles.collapsed : '',
+    ].filter(Boolean).join(' ')}
+  >
+    {/* Processing border — amber/coral ring, only when in-progress */}
+    {(file.status === 'UPLOADING' ||
+      file.status === 'PENDING'   ||
+      file.status === 'STARTED') && (
+      <span className={styles.processingBorder} />
+    )}
 
-  return (
-    <div
-      key={file.state_id}
-      title={file.file_name}
-      className={[
-        styles.generatedCard,
-        styles[file.status],
-        file.isSelected ? styles.selected  : '',
-        !isExpanded     ? styles.collapsed : '',
-      ].filter(Boolean).join(' ')}
-    >
-      {/* Processing border — amber/coral ring, only when in-progress */}
+    {/* Icon + pulse ring */}
+    <div className={`${styles.iconStatusWrapper} ${styles[file.status]}`}>
+      <div className="content-bg">
+        <FileIcon jobType={file.job_type} />
+      </div>
       {(file.status === 'UPLOADING' ||
         file.status === 'PENDING'   ||
         file.status === 'STARTED') && (
-        <span className={styles.processingBorder} />
-      )}
-
-      {/* Icon + pulse ring */}
-      <div className={`${styles.iconStatusWrapper} ${styles[file.status]}`}>
-        <div className="content-bg">
-          <FileIcon jobType={file.job_type} />
-        </div>
-        {(file.status === 'UPLOADING' ||
-          file.status === 'PENDING'   ||
-          file.status === 'STARTED') && (
-          <span className={styles.dottedRing} />
-        )}
-      </div>
-
-      {isExpanded && (
-        <>
-          <div className={styles.fileInfo}>
-            <span className={styles.fileName}>{file.file_name}</span>
-            <div className={styles.fileMeta}>
-              <StatusBadge status={file.status} />
-              {file.status === 'FAILURE' ? (
-                <>
-                  <span className={styles.metaSep}>·</span>
-                  <span className={styles.fileError}>Generation failed</span>
-                </>
-              ) : file.file_size ? (
-                <>
-                  <span className={styles.metaSep}>·</span>
-                  <span className={styles.fileSize}>{file.file_size}</span>
-                </>
-              ) : null}
-            </div>
-
-            {file.status === 'UPLOADING' && file.progress > 0 && (
-              <ProgressBar progress={file.progress} />
-            )}
-          </div>
-
-          <div className={styles.cardActions}>
-            <div className={styles.menuWarpper}>
-              <button
-                className={styles.actionBtn}
-                onClick={() => openGeneratedFile(file)}
-                disabled={file.status !== 'SUCCESS'}
-                aria-label={`Download ${file.file_name}`}
-              >
-                <svg
-                  className={styles.downloadIcon}
-                  width="14" height="14" viewBox="0 0 16 16"
-                  fill="none" stroke="currentColor"
-                  strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
-                >
-                  <path d="M8 2v8M5 7l3 3 3-3" />
-                  <path d="M3 13h10" />
-                </svg>
-              </button>
-            </div>
-          </div>
-        </>
+        <span className={styles.dottedRing} />
       )}
     </div>
-  );
-};
+
+    {isExpanded && (
+      <>
+        <div className={styles.fileInfo}>
+          <span className={styles.fileName}>{file.file_name}</span>
+          <div className={styles.fileMeta}>
+            <StatusBadge status={file.status} />
+            {file.status === 'FAILURE' ? (
+              <>
+                <span className={styles.metaSep}>·</span>
+                <span className={styles.fileError}>Generation failed</span>
+              </>
+            ) : file.file_size ? (
+              <>
+                <span className={styles.metaSep}>·</span>
+                <span className={styles.fileSize}>{file.file_size}</span>
+              </>
+            ) : null}
+          </div>
+
+          {file.status === 'UPLOADING' && file.progress > 0 && (
+            <ProgressBar progress={file.progress} />
+          )}
+        </div>
+
+        <div className={styles.cardActions}>
+          <div className={styles.menuWarpper}>
+            <button
+              className={styles.actionBtn}
+              onClick={() => openGeneratedFile(file)}
+              disabled={file.status !== 'SUCCESS'}
+              aria-label={`Download ${file.file_name}`}
+            >
+              <svg
+                className={styles.downloadIcon}
+                width="14" height="14" viewBox="0 0 16 16"
+                fill="none" stroke="currentColor"
+                strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
+              >
+                <path d="M8 2v8M5 7l3 3 3-3" />
+                <path d="M3 13h10" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </>
+    )}
+  </div>
+);
 
 export default GeneratedCard;
+
+
+
 
 
 
