@@ -3,80 +3,128 @@ import styles from './GeneratedCard.module.scss';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type FileStatus  = 'SUCCESS' | 'FAILURE' | 'STARTED' | 'PENDING';
-export type JobType     = 'translation' | 'summary';
+export type FileStatus =
+  | 'UPLOADING'
+  | 'PENDING'
+  | 'STARTED'
+  | 'SUCCESS'
+  | 'FAILURE';
 
-export interface OutputFile {
-  state_id:     string;
-  file_name:    string;
-  file_type:    string;
-  file_size?:   string;
-  job_type:     JobType;
-  status:       FileStatus;
-  download_url: string;
-  file_job_id:  string;
+export type JobType =
+  | 'document_embedding'
+  | 'translation'
+  | 'summary';
+
+export interface EmbeddingFile {
+  originalFile?: any;
+  progress:      number;
+  isSelected:    boolean;
+
+  file_name:     string;
+  file_job_id:   string;
+  state_id:      string;
+  status:        FileStatus;
+  file_size:     string;
+  file_type:     string;
+  job_type:      JobType;
+  download_url?: any;
 }
 
 interface GeneratedCardProps {
-  file:        OutputFile;
+  file:        EmbeddingFile;
   isExpanded:  boolean;
-  onDownload:  (file: OutputFile) => void;
+  onDownload?: (file: EmbeddingFile) => void;
 }
 
 // ─── Status config ────────────────────────────────────────────────────────────
 
-const STATUS_CONFIG: Record<FileStatus, { label: string; cls: string }> = {
-  SUCCESS: { label: 'Done',       cls: styles.badgeSuccess  },
-  FAILURE: { label: 'Failed',     cls: styles.badgeFailure  },
-  STARTED: { label: 'Generating', cls: styles.badgePending  },
-  PENDING: { label: 'Pending',    cls: styles.badgePending  },
+const STATUS_CONFIG: Record<FileStatus, { label: string; badgeCls: string }> = {
+  UPLOADING: { label: 'Uploading',   badgeCls: styles.badgePending  },
+  PENDING:   { label: 'Pending',     badgeCls: styles.badgePending  },
+  STARTED:   { label: 'Processing',  badgeCls: styles.badgePending  },
+  SUCCESS:   { label: 'Done',        badgeCls: styles.badgeSuccess  },
+  FAILURE:   { label: 'Failed',      badgeCls: styles.badgeFailure  },
 };
 
-// ─── File icons ───────────────────────────────────────────────────────────────
+// Active (in-progress) statuses — drives spinning border + pulse ring
+const IN_PROGRESS: FileStatus[] = ['UPLOADING', 'PENDING', 'STARTED'];
+const isInProgress = (status: FileStatus) => IN_PROGRESS.includes(status);
 
-const DocIcon: React.FC<{ className?: string }> = ({ className }) => (
-  <svg className={className} width="15" height="15" viewBox="0 0 16 16"
+// ─── Icons ────────────────────────────────────────────────────────────────────
+
+const EmbeddingIcon: React.FC = () => (
+  <svg width="15" height="15" viewBox="0 0 16 16"
+    fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+    <circle cx="8" cy="8" r="5.5" />
+    <path d="M8 5v3l2 1.5" />
+  </svg>
+);
+
+const TranslationIcon: React.FC = () => (
+  <svg width="15" height="15" viewBox="0 0 16 16"
     fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
     <rect x="3" y="2" width="10" height="12" rx="1.5" />
     <path d="M5 6h6M5 9h6M5 12h4" />
   </svg>
 );
 
-const SummaryIcon: React.FC<{ className?: string }> = ({ className }) => (
-  <svg className={className} width="15" height="15" viewBox="0 0 16 16"
+const SummaryIcon: React.FC = () => (
+  <svg width="15" height="15" viewBox="0 0 16 16"
     fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
     <rect x="3" y="2" width="10" height="12" rx="1.5" />
     <path d="M5 5h6M5 8h6M5 11h3" />
   </svg>
 );
 
+const JOB_ICONS: Record<JobType, React.FC> = {
+  document_embedding: EmbeddingIcon,
+  translation:        TranslationIcon,
+  summary:            SummaryIcon,
+};
+
+const JOB_EXT: Record<JobType, string> = {
+  document_embedding: 'EMB',
+  translation:        'DOC',
+  summary:            'SUM',
+};
+
 const DownloadIcon: React.FC = () => (
   <svg width="13" height="13" viewBox="0 0 16 16"
-    fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    fill="none" stroke="currentColor" strokeWidth="1.8"
+    strokeLinecap="round" strokeLinejoin="round">
     <path d="M8 2v8M5 7l3 3 3-3" />
     <path d="M3 13h10" />
   </svg>
 );
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// ─── Upload progress bar ──────────────────────────────────────────────────────
 
-const FileIcon: React.FC<{ jobType: JobType }> = ({ jobType }) => (
-  <div className={`${styles.fileIcon} ${styles[`icon_${jobType}`]}`}>
-    <div className={styles.iconFold} />
-    {jobType === 'translation'
-      ? <DocIcon />
-      : <SummaryIcon />
-    }
-    <span className={styles.iconExt}>
-      {jobType === 'translation' ? 'DOC' : 'SUM'}
-    </span>
+const ProgressBar: React.FC<{ progress: number }> = ({ progress }) => (
+  <div className={styles.progressTrack}>
+    <div
+      className={styles.progressFill}
+      style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
+    />
   </div>
 );
 
-const StatusBadge: React.FC<{ status: FileStatus }> = ({ status }) => {
-  const { label, cls } = STATUS_CONFIG[status];
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+const FileIcon: React.FC<{ jobType: JobType }> = ({ jobType }) => {
+  const Icon = JOB_ICONS[jobType];
   return (
-    <span className={`${styles.badge} ${cls}`}>
+    <div className={`${styles.fileIcon} ${styles[`icon_${jobType}`]}`}>
+      <div className={styles.iconFold} />
+      <Icon />
+      <span className={styles.iconExt}>{JOB_EXT[jobType]}</span>
+    </div>
+  );
+};
+
+const StatusBadge: React.FC<{ status: FileStatus }> = ({ status }) => {
+  const { label, badgeCls } = STATUS_CONFIG[status];
+  return (
+    <span className={`${styles.badge} ${badgeCls}`}>
       <span className={styles.badgeDot} />
       {label}
     </span>
@@ -90,27 +138,28 @@ const GeneratedCard: React.FC<GeneratedCardProps> = ({
   isExpanded,
   onDownload,
 }) => {
-  const isInProgress = file.status === 'STARTED' || file.status === 'PENDING';
+  const active     = isInProgress(file.status);
+  const canDownload = file.status === 'SUCCESS' && !!file.download_url;
 
   const handleDownload = (e: React.MouseEvent) => {
     e.stopPropagation();
-    onDownload(file);
+    if (canDownload) onDownload?.(file);
   };
 
   return (
     <div
-      key={file.state_id}
       title={file.file_name}
       className={[
         styles.generatedCard,
-        isInProgress ? styles.inProgress : '',
-        !isExpanded  ? styles.collapsed  : '',
+        active          ? styles.inProgress : '',
+        !isExpanded     ? styles.collapsed  : '',
+        file.isSelected ? styles.selected   : '',
       ].filter(Boolean).join(' ')}
     >
-      {/* Icon + status ring */}
+      {/* Icon + pulse ring */}
       <div className={`${styles.iconWrapper} ${styles[`status_${file.status}`]}`}>
         <FileIcon jobType={file.job_type} />
-        {isInProgress && <span className={styles.pulseRing} />}
+        {active && <span className={styles.pulseRing} />}
       </div>
 
       {/* Expanded content */}
@@ -118,29 +167,35 @@ const GeneratedCard: React.FC<GeneratedCardProps> = ({
         <>
           <div className={styles.fileInfo}>
             <span className={styles.fileName}>{file.file_name}</span>
+
             <div className={styles.fileMeta}>
               <StatusBadge status={file.status} />
-              {file.file_size && file.status !== 'FAILURE' && (
-                <>
-                  <span className={styles.metaSep}>·</span>
-                  <span className={styles.fileSize}>{file.file_size}</span>
-                </>
-              )}
-              {file.status === 'FAILURE' && (
+
+              {file.status === 'FAILURE' ? (
                 <>
                   <span className={styles.metaSep}>·</span>
                   <span className={styles.fileError}>Generation failed</span>
                 </>
-              )}
+              ) : file.file_size ? (
+                <>
+                  <span className={styles.metaSep}>·</span>
+                  <span className={styles.fileSize}>{file.file_size}</span>
+                </>
+              ) : null}
             </div>
+
+            {/* Upload progress bar — only while UPLOADING */}
+            {file.status === 'UPLOADING' && file.progress > 0 && (
+              <ProgressBar progress={file.progress} />
+            )}
           </div>
 
           <div className={styles.cardActions}>
             <button
               className={styles.downloadBtn}
               onClick={handleDownload}
+              disabled={!canDownload}
               aria-label={`Download ${file.file_name}`}
-              disabled={isInProgress}
             >
               <DownloadIcon />
             </button>
@@ -173,6 +228,7 @@ $radius-card:       10px;
 $radius-icon:       8px;
 $radius-btn:        7px;
 $radius-badge:      20px;
+$radius-progress:   4px;
 $icon-size:         36px;
 $btn-size:          28px;
 
@@ -181,47 +237,62 @@ $accent-a:          #7f77dd;   // purple
 $accent-b:          #378add;   // blue
 $accent-c:          #1d9e75;   // teal
 
-// Icon — translation (blue family)
-$icon-trans-bg:     #e6f1fb;
-$icon-trans-color:  #378add;
-$icon-trans-ext:    #185fa5;
-$icon-trans-fold:   #378add;
+// ── Icon colours per job_type ─────────────────────────────────────────────────
 
-// Icon — summary (purple family)
-$icon-sum-bg:       #eeedfe;
-$icon-sum-color:    #7f77dd;
-$icon-sum-ext:      #534ab7;
-$icon-sum-fold:     #7f77dd;
+// document_embedding — teal family
+$icon-emb-bg:           #e1f5ee;
+$icon-emb-color:        #1d9e75;
+$icon-emb-ext:          #0f6e56;
+$icon-emb-fold:         #1d9e75;
 
-// Badge — success
-$badge-ok-bg:       #eaf3de;
-$badge-ok-text:     #3b6d11;
-$badge-ok-dot:      #639922;
+// translation — blue family
+$icon-trans-bg:         #e6f1fb;
+$icon-trans-color:      #378add;
+$icon-trans-ext:        #185fa5;
+$icon-trans-fold:       #378add;
 
-// Badge — failure
-$badge-fail-bg:     #faece7;
-$badge-fail-text:   #993c1d;
-$badge-fail-dot:    #d85a30;
+// summary — purple family
+$icon-sum-bg:           #eeedfe;
+$icon-sum-color:        #7f77dd;
+$icon-sum-ext:          #534ab7;
+$icon-sum-fold:         #7f77dd;
 
-// Badge — pending / started
-$badge-pend-bg:     #eeedfe;
-$badge-pend-text:   #534ab7;
-$badge-pend-dot:    #7f77dd;
+// ── Badge colours per status ──────────────────────────────────────────────────
 
-// Download btn hover
-$dl-hover-bg:       #eeedfe;
-$dl-hover-color:    #534ab7;
+// SUCCESS
+$badge-ok-bg:           #eaf3de;
+$badge-ok-text:         #3b6d11;
+$badge-ok-dot:          #639922;
 
-// Pulse ring
-$pulse-color:       #7f77dd;
-$pulse-offset:      3px;
+// FAILURE
+$badge-fail-bg:         #faece7;
+$badge-fail-text:       #993c1d;
+$badge-fail-dot:        #d85a30;
 
-// Timing
-$t-fast:            0.15s;
-$t-med:             0.22s;
-$spin-dur:          2s;
-$pulse-dur:         1.4s;
-$blink-dur:         1.2s;
+// UPLOADING / PENDING / STARTED
+$badge-pend-bg:         #eeedfe;
+$badge-pend-text:       #534ab7;
+$badge-pend-dot:        #7f77dd;
+
+// ── Progress bar ──────────────────────────────────────────────────────────────
+$progress-track-bg:     rgba(127, 119, 221, 0.14);
+$progress-fill-from:    #7f77dd;
+$progress-fill-to:      #378add;
+
+// ── Download btn hover ────────────────────────────────────────────────────────
+$dl-hover-bg:           #eeedfe;
+$dl-hover-color:        #534ab7;
+
+// ── Pulse ring ────────────────────────────────────────────────────────────────
+$pulse-color:           #7f77dd;
+$pulse-offset:          3px;
+
+// ── Timing ───────────────────────────────────────────────────────────────────
+$t-fast:                0.15s;
+$t-med:                 0.22s;
+$spin-dur:              2s;
+$pulse-dur:             1.4s;
+$blink-dur:             1.2s;
 
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -229,64 +300,79 @@ $blink-dur:         1.2s;
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 :root {
-  // Container (as specified)
-  --gc-container-bg:        #ffffff;
+  // Container backgrounds (as specified)
+  --gc-container-bg:          #ffffff;
 
-  // Card at rest — transparent; border only
-  --gc-card-border:         rgba(0, 0, 0, 0.08);
+  // Card at rest — transparent, border only
+  --gc-card-border:           rgba(0, 0, 0, 0.08);
 
   // Card on hover
-  --gc-card-hover-bg:       rgba(127, 119, 221, 0.04);
-  --gc-card-hover-border:   rgba(127, 119, 221, 0.28);
+  --gc-card-hover-bg:         rgba(127, 119, 221, 0.04);
+  --gc-card-hover-border:     rgba(127, 119, 221, 0.28);
 
-  // Left accent bar (hover)
-  --gc-accent-bar:          linear-gradient(180deg, #{$accent-a}, #{$accent-b});
+  // Selected state
+  --gc-card-selected-bg:      rgba(127, 119, 221, 0.06);
+  --gc-card-selected-border:  rgba(127, 119, 221, 0.35);
+
+  // Accent bar gradient (left edge)
+  --gc-accent-bar:            linear-gradient(180deg, #{$accent-a}, #{$accent-b});
 
   // Text
-  --gc-text-primary:        #111111;
-  --gc-text-secondary:      #666666;
-  --gc-text-tertiary:       rgba(0, 0, 0, 0.30);
-  --gc-text-error:          #993c1d;
+  --gc-text-primary:          #111111;
+  --gc-text-secondary:        #666666;
+  --gc-text-tertiary:         rgba(0, 0, 0, 0.30);
+  --gc-text-error:            #993c1d;
 
-  // Separator dot
-  --gc-sep:                 rgba(0, 0, 0, 0.20);
+  // Meta separator
+  --gc-sep:                   rgba(0, 0, 0, 0.20);
 
-  // Download icon default color
-  --gc-dl-color:            rgba(0, 0, 0, 0.32);
+  // Download icon default
+  --gc-dl-color:              rgba(0, 0, 0, 0.32);
 
-  // Mask — must match card resting bg for conic border trick
-  // Card is transparent so mask = container bg
-  --gc-mask-color:          #ffffff;
+  // Must always equal card resting bg for mask-composite trick
+  // Card is transparent so this = container bg
+  --gc-mask-color:            #ffffff;
 
-  // Icon dark-mode overrides (unused in light, declared for completeness)
-  --gc-icon-trans-bg:       #{$icon-trans-bg};
-  --gc-icon-trans-color:    #{$icon-trans-color};
-  --gc-icon-sum-bg:         #{$icon-sum-bg};
-  --gc-icon-sum-color:      #{$icon-sum-color};
+  // Icon bg/color overrides (switched in dark mode via CSS vars)
+  --gc-icon-emb-bg:           #{$icon-emb-bg};
+  --gc-icon-emb-color:        #{$icon-emb-color};
+  --gc-icon-emb-ext:          #{$icon-emb-ext};
+  --gc-icon-trans-bg:         #{$icon-trans-bg};
+  --gc-icon-trans-color:      #{$icon-trans-color};
+  --gc-icon-trans-ext:        #{$icon-trans-ext};
+  --gc-icon-sum-bg:           #{$icon-sum-bg};
+  --gc-icon-sum-color:        #{$icon-sum-color};
+  --gc-icon-sum-ext:          #{$icon-sum-ext};
 }
 
 [data-theme='dark'] {
-  --gc-container-bg:        #111113;
+  --gc-container-bg:          #111113;
 
-  --gc-card-border:         rgba(255, 255, 255, 0.07);
-  --gc-card-hover-bg:       rgba(127, 119, 221, 0.08);
-  --gc-card-hover-border:   rgba(127, 119, 221, 0.25);
+  --gc-card-border:           rgba(255, 255, 255, 0.07);
+  --gc-card-hover-bg:         rgba(127, 119, 221, 0.08);
+  --gc-card-hover-border:     rgba(127, 119, 221, 0.25);
+  --gc-card-selected-bg:      rgba(127, 119, 221, 0.12);
+  --gc-card-selected-border:  rgba(127, 119, 221, 0.30);
 
-  --gc-text-primary:        #f0f0f0;
-  --gc-text-secondary:      #a0a0a0;
-  --gc-text-tertiary:       rgba(255, 255, 255, 0.25);
-  --gc-text-error:          #f0997b;
-  --gc-sep:                 rgba(255, 255, 255, 0.18);
-  --gc-dl-color:            rgba(255, 255, 255, 0.32);
+  --gc-text-primary:          #f0f0f0;
+  --gc-text-secondary:        #a0a0a0;
+  --gc-text-tertiary:         rgba(255, 255, 255, 0.25);
+  --gc-text-error:            #f0997b;
+  --gc-sep:                   rgba(255, 255, 255, 0.18);
+  --gc-dl-color:              rgba(255, 255, 255, 0.32);
 
-  // Mask = dark container bg
-  --gc-mask-color:          #111113;
+  --gc-mask-color:            #111113;
 
-  // Icon tints adjusted for dark surfaces
-  --gc-icon-trans-bg:       rgba(55, 138, 221, 0.15);
-  --gc-icon-trans-color:    #85b7eb;
-  --gc-icon-sum-bg:         rgba(127, 119, 221, 0.15);
-  --gc-icon-sum-color:      #afa9ec;
+  // Translucent tints for dark mode icons
+  --gc-icon-emb-bg:           rgba(29, 158, 117, 0.15);
+  --gc-icon-emb-color:        #5dcaa5;
+  --gc-icon-emb-ext:          #5dcaa5;
+  --gc-icon-trans-bg:         rgba(55, 138, 221, 0.15);
+  --gc-icon-trans-color:      #85b7eb;
+  --gc-icon-trans-ext:        #85b7eb;
+  --gc-icon-sum-bg:           rgba(127, 119, 221, 0.15);
+  --gc-icon-sum-color:        #afa9ec;
+  --gc-icon-sum-ext:          #afa9ec;
 }
 
 
@@ -294,35 +380,40 @@ $blink-dur:         1.2s;
 // Keyframes
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-// Required for conic-gradient animation
 @property --angle {
   syntax: '<angle>';
   initial-value: 0deg;
   inherits: false;
 }
 
-// Spinning gradient border for STARTED / PENDING
+// Spinning gradient border — UPLOADING / PENDING / STARTED
 @keyframes spin {
   to { --angle: 360deg; }
 }
 
-// Pulsing outer ring on the icon
+// Expanding halo on icon
 @keyframes pulseRing {
   0%   { transform: scale(0.88); opacity: 0;   }
   40%  { transform: scale(1.06); opacity: 0.7; }
   100% { transform: scale(1.14); opacity: 0;   }
 }
 
-// Badge dot blink for STARTED / PENDING
+// Badge dot blink for in-progress states
 @keyframes badgeBlink {
   0%, 100% { opacity: 0.3; }
   50%       { opacity: 1;   }
 }
 
-// Left accent bar slides in from left
+// Left accent bar springs in on hover
 @keyframes barSlideIn {
   from { transform: scaleY(0); opacity: 0; }
   to   { transform: scaleY(1); opacity: 1; }
+}
+
+// Progress bar shimmer
+@keyframes progressShimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
 }
 
 
@@ -346,24 +437,21 @@ $blink-dur:         1.2s;
     border-color      $t-med ease;
 
   // ── Left accent bar ───────────────────────────────────────────────────
-  // Sits flush to the left edge, slides up on hover
   &::before {
     content: '';
     position: absolute;
     left: 0;
-    top: 10%;
-    bottom: 10%;
+    top: 12%;
+    bottom: 12%;
     width: 3px;
     border-radius: 0 3px 3px 0;
     background: var(--gc-accent-bar);
     transform: scaleY(0);
     transform-origin: center;
     opacity: 0;
-    transition: none;
   }
 
-  // ── Spinning gradient border (STARTED / PENDING only) ─────────────────
-  // Always animating; opacity flips on .inProgress
+  // ── Spinning gradient border (in-progress only) ───────────────────────
   &::after {
     content: '';
     position: absolute;
@@ -403,13 +491,23 @@ $blink-dur:         1.2s;
     .cardActions { opacity: 1; }
   }
 
-  // ── STARTED / PENDING — show spinning border, hide static border ──────
+  // ── Selected state ────────────────────────────────────────────────────
+  &.selected {
+    background-color: var(--gc-card-selected-bg);
+    border-color: var(--gc-card-selected-border);
+
+    &::before {
+      animation: barSlideIn 0.22s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    }
+  }
+
+  // ── In-progress — show spinning border, hide static ───────────────────
   &.inProgress {
     border-color: transparent;
     &::after { opacity: 1; }
   }
 
-  // ── Collapsed (icon-only) state ───────────────────────────────────────
+  // ── Collapsed (icon-only) ─────────────────────────────────────────────
   &.collapsed {
     width: min-content;
     padding: 6px;
@@ -422,7 +520,7 @@ $blink-dur:         1.2s;
 
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Icon wrapper
+// Icon wrapper + pulse ring
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 .iconWrapper {
@@ -433,13 +531,14 @@ $blink-dur:         1.2s;
   flex-shrink: 0;
 }
 
-// ── Status opacity dimming ────────────────────────────────────────────────────
-.status_STARTED,
-.status_PENDING {
-  .fileIcon { opacity: 0.65; }
+// Dim icon while in-progress
+.status_UPLOADING,
+.status_PENDING,
+.status_STARTED {
+  .fileIcon { opacity: 0.6; }
 }
 
-// ── Pulse ring — animated halo around icon ────────────────────────────────────
+// Expanding halo ring
 .pulseRing {
   position: absolute;
   inset: -#{$pulse-offset};
@@ -469,7 +568,6 @@ $blink-dur:         1.2s;
   transition: opacity $t-fast;
 }
 
-// Folded corner accent
 .iconFold {
   position: absolute;
   top: 0;
@@ -488,26 +586,27 @@ $blink-dur:         1.2s;
   line-height: 1;
 }
 
-// ── job_type skins ────────────────────────────────────────────────────────────
+// ── job_type colour skins ─────────────────────────────────────────────────────
+
+.icon_document_embedding {
+  background: var(--gc-icon-emb-bg);
+  color: var(--gc-icon-emb-color);
+  .iconFold { background: var(--gc-icon-emb-color); }
+  .iconExt  { color: var(--gc-icon-emb-ext); }
+}
 
 .icon_translation {
   background: var(--gc-icon-trans-bg);
   color: var(--gc-icon-trans-color);
-
   .iconFold { background: var(--gc-icon-trans-color); }
-  .iconExt  { color: $icon-trans-ext; }
-
-  [data-theme='dark'] & .iconExt { color: var(--gc-icon-trans-color); }
+  .iconExt  { color: var(--gc-icon-trans-ext); }
 }
 
 .icon_summary {
   background: var(--gc-icon-sum-bg);
   color: var(--gc-icon-sum-color);
-
   .iconFold { background: var(--gc-icon-sum-color); }
-  .iconExt  { color: $icon-sum-ext; }
-
-  [data-theme='dark'] & .iconExt { color: var(--gc-icon-sum-color); }
+  .iconExt  { color: var(--gc-icon-sum-ext); }
 }
 
 
@@ -560,6 +659,34 @@ $blink-dur:         1.2s;
 
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Upload progress bar
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+.progressTrack {
+  width: 100%;
+  height: 3px;
+  border-radius: $radius-progress;
+  background: $progress-track-bg;
+  overflow: hidden;
+  margin-top: 2px;
+}
+
+.progressFill {
+  height: 100%;
+  border-radius: $radius-progress;
+  background: linear-gradient(
+    90deg,
+    $progress-fill-from,
+    $progress-fill-to,
+    $progress-fill-from
+  );
+  background-size: 200% 100%;
+  animation: progressShimmer 1.8s ease-in-out infinite;
+  transition: width 0.3s ease;
+}
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Status badge
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -582,7 +709,6 @@ $blink-dur:         1.2s;
   flex-shrink: 0;
 }
 
-// Success
 .badgeSuccess {
   background: $badge-ok-bg;
   color: $badge-ok-text;
@@ -595,7 +721,6 @@ $blink-dur:         1.2s;
   }
 }
 
-// Failure
 .badgeFailure {
   background: $badge-fail-bg;
   color: $badge-fail-text;
@@ -608,7 +733,7 @@ $blink-dur:         1.2s;
   }
 }
 
-// Pending / Started
+// Covers UPLOADING + PENDING + STARTED
 .badgePending {
   background: $badge-pend-bg;
   color: $badge-pend-text;
@@ -649,9 +774,9 @@ $blink-dur:         1.2s;
   cursor: pointer;
   color: var(--gc-dl-color);
   transition:
-    background   $t-fast,
-    color        $t-fast,
-    transform    0.12s;
+    background  $t-fast,
+    color       $t-fast,
+    transform   0.12s;
 
   &:hover:not(:disabled) {
     background: $dl-hover-bg;
@@ -669,7 +794,7 @@ $blink-dur:         1.2s;
   }
 
   &:disabled {
-    opacity: 0.35;
+    opacity: 0.3;
     cursor: not-allowed;
   }
 }
