@@ -1,27 +1,7 @@
-<div
-  className={`${styles.generatedcard} ${styles[file.status]} ${!isExpanded ? 'w-min p-1' : ''}`}
-  title={file.file_name}
->
-  <div className={styles.shimmer} />   {/* ← add this */}
-
-  <div className={`${styles.iconStatusWrapper} ${styles[file.job_type]} ${styles[file.status]}`}>
-    ...
-  </div>
-  ...
-</div>
-
-
-
-
-
-
-
-
-
 // ─── SCSS Variables ───────────────────────────────────────────────────────────
 
 // Border radius
-$radius-card:        10px;
+$radius-card:        12px;
 $radius-icon:        8px;
 $radius-action-btn:  7px;
 
@@ -29,7 +9,7 @@ $radius-action-btn:  7px;
 $icon-wrapper-size:  38px;
 $action-btn-size:    28px;
 
-// Gradient border colors — used only for STARTED status
+// Gradient border colors — used only for STARTED / PENDING status
 $gradient-purple:    #7f77dd;
 $gradient-blue:      #378add;
 $gradient-teal:      #1d9e75;
@@ -59,61 +39,54 @@ $dotted-ring-color:  #7f77dd;
 $dotted-ring-offset: 3px;
 
 // Transitions
-$transition-fast:    0.15s;
-$transition-medium:  0.25s;
+$transition-fast:     0.15s;
+$transition-medium:   0.25s;
 
-// Animations
-$spin-duration:        2s;
-$pulse-duration:       1.4s;
-$shimmer-duration:     0.65s;
+// Animation durations
+$spin-duration:       2s;
+$pulse-duration:      1.4s;
+$shimmer-duration:    0.65s;
 
 
 // ─── CSS Custom Properties ────────────────────────────────────────────────────
 
 // Light mode — container bg is #ffffff
 :root {
-  --gc-container-bg:   #ffffff;
-  --gc-card-bg:        #f5f5f3;
-  --gc-card-bg-hover:  #ececea;
+  --gc-container-bg:    #ffffff;
+  --gc-card-bg-hover:   #f0f0ee;
 
-  --gc-text-primary:   #111111;
-  --gc-text-secondary: #666666;
-  --gc-text-tertiary:  #999999;
-  --gc-text-error:     #{$failure-color};
+  --gc-text-primary:    #111111;
+  --gc-text-secondary:  #666666;
+  --gc-text-tertiary:   #999999;
+  --gc-text-error:      #{$failure-color};
 
-  --gc-border:         rgba(0, 0, 0, 0.10);
+  --gc-border:          rgba(0, 0, 0, 0.12);
 
-  // Must always equal --gc-card-bg for mask-composite border trick
-  --gc-mask-color:     #f5f5f3;
+  // Must always equal the card's resting background for mask-composite trick.
+  // Since the card is transparent at rest, we use the container bg.
+  --gc-mask-color:      #ffffff;
 
-  // Shimmer sweep colors for light mode
-  // card-bg → soft warm highlight → card-bg
-  --gc-shimmer-from:   #f5f5f3;
-  --gc-shimmer-mid:    rgba(255, 255, 255, 0.72);
-  --gc-shimmer-to:     #ececea;
+  // Shimmer highlight (light mode — bright white veil)
+  --gc-shimmer-mid:     rgba(255, 255, 255, 0.72);
 }
 
 // Dark mode — container bg is #111113
 [data-theme='dark'] {
-  --gc-container-bg:   #111113;
-  --gc-card-bg:        #1c1c1f;
-  --gc-card-bg-hover:  #242428;
+  --gc-container-bg:    #111113;
+  --gc-card-bg-hover:   #1e1e21;
 
-  --gc-text-primary:   #f0f0f0;
-  --gc-text-secondary: #a0a0a0;
-  --gc-text-tertiary:  #606060;
-  --gc-text-error:     #f0997b;
+  --gc-text-primary:    #f0f0f0;
+  --gc-text-secondary:  #a0a0a0;
+  --gc-text-tertiary:   #606060;
+  --gc-text-error:      #f0997b;
 
-  --gc-border:         rgba(255, 255, 255, 0.08);
+  --gc-border:          rgba(255, 255, 255, 0.08);
 
-  // Must always equal --gc-card-bg for mask-composite border trick
-  --gc-mask-color:     #1c1c1f;
+  // Must always equal the card's resting background for mask-composite trick.
+  --gc-mask-color:      #111113;
 
-  // Shimmer sweep colors for dark mode
-  // card-bg → subtle light veil → slightly lighter dark
-  --gc-shimmer-from:   #1c1c1f;
-  --gc-shimmer-mid:    rgba(255, 255, 255, 0.06);
-  --gc-shimmer-to:     #242428;
+  // Shimmer highlight (dark mode — subtle luminance lift)
+  --gc-shimmer-mid:     rgba(255, 255, 255, 0.055);
 }
 
 
@@ -125,19 +98,19 @@ $shimmer-duration:     0.65s;
   inherits: false;
 }
 
-// Spinning gradient for STARTED border
+// Spinning conic gradient for STARTED / PENDING border
 @keyframes spin {
   to { --angle: 360deg; }
 }
 
-// Pulsing loader ring for STARTED icon
+// Pulsing icon ring for STARTED / PENDING
 @keyframes pulse-ring {
   0%   { transform: scale(0.92); opacity: 0.6; }
   50%  { transform: scale(1.08); opacity: 1;   }
   100% { transform: scale(0.92); opacity: 0.6; }
 }
 
-// Shimmer sweep — translates the gradient from -100% to 100% once
+// One-shot shimmer sweep on hover — runs once and stops via `forwards`
 @keyframes shimmer-sweep {
   0%   { transform: translateX(-100%); }
   100% { transform: translateX(100%);  }
@@ -145,50 +118,45 @@ $shimmer-duration:     0.65s;
 
 
 // ─── Card ─────────────────────────────────────────────────────────────────────
-.generatedcard {
+.generatedCard {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 9px 10px;
+  padding: 0.75rem;
+  background-color: transparent;
   border-radius: $radius-card;
-  background: var(--gc-card-bg);
+  overflow: hidden; // clips shimmer sweep to card bounds
   cursor: pointer;
-  overflow: hidden; // clip the shimmer pseudo to card bounds
-  transition: background $transition-fast;
+  transition: background-color $transition-fast;
 
-  // Static border — always visible at rest
-  &::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: $radius-card;
-    -webkit-mask:
-      linear-gradient(var(--gc-mask-color) 0 0) content-box,
-      linear-gradient(var(--gc-mask-color) 0 0);
-    -webkit-mask-composite: xor;
-    mask-composite: exclude;
-    padding: 1.5px;
-    pointer-events: none;
-    z-index: 0;
-    background: var(--gc-border);
-    transition: opacity $transition-medium;
-  }
-
-  // Spinning gradient border — only active for STARTED
+  // ── Border pseudo — mask-composite ring trick ──────────────────────────
+  // ::before → static border (transparent bg → uses --gc-border)
+  // ::after  → spinning gradient border (STARTED / PENDING only)
+  &::before,
   &::after {
     content: '';
     position: absolute;
     inset: 0;
     border-radius: $radius-card;
+    // The mask punches out the inner area so only the 1px ring is visible
     -webkit-mask:
       linear-gradient(var(--gc-mask-color) 0 0) content-box,
       linear-gradient(var(--gc-mask-color) 0 0);
     -webkit-mask-composite: xor;
     mask-composite: exclude;
-    padding: 1.5px;
+    padding: 1px; // matches original 1px border
     pointer-events: none;
     z-index: 0;
+  }
+
+  // Static 1px border — always visible
+  &::before {
+    background: var(--gc-border);
+    transition: opacity $transition-medium;
+  }
+
+  // Spinning gradient — hidden by default, shown for STARTED / PENDING
+  &::after {
     background: conic-gradient(
       from var(--angle) at 50% 50%,
       transparent       0deg,
@@ -199,49 +167,51 @@ $shimmer-duration:     0.65s;
       transparent       265deg
     );
     opacity: 0;
+    // Always animating so there's no flash delay when status becomes active
     animation: spin $spin-duration linear infinite;
+    transition: opacity $transition-medium;
   }
 
-  // ── Shimmer sweep pseudo — sits above bg, below content ─────────────────
+  // ── Shimmer sweep layer — fires once on hover ──────────────────────────
   .shimmer {
     position: absolute;
     inset: 0;
     border-radius: $radius-card;
     pointer-events: none;
     z-index: 0;
-    // gradient panel wider than card so the sweep is smooth edge-to-edge
     background: linear-gradient(
       105deg,
-      transparent                    0%,
-      transparent                    20%,
-      var(--gc-shimmer-mid)          50%,
-      transparent                    80%,
-      transparent                    100%
+      transparent           0%,
+      transparent           15%,
+      var(--gc-shimmer-mid) 50%,
+      transparent           85%,
+      transparent           100%
     );
-    background-size: 200% 100%;
     opacity: 0;
     transform: translateX(-100%);
   }
 
-  // ── Hover ────────────────────────────────────────────────────────────────
+  // ── Hover state — shimmer sweep + bg tint ─────────────────────────────
   &:hover {
-    background: var(--gc-card-bg-hover);
+    background-color: var(--gc-card-bg-hover);
 
     .shimmer {
       opacity: 1;
+      // `forwards` keeps it at translateX(100%) after sweep — no flicker
       animation: shimmer-sweep $shimmer-duration cubic-bezier(0.4, 0, 0.2, 1) forwards;
     }
 
     .cardActions { opacity: 1; }
   }
 
-  // ── STARTED — spinning gradient border, hide static border ──────────────
-  &.STARTED {
-    &::before { opacity: 0; }
-    &::after  { opacity: 1; }
+  // ── STARTED / PENDING — spinning gradient border ───────────────────────
+  &.STARTED,
+  &.PENDING {
+    &::before { opacity: 0; }  // hide static border
+    &::after  { opacity: 1; }  // show spinning gradient
   }
 
-  // Collapsed (icon-only) state
+  // Collapsed (icon-only) state driven by Tailwind utility classes in JSX
   &:global(.w-min) { width: min-content; }
   &:global(.p-1)   { padding: 4px; }
 }
@@ -298,14 +268,15 @@ $shimmer-duration:     0.65s;
     }
   }
 
-  &.STARTED {
+  &.STARTED,
+  &.PENDING {
     :global(.content-bg) {
       opacity: 0.7;
     }
   }
 }
 
-// Pulsing loader ring — only when status === 'STARTED'
+// Pulsing loader ring — only for STARTED / PENDING
 .dottedRing {
   position: absolute;
   inset: -#{$dotted-ring-offset};
@@ -378,7 +349,7 @@ $shimmer-duration:     0.65s;
   cursor: pointer;
   color: var(--gc-text-secondary);
   transition:
-    background $transition-fast,
+    background  $transition-fast,
     transform   0.12s,
     color       $transition-fast;
 
