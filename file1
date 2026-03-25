@@ -43,8 +43,17 @@ $transition-fast:    0.15s;
 $transition-medium:  0.25s;
 
 // Animations
-$spin-duration:      2s;
-$pulse-duration:     1.4s;
+$spin-duration:           2s;
+$pulse-duration:          1.4s;
+$shimmer-duration:        1.8s;
+$progress-duration:       2.4s;
+
+// STARTED state colors
+$started-shimmer-light:   rgba(127, 119, 221, 0.06);
+$started-shimmer-mid:     rgba(127, 119, 221, 0.15);
+$started-progress-from:   #7f77dd;
+$started-progress-mid:    #378add;
+$started-progress-to:     #1d9e75;
 
 
 // ─── CSS Custom Properties ────────────────────────────────────────────────────
@@ -98,6 +107,31 @@ $pulse-duration:     1.4s;
   0%   { transform: scale(0.92); opacity: 0.6; }
   50%  { transform: scale(1.08); opacity: 1;   }
   100% { transform: scale(0.92); opacity: 0.6; }
+}
+
+// Card-wide shimmer sweep for STARTED state
+@keyframes shimmer-sweep {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(200%);  }
+}
+
+// Thin progress bar sliding across bottom edge
+@keyframes progress-slide {
+  0%   { transform: translateX(-100%); }
+  60%  { transform: translateX(0%);    }
+  100% { transform: translateX(100%);  }
+}
+
+// Gentle breathing glow on the card border
+@keyframes border-breathe {
+  0%, 100% { opacity: 0.3; }
+  50%       { opacity: 0.9; }
+}
+
+// Icon gentle float
+@keyframes icon-float {
+  0%, 100% { transform: translateY(0px);   }
+  50%       { transform: translateY(-2px);  }
 }
 
 
@@ -159,6 +193,63 @@ $pulse-duration:     1.4s;
     &::after  { opacity: 1; }
 
     .cardActions { opacity: 1; }
+  }
+
+  // ── STARTED state — in-progress animations ───────────────────────────────
+  &.started {
+    // Breathing border — always animating, no hover needed
+    &::before { opacity: 0; }
+    &::after {
+      background: conic-gradient(
+        from var(--angle) at 50% 50%,
+        transparent             0deg,
+        $started-progress-from  60deg,
+        $started-progress-mid   140deg,
+        $started-progress-to    200deg,
+        $started-progress-mid   260deg,
+        $started-progress-from  320deg,
+        transparent             360deg
+      );
+      opacity: 1;
+      animation:
+        spin             $progress-duration linear infinite,
+        border-breathe   $shimmer-duration  ease-in-out infinite;
+    }
+
+    // Shimmer sweep overlay across the card face
+    &::before {
+      -webkit-mask: none;
+      mask: none;
+      padding: 0;
+      inset: 0;
+      border-radius: $radius-card;
+      background: linear-gradient(
+        105deg,
+        transparent                   0%,
+        $started-shimmer-light        35%,
+        $started-shimmer-mid          50%,
+        $started-shimmer-light        65%,
+        transparent                   100%
+      );
+      animation: shimmer-sweep $shimmer-duration ease-in-out infinite;
+      opacity: 1;
+      overflow: hidden;
+    }
+
+    // Thin progress bar running across the bottom of the card
+    .progressBar {
+      display: block;
+    }
+
+    // Icon floats gently
+    .iconStatusWrapper {
+      animation: icon-float $shimmer-duration ease-in-out infinite;
+    }
+
+    // File name pulses opacity subtly
+    .fileName {
+      animation: border-breathe $shimmer-duration ease-in-out infinite;
+    }
   }
 
   // Collapsed (icon-only) state — driven by Tailwind classes in JSX
@@ -234,6 +325,34 @@ $pulse-duration:     1.4s;
   animation: pulse-ring $pulse-duration ease-in-out infinite;
   color: $dotted-ring-color;
   pointer-events: none;
+}
+
+// Thin progress bar along the bottom edge — only visible in STARTED state
+.progressBar {
+  display: none;
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  border-radius: 0 0 $radius-card $radius-card;
+  overflow: hidden;
+  z-index: 2;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      90deg,
+      transparent              0%,
+      $started-progress-from  20%,
+      $started-progress-mid   50%,
+      $started-progress-to    80%,
+      transparent             100%
+    );
+    animation: progress-slide $progress-duration ease-in-out infinite;
+  }
 }
 
 
@@ -312,3 +431,16 @@ $pulse-duration:     1.4s;
     transform: scale(0.96);
   }
 }
+
+
+
+
+
+
+
+
+
+<div className={`${styles.generatedcard} ${file.status === 'STARTED' ? styles.started : ''} ...`}>
+  ...
+  <div className={styles.progressBar} />
+</div>
