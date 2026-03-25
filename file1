@@ -1,3 +1,197 @@
+import React from 'react';
+import styles from './GeneratedCard.module.scss';
+
+// ─── Asset imports ────────────────────────────────────────────────────────────
+import translationImg from '@/assets/icons/translate.png';
+import summaryImg     from '@/assets/icons/summary.png';
+
+// ─── Interface ────────────────────────────────────────────────────────────────
+
+export interface EmbeddingFile {
+  originalFile?: any;
+  progress:      number;
+  isSelected:    boolean;
+
+  file_name:     string;
+  file_job_id:   string;
+  state_id:      string;
+  status:        'UPLOADING' | 'PENDING' | 'STARTED' | 'SUCCESS' | 'FAILURE';
+  file_size:     string;
+  file_type:     string;
+  job_type:      'document_embedding' | 'translation' | 'summary';
+  download_url?: any;
+}
+
+interface GeneratedCardProps {
+  file:              EmbeddingFile;
+  isExpanded:        boolean;
+  openGeneratedFile: (file: EmbeddingFile) => void;
+}
+
+// ─── Job type → image map ─────────────────────────────────────────────────────
+// document_embedding has no image — icon box shows tinted bg only
+
+const JOB_TYPE_IMAGE: Partial<Record<EmbeddingFile['job_type'], string>> = {
+  translation: translationImg,
+  summary:     summaryImg,
+};
+
+// ─── Status label map ─────────────────────────────────────────────────────────
+
+const STATUS_LABEL: Record<EmbeddingFile['status'], string> = {
+  UPLOADING: 'Uploading',
+  PENDING:   'Pending',
+  STARTED:   'Processing',
+  SUCCESS:   'Done',
+  FAILURE:   'Failed',
+};
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+const EmbeddingFallbackIcon: React.FC = () => (
+  <svg width="15" height="15" viewBox="0 0 16 16"
+    fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+    <circle cx="8" cy="8" r="5.5" />
+    <path d="M8 5v3l2 1.5" />
+  </svg>
+);
+
+const FileIcon: React.FC<{ jobType: EmbeddingFile['job_type'] }> = ({ jobType }) => {
+  const imgSrc = JOB_TYPE_IMAGE[jobType];
+  return (
+    <div className={`${styles.fileIcon} ${styles[`icon_${jobType}`]}`}>
+      {imgSrc ? (
+        <img
+          src={imgSrc}
+          alt={jobType}
+          className={styles.iconImage}
+          draggable={false}
+        />
+      ) : (
+        <EmbeddingFallbackIcon />
+      )}
+    </div>
+  );
+};
+
+const StatusBadge: React.FC<{ status: EmbeddingFile['status'] }> = ({ status }) => {
+  const badgeCls =
+    status === 'SUCCESS' ? styles.badgeSuccess :
+    status === 'FAILURE' ? styles.badgeFailure :
+                           styles.badgePending;
+  return (
+    <span className={`${styles.badge} ${badgeCls}`}>
+      <span className={styles.badgeDot} />
+      {STATUS_LABEL[status]}
+    </span>
+  );
+};
+
+const ProgressBar: React.FC<{ progress: number }> = ({ progress }) => (
+  <div className={styles.progressTrack}>
+    <div
+      className={styles.progressFill}
+      style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
+    />
+  </div>
+);
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
+const GeneratedCard: React.FC<GeneratedCardProps> = ({
+  file,
+  isExpanded,
+  openGeneratedFile,
+}) => (
+  <div
+    key={file.state_id}
+    title={file.file_name}
+    className={[
+      styles.generatedCard,
+      styles[file.status],
+      file.isSelected ? styles.selected  : '',
+      !isExpanded     ? styles.collapsed : '',
+    ].filter(Boolean).join(' ')}
+  >
+    {/* Processing border — amber/coral ring, only when in-progress */}
+    {(file.status === 'UPLOADING' ||
+      file.status === 'PENDING'   ||
+      file.status === 'STARTED') && (
+      <span className={styles.processingBorder} />
+    )}
+
+    {/* Icon + pulse ring */}
+    <div className={`${styles.iconStatusWrapper} ${styles[file.status]}`}>
+      <div className="content-bg">
+        <FileIcon jobType={file.job_type} />
+      </div>
+      {(file.status === 'UPLOADING' ||
+        file.status === 'PENDING'   ||
+        file.status === 'STARTED') && (
+        <span className={styles.dottedRing} />
+      )}
+    </div>
+
+    {isExpanded && (
+      <>
+        <div className={styles.fileInfo}>
+          <span className={styles.fileName}>{file.file_name}</span>
+          <div className={styles.fileMeta}>
+            <StatusBadge status={file.status} />
+            {file.status === 'FAILURE' ? (
+              <>
+                <span className={styles.metaSep}>·</span>
+                <span className={styles.fileError}>Generation failed</span>
+              </>
+            ) : file.file_size ? (
+              <>
+                <span className={styles.metaSep}>·</span>
+                <span className={styles.fileSize}>{file.file_size}</span>
+              </>
+            ) : null}
+          </div>
+
+          {file.status === 'UPLOADING' && file.progress > 0 && (
+            <ProgressBar progress={file.progress} />
+          )}
+        </div>
+
+        <div className={styles.cardActions}>
+          <div className={styles.menuWarpper}>
+            <button
+              className={styles.actionBtn}
+              onClick={() => openGeneratedFile(file)}
+              disabled={file.status !== 'SUCCESS'}
+              aria-label={`Download ${file.file_name}`}
+            >
+              <svg
+                className={styles.downloadIcon}
+                width="14" height="14" viewBox="0 0 16 16"
+                fill="none" stroke="currentColor"
+                strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
+              >
+                <path d="M8 2v8M5 7l3 3 3-3" />
+                <path d="M3 13h10" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </>
+    )}
+  </div>
+);
+
+export default GeneratedCard;
+
+
+
+
+
+
+
+
+
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // SCSS Variables
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -11,10 +205,18 @@ $radius-progress:   4px;
 $icon-size:         36px;
 $btn-size:          28px;
 
-// Accent gradient — left bar + spinning border
+// Accent gradient — hover border (short comet, fast)
 $accent-a:          #7f77dd;   // purple
 $accent-b:          #378add;   // blue
 $accent-c:          #1d9e75;   // teal
+
+// Processing border — amber/coral warmth to stand out from cool hover
+$proc-a:            #ef9f27;   // amber
+$proc-b:            #d85a30;   // coral
+$proc-c:            #d4537e;   // pink
+
+// Processing border speed — slower & fuller arc than hover
+$spin-proc-dur:     3s;
 
 // ── Icon backgrounds per job_type ─────────────────────────────────────────────
 
@@ -174,6 +376,18 @@ $blink-dur:             1.2s;
   100% { background-position:  200% 0; }
 }
 
+// Separate angle for the processing border — independent from hover border
+@property --angle-processing {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+// Slower, full-arc spin for STARTED / PENDING / UPLOADING
+@keyframes spin-processing {
+  to { --angle-processing: 360deg; }
+}
+
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Card
@@ -209,7 +423,7 @@ $blink-dur:             1.2s;
     opacity: 0;
   }
 
-  // ── Spinning gradient border (in-progress only) ───────────────────────
+  // ── Hover border — cool purple/blue/teal comet, fast & short arc ──────
   &::after {
     content: '';
     position: absolute;
@@ -227,26 +441,26 @@ $blink-dur:             1.2s;
       from var(--angle) at 50% 50%,
       transparent   0deg,
       transparent   150deg,
-      $accent-a     185deg,
+      $accent-a     185deg,   // short ~115° comet arc
       $accent-b     215deg,
       $accent-c     240deg,
       transparent   265deg
     );
     opacity: 0;
-    animation: spin $spin-dur linear infinite;
+    animation: spin $spin-dur linear infinite;  // fast: 2s
     transition: opacity $t-med;
   }
 
   // ── Hover ─────────────────────────────────────────────────────────────
   &:hover {
     background-color: var(--gc-card-hover-bg);
-    border-color: transparent; // hidden — gradient border takes over
+    border-color: transparent;
 
     &::before {
       animation: barSlideIn 0.22s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
     }
 
-    &::after { opacity: 1; } // show spinning gradient border on hover
+    &::after { opacity: 1; }
 
     .cardActions { opacity: 1; }
   }
@@ -261,10 +475,10 @@ $blink-dur:             1.2s;
     }
   }
 
-  // ── In-progress — show spinning border, hide static ───────────────────
+  // ── In-progress — amber/coral/pink border, slower & wider arc ─────────
+  // Uses a child .processingBorder span so it is fully independent of ::after
   &.inProgress {
     border-color: transparent;
-    &::after { opacity: 1; }
   }
 
   // ── Collapsed (icon-only) ─────────────────────────────────────────────
@@ -276,6 +490,32 @@ $blink-dur:             1.2s;
     .fileInfo,
     .cardActions { display: none; }
   }
+}
+
+// Processing border span — amber/coral/pink, slow full rotation, wide arc
+// Rendered in JSX only when status is UPLOADING / PENDING / STARTED
+.processingBorder {
+  position: absolute;
+  inset: 0;
+  border-radius: $radius-card;
+  -webkit-mask:
+    linear-gradient(var(--gc-mask-color) 0 0) content-box,
+    linear-gradient(var(--gc-mask-color) 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  padding: 1.5px;          // slightly thicker than the hover border
+  pointer-events: none;
+  z-index: 1;              // sits above ::after so hover doesn't bleed through
+  background: conic-gradient(
+    from var(--angle-processing) at 50% 50%,
+    transparent   0deg,
+    transparent   60deg,
+    $proc-c       100deg,   // wide ~200° arc — clearly "alive"
+    $proc-a       180deg,
+    $proc-b       230deg,
+    transparent   260deg
+  );
+  animation: spin-processing $spin-proc-dur linear infinite; // slow: 3s
 }
 
 
