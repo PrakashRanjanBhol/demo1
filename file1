@@ -1,92 +1,108 @@
+const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+  const rect = e.currentTarget.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  e.currentTarget.style.setProperty('--gc-mouse-x', `${x}px`);
+  e.currentTarget.style.setProperty('--gc-mouse-y', `${y}px`);
+};
+
+// In JSX:
+<div
+  className={`${styles.generatedCard} ${styles[file.status]} ${!isExpanded ? 'w-min p-1' : ''}`}
+  title={file.file_name}
+  onMouseMove={handleMouseMove}
+>
+  <div className={styles.spotlight} />
+  <div className={`${styles.iconStatusWrapper} ${styles[file.job_type]} ${styles[file.status]}`}>
+    ...
+  </div>
+  ...
+</div>
+
+
+
+
+
+
 // ─── SCSS Variables ───────────────────────────────────────────────────────────
 
-// Border radius
 $radius-card:        12px;
 $radius-icon:        8px;
 $radius-action-btn:  7px;
 
-// Sizes
 $icon-wrapper-size:  38px;
 $action-btn-size:    28px;
 
-// Gradient border colors — used only for STARTED / PENDING status
+// Spinning border gradient — STARTED / PENDING only
 $gradient-purple:    #7f77dd;
 $gradient-blue:      #378add;
 $gradient-teal:      #1d9e75;
 
-// Job type — translation (blue family)
+// Job type colours
 $translation-bg:     #e6f1fb;
 $translation-color:  #378add;
-
-// Job type — summary (purple family)
 $summary-bg:         #eeedfe;
 $summary-color:      #7f77dd;
 
-// Status — failure (coral family)
+// Status colours
 $failure-bg:         #faece7;
 $failure-color:      #d85a30;
 $failure-ring:       rgba(216, 90, 48, 0.25);
-
-// Status — success
 $success-ring:       rgba(29, 158, 117, 0.25);
 
-// Action button hover
+// Action button
 $action-hover-bg:    #eeedfe;
 $action-hover-color: #534ab7;
 
-// Dotted ring
+// Dotted ring (STARTED / PENDING icon)
 $dotted-ring-color:  #7f77dd;
 $dotted-ring-offset: 3px;
 
-// Transitions
-$transition-fast:     0.15s;
-$transition-medium:   0.25s;
-
-// Animation durations
-$spin-duration:       2s;
-$pulse-duration:      1.4s;
-$shimmer-duration:    0.65s;
+// Timing
+$transition-fast:    0.15s;
+$transition-medium:  0.25s;
+$spin-duration:      2s;
+$pulse-duration:     1.4s;
 
 
 // ─── CSS Custom Properties ────────────────────────────────────────────────────
 
-// Light mode — container bg is #ffffff
 :root {
-  --gc-container-bg:    #ffffff;
-  --gc-card-bg-hover:   #f0f0ee;
+  --gc-container-bg:   #ffffff;
+  --gc-card-bg-hover:  #f0f0ee;
 
-  --gc-text-primary:    #111111;
-  --gc-text-secondary:  #666666;
-  --gc-text-tertiary:   #999999;
-  --gc-text-error:      #{$failure-color};
+  --gc-text-primary:   #111111;
+  --gc-text-secondary: #666666;
+  --gc-text-tertiary:  #999999;
+  --gc-text-error:     #{$failure-color};
 
-  --gc-border:          rgba(0, 0, 0, 0.12);
+  --gc-border:         rgba(0, 0, 0, 0.12);
+  --gc-mask-color:     #ffffff;
 
-  // Must always equal the card's resting background for mask-composite trick.
-  // Since the card is transparent at rest, we use the container bg.
-  --gc-mask-color:      #ffffff;
+  // Spotlight — warm white radial glow
+  --gc-spot-color:     rgba(255, 255, 255, 0.55);
+  --gc-spot-size:      140px;
 
-  // Shimmer highlight (light mode — bright white veil)
-  --gc-shimmer-mid:     rgba(255, 255, 255, 0.72);
+  // Mouse position (set via JS on mousemove)
+  --gc-mouse-x:        50%;
+  --gc-mouse-y:        50%;
 }
 
-// Dark mode — container bg is #111113
 [data-theme='dark'] {
-  --gc-container-bg:    #111113;
-  --gc-card-bg-hover:   #1e1e21;
+  --gc-container-bg:   #111113;
+  --gc-card-bg-hover:  #1e1e21;
 
-  --gc-text-primary:    #f0f0f0;
-  --gc-text-secondary:  #a0a0a0;
-  --gc-text-tertiary:   #606060;
-  --gc-text-error:      #f0997b;
+  --gc-text-primary:   #f0f0f0;
+  --gc-text-secondary: #a0a0a0;
+  --gc-text-tertiary:  #606060;
+  --gc-text-error:     #f0997b;
 
-  --gc-border:          rgba(255, 255, 255, 0.08);
+  --gc-border:         rgba(255, 255, 255, 0.08);
+  --gc-mask-color:     #111113;
 
-  // Must always equal the card's resting background for mask-composite trick.
-  --gc-mask-color:      #111113;
-
-  // Shimmer highlight (dark mode — subtle luminance lift)
-  --gc-shimmer-mid:     rgba(255, 255, 255, 0.055);
+  // Spotlight — cool white glow, more restrained in dark
+  --gc-spot-color:     rgba(255, 255, 255, 0.07);
+  --gc-spot-size:      160px;
 }
 
 
@@ -98,22 +114,20 @@ $shimmer-duration:    0.65s;
   inherits: false;
 }
 
-// Spinning conic gradient for STARTED / PENDING border
 @keyframes spin {
   to { --angle: 360deg; }
 }
 
-// Pulsing icon ring for STARTED / PENDING
 @keyframes pulse-ring {
   0%   { transform: scale(0.92); opacity: 0.6; }
   50%  { transform: scale(1.08); opacity: 1;   }
   100% { transform: scale(0.92); opacity: 0.6; }
 }
 
-// One-shot shimmer sweep on hover — runs once and stops via `forwards`
-@keyframes shimmer-sweep {
-  0%   { transform: translateX(-100%); }
-  100% { transform: translateX(100%);  }
+// Spotlight fade-in when entering the card
+@keyframes spot-enter {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
 
@@ -125,37 +139,34 @@ $shimmer-duration:    0.65s;
   padding: 0.75rem;
   background-color: transparent;
   border-radius: $radius-card;
-  overflow: hidden; // clips shimmer sweep to card bounds
+  overflow: hidden;
   cursor: pointer;
   transition: background-color $transition-fast;
 
-  // ── Border pseudo — mask-composite ring trick ──────────────────────────
-  // ::before → static border (transparent bg → uses --gc-border)
-  // ::after  → spinning gradient border (STARTED / PENDING only)
+  // ── Border pseudo-elements ────────────────────────────────────────────
   &::before,
   &::after {
     content: '';
     position: absolute;
     inset: 0;
     border-radius: $radius-card;
-    // The mask punches out the inner area so only the 1px ring is visible
     -webkit-mask:
       linear-gradient(var(--gc-mask-color) 0 0) content-box,
       linear-gradient(var(--gc-mask-color) 0 0);
     -webkit-mask-composite: xor;
     mask-composite: exclude;
-    padding: 1px; // matches original 1px border
+    padding: 1px;
     pointer-events: none;
     z-index: 0;
   }
 
-  // Static 1px border — always visible
+  // Static border
   &::before {
     background: var(--gc-border);
     transition: opacity $transition-medium;
   }
 
-  // Spinning gradient — hidden by default, shown for STARTED / PENDING
+  // Spinning gradient border — always animating, hidden until STARTED/PENDING
   &::after {
     background: conic-gradient(
       from var(--angle) at 50% 50%,
@@ -167,51 +178,47 @@ $shimmer-duration:    0.65s;
       transparent       265deg
     );
     opacity: 0;
-    // Always animating so there's no flash delay when status becomes active
     animation: spin $spin-duration linear infinite;
     transition: opacity $transition-medium;
   }
 
-  // ── Shimmer sweep layer — fires once on hover ──────────────────────────
-  .shimmer {
+  // ── Spotlight layer ───────────────────────────────────────────────────
+  // Follows mouse position via --gc-mouse-x / --gc-mouse-y set in JS
+  .spotlight {
     position: absolute;
     inset: 0;
     border-radius: $radius-card;
     pointer-events: none;
     z-index: 0;
-    background: linear-gradient(
-      105deg,
-      transparent           0%,
-      transparent           15%,
-      var(--gc-shimmer-mid) 50%,
-      transparent           85%,
-      transparent           100%
-    );
     opacity: 0;
-    transform: translateX(-100%);
+    transition: opacity 0.3s ease;
+    background: radial-gradient(
+      circle var(--gc-spot-size) at var(--gc-mouse-x) var(--gc-mouse-y),
+      var(--gc-spot-color),
+      transparent 80%
+    );
   }
 
-  // ── Hover state — shimmer sweep + bg tint ─────────────────────────────
+  // ── Hover ─────────────────────────────────────────────────────────────
   &:hover {
     background-color: var(--gc-card-bg-hover);
 
-    .shimmer {
+    .spotlight {
       opacity: 1;
-      // `forwards` keeps it at translateX(100%) after sweep — no flicker
-      animation: shimmer-sweep $shimmer-duration cubic-bezier(0.4, 0, 0.2, 1) forwards;
+      animation: spot-enter 0.25s ease forwards;
     }
 
     .cardActions { opacity: 1; }
   }
 
-  // ── STARTED / PENDING — spinning gradient border ───────────────────────
+  // ── STARTED / PENDING — spinning gradient border ──────────────────────
   &.STARTED,
   &.PENDING {
-    &::before { opacity: 0; }  // hide static border
-    &::after  { opacity: 1; }  // show spinning gradient
+    &::before { opacity: 0; }
+    &::after  { opacity: 1; }
   }
 
-  // Collapsed (icon-only) state driven by Tailwind utility classes in JSX
+  // Collapsed icon-only state
   &:global(.w-min) { width: min-content; }
   &:global(.p-1)   { padding: 4px; }
 }
@@ -238,45 +245,32 @@ $shimmer-duration:    0.65s;
     justify-content: center;
   }
 
-  // ── job_type skins ───────────────────────────────────────────────────────
-  &.translation {
-    :global(.content-bg) {
-      background: $translation-bg;
-      color: $translation-color;
-    }
+  &.translation :global(.content-bg) {
+    background: $translation-bg;
+    color: $translation-color;
   }
 
-  &.summary {
-    :global(.content-bg) {
-      background: $summary-bg;
-      color: $summary-color;
-    }
+  &.summary :global(.content-bg) {
+    background: $summary-bg;
+    color: $summary-color;
   }
 
-  // ── status overlays ──────────────────────────────────────────────────────
-  &.SUCCESS {
-    :global(.content-bg) {
-      box-shadow: inset 0 0 0 1.5px $success-ring;
-    }
+  &.SUCCESS :global(.content-bg) {
+    box-shadow: inset 0 0 0 1.5px $success-ring;
   }
 
-  &.FAILURE {
-    :global(.content-bg) {
-      background: $failure-bg;
-      color: $failure-color;
-      box-shadow: inset 0 0 0 1.5px $failure-ring;
-    }
+  &.FAILURE :global(.content-bg) {
+    background: $failure-bg;
+    color: $failure-color;
+    box-shadow: inset 0 0 0 1.5px $failure-ring;
   }
 
-  &.STARTED,
-  &.PENDING {
-    :global(.content-bg) {
-      opacity: 0.7;
-    }
+  &.STARTED :global(.content-bg),
+  &.PENDING :global(.content-bg) {
+    opacity: 0.7;
   }
 }
 
-// Pulsing loader ring — only for STARTED / PENDING
 .dottedRing {
   position: absolute;
   inset: -#{$dotted-ring-offset};
