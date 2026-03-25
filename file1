@@ -1,7 +1,18 @@
 <div
   className={`${styles.generatedcard} ${styles[file.status]} ${!isExpanded ? 'w-min p-1' : ''}`}
-  ...
+  title={file.file_name}
 >
+  <div className={styles.shimmer} />   {/* ← add this */}
+
+  <div className={`${styles.iconStatusWrapper} ${styles[file.job_type]} ${styles[file.status]}`}>
+    ...
+  </div>
+  ...
+</div>
+
+
+
+
 
 
 
@@ -52,8 +63,9 @@ $transition-fast:    0.15s;
 $transition-medium:  0.25s;
 
 // Animations
-$spin-duration:      2s;
-$pulse-duration:     1.4s;
+$spin-duration:        2s;
+$pulse-duration:       1.4s;
+$shimmer-duration:     0.65s;
 
 
 // ─── CSS Custom Properties ────────────────────────────────────────────────────
@@ -73,6 +85,12 @@ $pulse-duration:     1.4s;
 
   // Must always equal --gc-card-bg for mask-composite border trick
   --gc-mask-color:     #f5f5f3;
+
+  // Shimmer sweep colors for light mode
+  // card-bg → soft warm highlight → card-bg
+  --gc-shimmer-from:   #f5f5f3;
+  --gc-shimmer-mid:    rgba(255, 255, 255, 0.72);
+  --gc-shimmer-to:     #ececea;
 }
 
 // Dark mode — container bg is #111113
@@ -90,6 +108,12 @@ $pulse-duration:     1.4s;
 
   // Must always equal --gc-card-bg for mask-composite border trick
   --gc-mask-color:     #1c1c1f;
+
+  // Shimmer sweep colors for dark mode
+  // card-bg → subtle light veil → slightly lighter dark
+  --gc-shimmer-from:   #1c1c1f;
+  --gc-shimmer-mid:    rgba(255, 255, 255, 0.06);
+  --gc-shimmer-to:     #242428;
 }
 
 
@@ -101,7 +125,7 @@ $pulse-duration:     1.4s;
   inherits: false;
 }
 
-// Spinning gradient for STARTED status
+// Spinning gradient for STARTED border
 @keyframes spin {
   to { --angle: 360deg; }
 }
@@ -113,10 +137,10 @@ $pulse-duration:     1.4s;
   100% { transform: scale(0.92); opacity: 0.6; }
 }
 
-// Subtle hover — card lifts very slightly
-@keyframes card-hover-in {
-  from { transform: translateY(0);    }
-  to   { transform: translateY(-1px); }
+// Shimmer sweep — translates the gradient from -100% to 100% once
+@keyframes shimmer-sweep {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%);  }
 }
 
 
@@ -130,11 +154,10 @@ $pulse-duration:     1.4s;
   border-radius: $radius-card;
   background: var(--gc-card-bg);
   cursor: pointer;
-  transition:
-    background      $transition-fast,
-    transform       $transition-fast ease-out;
+  overflow: hidden; // clip the shimmer pseudo to card bounds
+  transition: background $transition-fast;
 
-  // Static border — always visible
+  // Static border — always visible at rest
   &::before {
     content: '';
     position: absolute;
@@ -152,7 +175,7 @@ $pulse-duration:     1.4s;
     transition: opacity $transition-medium;
   }
 
-  // Spinning gradient border — only rendered for STARTED, hidden otherwise
+  // Spinning gradient border — only active for STARTED
   &::after {
     content: '';
     position: absolute;
@@ -176,19 +199,43 @@ $pulse-duration:     1.4s;
       transparent       265deg
     );
     opacity: 0;
-    // animation always runs but is only visible when opacity > 0
     animation: spin $spin-duration linear infinite;
   }
 
-  // ── Hover — simple lift + bg darken ─────────────────────────────────────
+  // ── Shimmer sweep pseudo — sits above bg, below content ─────────────────
+  .shimmer {
+    position: absolute;
+    inset: 0;
+    border-radius: $radius-card;
+    pointer-events: none;
+    z-index: 0;
+    // gradient panel wider than card so the sweep is smooth edge-to-edge
+    background: linear-gradient(
+      105deg,
+      transparent                    0%,
+      transparent                    20%,
+      var(--gc-shimmer-mid)          50%,
+      transparent                    80%,
+      transparent                    100%
+    );
+    background-size: 200% 100%;
+    opacity: 0;
+    transform: translateX(-100%);
+  }
+
+  // ── Hover ────────────────────────────────────────────────────────────────
   &:hover {
     background: var(--gc-card-bg-hover);
-    transform: translateY(-1px);
+
+    .shimmer {
+      opacity: 1;
+      animation: shimmer-sweep $shimmer-duration cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    }
 
     .cardActions { opacity: 1; }
   }
 
-  // ── STARTED — show spinning gradient, hide static border ────────────────
+  // ── STARTED — spinning gradient border, hide static border ──────────────
   &.STARTED {
     &::before { opacity: 0; }
     &::after  { opacity: 1; }
