@@ -1,3 +1,12 @@
+<div
+  className={`${styles.generatedcard} ${styles[file.status]} ${!isExpanded ? 'w-min p-1' : ''}`}
+  ...
+>
+
+
+
+
+
 // ─── SCSS Variables ───────────────────────────────────────────────────────────
 
 // Border radius
@@ -9,7 +18,7 @@ $radius-action-btn:  7px;
 $icon-wrapper-size:  38px;
 $action-btn-size:    28px;
 
-// Gradient border colors (spinning conic)
+// Gradient border colors — used only for STARTED status
 $gradient-purple:    #7f77dd;
 $gradient-blue:      #378add;
 $gradient-teal:      #1d9e75;
@@ -43,25 +52,17 @@ $transition-fast:    0.15s;
 $transition-medium:  0.25s;
 
 // Animations
-$spin-duration:           2s;
-$pulse-duration:          1.4s;
-$shimmer-duration:        1.8s;
-$progress-duration:       2.4s;
-
-// STARTED state colors
-$started-shimmer-light:   rgba(127, 119, 221, 0.06);
-$started-shimmer-mid:     rgba(127, 119, 221, 0.15);
-$started-progress-from:   #7f77dd;
-$started-progress-mid:    #378add;
-$started-progress-to:     #1d9e75;
+$spin-duration:      2s;
+$pulse-duration:     1.4s;
 
 
 // ─── CSS Custom Properties ────────────────────────────────────────────────────
+
 // Light mode — container bg is #ffffff
 :root {
-  --gc-container-bg:   #ffffff;   // sidebar/page background
-  --gc-card-bg:        #f5f5f3;   // card sits slightly above container
-  --gc-card-bg-hover:  #ececea;   // card hover — one step deeper
+  --gc-container-bg:   #ffffff;
+  --gc-card-bg:        #f5f5f3;
+  --gc-card-bg-hover:  #ececea;
 
   --gc-text-primary:   #111111;
   --gc-text-secondary: #666666;
@@ -76,9 +77,9 @@ $started-progress-to:     #1d9e75;
 
 // Dark mode — container bg is #111113
 [data-theme='dark'] {
-  --gc-container-bg:   #111113;   // sidebar/page background
-  --gc-card-bg:        #1c1c1f;   // card elevated above dark container
-  --gc-card-bg-hover:  #242428;   // card hover — one step deeper
+  --gc-container-bg:   #111113;
+  --gc-card-bg:        #1c1c1f;
+  --gc-card-bg-hover:  #242428;
 
   --gc-text-primary:   #f0f0f0;
   --gc-text-secondary: #a0a0a0;
@@ -93,45 +94,29 @@ $started-progress-to:     #1d9e75;
 
 
 // ─── Animations ───────────────────────────────────────────────────────────────
+
 @property --angle {
   syntax: '<angle>';
   initial-value: 0deg;
   inherits: false;
 }
 
+// Spinning gradient for STARTED status
 @keyframes spin {
   to { --angle: 360deg; }
 }
 
+// Pulsing loader ring for STARTED icon
 @keyframes pulse-ring {
   0%   { transform: scale(0.92); opacity: 0.6; }
   50%  { transform: scale(1.08); opacity: 1;   }
   100% { transform: scale(0.92); opacity: 0.6; }
 }
 
-// Card-wide shimmer sweep for STARTED state
-@keyframes shimmer-sweep {
-  0%   { transform: translateX(-100%); }
-  100% { transform: translateX(200%);  }
-}
-
-// Thin progress bar sliding across bottom edge
-@keyframes progress-slide {
-  0%   { transform: translateX(-100%); }
-  60%  { transform: translateX(0%);    }
-  100% { transform: translateX(100%);  }
-}
-
-// Gentle breathing glow on the card border
-@keyframes border-breathe {
-  0%, 100% { opacity: 0.3; }
-  50%       { opacity: 0.9; }
-}
-
-// Icon gentle float
-@keyframes icon-float {
-  0%, 100% { transform: translateY(0px);   }
-  50%       { transform: translateY(-2px);  }
+// Subtle hover — card lifts very slightly
+@keyframes card-hover-in {
+  from { transform: translateY(0);    }
+  to   { transform: translateY(-1px); }
 }
 
 
@@ -143,13 +128,31 @@ $started-progress-to:     #1d9e75;
   gap: 10px;
   padding: 9px 10px;
   border-radius: $radius-card;
-  background: var(--gc-card-bg);       // elevated above container
+  background: var(--gc-card-bg);
   cursor: pointer;
-  transition: background $transition-fast;
+  transition:
+    background      $transition-fast,
+    transform       $transition-fast ease-out;
 
-  // Both pseudo-elements share the mask-composite border-ring setup.
-  // The mask color must match --gc-card-bg so the card surface shows through.
-  &::before,
+  // Static border — always visible
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: $radius-card;
+    -webkit-mask:
+      linear-gradient(var(--gc-mask-color) 0 0) content-box,
+      linear-gradient(var(--gc-mask-color) 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    padding: 1.5px;
+    pointer-events: none;
+    z-index: 0;
+    background: var(--gc-border);
+    transition: opacity $transition-medium;
+  }
+
+  // Spinning gradient border — only rendered for STARTED, hidden otherwise
   &::after {
     content: '';
     position: absolute;
@@ -163,96 +166,35 @@ $started-progress-to:     #1d9e75;
     padding: 1.5px;
     pointer-events: none;
     z-index: 0;
-  }
-
-  // Static border — visible at rest
-  &::before {
-    background: var(--gc-border);
-  }
-
-  // Spinning gradient border — fades in on card hover
-  &::after {
     background: conic-gradient(
       from var(--angle) at 50% 50%,
       transparent       0deg,
-      transparent       160deg,
-      $gradient-purple  195deg,
-      $gradient-blue    220deg,
-      $gradient-teal    245deg,
-      transparent       270deg
+      transparent       150deg,
+      $gradient-purple  185deg,
+      $gradient-blue    215deg,
+      $gradient-teal    240deg,
+      transparent       265deg
     );
     opacity: 0;
-    transition: opacity $transition-medium;
+    // animation always runs but is only visible when opacity > 0
     animation: spin $spin-duration linear infinite;
   }
 
+  // ── Hover — simple lift + bg darken ─────────────────────────────────────
   &:hover {
     background: var(--gc-card-bg-hover);
-
-    &::before { opacity: 0; }
-    &::after  { opacity: 1; }
+    transform: translateY(-1px);
 
     .cardActions { opacity: 1; }
   }
 
-  // ── STARTED state — in-progress animations ───────────────────────────────
-  &.started {
-    // Breathing border — always animating, no hover needed
+  // ── STARTED — show spinning gradient, hide static border ────────────────
+  &.STARTED {
     &::before { opacity: 0; }
-    &::after {
-      background: conic-gradient(
-        from var(--angle) at 50% 50%,
-        transparent             0deg,
-        $started-progress-from  60deg,
-        $started-progress-mid   140deg,
-        $started-progress-to    200deg,
-        $started-progress-mid   260deg,
-        $started-progress-from  320deg,
-        transparent             360deg
-      );
-      opacity: 1;
-      animation:
-        spin             $progress-duration linear infinite,
-        border-breathe   $shimmer-duration  ease-in-out infinite;
-    }
-
-    // Shimmer sweep overlay across the card face
-    &::before {
-      -webkit-mask: none;
-      mask: none;
-      padding: 0;
-      inset: 0;
-      border-radius: $radius-card;
-      background: linear-gradient(
-        105deg,
-        transparent                   0%,
-        $started-shimmer-light        35%,
-        $started-shimmer-mid          50%,
-        $started-shimmer-light        65%,
-        transparent                   100%
-      );
-      animation: shimmer-sweep $shimmer-duration ease-in-out infinite;
-      opacity: 1;
-      overflow: hidden;
-    }
-
-    // Thin progress bar running across the bottom of the card
-    .progressBar {
-      display: block;
-    }
-
-    // Icon floats gently
-    .iconStatusWrapper {
-      animation: icon-float $shimmer-duration ease-in-out infinite;
-    }
-
-    // File name pulses opacity subtly
-    .fileName {
-      animation: border-breathe $shimmer-duration ease-in-out infinite;
-    }
+    &::after  { opacity: 1; }
   }
 
-  // Collapsed (icon-only) state — driven by Tailwind classes in JSX
+  // Collapsed (icon-only) state
   &:global(.w-min) { width: min-content; }
   &:global(.p-1)   { padding: 4px; }
 }
@@ -316,7 +258,7 @@ $started-progress-to:     #1d9e75;
   }
 }
 
-// Pulsing loader ring — shown when status === 'STARTED'
+// Pulsing loader ring — only when status === 'STARTED'
 .dottedRing {
   position: absolute;
   inset: -#{$dotted-ring-offset};
@@ -325,34 +267,6 @@ $started-progress-to:     #1d9e75;
   animation: pulse-ring $pulse-duration ease-in-out infinite;
   color: $dotted-ring-color;
   pointer-events: none;
-}
-
-// Thin progress bar along the bottom edge — only visible in STARTED state
-.progressBar {
-  display: none;
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  border-radius: 0 0 $radius-card $radius-card;
-  overflow: hidden;
-  z-index: 2;
-
-  &::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(
-      90deg,
-      transparent              0%,
-      $started-progress-from  20%,
-      $started-progress-mid   50%,
-      $started-progress-to    80%,
-      transparent             100%
-    );
-    animation: progress-slide $progress-duration ease-in-out infinite;
-  }
 }
 
 
@@ -431,16 +345,3 @@ $started-progress-to:     #1d9e75;
     transform: scale(0.96);
   }
 }
-
-
-
-
-
-
-
-
-
-<div className={`${styles.generatedcard} ${file.status === 'STARTED' ? styles.started : ''} ...`}>
-  ...
-  <div className={styles.progressBar} />
-</div>
