@@ -1,10 +1,157 @@
-<div className={`${styles.generatedCard} ${styles[file.status]}`}>
-  <div className={styles.glow} />
-  ...
-  <span className={`${styles.statusBadge} ${styles[`badge-${file.status}`]}`}>
-    <span className={styles.badgeDot} /> {labelFor(file.status)}
-  </span>
-</div>
+import React from 'react';
+import styles from './GeneratedCard.module.scss';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export type FileStatus  = 'SUCCESS' | 'FAILURE' | 'STARTED' | 'PENDING';
+export type JobType     = 'translation' | 'summary';
+
+export interface OutputFile {
+  state_id:     string;
+  file_name:    string;
+  file_type:    string;
+  file_size?:   string;
+  job_type:     JobType;
+  status:       FileStatus;
+  download_url: string;
+  file_job_id:  string;
+}
+
+interface GeneratedCardProps {
+  file:        OutputFile;
+  isExpanded:  boolean;
+  onDownload:  (file: OutputFile) => void;
+}
+
+// ─── Status config ────────────────────────────────────────────────────────────
+
+const STATUS_CONFIG: Record<FileStatus, { label: string; cls: string }> = {
+  SUCCESS: { label: 'Done',       cls: styles.badgeSuccess  },
+  FAILURE: { label: 'Failed',     cls: styles.badgeFailure  },
+  STARTED: { label: 'Generating', cls: styles.badgePending  },
+  PENDING: { label: 'Pending',    cls: styles.badgePending  },
+};
+
+// ─── File icons ───────────────────────────────────────────────────────────────
+
+const DocIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} width="15" height="15" viewBox="0 0 16 16"
+    fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+    <rect x="3" y="2" width="10" height="12" rx="1.5" />
+    <path d="M5 6h6M5 9h6M5 12h4" />
+  </svg>
+);
+
+const SummaryIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} width="15" height="15" viewBox="0 0 16 16"
+    fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+    <rect x="3" y="2" width="10" height="12" rx="1.5" />
+    <path d="M5 5h6M5 8h6M5 11h3" />
+  </svg>
+);
+
+const DownloadIcon: React.FC = () => (
+  <svg width="13" height="13" viewBox="0 0 16 16"
+    fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M8 2v8M5 7l3 3 3-3" />
+    <path d="M3 13h10" />
+  </svg>
+);
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+const FileIcon: React.FC<{ jobType: JobType }> = ({ jobType }) => (
+  <div className={`${styles.fileIcon} ${styles[`icon_${jobType}`]}`}>
+    <div className={styles.iconFold} />
+    {jobType === 'translation'
+      ? <DocIcon />
+      : <SummaryIcon />
+    }
+    <span className={styles.iconExt}>
+      {jobType === 'translation' ? 'DOC' : 'SUM'}
+    </span>
+  </div>
+);
+
+const StatusBadge: React.FC<{ status: FileStatus }> = ({ status }) => {
+  const { label, cls } = STATUS_CONFIG[status];
+  return (
+    <span className={`${styles.badge} ${cls}`}>
+      <span className={styles.badgeDot} />
+      {label}
+    </span>
+  );
+};
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
+const GeneratedCard: React.FC<GeneratedCardProps> = ({
+  file,
+  isExpanded,
+  onDownload,
+}) => {
+  const isInProgress = file.status === 'STARTED' || file.status === 'PENDING';
+
+  const handleDownload = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onDownload(file);
+  };
+
+  return (
+    <div
+      key={file.state_id}
+      title={file.file_name}
+      className={[
+        styles.generatedCard,
+        isInProgress ? styles.inProgress : '',
+        !isExpanded  ? styles.collapsed  : '',
+      ].filter(Boolean).join(' ')}
+    >
+      {/* Icon + status ring */}
+      <div className={`${styles.iconWrapper} ${styles[`status_${file.status}`]}`}>
+        <FileIcon jobType={file.job_type} />
+        {isInProgress && <span className={styles.pulseRing} />}
+      </div>
+
+      {/* Expanded content */}
+      {isExpanded && (
+        <>
+          <div className={styles.fileInfo}>
+            <span className={styles.fileName}>{file.file_name}</span>
+            <div className={styles.fileMeta}>
+              <StatusBadge status={file.status} />
+              {file.file_size && file.status !== 'FAILURE' && (
+                <>
+                  <span className={styles.metaSep}>·</span>
+                  <span className={styles.fileSize}>{file.file_size}</span>
+                </>
+              )}
+              {file.status === 'FAILURE' && (
+                <>
+                  <span className={styles.metaSep}>·</span>
+                  <span className={styles.fileError}>Generation failed</span>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className={styles.cardActions}>
+            <button
+              className={styles.downloadBtn}
+              onClick={handleDownload}
+              aria-label={`Download ${file.file_name}`}
+              disabled={isInProgress}
+            >
+              <DownloadIcon />
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
+export default GeneratedCard;
 
 
 
@@ -12,174 +159,211 @@
 
 
 
-// ─── SCSS Variables ───────────────────────────────────────────────────────────
+
+
+
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// SCSS Variables
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 // Layout
-$radius-card:         12px;
-$radius-icon:         10px;
-$radius-badge:        20px;
-$radius-action-btn:   8px;
+$radius-card:       10px;
+$radius-icon:       8px;
+$radius-btn:        7px;
+$radius-badge:      20px;
+$icon-size:         36px;
+$btn-size:          28px;
 
-// Sizes
-$icon-size:           40px;
-$action-btn-size:     30px;
+// Accent gradient — left bar + spinning border
+$accent-a:          #7f77dd;   // purple
+$accent-b:          #378add;   // blue
+$accent-c:          #1d9e75;   // teal
 
-// Spinning border gradient — STARTED / PENDING only
-$gradient-purple:     #7f77dd;
-$gradient-blue:       #378add;
-$gradient-teal:       #1d9e75;
+// Icon — translation (blue family)
+$icon-trans-bg:     #e6f1fb;
+$icon-trans-color:  #378add;
+$icon-trans-ext:    #185fa5;
+$icon-trans-fold:   #378add;
 
-// Job type icon colours
-$translation-bg-light:  #e6f1fb;
-$translation-color-light:#378add;
-$translation-ext-light:  #185fa5;
-$translation-bg-dark:    rgba(55, 138, 221, 0.15);
-$translation-color-dark: #85b7eb;
+// Icon — summary (purple family)
+$icon-sum-bg:       #eeedfe;
+$icon-sum-color:    #7f77dd;
+$icon-sum-ext:      #534ab7;
+$icon-sum-fold:     #7f77dd;
 
-$summary-bg-light:    #eeedfe;
-$summary-color-light: #7f77dd;
-$summary-ext-light:   #534ab7;
-$summary-bg-dark:     rgba(127, 119, 221, 0.15);
-$summary-color-dark:  #afa9ec;
+// Badge — success
+$badge-ok-bg:       #eaf3de;
+$badge-ok-text:     #3b6d11;
+$badge-ok-dot:      #639922;
 
-// Status badge — success
-$badge-success-bg-light:    #eaf3de;
-$badge-success-color-light: #3b6d11;
-$badge-success-dot-light:   #639922;
-$badge-success-bg-dark:     rgba(99, 153, 34, 0.15);
-$badge-success-color-dark:  #97c459;
+// Badge — failure
+$badge-fail-bg:     #faece7;
+$badge-fail-text:   #993c1d;
+$badge-fail-dot:    #d85a30;
 
-// Status badge — failure
-$badge-failure-bg-light:    #faece7;
-$badge-failure-color-light: #993c1d;
-$badge-failure-dot-light:   #d85a30;
-$badge-failure-bg-dark:     rgba(216, 90, 48, 0.15);
-$badge-failure-color-dark:  #f0997b;
+// Badge — pending / started
+$badge-pend-bg:     #eeedfe;
+$badge-pend-text:   #534ab7;
+$badge-pend-dot:    #7f77dd;
 
-// Status badge — pending / started
-$badge-pending-bg-light:    #eeedfe;
-$badge-pending-color-light: #534ab7;
-$badge-pending-dot-light:   #7f77dd;
-$badge-pending-bg-dark:     rgba(127, 119, 221, 0.15);
-$badge-pending-color-dark:  #afa9ec;
+// Download btn hover
+$dl-hover-bg:       #eeedfe;
+$dl-hover-color:    #534ab7;
 
-// Action button
-$action-hover-bg-light:    #eeedfe;
-$action-hover-color-light: #534ab7;
-$action-hover-bg-dark:     rgba(127, 119, 221, 0.2);
-$action-hover-color-dark:  #afa9ec;
+// Pulse ring
+$pulse-color:       #7f77dd;
+$pulse-offset:      3px;
 
 // Timing
-$transition-fast:     0.15s;
-$transition-medium:   0.25s;
-$spin-duration:       2s;
-$pulse-duration:      1.4s;
+$t-fast:            0.15s;
+$t-med:             0.22s;
+$spin-dur:          2s;
+$pulse-dur:         1.4s;
+$blink-dur:         1.2s;
 
 
-// ─── CSS Custom Properties ────────────────────────────────────────────────────
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// CSS Custom Properties  (light / dark)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 :root {
-  // Container backgrounds (as specified)
-  --gc-container-bg:          #ffffff;
+  // Container (as specified)
+  --gc-container-bg:        #ffffff;
 
-  // Card surface — slightly lifted above white container
-  --gc-card-bg:               rgba(255, 255, 255, 0.7);
-  --gc-card-bg-hover:         rgba(255, 255, 255, 0.95);
-  --gc-card-border:           rgba(0, 0, 0, 0.07);
-  --gc-card-border-hover:     rgba(127, 119, 221, 0.25);
-  --gc-card-shadow:           0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
-  --gc-card-shadow-hover:     0 4px 16px rgba(120, 100, 255, 0.10), 0 1px 4px rgba(0, 0, 0, 0.06);
+  // Card at rest — transparent; border only
+  --gc-card-border:         rgba(0, 0, 0, 0.08);
 
-  // Glow behind card on hover
-  --gc-glow-color:            rgba(170, 150, 255, 0.14);
+  // Card on hover
+  --gc-card-hover-bg:       rgba(127, 119, 221, 0.04);
+  --gc-card-hover-border:   rgba(127, 119, 221, 0.28);
 
-  // Mask — must match card resting bg for conic border trick
-  --gc-mask-color:            #ffffff;
+  // Left accent bar (hover)
+  --gc-accent-bar:          linear-gradient(180deg, #{$accent-a}, #{$accent-b});
 
   // Text
-  --gc-text-primary:          #111111;
-  --gc-text-secondary:        #666666;
-  --gc-text-tertiary:         rgba(0, 0, 0, 0.30);
-  --gc-text-error:            #993c1d;
+  --gc-text-primary:        #111111;
+  --gc-text-secondary:      #666666;
+  --gc-text-tertiary:       rgba(0, 0, 0, 0.30);
+  --gc-text-error:          #993c1d;
 
-  // Misc
-  --gc-separator:             rgba(0, 0, 0, 0.18);
-  --gc-dl-color:              rgba(0, 0, 0, 0.35);
+  // Separator dot
+  --gc-sep:                 rgba(0, 0, 0, 0.20);
+
+  // Download icon default color
+  --gc-dl-color:            rgba(0, 0, 0, 0.32);
+
+  // Mask — must match card resting bg for conic border trick
+  // Card is transparent so mask = container bg
+  --gc-mask-color:          #ffffff;
+
+  // Icon dark-mode overrides (unused in light, declared for completeness)
+  --gc-icon-trans-bg:       #{$icon-trans-bg};
+  --gc-icon-trans-color:    #{$icon-trans-color};
+  --gc-icon-sum-bg:         #{$icon-sum-bg};
+  --gc-icon-sum-color:      #{$icon-sum-color};
 }
 
 [data-theme='dark'] {
-  --gc-container-bg:          #111113;
+  --gc-container-bg:        #111113;
 
-  --gc-card-bg:               rgba(255, 255, 255, 0.04);
-  --gc-card-bg-hover:         rgba(255, 255, 255, 0.07);
-  --gc-card-border:           rgba(255, 255, 255, 0.07);
-  --gc-card-border-hover:     rgba(127, 119, 221, 0.30);
-  --gc-card-shadow:           none;
-  --gc-card-shadow-hover:     0 0 0 3px rgba(127, 119, 221, 0.08), 0 4px 20px rgba(80, 100, 255, 0.12);
+  --gc-card-border:         rgba(255, 255, 255, 0.07);
+  --gc-card-hover-bg:       rgba(127, 119, 221, 0.08);
+  --gc-card-hover-border:   rgba(127, 119, 221, 0.25);
 
-  --gc-glow-color:            rgba(120, 100, 255, 0.18);
+  --gc-text-primary:        #f0f0f0;
+  --gc-text-secondary:      #a0a0a0;
+  --gc-text-tertiary:       rgba(255, 255, 255, 0.25);
+  --gc-text-error:          #f0997b;
+  --gc-sep:                 rgba(255, 255, 255, 0.18);
+  --gc-dl-color:            rgba(255, 255, 255, 0.32);
 
-  --gc-mask-color:            #111113;
+  // Mask = dark container bg
+  --gc-mask-color:          #111113;
 
-  --gc-text-primary:          #f0f0f0;
-  --gc-text-secondary:        #a0a0a0;
-  --gc-text-tertiary:         rgba(255, 255, 255, 0.25);
-  --gc-text-error:            #f0997b;
-
-  --gc-separator:             rgba(255, 255, 255, 0.18);
-  --gc-dl-color:              rgba(255, 255, 255, 0.35);
+  // Icon tints adjusted for dark surfaces
+  --gc-icon-trans-bg:       rgba(55, 138, 221, 0.15);
+  --gc-icon-trans-color:    #85b7eb;
+  --gc-icon-sum-bg:         rgba(127, 119, 221, 0.15);
+  --gc-icon-sum-color:      #afa9ec;
 }
 
 
-// ─── Animations ───────────────────────────────────────────────────────────────
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Keyframes
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+// Required for conic-gradient animation
 @property --angle {
   syntax: '<angle>';
   initial-value: 0deg;
   inherits: false;
 }
 
+// Spinning gradient border for STARTED / PENDING
 @keyframes spin {
   to { --angle: 360deg; }
 }
 
-@keyframes pulse-ring {
-  0%   { transform: scale(0.92); opacity: 0.6; }
-  50%  { transform: scale(1.08); opacity: 1;   }
-  100% { transform: scale(0.92); opacity: 0.6; }
+// Pulsing outer ring on the icon
+@keyframes pulseRing {
+  0%   { transform: scale(0.88); opacity: 0;   }
+  40%  { transform: scale(1.06); opacity: 0.7; }
+  100% { transform: scale(1.14); opacity: 0;   }
 }
 
-@keyframes badge-dot-blink {
-  0%, 100% { opacity: 0.4; }
+// Badge dot blink for STARTED / PENDING
+@keyframes badgeBlink {
+  0%, 100% { opacity: 0.3; }
   50%       { opacity: 1;   }
 }
 
-@keyframes glow-breathe {
-  0%   { opacity: 0;    transform: scale(0.88); }
-  60%  { opacity: 1;    transform: scale(1.02); }
-  100% { opacity: 0.85; transform: scale(1);    }
+// Left accent bar slides in from left
+@keyframes barSlideIn {
+  from { transform: scaleY(0); opacity: 0; }
+  to   { transform: scaleY(1); opacity: 1; }
 }
 
 
-// ─── Card ─────────────────────────────────────────────────────────────────────
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Card
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 .generatedCard {
   position: relative;
   display: flex;
   align-items: center;
-  padding: 0.75rem;
-  background-color: var(--gc-card-bg);
-  border: 1px solid var(--gc-card-border);
+  gap: 10px;
+  padding: 10px 12px;
   border-radius: $radius-card;
-  box-shadow: var(--gc-card-shadow);
-  overflow: visible;
+  background-color: transparent;
+  border: 1px solid var(--gc-card-border);
+  overflow: hidden;
   cursor: pointer;
   transition:
-    background-color  $transition-medium ease,
-    border-color      $transition-medium ease,
-    box-shadow        $transition-medium ease;
+    background-color  $t-med ease,
+    border-color      $t-med ease;
 
-  // Spinning gradient border — always animating, revealed only for STARTED/PENDING
-  // Uses mask-composite so only the 1px ring shows through
+  // ── Left accent bar ───────────────────────────────────────────────────
+  // Sits flush to the left edge, slides up on hover
+  &::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 10%;
+    bottom: 10%;
+    width: 3px;
+    border-radius: 0 3px 3px 0;
+    background: var(--gc-accent-bar);
+    transform: scaleY(0);
+    transform-origin: center;
+    opacity: 0;
+    transition: none;
+  }
+
+  // ── Spinning gradient border (STARTED / PENDING only) ─────────────────
+  // Always animating; opacity flips on .inProgress
   &::after {
     content: '';
     position: absolute;
@@ -195,143 +379,142 @@ $pulse-duration:      1.4s;
     z-index: 0;
     background: conic-gradient(
       from var(--angle) at 50% 50%,
-      transparent       0deg,
-      transparent       150deg,
-      $gradient-purple  185deg,
-      $gradient-blue    215deg,
-      $gradient-teal    240deg,
-      transparent       265deg
+      transparent   0deg,
+      transparent   150deg,
+      $accent-a     185deg,
+      $accent-b     215deg,
+      $accent-c     240deg,
+      transparent   265deg
     );
     opacity: 0;
-    animation: spin $spin-duration linear infinite;
-    transition: opacity $transition-medium;
-  }
-
-  // ── Glow — sits behind the card, bleeds softly outside ───────────────
-  .glow {
-    position: absolute;
-    inset: -6px;
-    border-radius: calc(#{$radius-card} + 6px);
-    pointer-events: none;
-    z-index: -1;
-    opacity: 0;
-    transition: opacity $transition-medium ease;
-    background: radial-gradient(
-      ellipse 90% 80% at 50% 50%,
-      var(--gc-glow-color),
-      transparent 72%
-    );
+    animation: spin $spin-dur linear infinite;
+    transition: opacity $t-med;
   }
 
   // ── Hover ─────────────────────────────────────────────────────────────
   &:hover {
-    background-color: var(--gc-card-bg-hover);
-    border-color: var(--gc-card-border-hover);
-    box-shadow: var(--gc-card-shadow-hover);
+    background-color: var(--gc-card-hover-bg);
+    border-color: var(--gc-card-hover-border);
 
-    .glow {
-      opacity: 1;
-      animation: glow-breathe 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    &::before {
+      animation: barSlideIn 0.22s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
     }
 
     .cardActions { opacity: 1; }
   }
 
-  // ── STARTED / PENDING — spin the gradient border ──────────────────────
-  &.STARTED,
-  &.PENDING {
+  // ── STARTED / PENDING — show spinning border, hide static border ──────
+  &.inProgress {
     border-color: transparent;
     &::after { opacity: 1; }
   }
 
-  // Collapsed icon-only state
-  &:global(.w-min) { width: min-content; }
-  &:global(.p-1)   { padding: 4px; }
+  // ── Collapsed (icon-only) state ───────────────────────────────────────
+  &.collapsed {
+    width: min-content;
+    padding: 6px;
+    gap: 0;
+
+    .fileInfo,
+    .cardActions { display: none; }
+  }
 }
 
 
-// ─── Icon wrapper ─────────────────────────────────────────────────────────────
-.iconStatusWrapper {
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Icon wrapper
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+.iconWrapper {
   position: relative;
   z-index: 1;
   width: $icon-size;
   height: $icon-size;
   flex-shrink: 0;
+}
+
+// ── Status opacity dimming ────────────────────────────────────────────────────
+.status_STARTED,
+.status_PENDING {
+  .fileIcon { opacity: 0.65; }
+}
+
+// ── Pulse ring — animated halo around icon ────────────────────────────────────
+.pulseRing {
+  position: absolute;
+  inset: -#{$pulse-offset};
+  width: calc(100% + #{$pulse-offset * 2});
+  height: calc(100% + #{$pulse-offset * 2});
+  border-radius: calc(#{$radius-icon} + #{$pulse-offset});
+  border: 1.5px solid $pulse-color;
+  pointer-events: none;
+  animation: pulseRing $pulse-dur ease-out infinite;
+}
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// File icon
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+.fileIcon {
+  width: 100%;
+  height: 100%;
   border-radius: $radius-icon;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-
-  :global(.content-bg) {
-    width: 100%;
-    height: 100%;
-    border-radius: $radius-icon;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-    overflow: hidden;
-  }
-
-  // Folded corner accent
-  :global(.content-bg)::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    right: 0;
-    width: 10px;
-    height: 10px;
-    opacity: 0.35;
-    clip-path: polygon(0 0, 100% 100%, 100% 0);
-  }
-
-  // ── job_type skins — light ───────────────────────────────────────────
-  &.translation :global(.content-bg) {
-    background: $translation-bg-light;
-    color: $translation-color-light;
-    &::after { background: $translation-color-light; }
-  }
-
-  &.summary :global(.content-bg) {
-    background: $summary-bg-light;
-    color: $summary-color-light;
-    &::after { background: $summary-color-light; }
-  }
-
-  // ── job_type skins — dark ────────────────────────────────────────────
-  [data-theme='dark'] &.translation :global(.content-bg) {
-    background: $translation-bg-dark;
-    color: $translation-color-dark;
-    &::after { background: $translation-color-dark; }
-  }
-
-  [data-theme='dark'] &.summary :global(.content-bg) {
-    background: $summary-bg-dark;
-    color: $summary-color-dark;
-    &::after { background: $summary-color-dark; }
-  }
-
-  // ── status overlays ──────────────────────────────────────────────────
-  &.STARTED :global(.content-bg),
-  &.PENDING :global(.content-bg) {
-    opacity: 0.65;
-  }
+  position: relative;
+  overflow: hidden;
+  transition: opacity $t-fast;
 }
 
-// Pulsing ring — STARTED / PENDING icon
-.dottedRing {
+// Folded corner accent
+.iconFold {
   position: absolute;
-  inset: -3px;
-  width: calc(100% + 6px);
-  height: calc(100% + 6px);
-  animation: pulse-ring $pulse-duration ease-in-out infinite;
-  color: $gradient-purple;
-  pointer-events: none;
+  top: 0;
+  right: 0;
+  width: 9px;
+  height: 9px;
+  opacity: 0.38;
+  clip-path: polygon(0 0, 100% 100%, 100% 0);
+}
+
+.iconExt {
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  margin-top: 2px;
+  line-height: 1;
+}
+
+// ── job_type skins ────────────────────────────────────────────────────────────
+
+.icon_translation {
+  background: var(--gc-icon-trans-bg);
+  color: var(--gc-icon-trans-color);
+
+  .iconFold { background: var(--gc-icon-trans-color); }
+  .iconExt  { color: $icon-trans-ext; }
+
+  [data-theme='dark'] & .iconExt { color: var(--gc-icon-trans-color); }
+}
+
+.icon_summary {
+  background: var(--gc-icon-sum-bg);
+  color: var(--gc-icon-sum-color);
+
+  .iconFold { background: var(--gc-icon-sum-color); }
+  .iconExt  { color: $icon-sum-ext; }
+
+  [data-theme='dark'] & .iconExt { color: var(--gc-icon-sum-color); }
 }
 
 
-// ─── File info ────────────────────────────────────────────────────────────────
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// File info
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 .fileInfo {
   position: relative;
   z-index: 1;
@@ -339,7 +522,7 @@ $pulse-duration:      1.4s;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 4px;
 }
 
 .fileName {
@@ -349,13 +532,14 @@ $pulse-duration:      1.4s;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  line-height: 1.4;
+  line-height: 1.35;
 }
 
 .fileMeta {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
+  flex-wrap: wrap;
 }
 
 .fileSize {
@@ -363,26 +547,23 @@ $pulse-duration:      1.4s;
   color: var(--gc-text-tertiary);
 }
 
-.metaSep {
+.fileError {
   font-size: 10px;
-  color: var(--gc-separator);
-}
-
-.fileData {
-  font-size: 11px;
-  color: var(--gc-text-tertiary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.textError {
   color: var(--gc-text-error);
 }
 
+.metaSep {
+  font-size: 10px;
+  color: var(--gc-sep);
+  line-height: 1;
+}
 
-// ─── Status badge ─────────────────────────────────────────────────────────────
-.statusBadge {
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Status badge
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+.badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -402,94 +583,93 @@ $pulse-duration:      1.4s;
 }
 
 // Success
-.badge-SUCCESS {
-  background: $badge-success-bg-light;
-  color: $badge-success-color-light;
-
-  .badgeDot { background: $badge-success-dot-light; }
+.badgeSuccess {
+  background: $badge-ok-bg;
+  color: $badge-ok-text;
+  .badgeDot { background: $badge-ok-dot; }
 
   [data-theme='dark'] & {
-    background: $badge-success-bg-dark;
-    color: $badge-success-color-dark;
-    .badgeDot { background: $badge-success-color-dark; }
+    background: rgba(99, 153, 34, 0.15);
+    color: #97c459;
+    .badgeDot { background: #97c459; }
   }
 }
 
 // Failure
-.badge-FAILURE {
-  background: $badge-failure-bg-light;
-  color: $badge-failure-color-light;
-
-  .badgeDot { background: $badge-failure-dot-light; }
+.badgeFailure {
+  background: $badge-fail-bg;
+  color: $badge-fail-text;
+  .badgeDot { background: $badge-fail-dot; }
 
   [data-theme='dark'] & {
-    background: $badge-failure-bg-dark;
-    color: $badge-failure-color-dark;
-    .badgeDot { background: $badge-failure-color-dark; }
+    background: rgba(216, 90, 48, 0.15);
+    color: #f0997b;
+    .badgeDot { background: #f0997b; }
   }
 }
 
-// Started / Pending
-.badge-STARTED,
-.badge-PENDING {
-  background: $badge-pending-bg-light;
-  color: $badge-pending-color-light;
-
+// Pending / Started
+.badgePending {
+  background: $badge-pend-bg;
+  color: $badge-pend-text;
   .badgeDot {
-    background: $badge-pending-dot-light;
-    animation: badge-dot-blink 1.2s ease-in-out infinite;
+    background: $badge-pend-dot;
+    animation: badgeBlink $blink-dur ease-in-out infinite;
   }
 
   [data-theme='dark'] & {
-    background: $badge-pending-bg-dark;
-    color: $badge-pending-color-dark;
-    .badgeDot { background: $badge-pending-color-dark; }
+    background: rgba(127, 119, 221, 0.15);
+    color: #afa9ec;
+    .badgeDot { background: #7f77dd; }
   }
 }
 
 
-// ─── Card actions ─────────────────────────────────────────────────────────────
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Card actions
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 .cardActions {
   position: relative;
   z-index: 1;
   flex-shrink: 0;
   opacity: 0;
-  transition: opacity $transition-fast;
+  transition: opacity $t-fast;
 }
 
-.menuWarpper {
-  display: flex;
-  align-items: center;
-}
-
-.actionBtn {
-  width: $action-btn-size;
-  height: $action-btn-size;
+.downloadBtn {
+  width: $btn-size;
+  height: $btn-size;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: $radius-action-btn;
+  border-radius: $radius-btn;
   border: none;
   background: transparent;
   cursor: pointer;
   color: var(--gc-dl-color);
   transition:
-    background  $transition-fast,
-    color       $transition-fast,
-    transform   0.12s;
+    background   $t-fast,
+    color        $t-fast,
+    transform    0.12s;
 
-  &:hover {
-    background: $action-hover-bg-light;
-    color: $action-hover-color-light;
+  &:hover:not(:disabled) {
+    background: $dl-hover-bg;
+    color: $dl-hover-color;
     transform: scale(1.1);
 
     [data-theme='dark'] & {
-      background: $action-hover-bg-dark;
-      color: $action-hover-color-dark;
+      background: rgba(127, 119, 221, 0.18);
+      color: #afa9ec;
     }
   }
 
-  &:active {
-    transform: scale(0.96);
+  &:active:not(:disabled) {
+    transform: scale(0.95);
+  }
+
+  &:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
   }
 }
