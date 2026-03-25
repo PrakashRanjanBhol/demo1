@@ -1,25 +1,13 @@
-const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-  const rect = e.currentTarget.getBoundingClientRect();
-  const x = e.clientX - rect.left;
-  const y = e.clientY - rect.top;
-  e.currentTarget.style.setProperty('--gc-mouse-x', `${x}px`);
-  e.currentTarget.style.setProperty('--gc-mouse-y', `${y}px`);
-};
-
-// In JSX:
 <div
   className={`${styles.generatedCard} ${styles[file.status]} ${!isExpanded ? 'w-min p-1' : ''}`}
   title={file.file_name}
-  onMouseMove={handleMouseMove}
 >
-  <div className={styles.spotlight} />
+  <div className={styles.glow} />
   <div className={`${styles.iconStatusWrapper} ${styles[file.job_type]} ${styles[file.status]}`}>
     ...
   </div>
   ...
 </div>
-
-
 
 
 
@@ -54,13 +42,13 @@ $success-ring:       rgba(29, 158, 117, 0.25);
 $action-hover-bg:    #eeedfe;
 $action-hover-color: #534ab7;
 
-// Dotted ring (STARTED / PENDING icon)
+// Dotted ring
 $dotted-ring-color:  #7f77dd;
 $dotted-ring-offset: 3px;
 
 // Timing
 $transition-fast:    0.15s;
-$transition-medium:  0.25s;
+$transition-medium:  0.3s;
 $spin-duration:      2s;
 $pulse-duration:     1.4s;
 
@@ -68,41 +56,37 @@ $pulse-duration:     1.4s;
 // ─── CSS Custom Properties ────────────────────────────────────────────────────
 
 :root {
-  --gc-container-bg:   #ffffff;
-  --gc-card-bg-hover:  #f0f0ee;
+  --gc-container-bg:    #ffffff;
+  --gc-card-bg-hover:   #f7f7f5;
 
-  --gc-text-primary:   #111111;
-  --gc-text-secondary: #666666;
-  --gc-text-tertiary:  #999999;
-  --gc-text-error:     #{$failure-color};
+  --gc-text-primary:    #111111;
+  --gc-text-secondary:  #666666;
+  --gc-text-tertiary:   #999999;
+  --gc-text-error:      #{$failure-color};
 
-  --gc-border:         rgba(0, 0, 0, 0.12);
-  --gc-mask-color:     #ffffff;
+  --gc-border:          rgba(0, 0, 0, 0.12);
+  --gc-mask-color:      #ffffff;
 
-  // Spotlight — warm white radial glow
-  --gc-spot-color:     rgba(255, 255, 255, 0.55);
-  --gc-spot-size:      140px;
-
-  // Mouse position (set via JS on mousemove)
-  --gc-mouse-x:        50%;
-  --gc-mouse-y:        50%;
+  // Glow — soft warm white emanating from card center
+  --gc-glow-color:      rgba(180, 160, 255, 0.18);
+  --gc-glow-color-mid:  rgba(150, 180, 255, 0.10);
 }
 
 [data-theme='dark'] {
-  --gc-container-bg:   #111113;
-  --gc-card-bg-hover:  #1e1e21;
+  --gc-container-bg:    #111113;
+  --gc-card-bg-hover:   #18181b;
 
-  --gc-text-primary:   #f0f0f0;
-  --gc-text-secondary: #a0a0a0;
-  --gc-text-tertiary:  #606060;
-  --gc-text-error:     #f0997b;
+  --gc-text-primary:    #f0f0f0;
+  --gc-text-secondary:  #a0a0a0;
+  --gc-text-tertiary:   #606060;
+  --gc-text-error:      #f0997b;
 
-  --gc-border:         rgba(255, 255, 255, 0.08);
-  --gc-mask-color:     #111113;
+  --gc-border:          rgba(255, 255, 255, 0.08);
+  --gc-mask-color:      #111113;
 
-  // Spotlight — cool white glow, more restrained in dark
-  --gc-spot-color:     rgba(255, 255, 255, 0.07);
-  --gc-spot-size:      160px;
+  // Glow — more vivid in dark mode, purple-blue tint
+  --gc-glow-color:      rgba(140, 120, 255, 0.22);
+  --gc-glow-color-mid:  rgba(80, 120, 255, 0.10);
 }
 
 
@@ -114,20 +98,23 @@ $pulse-duration:     1.4s;
   inherits: false;
 }
 
+// Spinning border for STARTED / PENDING
 @keyframes spin {
   to { --angle: 360deg; }
 }
 
+// Pulsing icon ring
 @keyframes pulse-ring {
   0%   { transform: scale(0.92); opacity: 0.6; }
   50%  { transform: scale(1.08); opacity: 1;   }
   100% { transform: scale(0.92); opacity: 0.6; }
 }
 
-// Spotlight fade-in when entering the card
-@keyframes spot-enter {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+// Glow breathes in softly on hover-enter, then holds
+@keyframes glow-breathe {
+  0%   { opacity: 0;    transform: scale(0.88); }
+  60%  { opacity: 1;    transform: scale(1.02); }
+  100% { opacity: 0.85; transform: scale(1);    }
 }
 
 
@@ -139,9 +126,9 @@ $pulse-duration:     1.4s;
   padding: 0.75rem;
   background-color: transparent;
   border-radius: $radius-card;
-  overflow: hidden;
+  overflow: visible; // glow bleeds slightly outside — looks more natural
   cursor: pointer;
-  transition: background-color $transition-fast;
+  transition: background-color $transition-medium ease;
 
   // ── Border pseudo-elements ────────────────────────────────────────────
   &::before,
@@ -160,13 +147,13 @@ $pulse-duration:     1.4s;
     z-index: 0;
   }
 
-  // Static border
+  // Static border — always visible at rest
   &::before {
     background: var(--gc-border);
     transition: opacity $transition-medium;
   }
 
-  // Spinning gradient border — always animating, hidden until STARTED/PENDING
+  // Spinning gradient border — animating always, shown only for STARTED/PENDING
   &::after {
     background: conic-gradient(
       from var(--angle) at 50% 50%,
@@ -182,30 +169,42 @@ $pulse-duration:     1.4s;
     transition: opacity $transition-medium;
   }
 
-  // ── Spotlight layer ───────────────────────────────────────────────────
-  // Follows mouse position via --gc-mouse-x / --gc-mouse-y set in JS
-  .spotlight {
+  // ── Glow layer — sits behind the card, bleeds through border radius ───
+  .glow {
     position: absolute;
-    inset: 0;
-    border-radius: $radius-card;
+    // slightly larger than card so glow peeks outside the border
+    inset: -6px;
+    border-radius: calc($radius-card + 6px);
     pointer-events: none;
-    z-index: 0;
+    z-index: -1; // behind card background
     opacity: 0;
-    transition: opacity 0.3s ease;
+    transition: opacity $transition-medium ease;
     background: radial-gradient(
-      circle var(--gc-spot-size) at var(--gc-mouse-x) var(--gc-mouse-y),
-      var(--gc-spot-color),
-      transparent 80%
+      ellipse 90% 80% at 50% 50%,
+      var(--gc-glow-color)      0%,
+      var(--gc-glow-color-mid)  45%,
+      transparent               75%
     );
   }
 
-  // ── Hover ─────────────────────────────────────────────────────────────
+  // ── Hover — glow breathes in, border subtly brightens ────────────────
   &:hover {
     background-color: var(--gc-card-bg-hover);
 
-    .spotlight {
+    &::before {
+      // border brightens slightly on hover — reinforces the "lit from within" feel
+      background: linear-gradient(
+        135deg,
+        rgba(150, 130, 255, 0.35),
+        rgba(80,  140, 255, 0.25),
+        rgba(30,  158, 117, 0.20)
+      );
       opacity: 1;
-      animation: spot-enter 0.25s ease forwards;
+    }
+
+    .glow {
+      opacity: 1;
+      animation: glow-breathe 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
     }
 
     .cardActions { opacity: 1; }
