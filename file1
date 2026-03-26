@@ -1,89 +1,1258 @@
-{
-  id: 'actions',
-  header: t('settings.roleManagement.table.actions'),
-  enableSorting: false,
-  size: 120,
-  cell: ({ row }) =>
-    editingId === row.original.ms_user_id ? (
-      <div className={roleStyles.actions}>
-        <button
-          className={`${roleStyles.actionBtn} ${roleStyles.save}`}
-          onClick={() => handleSave(row.original.ms_user_id)}
-          disabled={updating === row.original.ms_user_id}
-          title={t('settings.roleManagement.actions.save')}
-        >
-          {updating === row.original.ms_user_id ? (
-            <span className={roleStyles.spinner} />
-          ) : (
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
-          )}
-        </button>
-        <button
-          className={`${roleStyles.actionBtn} ${roleStyles.cancel}`}
-          onClick={handleCancel}
-          title={t('settings.roleManagement.actions.cancel')}
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
-      </div>
-    ) : (
-      <div className={roleStyles.actions}>
-        <button
-          className={`${roleStyles.actionBtn} ${roleStyles.edit}`}
-          onClick={() => handleEdit(row.original)}
-          disabled={row.original.username === username}
-          title={
-            row.original.username === username
-              ? 'Cannot edit your own role'
-              : t('settings.roleManagement.actions.edit')
-          }
-          style={
-            row.original.username === username
-              ? { opacity: 0.35, cursor: 'not-allowed' }
-              : undefined
-          }
-          title={t('settings.roleManagement.actions.edit')}
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-          </svg>
-        </button>
-      </div>
-    ),
-},
+import React, { useState } from "react";
+import styles from "./ExcelAnalysisTool.module.scss";
 
+import excelAnalysisIcon from "../../assets/icons/excel-analysis.png";
 
+interface ExcelAnalysisToolProps {
+  onBack: () => void;
+}
 
+interface FileItem {
+  created_at: string;
+  file_job_id: string;
+  file_name: string;
+  file_size: number;
+  file_type: string;
+  state_id: string;
+  status: string;
+}
 
+// ── Icons ─────────────────────────────────────────────
 
-
-
-
-
-
-<button
-  className={`${roleStyles.actionBtn} ${roleStyles.edit}`}
-  onClick={() => handleEdit(row.original)}
-  disabled={row.original.username === username}
-  title={
-    row.original.username === username
-      ? 'Cannot edit your own role'
-      : t('settings.roleManagement.actions.edit')
-  }
-  style={
-    row.original.username === username
-      ? { opacity: 0.35, cursor: 'not-allowed' }
-      : undefined
-  }
->
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+const XlsxIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <polyline points="14 2 14 8 20 8" />
+    <line x1="8" y1="13" x2="16" y2="13" />
+    <line x1="8" y1="17" x2="16" y2="17" />
+    <line x1="10" y1="9" x2="14" y2="9" />
   </svg>
-</button>
+);
+
+const CsvIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <polyline points="14 2 14 8 20 8" />
+    <line x1="8" y1="13" x2="16" y2="13" />
+    <line x1="8" y1="17" x2="12" y2="17" />
+  </svg>
+);
+
+const EmptyIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+    <line x1="12" y1="11" x2="12" y2="17" />
+    <line x1="9" y1="14" x2="15" y2="14" />
+  </svg>
+);
+
+const SparkleIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M15 4V2" /><path d="M15 16v-2" /><path d="M8 9h2" /><path d="M20 9h2" />
+    <path d="M17.8 11.8 19 13" /><path d="M15 9h.01" /><path d="M17.8 6.2 19 5" />
+    <path d="m3 21 9-9" /><path d="M12.2 6.2 11 5" />
+  </svg>
+);
+
+// ── Helpers ───────────────────────────────────────────
+
+const formatFileSize = (bytes: number): string => {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+// ── Mock data (replace with store data) ──────────────
+
+const MOCK_FILES: FileItem[] = [
+  {
+    created_at: "2026-03-20T06:32:26.696061+00:00",
+    file_job_id: "abcd",
+    file_name: "sample3.txt",
+    file_size: 1815,
+    file_type: "txt",
+    state_id: "38hksdhcsdj",
+    status: "SUCCESS",
+  },
+  {
+    created_at: "2026-03-20T06:32:26.696061+00:00",
+    file_job_id: "fdds",
+    file_name: "sample4.xlsx",
+    file_size: 1815,
+    file_type: "xlsx",
+    state_id: "38hksdhcsdj",
+    status: "SUCCESS",
+  },
+  {
+    created_at: "2026-03-20T06:32:26.696061+00:00",
+    file_job_id: "dfdsf",
+    file_name: "sample5.csv",
+    file_size: 1815,
+    file_type: "csv",
+    state_id: "38hksdhcsdj",
+    status: "SUCCESS",
+  },
+];
+
+// ── Main component ────────────────────────────────────
+
+export const ExcelAnalysisTool: React.FC<ExcelAnalysisToolProps> = ({ onBack }) => {
+  // Replace MOCK_FILES with your store data when ready
+  const files: FileItem[] = MOCK_FILES;
+
+  const excelFiles = files.filter(
+    (f) => f.file_type === "xlsx" || f.file_type === "csv"
+  );
+
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [isLoading, setIsLoading]         = useState(false);
+  const [error, setError]                 = useState<string | null>(null);
+  const [warning, setWarning]             = useState<string | null>(null);
+  const [success, setSuccess]             = useState(false);
+
+  const handleToggle = (file_job_id: string) => {
+    setSelectedJobId((prev) => (prev === file_job_id ? null : file_job_id));
+    setError(null);
+    setWarning(null);
+    setSuccess(false);
+  };
+
+  const handleAnalyse = async () => {
+    setIsLoading(true);
+    setError(null);
+    setWarning(null);
+    setSuccess(false);
+
+    try {
+      const res = await fetch("/api/excel-analysis/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          file_job_id:  selectedJobId,
+          tool_type_id: 6,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.message ?? "Failed to analyse file.");
+      }
+
+      setSuccess(true);
+    } catch (err: any) {
+      setError(err?.message ?? "Something went wrong.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className={styles.wrapper}>
+
+      {/* ── Header ── */}
+      <div className={styles.toolHeader}>
+        <div className={styles.toolHeaderTop}>
+          <div className={styles.breadcrumb}>
+            <button className={styles.breadcrumbLink} onClick={onBack}>Tools</button>
+            <span className={styles.breadcrumbSep}>›</span>
+            <span className={styles.breadcrumbCurrent}>Excel Analysis</span>
+          </div>
+        </div>
+        <div className={styles.toolHeaderBottom}>
+          <div className={styles.toolIcon}>
+            <img src={excelAnalysisIcon} alt="Excel Analysis" width={22} height={22} className={styles.img} />
+          </div>
+          <div className={styles.toolMeta}>
+            <h2 className={styles.toolName}>Excel Analysis</h2>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Body ── */}
+      <div className={styles.body}>
+
+        <p className={styles.description}>
+          Select an Excel or CSV file to analyse. Only one file can be selected at a time.
+        </p>
+
+        {/* File list */}
+        {excelFiles.length === 0 ? (
+          <div className={styles.emptyState}>
+            <div className={styles.emptyIcon}><EmptyIcon /></div>
+            <p>No Excel or CSV files available</p>
+            <span>Upload an .xlsx or .csv file to get started.</span>
+          </div>
+        ) : (
+          <ul className={styles.fileList}>
+            {excelFiles.map((file) => {
+              const isSelected  = selectedJobId === file.file_job_id;
+              const isDisabled  = selectedJobId !== null && !isSelected;
+              const isXlsx      = file.file_type === "xlsx";
+
+              return (
+                <li key={file.file_job_id}>
+                  <label
+                    className={`${styles.fileItem} ${isSelected ? styles.fileItemSelected : ""} ${isDisabled ? styles.fileItemDisabled : ""}`}
+                  >
+                    <input
+                      type="checkbox"
+                      className={styles.fileCheckbox}
+                      checked={isSelected}
+                      disabled={isDisabled}
+                      onChange={() => handleToggle(file.file_job_id)}
+                    />
+                    <span className={`${styles.fileTypeIcon} ${isXlsx ? styles.fileTypeIconXlsx : styles.fileTypeIconCsv}`}>
+                      {isXlsx ? <XlsxIcon /> : <CsvIcon />}
+                    </span>
+                    <div className={styles.fileInfo}>
+                      <span className={styles.fileName}>{file.file_name}</span>
+                      <span className={styles.fileMeta}>
+                        <span className={`${styles.fileTypeBadge} ${isXlsx ? styles.fileTypeBadgeXlsx : styles.fileTypeBadgeCsv}`}>
+                          {file.file_type.toUpperCase()}
+                        </span>
+                        <span className={styles.fileSize}>{formatFileSize(file.file_size)}</span>
+                      </span>
+                    </div>
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        {/* Warning */}
+        {warning && (
+          <div className={styles.warningState}>{warning}</div>
+        )}
+
+        {/* Error */}
+        {error && (
+          <div className={styles.errorState}>{error}</div>
+        )}
+
+        {/* Success */}
+        {success && !error && (
+          <div className={styles.successState}>
+            Analysis started successfully!
+          </div>
+        )}
+
+        {/* Analyse button */}
+        {excelFiles.length > 0 && (
+          <button
+            className={styles.analyseBtn}
+            onClick={handleAnalyse}
+            disabled={isLoading || !selectedJobId}
+          >
+            {isLoading ? (
+              <>
+                <span className={styles.spinner} />
+                <span>Analysing…</span>
+              </>
+            ) : (
+              <>
+                <SparkleIcon />
+                <span>Analyse</span>
+              </>
+            )}
+          </button>
+        )}
+
+      </div>
+    </div>
+  );
+};
+
+export default ExcelAnalysisTool;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  SCSS-only palette
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+$xlsx-color:   #16a34a;
+$xlsx-bg:      #f0fdf4;
+$xlsx-border:  #bbf7d0;
+
+$csv-color:    #0369a1;
+$csv-bg:       #eff6ff;
+$csv-border:   #bfdbfe;
+
+$error-red:    #dc2626;
+$error-bg:     #fef2f2;
+$error-border: #fecaca;
+
+$warning-color:  #92400e;
+$warning-bg:     #fffbeb;
+$warning-border: #fde68a;
+
+$success-green:  #16a34a;
+$success-bg:     #f0fdf4;
+$success-border: #bbf7d0;
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  COMPONENT STYLES
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background: var(--sidebar-bg);
+  animation: fadeSlideIn 0.2s ease both;
+}
+
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+// ── Tool header ───────────────────────────────────────
+
+.toolHeader {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  background: var(--app-bg);
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+
+  &::after {
+    content: "";
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: linear-gradient(180deg, var(--card-excel-accent) 0%, var(--card-excel-hover-border) 100%);
+    border-radius: 0 2px 2px 0;
+  }
+}
+
+.toolHeaderTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px 8px 16px;
+  background: var(--app-bg);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.toolHeaderBottom {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px 10px 16px;
+  background: var(--sidebar-bg);
+  box-shadow: inset 0 1px 0 var(--border-color);
+}
+
+// ── Breadcrumb ────────────────────────────────────────
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.breadcrumbLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 0.15s ease;
+  line-height: 1;
+
+  &::before {
+    content: "←";
+    font-size: 0.75rem;
+    transition: transform 0.15s ease;
+    display: inline-block;
+  }
+
+  &:hover {
+    color: var(--text-primary);
+    &::before { transform: translateX(-2px); }
+  }
+}
+
+.breadcrumbSep {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  user-select: none;
+}
+
+.breadcrumbCurrent {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+// ── Tool icon & meta ──────────────────────────────────
+
+.toolIcon {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  border: 1px solid var(--border-color);
+  background: var(--app-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 1px 3px var(--box-shadow);
+}
+
+.img {
+  object-fit: contain;
+  display: block;
+}
+
+.toolMeta {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.toolName {
+  font-size: 0.9625rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+
+// ── Body ──────────────────────────────────────────────
+
+.body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 12px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+
+  &::-webkit-scrollbar { width: 3px; }
+  &::-webkit-scrollbar-track { background: transparent; }
+  &::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 2px;
+  }
+}
+
+.description {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0;
+}
+
+// ── File list ─────────────────────────────────────────
+
+.fileList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fileItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 11px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  background: var(--app-bg);
+  cursor: pointer;
+  transition: all 0.12s ease;
+  animation: itemIn 0.18s ease both;
+
+  @for $i from 1 through 20 {
+    &:nth-child(#{$i}) { animation-delay: #{$i * 0.04}s; }
+  }
+
+  &:hover:not(.fileItemDisabled) {
+    background: var(--card-excel-hover-bg);
+    border-color: var(--card-excel-hover-border);
+    box-shadow: 0 1px 4px var(--box-shadow);
+  }
+
+  &.fileItemSelected {
+    background: var(--card-excel-hover-bg);
+    border-color: var(--card-excel-accent);
+    box-shadow: 0 0 0 2px rgba(from var(--card-excel-accent) r g b / 0.15);
+  }
+
+  &.fileItemDisabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+}
+
+@keyframes itemIn {
+  from { opacity: 0; transform: translateX(-4px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+// ── File checkbox ─────────────────────────────────────
+
+.fileCheckbox {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--card-excel-accent);
+  cursor: pointer;
+  flex-shrink: 0;
+
+  &:disabled { cursor: not-allowed; }
+}
+
+// ── File type icon ────────────────────────────────────
+
+.fileTypeIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.fileTypeIconXlsx {
+  background: $xlsx-bg;
+  color: $xlsx-color;
+  border: 1px solid $xlsx-border;
+}
+
+.fileTypeIconCsv {
+  background: $csv-bg;
+  color: $csv-color;
+  border: 1px solid $csv-border;
+}
+
+// ── File info ─────────────────────────────────────────
+
+.fileInfo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.fileName {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: -0.01em;
+}
+
+.fileMeta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fileTypeBadge {
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+}
+
+.fileTypeBadgeXlsx {
+  color: $xlsx-color;
+  background: $xlsx-bg;
+  border-color: $xlsx-border;
+}
+
+.fileTypeBadgeCsv {
+  color: $csv-color;
+  background: $csv-bg;
+  border-color: $csv-border;
+}
+
+.fileSize {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+// ── Empty state ───────────────────────────────────────
+
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 40px 20px;
+  text-align: center;
+
+  p {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+  }
+
+  span {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+}
+
+.emptyIcon {
+  width: 42px;
+  height: 42px;
+  border-radius: 11px;
+  background: var(--card-excel-hover-bg);
+  border: 1px solid var(--card-excel-hover-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--card-excel-accent);
+  margin-bottom: 4px;
+}
+
+// ── Analyse button ────────────────────────────────────
+
+.analyseBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 11px 16px;
+  border-radius: 10px;
+  border: none;
+  background: linear-gradient(135deg, var(--card-excel-accent) 0%, var(--card-excel-hover-border) 100%);
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: -0.01em;
+  transition: opacity 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 2px 10px rgba(5, 150, 105, 0.3);
+
+  &:hover:not(:disabled) {
+    opacity: 0.92;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px rgba(5, 150, 105, 0.4);
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: none;
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+
+// ── Spinner ───────────────────────────────────────────
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.65s linear infinite;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+// ── State banners ─────────────────────────────────────
+
+.warningState {
+  padding: 10px 12px;
+  font-size: 0.7875rem;
+  color: $warning-color;
+  background: $warning-bg;
+  border: 1px solid $warning-border;
+  border-radius: 8px;
+  line-height: 1.5;
+}
+
+.errorState {
+  padding: 10px 12px;
+  font-size: 0.7875rem;
+  color: $error-red;
+  background: $error-bg;
+  border: 1px solid $error-border;
+  border-radius: 8px;
+  line-height: 1.5;
+}
+
+.successState {
+  padding: 10px 12px;
+  font-size: 0.7875rem;
+  color: $success-green;
+  background: $success-bg;
+  border: 1px solid $success-border;
+  border-radius: 8px;
+  line-height: 1.5;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import React, { useEffect, useState } from "react";
+import { useDispatch, useSelector } from "react-redux";
+import type { AppDispatch, RootState } from "../../store";
+import styles from "./PanelTools.module.scss";
+
+import { AtlassianConnect } from "./AtlassianConnect";
+import { JiraTool } from "./JiraTool";
+import { ConfluenceTool } from "./ConfluenceTool";
+import { SummaryTool } from "./SummaryTool";
+import { TranslationTool } from "./TranslationTool";
+import { ExcelAnalysisTool } from "./ExcelAnalysisTool";
+import { setActiveTool, clearActiveTool } from "./toolSlice";
+import type { ToolId } from "./toolSlice";
+import { setupAtlassianInterceptor } from "./atlassianService";
+
+import jiraIcon from "../../assets/icons/jira.png";
+import confluenceIcon from "../../assets/icons/confluence.webp";
+import translationIcon from "../../assets/icons/translation.png";
+import summaryIcon from "../../assets/icons/summary.png";
+import excelAnalysisIcon from "../../assets/icons/excel-analysis.png";
+
+interface Tool {
+  id: NonNullable<ToolId> | "summary" | "translation" | "excel";
+  name: string;
+  icon: string;
+}
+
+const tools: Tool[] = [
+  { id: "jira",        name: "Jira",           icon: jiraIcon },
+  { id: "confluence",  name: "Confluence",     icon: confluenceIcon },
+  { id: "excel",       name: "Excel Analysis", icon: excelAnalysisIcon },
+  { id: "translation", name: "Translation",    icon: translationIcon },
+  { id: "summary",     name: "Summary",        icon: summaryIcon },
+];
+
+// ── Component ─────────────────────────────────────────
+
+export const PanelTools: React.FC = () => {
+  const dispatch = useDispatch<AppDispatch>();
+  const [selectedToolId, setSelectedToolId] = useState<ToolId>(null);
+  const [showSummary, setShowSummary]         = useState(false);
+  const [showTranslation, setShowTranslation] = useState(false);
+  const [showExcel, setShowExcel]             = useState(false);
+
+  const isExpanded: boolean = useSelector(
+    (state: RootState) => state.layout.isRightPanelOpen
+  );
+  const isConnected: boolean = useSelector(
+    (state: RootState) => state.atlassian.isConnected
+  );
+  const activeTool = useSelector(
+    (state: RootState) => state.tool.activeTool
+  );
+
+  useEffect(() => {
+    setupAtlassianInterceptor(dispatch);
+  }, [dispatch]);
+
+  useEffect(() => {
+    if (!isConnected && selectedToolId === null && activeTool) {
+      setSelectedToolId(activeTool);
+    }
+  }, [isConnected]);
+
+  const handleSelect = (id: NonNullable<ToolId> | "summary" | "translation" | "excel") => {
+    if (id === "summary") {
+      setShowSummary(true);
+      return;
+    }
+    if (id === "translation") {
+      setShowTranslation(true);
+      return;
+    }
+    if (id === "excel") {
+      setShowExcel(true);
+      return;
+    }
+    setSelectedToolId(id);
+    dispatch(setActiveTool(id));
+  };
+
+  const handleBack = () => {
+    setSelectedToolId(null);
+    setShowSummary(false);
+    setShowTranslation(false);
+    setShowExcel(false);
+    dispatch(clearActiveTool());
+  };
+
+  // ── Collapsed ─────────────────────────────────────────
+  if (!isExpanded) {
+    return (
+      <div className={styles.panelCollapsed}>
+        {tools.map(({ id, name, icon }) => (
+          <button
+            key={id}
+            className={styles.collapsedBtn}
+            onClick={() => handleSelect(id)}
+            title={name}
+          >
+            <img src={icon} alt={name} width={18} height={18} className={styles.collapsedIcon} />
+          </button>
+        ))}
+      </div>
+    );
+  }
+
+  // ── Tool selected ─────────────────────────────────────
+  if (showSummary) {
+    return <div className={styles.panel}><SummaryTool onBack={handleBack} fileJobId="" /></div>;
+  }
+
+  if (showTranslation) {
+    return <div className={styles.panel}><TranslationTool onBack={handleBack} fileJobId="" /></div>;
+  }
+
+  if (showExcel) {
+    return <div className={styles.panel}><ExcelAnalysisTool onBack={handleBack} /></div>;
+  }
+
+  if (selectedToolId) {
+    if (!isConnected) return <div className={styles.panel}><AtlassianConnect toolId={selectedToolId} onBack={handleBack} /></div>;
+    if (selectedToolId === "jira") return <div className={styles.panel}><JiraTool onBack={handleBack} /></div>;
+    if (selectedToolId === "confluence") return <div className={styles.panel}><ConfluenceTool onBack={handleBack} /></div>;
+  }
+
+  // ── Tool grid ─────────────────────────────────────────
+  return (
+    <div className={styles.panel}>
+      <div className={styles.panelHeader}>
+        <span className={styles.panelTitle}>Tools</span>
+      </div>
+      <div className={styles.toolGrid}>
+        {tools.map(({ id, name, icon }) => (
+          <button
+            key={id}
+            className={`${styles.toolCard} ${styles[`toolCard__${id}`]}`}
+            onClick={() => handleSelect(id)}
+          >
+            <span className={styles.cardIconWrap}>
+              <img src={icon} alt={name} width={16} height={16} className={styles.cardIcon} />
+            </span>
+            <span className={styles.cardName}>{name}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className={styles.panelSeparator} />
+
+      <div className={styles.panelHint}>
+        <span className={styles.panelHintIcon}>
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M15 4V2" /><path d="M15 16v-2" /><path d="M8 9h2" /><path d="M20 9h2" />
+            <path d="M17.8 11.8 19 13" /><path d="M15 9h.01" /><path d="M17.8 6.2 19 5" />
+            <path d="m3 21 9-9" /><path d="M12.2 6.2 11 5" />
+          </svg>
+        </span>
+        <span className={styles.panelHintTagline}>Tool output will be saved here.</span>
+        <span className={styles.panelHintSub}>Select a tool to view results alongside your workspace.</span>
+      </div>
+    </div>
+  );
+};
+
+export default PanelTools;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* ── Tool card accent tokens ─────────────────────────────
+   Add these inside your existing :root.light-theme
+   and .dark-theme blocks.
+   ─────────────────────────────────────────────────────── */
+
+:root.light-theme {
+  /* Jira — cyan blue */
+  --card-jira-accent:            #0891b2;
+  --card-jira-hover-bg:          #ecfcff;
+  --card-jira-hover-border:      #06b6d4;
+
+  /* Confluence — indigo */
+  --card-confluence-accent:      #4f46e5;
+  --card-confluence-hover-bg:    #eef2ff;
+  --card-confluence-hover-border:#6366f1;
+
+  /* Summary — amber */
+  --card-summary-accent:         #d97706;
+  --card-summary-hover-bg:       #fffbeb;
+  --card-summary-hover-border:   #f59e0b;
+
+  /* Translation — emerald */
+  --card-translation-accent:         #059669;
+  --card-translation-hover-bg:       #ecfdf5;
+  --card-translation-hover-border:   #10b981;
+
+  /* Excel Analysis — green */
+  --card-excel-accent:               #16a34a;
+  --card-excel-hover-bg:             #f0fdf4;
+  --card-excel-hover-border:         #4ade80;
+}
+
+.dark-theme {
+  /* Jira — lighter cyan for dark bg */
+  --card-jira-accent:            #22d3ee;
+  --card-jira-hover-bg:          #0c1f26;
+  --card-jira-hover-border:      #06b6d4;
+
+  /* Confluence — lighter indigo for dark bg */
+  --card-confluence-accent:      #818cf8;
+  --card-confluence-hover-bg:    #13132a;
+  --card-confluence-hover-border:#6366f1;
+
+  /* Summary — lighter amber for dark bg */
+  --card-summary-accent:         #fbbf24;
+  --card-summary-hover-bg:       #1c1500;
+  --card-summary-hover-border:   #f59e0b;
+
+  /* Translation — lighter emerald for dark bg */
+  --card-translation-accent:         #34d399;
+  --card-translation-hover-bg:       #021f14;
+  --card-translation-hover-border:   #10b981;
+
+  /* Excel Analysis — lighter green for dark bg */
+  --card-excel-accent:               #4ade80;
+  --card-excel-hover-bg:             #021408;
+  --card-excel-hover-border:         #16a34a;
+}
+
+
+// ── Panel wrapper ─────────────────────────────────────
+
+.panel {
+  width: 100%;
+  height: 100%;
+  background: var(--sidebar-bg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-family: "DM Sans", "Segoe UI", sans-serif;
+}
+
+// ── Panel header ──────────────────────────────────────
+
+.panelHeader {
+  padding: 14px 14px 8px;
+  flex-shrink: 0;
+}
+
+.panelTitle {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-secondary);
+}
+
+// ── 2-column grid ─────────────────────────────────────
+
+.toolGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 2px 10px 12px;
+  overflow-y: auto;
+
+  &::-webkit-scrollbar { width: 3px; }
+  &::-webkit-scrollbar-track { background: transparent; }
+  &::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 2px;
+  }
+}
+
+// ── Tool card base — position relative for pseudo ──────
+
+.toolCard {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  height: 56px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  background: var(--app-bg);
+  cursor: pointer;
+  text-align: left;
+  position: relative;
+  overflow: hidden;
+  z-index: 0;
+  transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+
+  &:active {
+    transform: translateY(0);
+    box-shadow: none;
+  }
+
+  /* ── Animated gradient border layer ── */
+  &::before {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border-radius: 13px;
+    background: conic-gradient(
+      from var(--angle, 0deg),
+      transparent   0%,
+      transparent  35%,
+      currentColor 45%,
+      currentColor 55%,
+      transparent  65%,
+      transparent 100%
+    );
+    z-index: -1;
+    opacity: 0;
+    transition: opacity 0.25s ease;
+  }
+
+  /* Inner mask — punches out the card body so only border shows */
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 1.5px;
+    border-radius: 11px;
+    background: var(--app-bg);
+    z-index: -1;
+    transition: background 0.15s ease;
+  }
+
+  &:hover::before {
+    opacity: 1;
+    animation: borderSpin 2s linear infinite;
+  }
+}
+
+@property --angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes borderSpin {
+  to { --angle: 360deg; }
+}
+
+// ── Per-tool accent color (drives conic-gradient currentColor) ──
+
+.toolCard__jira:hover        { color: var(--card-jira-accent); }
+.toolCard__confluence:hover  { color: var(--card-confluence-accent); }
+.toolCard__translation:hover { color: var(--card-translation-accent); }
+.toolCard__summary:hover     { color: var(--card-summary-accent); }
+.toolCard__excel:hover       { color: var(--card-excel-accent); }
+
+// ── Per-tool left accent stripe ───────────────────────
+
+.toolCard__jira        { border-left: 3px solid var(--card-jira-accent); }
+.toolCard__confluence  { border-left: 3px solid var(--card-confluence-accent); }
+.toolCard__translation { border-left: 3px solid var(--card-translation-accent); }
+.toolCard__summary     { border-left: 3px solid var(--card-summary-accent); }
+.toolCard__excel       { border-left: 3px solid var(--card-excel-accent); }
+
+
+// ── Icon wrap ─────────────────────────────────────────
+
+.cardIconWrap {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  border: 1px solid var(--border-color);
+  background: var(--sidebar-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: border-color 0.15s ease;
+}
+
+.cardIcon {
+  object-fit: contain;
+  display: block;
+}
+
+// ── Card name ─────────────────────────────────────────
+
+.cardName {
+  flex: 1;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 0.15s ease;
+}
+
+// ── Collapsed: icon strip ─────────────────────────────
+
+.panelCollapsed {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 0;
+  gap: 6px;
+}
+
+.collapsedBtn {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  border: 1px solid var(--border-color);
+  background: var(--app-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 1px 2px var(--box-shadow);
+
+  &:hover {
+    background: var(--card-hover-bg);
+    border-color: var(--btn-bg);
+    box-shadow: 0 2px 8px var(--box-shadow);
+    transform: translateY(-1px);
+  }
+
+  &:active { transform: translateY(0); }
+}
+
+.collapsedIcon {
+  object-fit: contain;
+  display: block;
+}
+
+// ── Separator ─────────────────────────────────────────
+
+.panelSeparator {
+  height: 1px;
+  background: var(--border-color);
+  margin: 4px 10px 0;
+  flex-shrink: 0;
+}
+
+// ── Bottom hint ───────────────────────────────────────
+
+.panelHint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 14px 16px 18px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.panelHintIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--card-jira-hover-bg), var(--card-confluence-hover-bg));
+  border: 1px solid var(--border-color);
+  color: var(--card-confluence-accent);
+  margin-bottom: 2px;
+  flex-shrink: 0;
+}
+
+.panelHintTagline {
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--card-jira-accent), var(--card-confluence-accent));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+
+.panelHintSub {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  max-width: 160px;
+}
