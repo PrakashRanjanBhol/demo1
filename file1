@@ -12,7 +12,10 @@ export type ActiveTool =
 
 interface ToolConfig {
   label: string;
+  /** CSS class that applies the accent vars */
   accentClass: string;
+  /** true = gradient badge (GENERAL / RAG), false = solid tinted badge */
+  gradient: boolean;
   icon: React.ReactNode;
 }
 
@@ -21,14 +24,21 @@ interface ToolConfig {
 const GeneralIcon = () => (
   <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
     <circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.4" />
-    <path d="M8 5.5c0-1 .8-1.5 1.5-1s1 1 .5 1.8L8 8v1" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+    <path
+      d="M8 5.5c0-1 .8-1.5 1.5-1s1 1 .5 1.8L8 8v1"
+      stroke="currentColor" strokeWidth="1.3"
+      strokeLinecap="round" strokeLinejoin="round"
+    />
     <circle cx="8" cy="11" r="0.8" fill="currentColor" />
   </svg>
 );
 
 const RagIcon = () => (
   <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-    <path d="M9 1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6L9 1Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+    <path
+      d="M9 1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6L9 1Z"
+      stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"
+    />
     <path d="M9 1v5h5" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
     <path d="M5 10h6M5 12.5h4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
   </svg>
@@ -61,38 +71,43 @@ const ExcelIcon = () => (
 const TOOL_CONFIG: Record<ActiveTool, ToolConfig> = {
   GENERAL: {
     label: "General",
-    accentClass: styles.accentGray,
+    accentClass: styles.accentGeneral,
+    gradient: true,
     icon: <GeneralIcon />,
   },
   RAG: {
     label: "Source Files",
-    accentClass: styles.accentTeal,
+    accentClass: styles.accentRag,
+    gradient: true,
     icon: <RagIcon />,
   },
   JIRA: {
     label: "Jira",
-    accentClass: styles.accentBlue,
+    accentClass: styles.accentJira,
+    gradient: false,
     icon: <JiraIcon />,
   },
   CONFLUENCE: {
     label: "Confluence",
-    accentClass: styles.accentPurple,
+    accentClass: styles.accentConfluence,
+    gradient: false,
     icon: <ConfluenceIcon />,
   },
   EXCEL_ANALYTICS: {
     label: "Excel Analytics",
-    accentClass: styles.accentGreen,
+    accentClass: styles.accentExcel,
+    gradient: false,
     icon: <ExcelIcon />,
   },
 };
 
 // ─── Pulsing dot ──────────────────────────────────────────────────────────────
 
-function PulsingDot() {
+function PulsingDot({ gradient }: { gradient: boolean }) {
   return (
     <span className={styles.dot} aria-hidden="true">
-      <span className={styles.dotRing} />
-      <span className={styles.dotCore} />
+      <span className={`${styles.dotRing} ${gradient ? styles.dotRingGradient : ""}`} />
+      <span className={`${styles.dotCore} ${gradient ? styles.dotCoreGradient : ""}`} />
     </span>
   );
 }
@@ -116,10 +131,9 @@ export default function ContextModeIndicator({
     if (activeTool === prev.current) return;
     prev.current = activeTool;
 
-    // exit → swap → enter
     setPhase("exit");
     const t1 = setTimeout(() => { setDisplayed(activeTool); setPhase("enter"); }, 180);
-    const t2 = setTimeout(() => setPhase("idle"), 180 + 240);
+    const t2 = setTimeout(() => setPhase("idle"), 180 + 260);
     return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [activeTool]);
 
@@ -130,6 +144,7 @@ export default function ContextModeIndicator({
       className={[
         styles.badge,
         cfg.accentClass,
+        cfg.gradient ? styles.gradientBadge : styles.solidBadge,
         phase === "exit"  ? styles.exit  : "",
         phase === "enter" ? styles.enter : "",
         className,
@@ -138,7 +153,7 @@ export default function ContextModeIndicator({
       aria-live="polite"
       aria-label={`Active mode: ${cfg.label}`}
     >
-      <PulsingDot />
+      <PulsingDot gradient={cfg.gradient} />
       <span className={styles.icon}>{cfg.icon}</span>
       <span className={styles.label}>{cfg.label}</span>
     </div>
@@ -157,107 +172,121 @@ export default function ContextModeIndicator({
 
 
 
+
+
+
+
+
 // ─── CSS Variables ────────────────────────────────────────────────────────────
-// Light → page bg #FFFFFF    Dark → page bg #111113
 
-:root {
-  // Gray  (GENERAL)
-  --cmi-gray-accent:         #6E6E73;
-  --cmi-gray-bg:             rgba(110, 110, 115, 0.10);
-  --cmi-gray-border:         rgba(110, 110, 115, 0.22);
+:root,
+:root.light-theme {
+  // Jira — cyan blue (your values)
+  --card-jira-accent:            #0891b2;
+  --card-jira-hover-bg:          #ecfcff;
+  --card-jira-hover-border:      #06b6d4;
 
-  // Teal  (RAG)
-  --cmi-teal-accent:         #1D9E75;
-  --cmi-teal-bg:             rgba(29, 158, 117, 0.10);
-  --cmi-teal-border:         rgba(29, 158, 117, 0.24);
+  // Confluence — indigo (your values)
+  --card-confluence-accent:      #4f46e5;
+  --card-confluence-hover-bg:    #eef2ff;
+  --card-confluence-hover-border:#6366f1;
 
-  // Blue  (JIRA)
-  --cmi-blue-accent:         #378ADD;
-  --cmi-blue-bg:             rgba(55, 138, 221, 0.10);
-  --cmi-blue-border:         rgba(55, 138, 221, 0.24);
+  // Excel Analysis — green (your values)
+  --card-excel-accent:           #16a34a;
+  --card-excel-hover-bg:         #f0fdf4;
+  --card-excel-hover-border:     #4ade80;
 
-  // Purple (CONFLUENCE)
-  --cmi-purple-accent:       #7F77DD;
-  --cmi-purple-bg:           rgba(127, 119, 221, 0.10);
-  --cmi-purple-border:       rgba(127, 119, 221, 0.24);
+  // General gradient — purple → indigo → blue
+  --cmi-general-from:            #7c3aed;
+  --cmi-general-via:             #4f46e5;
+  --cmi-general-to:              #2563eb;
+  --cmi-general-gradient:        linear-gradient(135deg, #7c3aed 0%, #4f46e5 50%, #2563eb 100%);
 
-  // Green (EXCEL_ANALYTICS)
-  --cmi-green-accent:        #5BAD6F;
-  --cmi-green-bg:            rgba(91, 173, 111, 0.10);
-  --cmi-green-border:        rgba(91, 173, 111, 0.24);
+  // RAG gradient — sky → indigo
+  --cmi-rag-from:                #0ea5e9;
+  --cmi-rag-to:                  #6366f1;
+  --cmi-rag-gradient:            linear-gradient(135deg, #0ea5e9 0%, #6366f1 100%);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --cmi-gray-accent:         #8A8A90;
-    --cmi-gray-bg:             rgba(138, 138, 144, 0.10);
-    --cmi-gray-border:         rgba(138, 138, 144, 0.20);
+:root.dark-theme,
+.dark-theme {
+  // Jira (your values)
+  --card-jira-accent:            #22d3ee;
+  --card-jira-hover-bg:          #0c1f26;
+  --card-jira-hover-border:      #06b6d4;
 
-    --cmi-teal-accent:         #28C28E;
-    --cmi-teal-bg:             rgba(40, 194, 142, 0.10);
-    --cmi-teal-border:         rgba(40, 194, 142, 0.22);
+  // Confluence (your values)
+  --card-confluence-accent:      #818cf8;
+  --card-confluence-hover-bg:    #13132a;
+  --card-confluence-hover-border:#6366f1;
 
-    --cmi-blue-accent:         #5BA8F5;
-    --cmi-blue-bg:             rgba(91, 168, 245, 0.10);
-    --cmi-blue-border:         rgba(91, 168, 245, 0.22);
+  // Excel Analysis (your values)
+  --card-excel-accent:           #4ade80;
+  --card-excel-hover-bg:         #021408;
+  --card-excel-hover-border:     #16a34a;
 
-    --cmi-purple-accent:       #A49AFF;
-    --cmi-purple-bg:           rgba(164, 154, 255, 0.10);
-    --cmi-purple-border:       rgba(164, 154, 255, 0.22);
+  // General gradient — same, renders well on dark too
+  --cmi-general-gradient:        linear-gradient(135deg, #7c3aed 0%, #4f46e5 50%, #2563eb 100%);
 
-    --cmi-green-accent:        #72C984;
-    --cmi-green-bg:            rgba(114, 201, 132, 0.10);
-    --cmi-green-border:        rgba(114, 201, 132, 0.22);
-  }
+  // RAG gradient — slightly brighter on dark
+  --cmi-rag-gradient:            linear-gradient(135deg, #38bdf8 0%, #818cf8 100%);
 }
 
 // ─── Keyframes ────────────────────────────────────────────────────────────────
 
 @keyframes cmi-ping {
-  0%        { transform: scale(1);   opacity: 0.6; }
-  75%, 100% { transform: scale(2.4); opacity: 0;   }
-}
-
-@keyframes cmi-scale-in {
-  from { opacity: 0; transform: scale(0.82); }
-  to   { opacity: 1; transform: scale(1);    }
+  0%        { transform: scale(1);   opacity: 0.55; }
+  75%, 100% { transform: scale(2.4); opacity: 0;    }
 }
 
 @keyframes cmi-scale-out {
-  from { opacity: 1; transform: scale(1);    }
-  to   { opacity: 0; transform: scale(0.82); }
+  from { opacity: 1; transform: scale(1);    filter: blur(0);   }
+  to   { opacity: 0; transform: scale(0.80); filter: blur(2px); }
 }
 
-// ─── Badge ────────────────────────────────────────────────────────────────────
+@keyframes cmi-scale-in {
+  from { opacity: 0; transform: scale(0.80); filter: blur(2px); }
+  to   { opacity: 1; transform: scale(1);    filter: blur(0);   }
+}
+
+// ─── Base badge ───────────────────────────────────────────────────────────────
 
 .badge {
-  display:        inline-flex;
-  align-items:    center;
-  gap:            6px;
-  height:         28px;
-  padding:        0 11px 0 8px;
-  border-radius:  100px;
-  border:         1px solid var(--cmi-active-border);
-  background:     var(--cmi-active-bg);
-  color:          var(--cmi-active-accent);
-  cursor:         default;
-  user-select:    none;
-  white-space:    nowrap;
+  display:      inline-flex;
+  align-items:  center;
+  gap:          6px;
+  height:       28px;
+  padding:      0 11px 0 8px;
+  border-radius: 100px;
+  cursor:       default;
+  user-select:  none;
+  white-space:  nowrap;
+  transition:   background 0.25s ease, border-color 0.25s ease, color 0.25s ease;
 
-  // smooth color transitions when accent changes
-  transition:
-    background    0.25s ease,
-    border-color  0.25s ease,
-    color         0.25s ease;
+  &.exit  { animation: cmi-scale-out 0.18s ease forwards; }
+  &.enter { animation: cmi-scale-in  0.26s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+}
 
-  // enter/exit animation phases
-  &.exit {
-    animation: cmi-scale-out 0.18s ease forwards;
-  }
+// ─── Gradient badge (GENERAL / RAG) ──────────────────────────────────────────
+// White text on the gradient background, no separate border needed.
 
-  &.enter {
-    animation: cmi-scale-in 0.24s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-  }
+.gradientBadge {
+  border: none;
+  color: #ffffff;
+
+  .icon   { opacity: 0.90; }
+  .label  { font-weight: 600; }
+}
+
+// ─── Solid tinted badge (JIRA / CONFLUENCE / EXCEL_ANALYTICS) ────────────────
+
+.solidBadge {
+  border: 1px solid var(--cmi-active-border);
+  background: var(--cmi-active-bg);
+  color: var(--cmi-active-accent);
+
+  .icon  { opacity: 0.85; }
+  .label { font-weight: 600; }
 }
 
 // ─── Inner elements ───────────────────────────────────────────────────────────
@@ -266,12 +295,10 @@ export default function ContextModeIndicator({
   display:     inline-flex;
   align-items: center;
   flex-shrink: 0;
-  opacity:     0.85;
 }
 
 .label {
   font-size:      12px;
-  font-weight:    600;
   letter-spacing: 0.01em;
 }
 
@@ -285,6 +312,7 @@ export default function ContextModeIndicator({
   flex-shrink: 0;
 }
 
+// Solid-badge dot — uses CSS var accent color
 .dotRing {
   position:      absolute;
   inset:         0;
@@ -301,34 +329,42 @@ export default function ContextModeIndicator({
   background:    var(--cmi-active-accent);
 }
 
-// ─── Accent modifiers ─────────────────────────────────────────────────────────
-
-.accentGray {
-  --cmi-active-accent: var(--cmi-gray-accent);
-  --cmi-active-bg:     var(--cmi-gray-bg);
-  --cmi-active-border: var(--cmi-gray-border);
+// Gradient-badge dot — plain white so it's visible on the gradient bg
+.dotRingGradient {
+  background: rgba(255, 255, 255, 0.80);
 }
 
-.accentTeal {
-  --cmi-active-accent: var(--cmi-teal-accent);
-  --cmi-active-bg:     var(--cmi-teal-bg);
-  --cmi-active-border: var(--cmi-teal-border);
+.dotCoreGradient {
+  background: #ffffff;
 }
 
-.accentBlue {
-  --cmi-active-accent: var(--cmi-blue-accent);
-  --cmi-active-bg:     var(--cmi-blue-bg);
-  --cmi-active-border: var(--cmi-blue-border);
+// ─── Accent modifiers — gradient badges ──────────────────────────────────────
+
+.accentGeneral {
+  background: var(--cmi-general-gradient);
+  // dot/icon/text inherit white from .gradientBadge
 }
 
-.accentPurple {
-  --cmi-active-accent: var(--cmi-purple-accent);
-  --cmi-active-bg:     var(--cmi-purple-bg);
-  --cmi-active-border: var(--cmi-purple-border);
+.accentRag {
+  background: var(--cmi-rag-gradient);
 }
 
-.accentGreen {
-  --cmi-active-accent: var(--cmi-green-accent);
-  --cmi-active-bg:     var(--cmi-green-bg);
-  --cmi-active-border: var(--cmi-green-border);
+// ─── Accent modifiers — solid badges ─────────────────────────────────────────
+
+.accentJira {
+  --cmi-active-accent: var(--card-jira-accent);
+  --cmi-active-bg:     var(--card-jira-hover-bg);
+  --cmi-active-border: var(--card-jira-hover-border);
+}
+
+.accentConfluence {
+  --cmi-active-accent: var(--card-confluence-accent);
+  --cmi-active-bg:     var(--card-confluence-hover-bg);
+  --cmi-active-border: var(--card-confluence-hover-border);
+}
+
+.accentExcel {
+  --cmi-active-accent: var(--card-excel-accent);
+  --cmi-active-bg:     var(--card-excel-hover-bg);
+  --cmi-active-border: var(--card-excel-hover-border);
 }
