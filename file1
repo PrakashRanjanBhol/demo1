@@ -1,7 +1,261 @@
-const handleToggle = (file_job_id: string) => {
-    const newId = selectedJobId === file_job_id ? null : file_job_id;
-    setSelectedJobId(newId);
-    dispatch(setExcelFile({ file_job_id: newId, isFileSelected: newId !== null }));
-    setError(null);
-    setWarning(null);
-  };
+import { useState, useEffect, useRef } from "react";
+
+// ─── Global CSS ───────────────────────────────────────────────────────────────
+// Drop these variables into your global stylesheet instead if you prefer.
+const GLOBAL_CSS = `
+  :root {
+    --cmi-bg-surface:   #F4F4F5;
+    --cmi-border:       rgba(0, 0, 0, 0.08);
+    --cmi-text-muted:   #8A8A8A;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --cmi-bg-surface:   #1A1A1E;
+      --cmi-border:       rgba(255, 255, 255, 0.07);
+      --cmi-text-muted:   #555555;
+    }
+  }
+  @keyframes cmi-ping {
+    0%        { transform: scale(1); opacity: 0.55; }
+    75%, 100% { transform: scale(2.4); opacity: 0;  }
+  }
+`;
+
+// ─── Tool config ──────────────────────────────────────────────────────────────
+//  GENERAL | RAG          → left  (Source Panel)
+//  JIRA | CONFLUENCE
+//  | EXCEL_ANALYSIS       → right (Tool Panel)
+
+const TOOL_CONFIG = {
+  GENERAL: {
+    panel:       "left",
+    panelLabel:  "Source Panel",
+    typeLabel:   "General Chat",
+    hint:        "No file context — general conversation mode",
+    accent:      "#1D9E75",
+    badgeBg:     "rgba(29, 158, 117, 0.11)",
+    badgeColor:  "#1D9E75",
+    badgeBorder: "rgba(29, 158, 117, 0.26)",
+    pillBorder:  "rgba(29, 158, 117, 0.20)",
+  },
+  RAG: {
+    panel:       "left",
+    panelLabel:  "Source Panel",
+    typeLabel:   "Source Files",
+    hint:        "Asking questions on your uploaded files",
+    accent:      "#1D9E75",
+    badgeBg:     "rgba(29, 158, 117, 0.11)",
+    badgeColor:  "#1D9E75",
+    badgeBorder: "rgba(29, 158, 117, 0.26)",
+    pillBorder:  "rgba(29, 158, 117, 0.20)",
+  },
+  JIRA: {
+    panel:       "right",
+    panelLabel:  "Tool Panel",
+    typeLabel:   "Jira",
+    hint:        "Queries routed to your Jira tickets & issues",
+    accent:      "#378ADD",
+    badgeBg:     "rgba(55, 138, 221, 0.11)",
+    badgeColor:  "#378ADD",
+    badgeBorder: "rgba(55, 138, 221, 0.26)",
+    pillBorder:  "rgba(55, 138, 221, 0.20)",
+  },
+  CONFLUENCE: {
+    panel:       "right",
+    panelLabel:  "Tool Panel",
+    typeLabel:   "Confluence",
+    hint:        "Queries routed to your Confluence workspace",
+    accent:      "#7F77DD",
+    badgeBg:     "rgba(127, 119, 221, 0.11)",
+    badgeColor:  "#7F77DD",
+    badgeBorder: "rgba(127, 119, 221, 0.26)",
+    pillBorder:  "rgba(127, 119, 221, 0.20)",
+  },
+  EXCEL_ANALYSIS: {
+    panel:       "right",
+    panelLabel:  "Tool Panel",
+    typeLabel:   "Excel Analytics",
+    hint:        "Queries routed to your Excel spreadsheets",
+    accent:      "#5BAD6F",
+    badgeBg:     "rgba(91, 173, 111, 0.11)",
+    badgeColor:  "#5BAD6F",
+    badgeBorder: "rgba(91, 173, 111, 0.26)",
+    pillBorder:  "rgba(91, 173, 111, 0.20)",
+  },
+};
+
+// ─── Icons ────────────────────────────────────────────────────────────────────
+
+function ArrowIcon({ direction, color }) {
+  const d =
+    direction === "left"
+      ? "M13 9H5M8 5.5L4.5 9L8 12.5"
+      : "M5 9h8M10 5.5L13.5 9L10 12.5";
+  return (
+    <svg width="15" height="15" viewBox="0 0 18 18" fill="none" style={{ flexShrink: 0 }}>
+      <path d={d} stroke={color} strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function PulsingDot({ color }) {
+  return (
+    <span style={{ position: "relative", display: "inline-flex", width: 7, height: 7, flexShrink: 0 }}>
+      <span style={{
+        position: "absolute", inset: 0, borderRadius: "50%",
+        background: color, animation: "cmi-ping 1.8s cubic-bezier(0,0,0.2,1) infinite",
+      }} />
+      <span style={{ position: "relative", width: 7, height: 7, borderRadius: "50%", background: color }} />
+    </span>
+  );
+}
+
+function ToolIcon({ tool, color }) {
+  const shared = { flexShrink: 0 };
+
+  if (tool === "JIRA")
+    return (
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" style={shared}>
+        <path d="M11.571 11.429 6 5.857 11.571.286l5.572 5.571L11.57 11.43Z" fill={color} opacity=".45" />
+        <path d="M17.143 17 11.57 11.43 17.143 5.857 22.714 11.43 17.143 17Z"  fill={color} opacity=".72" />
+        <path d="M11.571 22.571 6 17l5.571-5.571L17.143 17l-5.572 5.571Z"      fill={color} />
+      </svg>
+    );
+
+  if (tool === "CONFLUENCE")
+    return (
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" style={shared}>
+        <path d="M2.5 17.5c3-4 6.5-6 9.5-6s6.5 2 9.5 6" stroke={color} strokeWidth="2.3" strokeLinecap="round" />
+        <path d="M2.5 6.5c3 4 6.5 6 9.5 6s6.5-2 9.5-6"  stroke={color} strokeWidth="2.3" strokeLinecap="round" />
+      </svg>
+    );
+
+  if (tool === "EXCEL_ANALYSIS")
+    return (
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" style={shared}>
+        <rect x="1" y="1" width="14" height="14" rx="2" stroke={color} strokeWidth="1.4" />
+        <path d="M1 6h14M1 10h14M5.5 1v14" stroke={color} strokeWidth="1.2" />
+      </svg>
+    );
+
+  // GENERAL / RAG
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" style={shared}>
+      <path d="M9 1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6L9 1Z"
+        stroke={color} strokeWidth="1.4" strokeLinejoin="round" />
+      <path d="M9 1v5h5" stroke={color} strokeWidth="1.4" strokeLinejoin="round" />
+      <path d="M5 10h6M5 12.5h4" stroke={color} strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+// ─── ContextModeIndicator ─────────────────────────────────────────────────────
+/**
+ * Usage:
+ *   import ContextModeIndicator from "./ContextModeIndicator";
+ *
+ *   // Pull activeTool from your store
+ *   const activeTool = useAppStore(s => s.activeTool);
+ *
+ *   <ContextModeIndicator activeTool={activeTool} />
+ *
+ * Props:
+ *   activeTool  'GENERAL' | 'RAG' | 'JIRA' | 'CONFLUENCE' | 'EXCEL_ANALYSIS'
+ *   className   optional wrapper class
+ *   style       optional wrapper inline style
+ */
+export default function ContextModeIndicator({ activeTool = "RAG", className, style }) {
+  // Cross-fade on change
+  const [displayed, setDisplayed] = useState(activeTool);
+  const [visible,   setVisible]   = useState(true);
+  const prev = useRef(activeTool);
+
+  useEffect(() => {
+    if (activeTool === prev.current) return;
+    prev.current = activeTool;
+    setVisible(false);
+    const t = setTimeout(() => { setDisplayed(activeTool); setVisible(true); }, 170);
+    return () => clearTimeout(t);
+  }, [activeTool]);
+
+  const cfg    = TOOL_CONFIG[displayed] ?? TOOL_CONFIG.RAG;
+  const isLeft = cfg.panel === "left";
+
+  return (
+    <>
+      {/* Inject CSS variables + keyframes once */}
+      <style>{GLOBAL_CSS}</style>
+
+      <div
+        className={className}
+        style={{
+          display:        "inline-flex",
+          flexDirection:  "column",
+          alignItems:     "center",
+          gap:            5,
+          opacity:        visible ? 1 : 0,
+          transform:      visible ? "translateY(0)" : "translateY(-5px)",
+          transition:     "opacity 0.17s ease, transform 0.17s ease",
+          userSelect:     "none",
+          ...style,
+        }}
+      >
+        {/* ── Pill ── */}
+        <div style={{
+          display:        "inline-flex",
+          alignItems:     "center",
+          gap:            8,
+          padding:        "5px 11px 5px 8px",
+          borderRadius:   100,
+          background:     "var(--cmi-bg-surface)",
+          border:         `1px solid ${cfg.pillBorder}`,
+          transition:     "border-color 0.3s ease, background 0.3s ease",
+        }}>
+
+          {/* Arrow + panel label */}
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <ArrowIcon direction={isLeft ? "left" : "right"} color={cfg.accent} />
+            <span style={{
+              fontSize:      10,
+              fontWeight:    700,
+              letterSpacing: "0.07em",
+              textTransform: "uppercase",
+              color:         cfg.accent,
+              transition:    "color 0.3s ease",
+            }}>
+              {cfg.panelLabel}
+            </span>
+          </div>
+
+          {/* Divider */}
+          <span style={{ width: 1, height: 14, background: "var(--cmi-border)", flexShrink: 0 }} />
+
+          {/* Type badge */}
+          <div style={{
+            display:        "inline-flex",
+            alignItems:     "center",
+            gap:            5,
+            padding:        "3px 9px 3px 6px",
+            borderRadius:   100,
+            background:     cfg.badgeBg,
+            border:         `1px solid ${cfg.badgeBorder}`,
+            color:          cfg.badgeColor,
+            fontSize:       11,
+            fontWeight:     600,
+            whiteSpace:     "nowrap",
+            transition:     "all 0.3s ease",
+          }}>
+            <PulsingDot color={cfg.accent} />
+            <ToolIcon tool={displayed} color={cfg.badgeColor} />
+            {cfg.typeLabel}
+          </div>
+        </div>
+
+        {/* ── Hint ── */}
+        <span style={{ fontSize: 11, color: "var(--cmi-text-muted)", letterSpacing: "0.01em" }}>
+          {cfg.hint}
+        </span>
+      </div>
+    </>
+  );
+}
