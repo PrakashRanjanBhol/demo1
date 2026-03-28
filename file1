@@ -1,261 +1,445 @@
+const activeTool = useAppStore(s => s.activeTool); // from your store
+
+<ContextModeIndicator activeTool={activeTool} />
+
+
+
+
+
 import { useState, useEffect, useRef } from "react";
+import styles from "./ContextModeIndicator.module.scss";
 
-// ─── Global CSS ───────────────────────────────────────────────────────────────
-// Drop these variables into your global stylesheet instead if you prefer.
-const GLOBAL_CSS = `
-  :root {
-    --cmi-bg-surface:   #F4F4F5;
-    --cmi-border:       rgba(0, 0, 0, 0.08);
-    --cmi-text-muted:   #8A8A8A;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --cmi-bg-surface:   #1A1A1E;
-      --cmi-border:       rgba(255, 255, 255, 0.07);
-      --cmi-text-muted:   #555555;
-    }
-  }
-  @keyframes cmi-ping {
-    0%        { transform: scale(1); opacity: 0.55; }
-    75%, 100% { transform: scale(2.4); opacity: 0;  }
-  }
-`;
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-// ─── Tool config ──────────────────────────────────────────────────────────────
-//  GENERAL | RAG          → left  (Source Panel)
-//  JIRA | CONFLUENCE
-//  | EXCEL_ANALYSIS       → right (Tool Panel)
+export type ActiveTool = "GENERAL" | "RAG" | "JIRA" | "CONFLUENCE" | "EXCEL_ANALYSIS";
 
-const TOOL_CONFIG = {
+interface ToolConfig {
+  panel: "left" | "right";
+  panelLabel: string;
+  typeLabel: string;
+  hint: string;
+  accentClass: string; // maps to a CSS class in the module
+}
+
+// ─── Tool Config ──────────────────────────────────────────────────────────────
+//   GENERAL | RAG          → left  panel (Source Panel)
+//   JIRA | CONFLUENCE
+//   | EXCEL_ANALYSIS       → right panel (Tool Panel)
+
+const TOOL_CONFIG: Record<ActiveTool, ToolConfig> = {
   GENERAL: {
-    panel:       "left",
-    panelLabel:  "Source Panel",
-    typeLabel:   "General Chat",
-    hint:        "No file context — general conversation mode",
-    accent:      "#1D9E75",
-    badgeBg:     "rgba(29, 158, 117, 0.11)",
-    badgeColor:  "#1D9E75",
-    badgeBorder: "rgba(29, 158, 117, 0.26)",
-    pillBorder:  "rgba(29, 158, 117, 0.20)",
+    panel: "left",
+    panelLabel: "Source Panel",
+    typeLabel: "General Chat",
+    hint: "No file context — general conversation mode",
+    accentClass: styles.accentTeal,
   },
   RAG: {
-    panel:       "left",
-    panelLabel:  "Source Panel",
-    typeLabel:   "Source Files",
-    hint:        "Asking questions on your uploaded files",
-    accent:      "#1D9E75",
-    badgeBg:     "rgba(29, 158, 117, 0.11)",
-    badgeColor:  "#1D9E75",
-    badgeBorder: "rgba(29, 158, 117, 0.26)",
-    pillBorder:  "rgba(29, 158, 117, 0.20)",
+    panel: "left",
+    panelLabel: "Source Panel",
+    typeLabel: "Source Files",
+    hint: "Asking questions on your uploaded files",
+    accentClass: styles.accentTeal,
   },
   JIRA: {
-    panel:       "right",
-    panelLabel:  "Tool Panel",
-    typeLabel:   "Jira",
-    hint:        "Queries routed to your Jira tickets & issues",
-    accent:      "#378ADD",
-    badgeBg:     "rgba(55, 138, 221, 0.11)",
-    badgeColor:  "#378ADD",
-    badgeBorder: "rgba(55, 138, 221, 0.26)",
-    pillBorder:  "rgba(55, 138, 221, 0.20)",
+    panel: "right",
+    panelLabel: "Tool Panel",
+    typeLabel: "Jira",
+    hint: "Queries routed to your Jira tickets & issues",
+    accentClass: styles.accentBlue,
   },
   CONFLUENCE: {
-    panel:       "right",
-    panelLabel:  "Tool Panel",
-    typeLabel:   "Confluence",
-    hint:        "Queries routed to your Confluence workspace",
-    accent:      "#7F77DD",
-    badgeBg:     "rgba(127, 119, 221, 0.11)",
-    badgeColor:  "#7F77DD",
-    badgeBorder: "rgba(127, 119, 221, 0.26)",
-    pillBorder:  "rgba(127, 119, 221, 0.20)",
+    panel: "right",
+    panelLabel: "Tool Panel",
+    typeLabel: "Confluence",
+    hint: "Queries routed to your Confluence workspace",
+    accentClass: styles.accentPurple,
   },
   EXCEL_ANALYSIS: {
-    panel:       "right",
-    panelLabel:  "Tool Panel",
-    typeLabel:   "Excel Analytics",
-    hint:        "Queries routed to your Excel spreadsheets",
-    accent:      "#5BAD6F",
-    badgeBg:     "rgba(91, 173, 111, 0.11)",
-    badgeColor:  "#5BAD6F",
-    badgeBorder: "rgba(91, 173, 111, 0.26)",
-    pillBorder:  "rgba(91, 173, 111, 0.20)",
+    panel: "right",
+    panelLabel: "Tool Panel",
+    typeLabel: "Excel Analytics",
+    hint: "Queries routed to your Excel spreadsheets",
+    accentClass: styles.accentGreen,
   },
 };
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 
-function ArrowIcon({ direction, color }) {
+function ArrowIcon({ direction }: { direction: "left" | "right" }) {
   const d =
     direction === "left"
       ? "M13 9H5M8 5.5L4.5 9L8 12.5"
       : "M5 9h8M10 5.5L13.5 9L10 12.5";
   return (
-    <svg width="15" height="15" viewBox="0 0 18 18" fill="none" style={{ flexShrink: 0 }}>
-      <path d={d} stroke={color} strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+    <svg
+      className={styles.arrowIcon}
+      width="15"
+      height="15"
+      viewBox="0 0 18 18"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d={d}
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
 
-function PulsingDot({ color }) {
+function PulsingDot() {
   return (
-    <span style={{ position: "relative", display: "inline-flex", width: 7, height: 7, flexShrink: 0 }}>
-      <span style={{
-        position: "absolute", inset: 0, borderRadius: "50%",
-        background: color, animation: "cmi-ping 1.8s cubic-bezier(0,0,0.2,1) infinite",
-      }} />
-      <span style={{ position: "relative", width: 7, height: 7, borderRadius: "50%", background: color }} />
+    <span className={styles.dot} aria-hidden="true">
+      <span className={styles.dotRing} />
+      <span className={styles.dotCore} />
     </span>
   );
 }
 
-function ToolIcon({ tool, color }) {
-  const shared = { flexShrink: 0 };
-
+function ToolIcon({ tool }: { tool: ActiveTool }) {
   if (tool === "JIRA")
     return (
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" style={shared}>
-        <path d="M11.571 11.429 6 5.857 11.571.286l5.572 5.571L11.57 11.43Z" fill={color} opacity=".45" />
-        <path d="M17.143 17 11.57 11.43 17.143 5.857 22.714 11.43 17.143 17Z"  fill={color} opacity=".72" />
-        <path d="M11.571 22.571 6 17l5.571-5.571L17.143 17l-5.572 5.571Z"      fill={color} />
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M11.571 11.429 6 5.857 11.571.286l5.572 5.571L11.57 11.43Z" fill="currentColor" opacity=".45" />
+        <path d="M17.143 17 11.57 11.43 17.143 5.857 22.714 11.43 17.143 17Z"  fill="currentColor" opacity=".72" />
+        <path d="M11.571 22.571 6 17l5.571-5.571L17.143 17l-5.572 5.571Z"      fill="currentColor" />
       </svg>
     );
 
   if (tool === "CONFLUENCE")
     return (
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" style={shared}>
-        <path d="M2.5 17.5c3-4 6.5-6 9.5-6s6.5 2 9.5 6" stroke={color} strokeWidth="2.3" strokeLinecap="round" />
-        <path d="M2.5 6.5c3 4 6.5 6 9.5 6s6.5-2 9.5-6"  stroke={color} strokeWidth="2.3" strokeLinecap="round" />
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M2.5 17.5c3-4 6.5-6 9.5-6s6.5 2 9.5 6" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" />
+        <path d="M2.5 6.5c3 4 6.5 6 9.5 6s6.5-2 9.5-6"  stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" />
       </svg>
     );
 
   if (tool === "EXCEL_ANALYSIS")
     return (
-      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" style={shared}>
-        <rect x="1" y="1" width="14" height="14" rx="2" stroke={color} strokeWidth="1.4" />
-        <path d="M1 6h14M1 10h14M5.5 1v14" stroke={color} strokeWidth="1.2" />
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <rect x="1" y="1" width="14" height="14" rx="2" stroke="currentColor" strokeWidth="1.4" />
+        <path d="M1 6h14M1 10h14M5.5 1v14" stroke="currentColor" strokeWidth="1.2" />
       </svg>
     );
 
   // GENERAL / RAG
   return (
-    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" style={shared}>
-      <path d="M9 1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6L9 1Z"
-        stroke={color} strokeWidth="1.4" strokeLinejoin="round" />
-      <path d="M9 1v5h5" stroke={color} strokeWidth="1.4" strokeLinejoin="round" />
-      <path d="M5 10h6M5 12.5h4" stroke={color} strokeWidth="1.2" strokeLinecap="round" />
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M9 1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6L9 1Z"
+        stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"
+      />
+      <path d="M9 1v5h5" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+      <path d="M5 10h6M5 12.5h4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
     </svg>
   );
 }
 
-// ─── ContextModeIndicator ─────────────────────────────────────────────────────
-/**
- * Usage:
- *   import ContextModeIndicator from "./ContextModeIndicator";
- *
- *   // Pull activeTool from your store
- *   const activeTool = useAppStore(s => s.activeTool);
- *
- *   <ContextModeIndicator activeTool={activeTool} />
- *
- * Props:
- *   activeTool  'GENERAL' | 'RAG' | 'JIRA' | 'CONFLUENCE' | 'EXCEL_ANALYSIS'
- *   className   optional wrapper class
- *   style       optional wrapper inline style
- */
-export default function ContextModeIndicator({ activeTool = "RAG", className, style }) {
-  // Cross-fade on change
-  const [displayed, setDisplayed] = useState(activeTool);
-  const [visible,   setVisible]   = useState(true);
-  const prev = useRef(activeTool);
+// ─── Component ────────────────────────────────────────────────────────────────
+
+interface ContextModeIndicatorProps {
+  /** From your store: 'GENERAL' | 'RAG' | 'JIRA' | 'CONFLUENCE' | 'EXCEL_ANALYSIS' */
+  activeTool: ActiveTool;
+  className?: string;
+}
+
+export default function ContextModeIndicator({
+  activeTool,
+  className,
+}: ContextModeIndicatorProps) {
+  const [displayed, setDisplayed] = useState<ActiveTool>(activeTool);
+  const [visible, setVisible] = useState(true);
+  const prev = useRef<ActiveTool>(activeTool);
 
   useEffect(() => {
     if (activeTool === prev.current) return;
     prev.current = activeTool;
+
     setVisible(false);
-    const t = setTimeout(() => { setDisplayed(activeTool); setVisible(true); }, 170);
+    const t = setTimeout(() => {
+      setDisplayed(activeTool);
+      setVisible(true);
+    }, 170);
     return () => clearTimeout(t);
   }, [activeTool]);
 
-  const cfg    = TOOL_CONFIG[displayed] ?? TOOL_CONFIG.RAG;
+  const cfg = TOOL_CONFIG[displayed] ?? TOOL_CONFIG.RAG;
   const isLeft = cfg.panel === "left";
 
   return (
-    <>
-      {/* Inject CSS variables + keyframes once */}
-      <style>{GLOBAL_CSS}</style>
-
-      <div
-        className={className}
-        style={{
-          display:        "inline-flex",
-          flexDirection:  "column",
-          alignItems:     "center",
-          gap:            5,
-          opacity:        visible ? 1 : 0,
-          transform:      visible ? "translateY(0)" : "translateY(-5px)",
-          transition:     "opacity 0.17s ease, transform 0.17s ease",
-          userSelect:     "none",
-          ...style,
-        }}
-      >
-        {/* ── Pill ── */}
-        <div style={{
-          display:        "inline-flex",
-          alignItems:     "center",
-          gap:            8,
-          padding:        "5px 11px 5px 8px",
-          borderRadius:   100,
-          background:     "var(--cmi-bg-surface)",
-          border:         `1px solid ${cfg.pillBorder}`,
-          transition:     "border-color 0.3s ease, background 0.3s ease",
-        }}>
-
-          {/* Arrow + panel label */}
-          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <ArrowIcon direction={isLeft ? "left" : "right"} color={cfg.accent} />
-            <span style={{
-              fontSize:      10,
-              fontWeight:    700,
-              letterSpacing: "0.07em",
-              textTransform: "uppercase",
-              color:         cfg.accent,
-              transition:    "color 0.3s ease",
-            }}>
-              {cfg.panelLabel}
-            </span>
-          </div>
-
-          {/* Divider */}
-          <span style={{ width: 1, height: 14, background: "var(--cmi-border)", flexShrink: 0 }} />
-
-          {/* Type badge */}
-          <div style={{
-            display:        "inline-flex",
-            alignItems:     "center",
-            gap:            5,
-            padding:        "3px 9px 3px 6px",
-            borderRadius:   100,
-            background:     cfg.badgeBg,
-            border:         `1px solid ${cfg.badgeBorder}`,
-            color:          cfg.badgeColor,
-            fontSize:       11,
-            fontWeight:     600,
-            whiteSpace:     "nowrap",
-            transition:     "all 0.3s ease",
-          }}>
-            <PulsingDot color={cfg.accent} />
-            <ToolIcon tool={displayed} color={cfg.badgeColor} />
-            {cfg.typeLabel}
-          </div>
+    <div
+      className={[
+        styles.wrapper,
+        cfg.accentClass,
+        visible ? styles.visible : styles.hidden,
+        className,
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      role="status"
+      aria-live="polite"
+      aria-label={`Active context: ${cfg.typeLabel} on ${cfg.panelLabel}`}
+    >
+      {/* Pill */}
+      <div className={styles.pill}>
+        {/* Arrow + panel label */}
+        <div className={styles.panelSection}>
+          <ArrowIcon direction={isLeft ? "left" : "right"} />
+          <span className={styles.panelLabel}>{cfg.panelLabel}</span>
         </div>
 
-        {/* ── Hint ── */}
-        <span style={{ fontSize: 11, color: "var(--cmi-text-muted)", letterSpacing: "0.01em" }}>
-          {cfg.hint}
-        </span>
+        {/* Divider */}
+        <span className={styles.divider} aria-hidden="true" />
+
+        {/* Type badge */}
+        <div className={styles.badge}>
+          <PulsingDot />
+          <ToolIcon tool={displayed} />
+          <span className={styles.badgeLabel}>{cfg.typeLabel}</span>
+        </div>
       </div>
-    </>
+
+      {/* Hint */}
+      <span className={styles.hint}>{cfg.hint}</span>
+    </div>
   );
+}
+
+
+
+
+
+
+
+
+// ─── CSS Variables ────────────────────────────────────────────────────────────
+// Light mode  → background assumed #FFFFFF
+// Dark mode   → background assumed #111113
+
+:root {
+  --cmi-bg-surface:      #F2F2F3;
+  --cmi-border-subtle:   rgba(0, 0, 0, 0.08);
+  --cmi-text-muted:      #8A8A8A;
+
+  // Teal  (GENERAL / RAG)
+  --cmi-teal-accent:     #1D9E75;
+  --cmi-teal-badge-bg:   rgba(29, 158, 117, 0.10);
+  --cmi-teal-badge-border: rgba(29, 158, 117, 0.24);
+  --cmi-teal-pill-border:  rgba(29, 158, 117, 0.20);
+
+  // Blue  (JIRA)
+  --cmi-blue-accent:     #378ADD;
+  --cmi-blue-badge-bg:   rgba(55, 138, 221, 0.10);
+  --cmi-blue-badge-border: rgba(55, 138, 221, 0.24);
+  --cmi-blue-pill-border:  rgba(55, 138, 221, 0.20);
+
+  // Purple (CONFLUENCE)
+  --cmi-purple-accent:   #7F77DD;
+  --cmi-purple-badge-bg: rgba(127, 119, 221, 0.10);
+  --cmi-purple-badge-border: rgba(127, 119, 221, 0.24);
+  --cmi-purple-pill-border:  rgba(127, 119, 221, 0.20);
+
+  // Green (EXCEL_ANALYSIS)
+  --cmi-green-accent:    #5BAD6F;
+  --cmi-green-badge-bg:  rgba(91, 173, 111, 0.10);
+  --cmi-green-badge-border: rgba(91, 173, 111, 0.24);
+  --cmi-green-pill-border:  rgba(91, 173, 111, 0.20);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --cmi-bg-surface:      #1C1C1F;
+    --cmi-border-subtle:   rgba(255, 255, 255, 0.07);
+    --cmi-text-muted:      #555555;
+
+    // Teal
+    --cmi-teal-accent:     #28C28E;
+    --cmi-teal-badge-bg:   rgba(40, 194, 142, 0.10);
+    --cmi-teal-badge-border: rgba(40, 194, 142, 0.22);
+    --cmi-teal-pill-border:  rgba(40, 194, 142, 0.18);
+
+    // Blue
+    --cmi-blue-accent:     #5BA8F5;
+    --cmi-blue-badge-bg:   rgba(91, 168, 245, 0.10);
+    --cmi-blue-badge-border: rgba(91, 168, 245, 0.22);
+    --cmi-blue-pill-border:  rgba(91, 168, 245, 0.18);
+
+    // Purple
+    --cmi-purple-accent:   #A49AFF;
+    --cmi-purple-badge-bg: rgba(164, 154, 255, 0.10);
+    --cmi-purple-badge-border: rgba(164, 154, 255, 0.22);
+    --cmi-purple-pill-border:  rgba(164, 154, 255, 0.18);
+
+    // Green
+    --cmi-green-accent:    #72C984;
+    --cmi-green-badge-bg:  rgba(114, 201, 132, 0.10);
+    --cmi-green-badge-border: rgba(114, 201, 132, 0.22);
+    --cmi-green-pill-border:  rgba(114, 201, 132, 0.18);
+  }
+}
+
+// ─── Keyframes ────────────────────────────────────────────────────────────────
+
+@keyframes cmi-ping {
+  0%        { transform: scale(1);   opacity: 0.55; }
+  75%, 100% { transform: scale(2.4); opacity: 0;    }
+}
+
+// ─── Wrapper ──────────────────────────────────────────────────────────────────
+
+.wrapper {
+  display:        inline-flex;
+  flex-direction: column;
+  align-items:    center;
+  gap:            5px;
+  user-select:    none;
+  transition:     opacity 0.17s ease, transform 0.17s ease;
+
+  &.visible {
+    opacity:   1;
+    transform: translateY(0);
+  }
+
+  &.hidden {
+    opacity:   0;
+    transform: translateY(-5px);
+  }
+}
+
+// ─── Pill ─────────────────────────────────────────────────────────────────────
+
+.pill {
+  display:       inline-flex;
+  align-items:   center;
+  gap:           8px;
+  padding:       5px 11px 5px 8px;
+  border-radius: 100px;
+  background:    var(--cmi-bg-surface);
+  border:        1px solid transparent;     // overridden per accent
+  transition:    border-color 0.3s ease, background 0.3s ease;
+}
+
+// ─── Panel section (arrow + label) ───────────────────────────────────────────
+
+.panelSection {
+  display:     flex;
+  align-items: center;
+  gap:         4px;
+}
+
+.arrowIcon {
+  flex-shrink: 0;
+  color:       var(--cmi-active-accent);   // set by accent class
+}
+
+.panelLabel {
+  font-size:      10px;
+  font-weight:    700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color:          var(--cmi-active-accent);
+  transition:     color 0.3s ease;
+}
+
+// ─── Divider ──────────────────────────────────────────────────────────────────
+
+.divider {
+  display:    block;
+  width:      1px;
+  height:     14px;
+  flex-shrink: 0;
+  background: var(--cmi-border-subtle);
+}
+
+// ─── Badge ────────────────────────────────────────────────────────────────────
+
+.badge {
+  display:       inline-flex;
+  align-items:   center;
+  gap:           5px;
+  padding:       3px 9px 3px 6px;
+  border-radius: 100px;
+  background:    var(--cmi-active-badge-bg);
+  border:        1px solid var(--cmi-active-badge-border);
+  color:         var(--cmi-active-accent);
+  white-space:   nowrap;
+  transition:    background 0.3s ease, border-color 0.3s ease, color 0.3s ease;
+}
+
+.badgeLabel {
+  font-size:   11px;
+  font-weight: 600;
+}
+
+// ─── Pulsing dot ──────────────────────────────────────────────────────────────
+
+.dot {
+  position:    relative;
+  display:     inline-flex;
+  width:       7px;
+  height:      7px;
+  flex-shrink: 0;
+}
+
+.dotRing {
+  position:      absolute;
+  inset:         0;
+  border-radius: 50%;
+  background:    var(--cmi-active-accent);
+  animation:     cmi-ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+.dotCore {
+  position:      relative;
+  width:         7px;
+  height:        7px;
+  border-radius: 50%;
+  background:    var(--cmi-active-accent);
+}
+
+// ─── Hint ─────────────────────────────────────────────────────────────────────
+
+.hint {
+  font-size:      11px;
+  color:          var(--cmi-text-muted);
+  letter-spacing: 0.01em;
+}
+
+// ─── Accent modifier classes ──────────────────────────────────────────────────
+// Each sets 3 local custom properties consumed by .pill, .badge, .arrowIcon etc.
+
+.accentTeal {
+  --cmi-active-accent:       var(--cmi-teal-accent);
+  --cmi-active-badge-bg:     var(--cmi-teal-badge-bg);
+  --cmi-active-badge-border: var(--cmi-teal-badge-border);
+
+  .pill { border-color: var(--cmi-teal-pill-border); }
+}
+
+.accentBlue {
+  --cmi-active-accent:       var(--cmi-blue-accent);
+  --cmi-active-badge-bg:     var(--cmi-blue-badge-bg);
+  --cmi-active-badge-border: var(--cmi-blue-badge-border);
+
+  .pill { border-color: var(--cmi-blue-pill-border); }
+}
+
+.accentPurple {
+  --cmi-active-accent:       var(--cmi-purple-accent);
+  --cmi-active-badge-bg:     var(--cmi-purple-badge-bg);
+  --cmi-active-badge-border: var(--cmi-purple-badge-border);
+
+  .pill { border-color: var(--cmi-purple-pill-border); }
+}
+
+.accentGreen {
+  --cmi-active-accent:       var(--cmi-green-accent);
+  --cmi-active-badge-bg:     var(--cmi-green-badge-bg);
+  --cmi-active-badge-border: var(--cmi-green-badge-border);
+
+  .pill { border-color: var(--cmi-green-pill-border); }
 }
