@@ -1,416 +1,90 @@
-import { useState, useEffect, useRef } from "react";
-import styles from "./ContextModeIndicator.module.scss";
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-export type ActiveTool =
-  | "GENERAL"
-  | "RAG"
-  | "JIRA"
-  | "CONFLUENCE"
-  | "EXCEL_ANALYTICS";
-
-interface ToolConfig {
-  label: string;
-  accentClass: string;
-  icon: React.ReactNode;
-}
-
-// ─── Icons ────────────────────────────────────────────────────────────────────
-
-const GeneralIcon = () => (
-  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-    <circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.4" />
-    <path
-      d="M8 5.5c0-1 .8-1.5 1.5-1s1 1 .5 1.8L8 8v1"
-      stroke="currentColor" strokeWidth="1.3"
-      strokeLinecap="round" strokeLinejoin="round"
-    />
-    <circle cx="8" cy="11" r="0.8" fill="currentColor" />
-  </svg>
-);
-
-const RagIcon = () => (
-  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-    <path
-      d="M9 1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6L9 1Z"
-      stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"
-    />
-    <path d="M9 1v5h5" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
-    <path d="M5 10h6M5 12.5h4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-  </svg>
-);
-
-const JiraIcon = () => (
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-    <path d="M11.571 11.429 6 5.857 11.571.286l5.572 5.571L11.57 11.43Z" fill="currentColor" opacity=".45" />
-    <path d="M17.143 17 11.57 11.43 17.143 5.857 22.714 11.43 17.143 17Z" fill="currentColor" opacity=".72" />
-    <path d="M11.571 22.571 6 17l5.571-5.571L17.143 17l-5.572 5.571Z" fill="currentColor" />
-  </svg>
-);
-
-const ConfluenceIcon = () => (
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-    <path d="M2.5 17.5c3-4 6.5-6 9.5-6s6.5 2 9.5 6" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" />
-    <path d="M2.5 6.5c3 4 6.5 6 9.5 6s6.5-2 9.5-6" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" />
-  </svg>
-);
-
-const ExcelIcon = () => (
-  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-    <rect x="1" y="1" width="14" height="14" rx="2" stroke="currentColor" strokeWidth="1.4" />
-    <path d="M1 6h14M1 10h14M5.5 1v14" stroke="currentColor" strokeWidth="1.2" />
-  </svg>
-);
-
-// ─── Config ───────────────────────────────────────────────────────────────────
-
-const TOOL_CONFIG: Record<ActiveTool, ToolConfig> = {
-  GENERAL: {
-    label: "General",
-    accentClass: styles.accentGeneral,
-    icon: <GeneralIcon />,
-  },
-  RAG: {
-    label: "Source Files",
-    accentClass: styles.accentRag,
-    icon: <RagIcon />,
-  },
-  JIRA: {
-    label: "Jira",
-    accentClass: styles.accentJira,
-    icon: <JiraIcon />,
-  },
-  CONFLUENCE: {
-    label: "Confluence",
-    accentClass: styles.accentConfluence,
-    icon: <ConfluenceIcon />,
-  },
-  EXCEL_ANALYTICS: {
-    label: "Excel Analytics",
-    accentClass: styles.accentExcel,
-    icon: <ExcelIcon />,
-  },
-};
-
-// ─── Pulsing dot ──────────────────────────────────────────────────────────────
-
-function PulsingDot() {
-  return (
-    <span className={styles.dot} aria-hidden="true">
-      <span className={styles.dotRing} />
-      <span className={styles.dotCore} />
-    </span>
-  );
-}
-
-// ─── Component ────────────────────────────────────────────────────────────────
-
-interface ContextModeIndicatorProps {
-  activeTool: ActiveTool;
-  className?: string;
-}
-
-export default function ContextModeIndicator({
-  activeTool,
-  className,
-}: ContextModeIndicatorProps) {
-  const [displayed, setDisplayed] = useState<ActiveTool>(activeTool);
-  const [phase, setPhase] = useState<"idle" | "exit" | "enter">("idle");
-  const prev = useRef<ActiveTool>(activeTool);
-
-  useEffect(() => {
-    if (activeTool === prev.current) return;
-    prev.current = activeTool;
-
-    setPhase("exit");
-    const t1 = setTimeout(() => { setDisplayed(activeTool); setPhase("enter"); }, 180);
-    const t2 = setTimeout(() => setPhase("idle"), 180 + 260);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, [activeTool]);
-
-  const cfg = TOOL_CONFIG[displayed] ?? TOOL_CONFIG.GENERAL;
-
-  return (
-    // Outer shell — carries the rotating gradient border
-    <div
-      className={[
-        styles.badge,
-        cfg.accentClass,
-        phase === "exit"  ? styles.exit  : "",
-        phase === "enter" ? styles.enter : "",
-        className,
-      ].filter(Boolean).join(" ")}
-      role="status"
-      aria-live="polite"
-      aria-label={`Active mode: ${cfg.label}`}
-    >
-      {/* Inner fill — tinted background, text & icons live here */}
-      <div className={styles.inner}>
-        <PulsingDot />
-        <span className={styles.icon}>{cfg.icon}</span>
-        <span className={styles.label}>{cfg.label}</span>
-      </div>
-    </div>
-  );
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-// ─── CSS Variables ────────────────────────────────────────────────────────────
-
-:root,
-:root.light-theme {
-  // General — violet
-  --card-general-accent:         #7c3aed;
-  --card-general-hover-bg:       #f5f3ff;
-  --card-general-grad-a:         #7c3aed;
-  --card-general-grad-b:         #4f46e5;
-  --card-general-grad-c:         #a78bfa;
-
-  // RAG — sky blue
-  --card-rag-accent:             #0284c7;
-  --card-rag-hover-bg:           #f0f9ff;
-  --card-rag-grad-a:             #0ea5e9;
-  --card-rag-grad-b:             #6366f1;
-  --card-rag-grad-c:             #38bdf8;
-
-  // Jira — cyan blue
-  --card-jira-accent:            #0891b2;
-  --card-jira-hover-bg:          #ecfcff;
-  --card-jira-grad-a:            #0891b2;
-  --card-jira-grad-b:            #06b6d4;
-  --card-jira-grad-c:            #22d3ee;
-
-  // Confluence — indigo
-  --card-confluence-accent:      #4f46e5;
-  --card-confluence-hover-bg:    #eef2ff;
-  --card-confluence-grad-a:      #4f46e5;
-  --card-confluence-grad-b:      #6366f1;
-  --card-confluence-grad-c:      #818cf8;
-
-  // Excel — green
-  --card-excel-accent:           #16a34a;
-  --card-excel-hover-bg:         #f0fdf4;
-  --card-excel-grad-a:           #16a34a;
-  --card-excel-grad-b:           #22c55e;
-  --card-excel-grad-c:           #4ade80;
-}
-
-:root.dark-theme,
-.dark-theme {
-  // General
-  --card-general-accent:         #a78bfa;
-  --card-general-hover-bg:       #1a1033;
-  --card-general-grad-a:         #7c3aed;
-  --card-general-grad-b:         #4f46e5;
-  --card-general-grad-c:         #a78bfa;
-
-  // RAG
-  --card-rag-accent:             #38bdf8;
-  --card-rag-hover-bg:           #041d2e;
-  --card-rag-grad-a:             #0ea5e9;
-  --card-rag-grad-b:             #818cf8;
-  --card-rag-grad-c:             #38bdf8;
-
-  // Jira
-  --card-jira-accent:            #22d3ee;
-  --card-jira-hover-bg:          #0c1f26;
-  --card-jira-grad-a:            #0891b2;
-  --card-jira-grad-b:            #06b6d4;
-  --card-jira-grad-c:            #22d3ee;
-
-  // Confluence
-  --card-confluence-accent:      #818cf8;
-  --card-confluence-hover-bg:    #13132a;
-  --card-confluence-grad-a:      #4f46e5;
-  --card-confluence-grad-b:      #6366f1;
-  --card-confluence-grad-c:      #818cf8;
-
-  // Excel
-  --card-excel-accent:           #4ade80;
-  --card-excel-hover-bg:         #021408;
-  --card-excel-grad-a:           #16a34a;
-  --card-excel-grad-b:           #22c55e;
-  --card-excel-grad-c:           #4ade80;
-}
-
-// ─── Keyframes ────────────────────────────────────────────────────────────────
-
-// Gradient border angle sweep — slow, dreamy rotation
-@keyframes cmi-border-spin {
-  0%   { --cmi-border-angle: 0deg;   }
-  100% { --cmi-border-angle: 360deg; }
-}
-
-// Subtle background shimmer — very gentle opacity pulse
-@keyframes cmi-bg-breathe {
-  0%, 100% { opacity: 1;    }
-  50%       { opacity: 0.82; }
-}
-
-// Entry / exit
-@keyframes cmi-scale-out {
-  from { opacity: 1; transform: scale(1);    filter: blur(0);   }
-  to   { opacity: 0; transform: scale(0.82); filter: blur(2px); }
-}
-
-@keyframes cmi-scale-in {
-  from { opacity: 0; transform: scale(0.82); filter: blur(2px); }
-  to   { opacity: 1; transform: scale(1);    filter: blur(0);   }
-}
-
-// Pulsing dot
-@keyframes cmi-ping {
-  0%        { transform: scale(1);   opacity: 0.55; }
-  75%, 100% { transform: scale(2.4); opacity: 0;    }
-}
-
-// ─── Badge ────────────────────────────────────────────────────────────────────
-//
-// Gradient border technique:
-//   - outer div  → gradient background + border-radius, padding: 1px
-//   - inner div  → real background, slightly smaller border-radius
-//   This gives a "gradient border" that CSS border alone cannot do.
-//
-// We use @property to animate --cmi-border-angle so the gradient rotates.
-
-@property --cmi-border-angle {
-  syntax:        "<angle>";
-  initial-value: 0deg;
-  inherits:      false;
-}
-
-.badge {
-  // Gradient border shell
-  position:        relative;
-  display:         inline-flex;
-  align-items:     center;
-  height:          28px;
-  padding:         1px;                        // thickness of the gradient border
-  border-radius:   100px;
-  background:      conic-gradient(
-                     from var(--cmi-border-angle),
-                     var(--cmi-grad-a),
-                     var(--cmi-grad-b),
-                     var(--cmi-grad-c),
-                     var(--cmi-grad-a)
-                   );
-  cursor:          default;
-  user-select:     none;
-  white-space:     nowrap;
-
-  // Animate the border angle continuously
-  animation:       cmi-border-spin 4s linear infinite;
-
-  // Smooth swap
-  &.exit  { animation: cmi-scale-out 0.18s ease forwards; }
-  &.enter { animation: cmi-scale-in  0.26s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
-}
-
-// Inner fill — sits on top of the gradient shell
-.inner {
-  display:         inline-flex;
-  align-items:     center;
-  gap:             6px;
-  height:          100%;
-  padding:         0 10px 0 7px;
-  border-radius:   100px;                     // slightly tighter than outer
-  background:      var(--cmi-active-bg);
-  color:           var(--cmi-active-accent);
-  animation:       cmi-bg-breathe 3.5s ease-in-out infinite;
-  transition:      background 0.3s ease, color 0.3s ease;
-}
-
-// ─── Inner elements ───────────────────────────────────────────────────────────
-
-.icon {
-  display:     inline-flex;
+.inputAreaWrapper {
+  display: flex;
+  flex-direction: column;
   align-items: center;
+  gap: 0.35rem;
+  padding: 0.75rem 1.5rem 1rem;
+  background-color: var(--content-bg);
   flex-shrink: 0;
-  opacity:     0.85;
+  border-top: 1px solid var(--border-color);
 }
 
-.label {
-  font-size:      12px;
-  font-weight:    600;
-  letter-spacing: 0.01em;
+.inputBox {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 720px;
+  background-color: var(--app-bg);
+  border-radius: 14px;
+  padding: 0.55rem 0.55rem 0.55rem 1rem;
+  position: relative;
+  transition:
+    box-shadow 0.2s ease;
+
+  // Gradient border via pseudo-element
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 14px;
+    padding: 1.5px; // border thickness
+    background: var(--border-color);
+    -webkit-mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+    transition: background 0.2s ease;
+  }
+
+  &:focus-within::before {
+    background: linear-gradient(
+      135deg,
+      #4285f4,
+      #9b72cb,
+      #d96570,
+      #d96570,
+      #f29900
+    );
+  }
+
+  &.streaming {
+    &::before {
+      background: linear-gradient(
+        135deg,
+        #4285f4,
+        #9b72cb,
+        #d96570
+      );
+      animation: gradientShift 3s linear infinite;
+      background-size: 200% 200%;
+    }
+  }
 }
 
-// ─── Pulsing dot ──────────────────────────────────────────────────────────────
-
-.dot {
-  position:    relative;
-  display:     inline-flex;
-  width:       7px;
-  height:      7px;
-  flex-shrink: 0;
+@keyframes gradientShift {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
 }
 
-.dotRing {
-  position:      absolute;
-  inset:         0;
-  border-radius: 50%;
-  background:    var(--cmi-active-accent);
-  animation:     cmi-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
-}
+.textarea {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--text-primary);
+  font-family: inherit;
+  overflow-y: auto;
+  min-height: 24px;
 
-.dotCore {
-  position:      relative;
-  width:         7px;
-  height:        7px;
-  border-radius: 50%;
-  background:    var(--cmi-active-accent);
-}
-
-// ─── Accent modifiers ─────────────────────────────────────────────────────────
-
-.accentGeneral {
-  --cmi-grad-a:        var(--card-general-grad-a);
-  --cmi-grad-b:        var(--card-general-grad-b);
-  --cmi-grad-c:        var(--card-general-grad-c);
-  --cmi-active-accent: var(--card-general-accent);
-  --cmi-active-bg:     var(--card-general-hover-bg);
-}
-
-.accentRag {
-  --cmi-grad-a:        var(--card-rag-grad-a);
-  --cmi-grad-b:        var(--card-rag-grad-b);
-  --cmi-grad-c:        var(--card-rag-grad-c);
-  --cmi-active-accent: var(--card-rag-accent);
-  --cmi-active-bg:     var(--card-rag-hover-bg);
-}
-
-.accentJira {
-  --cmi-grad-a:        var(--card-jira-grad-a);
-  --cmi-grad-b:        var(--card-jira-grad-b);
-  --cmi-grad-c:        var(--card-jira-grad-c);
-  --cmi-active-accent: var(--card-jira-accent);
-  --cmi-active-bg:     var(--card-jira-hover-bg);
-}
-
-.accentConfluence {
-  --cmi-grad-a:        var(--card-confluence-grad-a);
-  --cmi-grad-b:        var(--card-confluence-grad-b);
-  --cmi-grad-c:        var(--card-confluence-grad-c);
-  --cmi-active-accent: var(--card-confluence-accent);
-  --cmi-active-bg:     var(--card-confluence-hover-bg);
-}
-
-.accentExcel {
-  --cmi-grad-a:        var(--card-excel-grad-a);
-  --cmi-grad-b:        var(--card-excel-grad-b);
-  --cmi-grad-c:        var(--card-excel-grad-c);
-  --cmi-active-accent: var(--card-excel-accent);
-  --cmi-active-bg:     var(--card-excel-hover-bg);
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
 }
