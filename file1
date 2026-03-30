@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useDispatch } from "react-redux";
 import type { AppDispatch } from "../../store";
-import { setExcelFile } from "./excelSlice";
+import { updateLLMRequest } from "./excelSlice";
 import styles from "./ExcelAnalysisTool.module.scss";
 
 import excelAnalysisIcon from "../../assets/icons/excel-analysis.png";
@@ -97,11 +97,11 @@ export const ExcelAnalysisTool: React.FC<ExcelAnalysisToolProps> = ({ onBack }) 
   // Replace MOCK_FILES with your store data when ready
   const files: FileItem[] = MOCK_FILES;
 
-  const [selectedJobId, setSelectedJobId]       = useState<string | null>(null);
-  const [deselecting, setDeselecting]           = useState<string | null>(null);
-  const [warning, setWarning]                   = useState<string | null>(null);
-  const [error, setError]                       = useState<string | null>(null);
-  const [activeFilter, setActiveFilter]         = useState<"all" | "xlsx" | "csv">("all");
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [deselecting, setDeselecting]     = useState<string | null>(null);
+  const [warning, setWarning]             = useState<string | null>(null);
+  const [error, setError]                 = useState<string | null>(null);
+  const [activeFilter, setActiveFilter]   = useState<"all" | "xlsx" | "csv">("all");
 
   const excelFiles = files.filter(
     (f) => f.file_type === "xlsx" || f.file_type === "csv"
@@ -114,20 +114,23 @@ export const ExcelAnalysisTool: React.FC<ExcelAnalysisToolProps> = ({ onBack }) 
   const xlsxCount = excelFiles.filter((f) => f.file_type === "xlsx").length;
   const csvCount  = excelFiles.filter((f) => f.file_type === "csv").length;
 
+  // ── Your original handleToggle — unchanged logic ───
+  // Wraps the deselect path in a short animation delay so
+  // the nameDeselect keyframe plays before state clears.
   const handleToggle = (file_job_id: string) => {
-    const isCurrentlySelected = selectedJobId === file_job_id;
+    const fileId = selectedJobId === file_job_id ? null : file_job_id;
 
-    if (isCurrentlySelected) {
-      // trigger deselect animation then clear
+    if (fileId === null) {
+      // play deselect animation, then commit state
       setDeselecting(file_job_id);
       setTimeout(() => {
         setDeselecting(null);
         setSelectedJobId(null);
-        dispatch(setExcelFile({ file_job_id: null, isFileSelected: false }));
+        dispatch(updateLLMRequest({ id: file_job_id, activeTool: "EXCEL_ANALYTICS", selection: false }));
       }, 250);
     } else {
-      setSelectedJobId(file_job_id);
-      dispatch(setExcelFile({ file_job_id, isFileSelected: true }));
+      setSelectedJobId(fileId);
+      dispatch(updateLLMRequest({ id: file_job_id, activeTool: "EXCEL_ANALYTICS", selection: true }));
     }
 
     setError(null);
@@ -206,10 +209,10 @@ export const ExcelAnalysisTool: React.FC<ExcelAnalysisToolProps> = ({ onBack }) 
             ) : (
               <ul className={styles.fileList}>
                 {filteredFiles.map((file) => {
-                  const isSelected   = selectedJobId === file.file_job_id;
+                  const isSelected    = selectedJobId === file.file_job_id;
                   const isDeselecting = deselecting === file.file_job_id;
-                  const isDisabled   = selectedJobId !== null && !isSelected && deselecting === null;
-                  const isXlsx       = file.file_type === "xlsx";
+                  const isDisabled    = selectedJobId !== null && !isSelected && deselecting === null;
+                  const isXlsx        = file.file_type === "xlsx";
 
                   return (
                     <li key={file.file_job_id}>
@@ -225,16 +228,14 @@ export const ExcelAnalysisTool: React.FC<ExcelAnalysisToolProps> = ({ onBack }) 
                         <span className={styles.fileCheckbox}>
                           <input
                             type="checkbox"
-                            checked={isSelected}
+                            checked={isSelected || isDeselecting}
                             disabled={isDisabled}
                             onChange={() => handleToggle(file.file_job_id)}
                           />
                         </span>
 
                         {/* ── File type icon ── */}
-                        <span
-                          className={`${styles.fileTypeIcon} ${isXlsx ? styles.fileTypeIconXlsx : styles.fileTypeIconCsv}`}
-                        >
+                        <span className={`${styles.fileTypeIcon} ${isXlsx ? styles.fileTypeIconXlsx : styles.fileTypeIconCsv}`}>
                           {isXlsx ? <XlsxIcon /> : <CsvIcon />}
                         </span>
 
@@ -281,6 +282,7 @@ export default ExcelAnalysisTool;
 
 
 
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //  CSS variable tokens — light mode
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -296,15 +298,16 @@ export default ExcelAnalysisTool;
   --csv-border:       #bfdbfe;
   --csv-badge-color:  #1d4ed8;
 
-  // ── fileRow tokens mapped to your green/blue palette ──
-  --file-row-bg-hover:        rgba(22, 163, 74, 0.07);
-  --file-row-bg-selected:     rgba(22, 163, 74, 0.11);
-  --file-row-text-hover:      #14532d;
-  --file-row-text-selected:   #15803d;
-  --file-row-accent:          #16a34a;
-  --file-row-icon-hover:      #16a34a;
-  --file-row-indicator:       #16a34a;
-  --file-row-sep:             rgba(22, 163, 74, 0.08);
+  // ── excel-analytics fileRow tokens ────────────────────
+  --excel-analytics-row-bg-hover:        rgba(22, 163, 74, 0.07);
+  --excel-analytics-row-bg-selected:     rgba(22, 163, 74, 0.11);
+  --excel-analytics-row-text-hover:      #14532d;
+  --excel-analytics-row-text-selected:   #15803d;
+  --excel-analytics-row-accent:          #16a34a;
+  --excel-analytics-row-icon-hover:      #16a34a;
+  --excel-analytics-row-indicator:       #16a34a;
+  --excel-analytics-row-sep:             rgba(22, 163, 74, 0.08);
+  --excel-analytics-row-checkbox-accent: #16a34a;
 }
 
 :global(.dark-theme) {
@@ -318,15 +321,16 @@ export default ExcelAnalysisTool;
   --csv-border:       #1d4ed8;
   --csv-badge-color:  #93c5fd;
 
-  // ── fileRow tokens — dark ──
-  --file-row-bg-hover:        rgba(74, 222, 128, 0.10);
-  --file-row-bg-selected:     rgba(74, 222, 128, 0.16);
-  --file-row-text-hover:      #bbf7d0;
-  --file-row-text-selected:   #86efac;
-  --file-row-accent:          #4ade80;
-  --file-row-icon-hover:      #4ade80;
-  --file-row-indicator:       #4ade80;
-  --file-row-sep:             rgba(74, 222, 128, 0.09);
+  // ── excel-analytics fileRow tokens — dark ─────────────
+  --excel-analytics-row-bg-hover:        rgba(74, 222, 128, 0.10);
+  --excel-analytics-row-bg-selected:     rgba(74, 222, 128, 0.16);
+  --excel-analytics-row-text-hover:      #bbf7d0;
+  --excel-analytics-row-text-selected:   #86efac;
+  --excel-analytics-row-accent:          #4ade80;
+  --excel-analytics-row-icon-hover:      #4ade80;
+  --excel-analytics-row-indicator:       #4ade80;
+  --excel-analytics-row-sep:             rgba(74, 222, 128, 0.09);
+  --excel-analytics-row-checkbox-accent: #4ade80;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -342,7 +346,7 @@ $warning-bg:     #fffbeb;
 $warning-border: #fde68a;
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-//  Keyframes (from fileRow design)
+//  Keyframes
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 @keyframes fadeSlideIn {
@@ -574,9 +578,7 @@ $warning-border: #fde68a;
     box-shadow: 0 1px 4px var(--box-shadow);
     font-weight: 700;
 
-    .filterCount {
-      border-color: transparent;
-    }
+    .filterCount { border-color: transparent; }
   }
 
   &:disabled {
@@ -636,7 +638,7 @@ $warning-border: #fde68a;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0; // gap removed — fileRow uses border-top separators instead
+  gap: 0;
 }
 
 // ── File item (fileRow design) ────────────────────────
@@ -657,9 +659,9 @@ $warning-border: #fde68a;
     &:nth-child(#{$i}) { animation-delay: #{$i * 0.04}s; }
   }
 
-  // row separator (replaces individual item borders)
+  // row separator
   & + .fileItem {
-    border-top: 1px solid var(--file-row-sep);
+    border-top: 1px solid var(--excel-analytics-row-sep);
   }
 
   // suppress separator when neighbour is hovered/selected
@@ -670,26 +672,17 @@ $warning-border: #fde68a;
 
   // ── hover ──────────────────────────────────────────
   &:hover:not(.fileItemDisabled) {
-    background-color: var(--file-row-bg-hover);
+    background-color: var(--excel-analytics-row-bg-hover);
 
-    .fileTypeIcon {
-      color: var(--file-row-icon-hover);
-    }
-
-    .fileName {
-      color: var(--file-row-text-hover);
-    }
-
-    .fileSize {
-      color: var(--file-row-text-hover);
-    }
+    .fileTypeIcon { color: var(--excel-analytics-row-icon-hover); }
+    .fileName     { color: var(--excel-analytics-row-text-hover); }
+    .fileSize     { color: var(--excel-analytics-row-text-hover); }
   }
 
   // ── selected ───────────────────────────────────────
   &.fileItemSelected {
-    background-color: var(--file-row-bg-selected);
+    background-color: var(--excel-analytics-row-bg-selected);
 
-    // animated left indicator bar
     &::before {
       content: '';
       position: absolute;
@@ -699,23 +692,21 @@ $warning-border: #fde68a;
       width: 3px;
       height: 18px;
       border-radius: 0 3px 3px 0;
-      background: var(--file-row-indicator);
+      background: var(--excel-analytics-row-indicator);
       animation: dotIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
     }
 
-    .fileTypeIcon {
-      color: var(--file-row-icon-hover);
-    }
+    .fileTypeIcon { color: var(--excel-analytics-row-icon-hover); }
 
     .fileName {
-      color: var(--file-row-text-selected);
+      color: var(--excel-analytics-row-text-selected);
       font-weight: 600;
       animation: nameSelect 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
       will-change: transform, opacity, filter;
     }
 
     .fileSize {
-      color: var(--file-row-accent);
+      color: var(--excel-analytics-row-accent);
       opacity: 0.7;
     }
   }
@@ -733,7 +724,7 @@ $warning-border: #fde68a;
   }
 }
 
-// ── Checkbox wrapper (fileRow inner style) ────────────
+// ── Checkbox wrapper ──────────────────────────────────
 
 .fileCheckbox {
   display: flex;
@@ -746,8 +737,7 @@ $warning-border: #fde68a;
     cursor: pointer;
     width: 16px;
     height: 16px;
-    // keeps your original accent color
-    accent-color: var(--card-excel-accent);
+    accent-color: var(--excel-analytics-row-checkbox-accent);
     margin: 0;
 
     &:disabled { cursor: not-allowed; }
