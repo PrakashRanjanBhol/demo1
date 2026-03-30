@@ -1,114 +1,3 @@
-generalSettingsSlice.ts
-----------------------
-
-
-import { createAsyncThunk, createSlice, PayloadAction } from '@reduxjs/toolkit';
-import {
-  AdminSettings,
-  fetchAdminSettingsApi,
-  saveAdminSettingsApi,
-} from '../../api/generalSettingsApi';
-
-interface GeneralSettingsState {
-  settings: AdminSettings | null;
-  loading: boolean;
-  saving: boolean;
-  error: string | null;
-  saveError: string | null;
-  saveSuccess: boolean;
-}
-
-const initialState: GeneralSettingsState = {
-  settings: null,
-  loading: false,
-  saving: false,
-  error: null,
-  saveError: null,
-  saveSuccess: false,
-};
-
-export const fetchAdminSettings = createAsyncThunk(
-  'generalSettings/fetch',
-  async (_, { rejectWithValue }) => {
-    try {
-      return await fetchAdminSettingsApi();
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to fetch settings';
-      return rejectWithValue(message);
-    }
-  }
-);
-
-export const saveAdminSettings = createAsyncThunk(
-  'generalSettings/save',
-  async (payload: AdminSettings, { rejectWithValue }) => {
-    try {
-      await saveAdminSettingsApi(payload);
-      return payload;
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to save settings';
-      return rejectWithValue(message);
-    }
-  }
-);
-
-const generalSettingsSlice = createSlice({
-  name: 'generalSettings',
-  initialState,
-  reducers: {
-    clearSaveStatus(state) {
-      state.saveSuccess = false;
-      state.saveError = null;
-    },
-  },
-  extraReducers: (builder) => {
-    builder
-      .addCase(fetchAdminSettings.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
-      .addCase(fetchAdminSettings.fulfilled, (state, action: PayloadAction<AdminSettings>) => {
-        state.loading = false;
-        state.settings = action.payload;
-      })
-      .addCase(fetchAdminSettings.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string;
-      })
-      .addCase(saveAdminSettings.pending, (state) => {
-        state.saving = true;
-        state.saveError = null;
-        state.saveSuccess = false;
-      })
-      .addCase(saveAdminSettings.fulfilled, (state, action: PayloadAction<AdminSettings>) => {
-        state.saving = false;
-        state.saveSuccess = true;
-        state.settings = action.payload;
-      })
-      .addCase(saveAdminSettings.rejected, (state, action) => {
-        state.saving = false;
-        state.saveError = action.payload as string;
-      });
-  },
-});
-
-export const { clearSaveStatus } = generalSettingsSlice.actions;
-export default generalSettingsSlice.reducer;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useDispatch, useSelector } from 'react-redux';
@@ -120,6 +9,13 @@ import {
 } from '../store/slices/generalSettingsSlice';
 import styles from './GeneralSettings.module.scss';
 import pageStyles from './PageShell.module.scss';
+
+const MIN_FILE_SIZE = 1;
+const MAX_FILE_SIZE = 25;
+const MIN_FILE_COUNT = 1;
+const MAX_FILE_COUNT = 20;
+const MIN_STORAGE = 1;
+const MAX_STORAGE = 5;
 
 interface FormValues {
   file_size_limit: string;
@@ -180,14 +76,23 @@ export default function GeneralSettings() {
     const fileCount = Number(form.no_of_file_upload);
     const storageLimit = Number(form.storage_limit);
 
-    if (!form.file_size_limit || isNaN(fileSize) || fileSize < 1 || fileSize > 20) {
-      newErrors.file_size_limit = 'Value must be between 1 and 20 MB.';
+    if (!form.file_size_limit || isNaN(fileSize) || fileSize < MIN_FILE_SIZE || fileSize > MAX_FILE_SIZE) {
+      newErrors.file_size_limit = t('settings.generalSettings.fileSizeLimit.error', {
+        min: MIN_FILE_SIZE,
+        max: MAX_FILE_SIZE,
+      });
     }
-    if (!form.no_of_file_upload || isNaN(fileCount) || fileCount < 1 || fileCount > 20) {
-      newErrors.no_of_file_upload = 'Value must be between 1 and 20.';
+    if (!form.no_of_file_upload || isNaN(fileCount) || fileCount < MIN_FILE_COUNT || fileCount > MAX_FILE_COUNT) {
+      newErrors.no_of_file_upload = t('settings.generalSettings.noOfFileUpload.error', {
+        min: MIN_FILE_COUNT,
+        max: MAX_FILE_COUNT,
+      });
     }
-    if (!form.storage_limit || isNaN(storageLimit) || storageLimit < 1 || storageLimit > 5) {
-      newErrors.storage_limit = 'Value must be between 1 and 5 GB.';
+    if (!form.storage_limit || isNaN(storageLimit) || storageLimit < MIN_STORAGE || storageLimit > MAX_STORAGE) {
+      newErrors.storage_limit = t('settings.generalSettings.storageLimit.error', {
+        min: MIN_STORAGE,
+        max: MAX_STORAGE,
+      });
     }
 
     setErrors(newErrors);
@@ -269,7 +174,10 @@ export default function GeneralSettings() {
                 {t('settings.generalSettings.fileSizeLimit.label')}
               </label>
               <span className={styles.hint}>
-                {t('settings.generalSettings.fileSizeLimit.hint')}
+                {t('settings.generalSettings.fileSizeLimit.hint', {
+                  min: MIN_FILE_SIZE,
+                  max: MAX_FILE_SIZE,
+                })}
               </span>
             </div>
             <div className={`${styles.inputWrapper} ${errors.file_size_limit ? styles.error : ''}`}>
@@ -277,8 +185,8 @@ export default function GeneralSettings() {
                 className={styles.input}
                 type="number"
                 name="file_size_limit"
-                min={1}
-                max={20}
+                min={MIN_FILE_SIZE}
+                max={MAX_FILE_SIZE}
                 value={form.file_size_limit}
                 onChange={handleChange}
                 placeholder={t('settings.generalSettings.fileSizeLimit.placeholder')}
@@ -299,7 +207,10 @@ export default function GeneralSettings() {
                 {t('settings.generalSettings.noOfFileUpload.label')}
               </label>
               <span className={styles.hint}>
-                {t('settings.generalSettings.noOfFileUpload.hint')}
+                {t('settings.generalSettings.noOfFileUpload.hint', {
+                  min: MIN_FILE_COUNT,
+                  max: MAX_FILE_COUNT,
+                })}
               </span>
             </div>
             <div className={`${styles.inputWrapper} ${errors.no_of_file_upload ? styles.error : ''}`}>
@@ -307,8 +218,8 @@ export default function GeneralSettings() {
                 className={styles.input}
                 type="number"
                 name="no_of_file_upload"
-                min={1}
-                max={20}
+                min={MIN_FILE_COUNT}
+                max={MAX_FILE_COUNT}
                 value={form.no_of_file_upload}
                 onChange={handleChange}
                 placeholder={t('settings.generalSettings.noOfFileUpload.placeholder')}
@@ -326,7 +237,10 @@ export default function GeneralSettings() {
                 {t('settings.generalSettings.storageLimit.label')}
               </label>
               <span className={styles.hint}>
-                {t('settings.generalSettings.storageLimit.hint')}
+                {t('settings.generalSettings.storageLimit.hint', {
+                  min: MIN_STORAGE,
+                  max: MAX_STORAGE,
+                })}
               </span>
             </div>
             <div className={`${styles.inputWrapper} ${errors.storage_limit ? styles.error : ''}`}>
@@ -334,8 +248,8 @@ export default function GeneralSettings() {
                 className={styles.input}
                 type="number"
                 name="storage_limit"
-                min={1}
-                max={5}
+                min={MIN_STORAGE}
+                max={MAX_STORAGE}
                 value={form.storage_limit}
                 onChange={handleChange}
                 placeholder={t('settings.generalSettings.storageLimit.placeholder')}
@@ -395,4 +309,91 @@ export default function GeneralSettings() {
       </div>
     </div>
   );
+}
+
+
+
+
+
+
+
+
+
+
+
+"generalSettings": {
+  "title": "General Settings",
+  "description": "Configure application-wide preferences.",
+  "fileSizeLimit": {
+    "label": "File Size Limit",
+    "unit": "MB",
+    "placeholder": "Enter file size limit",
+    "hint": "Min {{min}} MB — Max {{max}} MB",
+    "error": "Value must be between {{min}} and {{max}} MB."
+  },
+  "noOfFileUpload": {
+    "label": "Number of File Uploads",
+    "placeholder": "Enter number of files",
+    "hint": "Min {{min}} — Max {{max}}",
+    "error": "Value must be between {{min}} and {{max}}."
+  },
+  "storageLimit": {
+    "label": "Storage Limit",
+    "unit": "GB",
+    "placeholder": "Enter storage limit",
+    "hint": "Min {{min}} GB — Max {{max}} GB",
+    "error": "Value must be between {{min}} and {{max}} GB."
+  },
+  "saveButton": "Save Settings",
+  "saving": "Saving...",
+  "status": {
+    "loading": "Loading settings...",
+    "error": "Failed to load settings.",
+    "retry": "Retry",
+    "saveSuccess": "Settings saved successfully.",
+    "saveError": "Failed to save settings."
+  }
+}
+
+
+
+
+
+
+
+
+
+
+"generalSettings": {
+  "title": "일반 설정",
+  "description": "애플리케이션 전반의 환경설정을 구성합니다.",
+  "fileSizeLimit": {
+    "label": "파일 크기 제한",
+    "unit": "MB",
+    "placeholder": "파일 크기 제한 입력",
+    "hint": "최소 {{min}} MB — 최대 {{max}} MB",
+    "error": "{{min}}~{{max}} MB 사이의 값을 입력하세요."
+  },
+  "noOfFileUpload": {
+    "label": "파일 업로드 수",
+    "placeholder": "파일 수 입력",
+    "hint": "최소 {{min}} — 최대 {{max}}",
+    "error": "{{min}}~{{max}} 사이의 값을 입력하세요."
+  },
+  "storageLimit": {
+    "label": "저장 용량 제한",
+    "unit": "GB",
+    "placeholder": "저장 용량 입력",
+    "hint": "최소 {{min}} GB — 최대 {{max}} GB",
+    "error": "{{min}}~{{max}} GB 사이의 값을 입력하세요."
+  },
+  "saveButton": "설정 저장",
+  "saving": "저장 중...",
+  "status": {
+    "loading": "설정 불러오는 중...",
+    "error": "설정을 불러오지 못했습니다.",
+    "retry": "재시도",
+    "saveSuccess": "설정이 저장되었습니다.",
+    "saveError": "설정 저장에 실패했습니다."
+  }
 }
