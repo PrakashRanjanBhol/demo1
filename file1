@@ -1,399 +1,116 @@
-import { useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
-import { useDispatch, useSelector } from 'react-redux';
-import type { AppDispatch, RootState } from '../store';
-import {
-  clearSaveStatus,
-  fetchAdminSettings,
-  saveAdminSettings,
-} from '../store/slices/generalSettingsSlice';
-import styles from './GeneralSettings.module.scss';
-import pageStyles from './PageShell.module.scss';
+// ── fileRow Theme Tokens ──────────────────────────────────────────────────────
 
-const MIN_FILE_SIZE = 1;
-const MAX_FILE_SIZE = 25;
-const MIN_FILE_COUNT = 1;
-const MAX_FILE_COUNT = 20;
-const MIN_STORAGE = 1;
-const MAX_STORAGE = 5;
-
-interface FormValues {
-  file_size_limit: string;
-  no_of_file_upload: string;
-  storage_limit: string;
+// Light mode  (app bg: #ffffff)
+[data-theme="light"] {
+  --file-row-bg-hover:        rgba(124, 58, 237, 0.055);  // soft violet wash on hover
+  --file-row-text-primary:    #0f0c1d;                    // matches app --text
+  --file-row-text-secondary:  #7a738f;                    // matches app --text3
+  --file-row-text-size:       #b0abc4;                    // matches app --text4  (file size)
+  --file-row-text-hover:      #3d3656;                    // matches app --text2  (on hover)
+  --file-row-accent:          #4f46e5;                    // indigo — checkbox + status
+  --file-row-status-error:    #ef4444;                    // failure red
 }
 
-interface FormErrors {
-  file_size_limit?: string;
-  no_of_file_upload?: string;
-  storage_limit?: string;
+// Dark mode  (app bg: #111113)
+[data-theme="dark"] {
+  --file-row-bg-hover:        rgba(124, 58, 237, 0.10);   // deeper violet wash
+  --file-row-text-primary:    #f2eeff;                    // matches app --text
+  --file-row-text-secondary:  #7b6f9a;                    // matches app --text3
+  --file-row-text-size:       #4a4264;                    // matches app --text4
+  --file-row-text-hover:      #c4bbdd;                    // matches app --text2
+  --file-row-accent:          #a78bfa;                    // soft violet — more legible on dark
+  --file-row-status-error:    #f87171;                    // softer red on dark
 }
 
-export default function GeneralSettings() {
-  const { t } = useTranslation();
-  const dispatch = useDispatch<AppDispatch>();
-  const { settings, loading, saving, error, saveSuccess, saveError } = useSelector(
-    (state: RootState) => state.generalSettings
-  );
 
-  const [form, setForm] = useState<FormValues>({
-    file_size_limit: '',
-    no_of_file_upload: '',
-    storage_limit: '',
-  });
-  const [errors, setErrors] = useState<FormErrors>({});
 
-  const isDirty =
-    settings !== null &&
-    (Number(form.file_size_limit) !== settings.file_size_limit ||
-      Number(form.no_of_file_upload) !== settings.no_of_file_upload ||
-      Number(form.storage_limit) !== settings.storage_limit);
 
-  useEffect(() => {
-    dispatch(fetchAdminSettings());
-  }, [dispatch]);
 
-  useEffect(() => {
-    if (settings) {
-      setForm({
-        file_size_limit: String(settings.file_size_limit),
-        no_of_file_upload: String(settings.no_of_file_upload),
-        storage_limit: String(settings.storage_limit),
-      });
-    }
-  }, [settings]);
 
-  useEffect(() => {
-    if (saveSuccess || saveError) {
-      const timer = setTimeout(() => dispatch(clearSaveStatus()), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [saveSuccess, saveError, dispatch]);
 
-  const validate = (): boolean => {
-    const newErrors: FormErrors = {};
-    const fileSize = Number(form.file_size_limit);
-    const fileCount = Number(form.no_of_file_upload);
-    const storageLimit = Number(form.storage_limit);
 
-    if (!form.file_size_limit || isNaN(fileSize) || fileSize < MIN_FILE_SIZE || fileSize > MAX_FILE_SIZE) {
-      newErrors.file_size_limit = t('settings.generalSettings.fileSizeLimit.error', {
-        min: MIN_FILE_SIZE,
-        max: MAX_FILE_SIZE,
-      });
-    }
-    if (!form.no_of_file_upload || isNaN(fileCount) || fileCount < MIN_FILE_COUNT || fileCount > MAX_FILE_COUNT) {
-      newErrors.no_of_file_upload = t('settings.generalSettings.noOfFileUpload.error', {
-        min: MIN_FILE_COUNT,
-        max: MAX_FILE_COUNT,
-      });
-    }
-    if (!form.storage_limit || isNaN(storageLimit) || storageLimit < MIN_STORAGE || storageLimit > MAX_STORAGE) {
-      newErrors.storage_limit = t('settings.generalSettings.storageLimit.error', {
-        min: MIN_STORAGE,
-        max: MAX_STORAGE,
-      });
+
+
+
+.fileRow {
+  display: flex;
+  align-items: center;
+  padding: 0 0.5rem;
+  border-radius: 8px;
+  transition: background-color 0.2s ease;
+
+  &.hover {
+    background-color: var(--file-row-bg-hover);
+
+    .fileActionBtn {
+      opacity: 1;
+      visibility: visible;
     }
 
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
-    setErrors((prev) => ({ ...prev, [name]: undefined }));
-    dispatch(clearSaveStatus());
-  };
-
-  const handleSave = () => {
-    if (!validate()) return;
-    dispatch(
-      saveAdminSettings({
-        file_size_limit: Number(form.file_size_limit),
-        no_of_file_upload: Number(form.no_of_file_upload),
-        storage_limit: Number(form.storage_limit),
-      })
-    );
-  };
-
-  if (loading) {
-    return (
-      <div className={pageStyles.page}>
-        <div className={pageStyles.pageHeader}>
-          <h1 className={pageStyles.title}>{t('settings.generalSettings.title')}</h1>
-          <p className={pageStyles.description}>{t('settings.generalSettings.description')}</p>
-        </div>
-        <div className={pageStyles.pageContent}>
-          <div className={styles.skeletonCard}>
-            {[1, 2, 3].map((i) => (
-              <div key={i} className={styles.skeletonField}>
-                <div className={styles.skeletonLabel} />
-                <div className={styles.skeletonInput} />
-              </div>
-            ))}
-            <div className={styles.skeletonBtn} />
-          </div>
-        </div>
-      </div>
-    );
+    .fileName { color: var(--file-row-text-hover); }
+    .fileSize  { color: var(--file-row-text-hover); }
   }
 
-  if (error) {
-    return (
-      <div className={pageStyles.page}>
-        <div className={pageStyles.pageHeader}>
-          <h1 className={pageStyles.title}>{t('settings.generalSettings.title')}</h1>
-          <p className={pageStyles.description}>{t('settings.generalSettings.description')}</p>
-        </div>
-        <div className={pageStyles.pageContent}>
-          <div className={styles.formCard}>
-            <p className={styles.saveErrMsg}>{t('settings.generalSettings.status.error')}</p>
-            <button className={styles.saveBtn} onClick={() => dispatch(fetchAdminSettings())}>
-              {t('settings.generalSettings.status.retry')}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
+  .fileStatusWrapper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    margin-right: 12px;
+    cursor: help;
   }
 
-  return (
-    <div className={pageStyles.page}>
-      <div className={pageStyles.pageHeader}>
-        <h1 className={pageStyles.title}>{t('settings.generalSettings.title')}</h1>
-        <p className={pageStyles.description}>{t('settings.generalSettings.description')}</p>
-      </div>
-      <div className={pageStyles.pageContent}>
-        <div className={styles.formCard}>
+  .fileCheckbox {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
 
-          {/* File Size Limit */}
-          <div className={styles.fieldGroup}>
-            <div className={styles.labelRow}>
-              <label className={styles.label}>
-                {t('settings.generalSettings.fileSizeLimit.label')}
-              </label>
-              <span className={styles.hint}>
-                {t('settings.generalSettings.fileSizeLimit.hint', {
-                  min: MIN_FILE_SIZE,
-                  max: MAX_FILE_SIZE,
-                })}
-              </span>
-            </div>
-            <div className={`${styles.inputWrapper} ${errors.file_size_limit ? styles.error : ''}`}>
-              <input
-                className={styles.input}
-                type="number"
-                name="file_size_limit"
-                min={MIN_FILE_SIZE}
-                max={MAX_FILE_SIZE}
-                value={form.file_size_limit}
-                onChange={handleChange}
-                placeholder={t('settings.generalSettings.fileSizeLimit.placeholder')}
-              />
-              <span className={styles.unit}>
-                {t('settings.generalSettings.fileSizeLimit.unit')}
-              </span>
-            </div>
-            {errors.file_size_limit && (
-              <span className={styles.errorText}>{errors.file_size_limit}</span>
-            )}
-          </div>
-
-          {/* Number of File Uploads */}
-          <div className={styles.fieldGroup}>
-            <div className={styles.labelRow}>
-              <label className={styles.label}>
-                {t('settings.generalSettings.noOfFileUpload.label')}
-              </label>
-              <span className={styles.hint}>
-                {t('settings.generalSettings.noOfFileUpload.hint', {
-                  min: MIN_FILE_COUNT,
-                  max: MAX_FILE_COUNT,
-                })}
-              </span>
-            </div>
-            <div className={`${styles.inputWrapper} ${errors.no_of_file_upload ? styles.error : ''}`}>
-              <input
-                className={styles.input}
-                type="number"
-                name="no_of_file_upload"
-                min={MIN_FILE_COUNT}
-                max={MAX_FILE_COUNT}
-                value={form.no_of_file_upload}
-                onChange={handleChange}
-                placeholder={t('settings.generalSettings.noOfFileUpload.placeholder')}
-              />
-            </div>
-            {errors.no_of_file_upload && (
-              <span className={styles.errorText}>{errors.no_of_file_upload}</span>
-            )}
-          </div>
-
-          {/* Storage Limit */}
-          <div className={styles.fieldGroup}>
-            <div className={styles.labelRow}>
-              <label className={styles.label}>
-                {t('settings.generalSettings.storageLimit.label')}
-              </label>
-              <span className={styles.hint}>
-                {t('settings.generalSettings.storageLimit.hint', {
-                  min: MIN_STORAGE,
-                  max: MAX_STORAGE,
-                })}
-              </span>
-            </div>
-            <div className={`${styles.inputWrapper} ${errors.storage_limit ? styles.error : ''}`}>
-              <input
-                className={styles.input}
-                type="number"
-                name="storage_limit"
-                min={MIN_STORAGE}
-                max={MAX_STORAGE}
-                value={form.storage_limit}
-                onChange={handleChange}
-                placeholder={t('settings.generalSettings.storageLimit.placeholder')}
-              />
-              <span className={styles.unit}>
-                {t('settings.generalSettings.storageLimit.unit')}
-              </span>
-            </div>
-            {errors.storage_limit && (
-              <span className={styles.errorText}>{errors.storage_limit}</span>
-            )}
-          </div>
-
-          <div className={styles.divider} />
-
-          {/* Footer */}
-          <div className={styles.footer}>
-            <button
-              className={styles.saveBtn}
-              onClick={handleSave}
-              disabled={saving || !isDirty}
-            >
-              {saving ? (
-                <>
-                  <span className={styles.spinner} />
-                  {t('settings.generalSettings.saving')}
-                </>
-              ) : (
-                <>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-                    <polyline points="17 21 17 13 7 13 7 21" />
-                    <polyline points="7 3 7 8 15 8" />
-                  </svg>
-                  {t('settings.generalSettings.saveButton')}
-                </>
-              )}
-            </button>
-
-            {saveSuccess && (
-              <span className={styles.successMsg}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-                {t('settings.generalSettings.status.saveSuccess')}
-              </span>
-            )}
-
-            {saveError && (
-              <span className={styles.saveErrMsg}>
-                {t('settings.generalSettings.status.saveError')}
-              </span>
-            )}
-          </div>
-
-        </div>
-      </div>
-    </div>
-  );
-}
-
-
-
-
-
-
-
-
-
-
-
-"generalSettings": {
-  "title": "General Settings",
-  "description": "Configure application-wide preferences.",
-  "fileSizeLimit": {
-    "label": "File Size Limit",
-    "unit": "MB",
-    "placeholder": "Enter file size limit",
-    "hint": "Min {{min}} MB — Max {{max}} MB",
-    "error": "Value must be between {{min}} and {{max}} MB."
-  },
-  "noOfFileUpload": {
-    "label": "Number of File Uploads",
-    "placeholder": "Enter number of files",
-    "hint": "Min {{min}} — Max {{max}}",
-    "error": "Value must be between {{min}} and {{max}}."
-  },
-  "storageLimit": {
-    "label": "Storage Limit",
-    "unit": "GB",
-    "placeholder": "Enter storage limit",
-    "hint": "Min {{min}} GB — Max {{max}} GB",
-    "error": "Value must be between {{min}} and {{max}} GB."
-  },
-  "saveButton": "Save Settings",
-  "saving": "Saving...",
-  "status": {
-    "loading": "Loading settings...",
-    "error": "Failed to load settings.",
-    "retry": "Retry",
-    "saveSuccess": "Settings saved successfully.",
-    "saveError": "Failed to save settings."
+    input[type='checkbox'] {
+      cursor: pointer;
+      width: 16px;
+      height: 16px;
+      accent-color: var(--file-row-accent);
+      margin: 0;
+    }
   }
-}
 
+  .statusIcon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
 
+    &.uploading { color: var(--file-row-accent); }
+    &.pending   { color: var(--file-row-accent); }
+    &.started   { color: var(--file-row-accent); }
+    &.failure   { color: var(--file-row-status-error); }
+  }
 
+  .fileIcon {
+    color: var(--file-row-text-secondary);
+    display: flex;
+    align-items: center;
+    margin-right: 12px;
+  }
 
+  .fileName {
+    font-size: 0.85rem;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 40%;
+    color: var(--file-row-text-primary);
+    transition: color 0.2s ease;
+    padding-top: 2px;
+  }
 
-
-
-
-
-
-"generalSettings": {
-  "title": "일반 설정",
-  "description": "애플리케이션 전반의 환경설정을 구성합니다.",
-  "fileSizeLimit": {
-    "label": "파일 크기 제한",
-    "unit": "MB",
-    "placeholder": "파일 크기 제한 입력",
-    "hint": "최소 {{min}} MB — 최대 {{max}} MB",
-    "error": "{{min}}~{{max}} MB 사이의 값을 입력하세요."
-  },
-  "noOfFileUpload": {
-    "label": "파일 업로드 수",
-    "placeholder": "파일 수 입력",
-    "hint": "최소 {{min}} — 최대 {{max}}",
-    "error": "{{min}}~{{max}} 사이의 값을 입력하세요."
-  },
-  "storageLimit": {
-    "label": "저장 용량 제한",
-    "unit": "GB",
-    "placeholder": "저장 용량 입력",
-    "hint": "최소 {{min}} GB — 최대 {{max}} GB",
-    "error": "{{min}}~{{max}} GB 사이의 값을 입력하세요."
-  },
-  "saveButton": "설정 저장",
-  "saving": "저장 중...",
-  "status": {
-    "loading": "설정 불러오는 중...",
-    "error": "설정을 불러오지 못했습니다.",
-    "retry": "재시도",
-    "saveSuccess": "설정이 저장되었습니다.",
-    "saveError": "설정 저장에 실패했습니다."
+  .fileSize {
+    font-size: 0.8rem;
+    margin-left: 8px;
+    flex: 1;
+    color: var(--file-row-text-size);
+    transition: color 0.2s ease;
+    padding-top: 3px;
   }
 }
