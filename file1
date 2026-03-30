@@ -1,89 +1,105 @@
-generalSettingsApi.ts
---------------------
+generalSettingsSlice.ts
+----------------------
 
 
-import axiosInstance from './axiosInstance';
+import { createAsyncThunk, createSlice, PayloadAction } from '@reduxjs/toolkit';
+import {
+  AdminSettings,
+  fetchAdminSettingsApi,
+  saveAdminSettingsApi,
+} from '../../api/generalSettingsApi';
 
-export interface AdminSettings {
-  file_size_limit: number;
-  no_of_file_upload: number;
-  storage_limit: number;
+interface GeneralSettingsState {
+  settings: AdminSettings | null;
+  loading: boolean;
+  saving: boolean;
+  error: string | null;
+  saveError: string | null;
+  saveSuccess: boolean;
 }
 
-export interface AdminSettingsResponse {
-  status: 'Success' | 'Error';
-  result: AdminSettings;
-}
-
-export interface SaveAdminSettingsResponse {
-  status: 'Success' | 'Error';
-  result: string;
-}
-
-export const fetchAdminSettingsApi = async (): Promise<AdminSettings> => {
-  const response = await axiosInstance.get<AdminSettingsResponse>('/auth/get_admin_settings');
-  return response.data.result;
+const initialState: GeneralSettingsState = {
+  settings: null,
+  loading: false,
+  saving: false,
+  error: null,
+  saveError: null,
+  saveSuccess: false,
 };
 
-export const saveAdminSettingsApi = async (payload: AdminSettings): Promise<string> => {
-  const response = await axiosInstance.post<SaveAdminSettingsResponse>(
-    '/auth/save_admin_settings',
-    payload
-  );
-  return response.data.result;
-};
-
-
-
-en.json
--------
-
-
-"generalSettings": {
-  "title": "General Settings",
-  "description": "Configure application-wide preferences.",
-  "fileSizeLimit": {
-    "label": "File Size Limit",
-    "unit": "MB",
-    "placeholder": "Enter file size limit",
-    "hint": "Min 1 MB — Max 20 MB"
-  },
-  "noOfFileUpload": {
-    "label": "Number of File Uploads",
-    "placeholder": "Enter number of files",
-    "hint": "Min 1 — Max 20"
-  },
-  "storageLimit": {
-    "label": "Storage Limit",
-    "unit": "GB",
-    "placeholder": "Enter storage limit",
-    "hint": "Min 1 GB — Max 5 GB"
-  },
-  "saveButton": "Save Settings",
-  "saving": "Saving...",
-  "status": {
-    "loading": "Loading settings...",
-    "error": "Failed to load settings.",
-    "retry": "Retry",
-    "saveSuccess": "Settings saved successfully.",
-    "saveError": "Failed to save settings."
+export const fetchAdminSettings = createAsyncThunk(
+  'generalSettings/fetch',
+  async (_, { rejectWithValue }) => {
+    try {
+      return await fetchAdminSettingsApi();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to fetch settings';
+      return rejectWithValue(message);
+    }
   }
-}
+);
+
+export const saveAdminSettings = createAsyncThunk(
+  'generalSettings/save',
+  async (payload: AdminSettings, { rejectWithValue }) => {
+    try {
+      await saveAdminSettingsApi(payload);
+      return payload;
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to save settings';
+      return rejectWithValue(message);
+    }
+  }
+);
+
+const generalSettingsSlice = createSlice({
+  name: 'generalSettings',
+  initialState,
+  reducers: {
+    clearSaveStatus(state) {
+      state.saveSuccess = false;
+      state.saveError = null;
+    },
+  },
+  extraReducers: (builder) => {
+    builder
+      .addCase(fetchAdminSettings.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchAdminSettings.fulfilled, (state, action: PayloadAction<AdminSettings>) => {
+        state.loading = false;
+        state.settings = action.payload;
+      })
+      .addCase(fetchAdminSettings.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      })
+      .addCase(saveAdminSettings.pending, (state) => {
+        state.saving = true;
+        state.saveError = null;
+        state.saveSuccess = false;
+      })
+      .addCase(saveAdminSettings.fulfilled, (state, action: PayloadAction<AdminSettings>) => {
+        state.saving = false;
+        state.saveSuccess = true;
+        state.settings = action.payload;
+      })
+      .addCase(saveAdminSettings.rejected, (state, action) => {
+        state.saving = false;
+        state.saveError = action.payload as string;
+      });
+  },
+});
+
+export const { clearSaveStatus } = generalSettingsSlice.actions;
+export default generalSettingsSlice.reducer;
 
 
 
 
 
 
-ko.json
--------
-
-"storageLimit": {
-  "label": "저장 용량 제한",
-  "unit": "GB",
-  "placeholder": "저장 용량 입력",
-  "hint": "최소 1 GB — 최대 5 GB"
-}
 
 
 
@@ -91,10 +107,6 @@ ko.json
 
 
 
-
-
-GeneralSettings.tsx
--------------------
 
 
 import { useEffect, useState } from 'react';
@@ -384,14 +396,3 @@ export default function GeneralSettings() {
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
