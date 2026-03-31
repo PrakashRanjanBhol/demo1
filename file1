@@ -106,6 +106,12 @@ export class HistoryComponent implements OnInit, OnChanges, OnDestroy {
   isDeleteConfirmationVisible = false;
   selectedDeleteItems = new Set<string>();
 
+  /* ── Inference mode (only available when queued=[] and running=[]) ── */
+  isInferenceMode = false;
+  isSubmittingBatch = false;
+  selectedInferenceItems = new Set<string>();
+  inferenceModelName = 'ABC';
+
   /* ── Poll state ── */
   pollCountdown = POLL_INTERVAL_MS / 1000;
   private pollSubscription: Subscription | null = null;
@@ -190,6 +196,19 @@ export class HistoryComponent implements OnInit, OnChanges, OnDestroy {
     if (r) parts.push(`${r} running`);
     if (q) parts.push(`${q} queued`);
     return parts.join(', ');
+  }
+
+  /** Inference mode is only available when server has no active work */
+  get canUseInferenceMode(): boolean {
+    return (
+      this.historyItems.filter(i => i.status === 'running').length === 0 &&
+      this.historyItems.filter(i => i.status === 'queued').length === 0 &&
+      this.hasAnyFiles
+    );
+  }
+
+  get inferenceSelectionCount(): number {
+    return this.selectedInferenceItems.size;
   }
 
   /* ═══════════════════════════════════════════
@@ -395,6 +414,11 @@ export class HistoryComponent implements OnInit, OnChanges, OnDestroy {
       this.toggleDeleteSelection(itemId);
       return;
     }
+    if (this.isInferenceMode) {
+      const event = new Event('click');
+      this.toggleInferenceSelection(itemId, event);
+      return;
+    }
     const item = this.historyItems.find(i => i.id === itemId);
     if (item) {
       this.selectedHistoryItem = item;
@@ -435,12 +459,90 @@ export class HistoryComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   /* ═══════════════════════════════════════════
+     Inference mode
+  ═══════════════════════════════════════════ */
+
+  toggleInferenceMode(): void {
+    if (!this.canUseInferenceMode) return;
+    this.isInferenceMode = !this.isInferenceMode;
+    if (!this.isInferenceMode) {
+      this.selectedInferenceItems.clear();
+    }
+    // Exit delete mode if active
+    if (this.isInferenceMode && this.isDeleteMode) {
+      this.isDeleteMode = false;
+      this.selectedDeleteItems.clear();
+    }
+  }
+
+  toggleInferenceSelection(itemId: string, event: Event): void {
+    event.stopPropagation();
+    if (this.selectedInferenceItems.has(itemId)) {
+      this.selectedInferenceItems.delete(itemId);
+    } else {
+      this.selectedInferenceItems.add(itemId);
+    }
+  }
+
+  isSelectedForInference(itemId: string): boolean {
+    return this.selectedInferenceItems.has(itemId);
+  }
+
+  toggleSelectAllInference(status: FileStatus): void {
+    const items = this.getItemsByStatus(status);
+    const allSelected = items.every(i => this.selectedInferenceItems.has(i.id));
+    if (allSelected) {
+      items.forEach(i => this.selectedInferenceItems.delete(i.id));
+    } else {
+      items.forEach(i => this.selectedInferenceItems.add(i.id));
+    }
+  }
+
+  areAllSelectedForInference(status: FileStatus): boolean {
+    const items = this.getItemsByStatus(status);
+    return items.length > 0 && items.every(i => this.selectedInferenceItems.has(i.id));
+  }
+
+  cancelInference(): void {
+    this.selectedInferenceItems.clear();
+    this.isInferenceMode = false;
+  }
+
+  startBatchInference(): void {
+    if (this.selectedInferenceItems.size === 0) return;
+    this.isSubmittingBatch = true;
+
+    const fileIds = Array.from(this.selectedInferenceItems).map(Number);
+
+    this.historyService.batchProcess(fileIds, this.inferenceModelName).subscribe({
+      next: (res) => {
+        // 200 response means batch started — kick off polling
+        this.isSubmittingBatch = false;
+        this.isInferenceMode = false;
+        this.selectedInferenceItems.clear();
+        // Immediately refresh to get updated statuses (files should now appear as queued/running)
+        this.fetchAll(true);
+      },
+      error: (err) => {
+        console.error('Batch process error:', err);
+        this.isSubmittingBatch = false;
+        alert('Failed to start batch inference. Please try again.');
+      }
+    });
+  }
+
+  /* ═══════════════════════════════════════════
      Delete mode
   ═══════════════════════════════════════════ */
 
   toggleDeleteMode(): void {
     this.isDeleteMode = !this.isDeleteMode;
     if (!this.isDeleteMode) this.selectedDeleteItems.clear();
+    // Exit inference mode if active
+    if (this.isDeleteMode && this.isInferenceMode) {
+      this.isInferenceMode = false;
+      this.selectedInferenceItems.clear();
+    }
   }
 
   toggleDeleteSelection(itemId: string): void {
@@ -655,18 +757,6 @@ export class HistoryComponent implements OnInit, OnChanges, OnDestroy {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
 <div class="panel">
 
   <!-- ── Panel Header ── -->
@@ -702,6 +792,17 @@ export class HistoryComponent implements OnInit, OnChanges, OnDestroy {
               title="Delete files">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+        </svg>
+      </button>
+
+      <!-- Inference mode toggle — only shown when no running/queued files -->
+      <button class="icon-btn icon-btn--inference"
+              *ngIf="canUseInferenceMode"
+              [class.active]="isInferenceMode"
+              (click)="toggleInferenceMode()"
+              title="Run batch inference">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
         </svg>
       </button>
     </div>
@@ -768,6 +869,31 @@ export class HistoryComponent implements OnInit, OnChanges, OnDestroy {
           <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
         </svg>
         Delete ({{ selectedDeleteItems.size }})
+      </button>
+    </div>
+  </div>
+
+  <!-- ── Inference Action Bar ── -->
+  <div class="inference-action-bar" *ngIf="isInferenceMode">
+    <div class="inference-action-info">
+      <svg class="inference-info-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+      </svg>
+      <span>{{ inferenceSelectionCount }} file(s) selected for inference</span>
+    </div>
+    <div class="inference-action-buttons">
+      <button class="cancel-btn" (click)="cancelInference()">Cancel</button>
+      <button class="start-inference-btn"
+              [disabled]="inferenceSelectionCount === 0 || isSubmittingBatch"
+              (click)="startBatchInference()">
+        <svg *ngIf="isSubmittingBatch" class="spinning" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+        </svg>
+        <svg *ngIf="!isSubmittingBatch" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
+        </svg>
+        {{ isSubmittingBatch ? 'Starting...' : 'Run Inference (' + inferenceSelectionCount + ')' }}
       </button>
     </div>
   </div>
@@ -945,6 +1071,11 @@ export class HistoryComponent implements OnInit, OnChanges, OnDestroy {
               <svg *ngIf="areAllSelected('pending')" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
             </div>
           </div>
+          <div class="select-all-wrap" *ngIf="isInferenceMode" (click)="$event.stopPropagation(); toggleSelectAllInference('pending')">
+            <div class="checkbox checkbox--inference" [class.checked]="areAllSelectedForInference('pending')">
+              <svg *ngIf="areAllSelectedForInference('pending')" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+            </div>
+          </div>
           <button class="chevron-btn" [class.collapsed]="!sectionExpanded['pending']">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5"/></svg>
           </button>
@@ -956,11 +1087,18 @@ export class HistoryComponent implements OnInit, OnChanges, OnDestroy {
                [attr.data-item-id]="item.id"
                [class.selected]="selectedHistoryItem?.id === item.id"
                [class.delete-selected]="isDeleteMode && isSelectedForDelete(item.id)"
+               [class.inference-selected]="isInferenceMode && isSelectedForInference(item.id)"
                (click)="onHistoryItemClick(item.id)">
 
             <div class="delete-checkbox" *ngIf="isDeleteMode" (click)="$event.stopPropagation(); toggleDeleteSelection(item.id)">
               <div class="checkbox" [class.checked]="isSelectedForDelete(item.id)">
                 <svg *ngIf="isSelectedForDelete(item.id)" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+              </div>
+            </div>
+
+            <div class="delete-checkbox" *ngIf="isInferenceMode" (click)="$event.stopPropagation(); toggleInferenceSelection(item.id, $event)">
+              <div class="checkbox checkbox--inference" [class.checked]="isSelectedForInference(item.id)">
+                <svg *ngIf="isSelectedForInference(item.id)" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
               </div>
             </div>
 
@@ -978,7 +1116,7 @@ export class HistoryComponent implements OnInit, OnChanges, OnDestroy {
               <p class="file-date">{{ item.displayDate }}</p>
             </div>
 
-            <div class="file-actions" *ngIf="!isDeleteMode">
+            <div class="file-actions" *ngIf="!isDeleteMode && !isInferenceMode">
               <span class="badge badge--pending">pending</span>
               <button class="add-btn"
                       [class.added]="isAddedToGeneration(item.id)"
@@ -992,6 +1130,10 @@ export class HistoryComponent implements OnInit, OnChanges, OnDestroy {
                   <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 12h-15" />
                 </svg>
               </button>
+            </div>
+
+            <div class="file-actions" *ngIf="isInferenceMode">
+              <span class="badge badge--pending">pending</span>
             </div>
           </div>
         </div>
@@ -1008,6 +1150,11 @@ export class HistoryComponent implements OnInit, OnChanges, OnDestroy {
               <svg *ngIf="areAllSelected('completed')" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
             </div>
           </div>
+          <div class="select-all-wrap" *ngIf="isInferenceMode" (click)="$event.stopPropagation(); toggleSelectAllInference('completed')">
+            <div class="checkbox checkbox--inference" [class.checked]="areAllSelectedForInference('completed')">
+              <svg *ngIf="areAllSelectedForInference('completed')" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+            </div>
+          </div>
           <button class="chevron-btn" [class.collapsed]="!sectionExpanded['completed']">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5"/></svg>
           </button>
@@ -1019,11 +1166,18 @@ export class HistoryComponent implements OnInit, OnChanges, OnDestroy {
                [attr.data-item-id]="item.id"
                [class.selected]="selectedHistoryItem?.id === item.id"
                [class.delete-selected]="isDeleteMode && isSelectedForDelete(item.id)"
+               [class.inference-selected]="isInferenceMode && isSelectedForInference(item.id)"
                (click)="onHistoryItemClick(item.id)">
 
             <div class="delete-checkbox" *ngIf="isDeleteMode" (click)="$event.stopPropagation(); toggleDeleteSelection(item.id)">
               <div class="checkbox" [class.checked]="isSelectedForDelete(item.id)">
                 <svg *ngIf="isSelectedForDelete(item.id)" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+              </div>
+            </div>
+
+            <div class="delete-checkbox" *ngIf="isInferenceMode" (click)="$event.stopPropagation(); toggleInferenceSelection(item.id, $event)">
+              <div class="checkbox checkbox--inference" [class.checked]="isSelectedForInference(item.id)">
+                <svg *ngIf="isSelectedForInference(item.id)" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
               </div>
             </div>
 
@@ -1041,13 +1195,17 @@ export class HistoryComponent implements OnInit, OnChanges, OnDestroy {
               <p class="file-date">{{ item.displayDate }}</p>
             </div>
 
-            <div class="file-actions" *ngIf="!isDeleteMode">
+            <div class="file-actions" *ngIf="!isDeleteMode && !isInferenceMode">
               <span class="badge badge--completed">completed</span>
               <button class="view-btn" (click)="onAddToGeneration($event, item)" title="View results">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
                 </svg>
               </button>
+            </div>
+
+            <div class="file-actions" *ngIf="isInferenceMode">
+              <span class="badge badge--completed">completed</span>
             </div>
           </div>
         </div>
@@ -1090,14 +1248,6 @@ export class HistoryComponent implements OnInit, OnChanges, OnDestroy {
   </div>
 
 </div>
-
-
-
-
-
-
-
-
 
 
 
@@ -1263,6 +1413,10 @@ export class HistoryComponent implements OnInit, OnChanges, OnDestroy {
 
 .icon-btn--danger:hover { border-color: #ef4444; }
 .icon-btn--danger.active { background: linear-gradient(135deg, #ef4444, #dc2626); border-color: #ef4444; }
+
+.icon-btn--inference:hover { border-color: #EF9F27; }
+.icon-btn--inference.active { background: linear-gradient(135deg, #f59e0b, #f97316); border-color: #f59e0b; }
+.icon-btn--inference.active svg { stroke: white; }
 
 .icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
@@ -1478,6 +1632,67 @@ export class HistoryComponent implements OnInit, OnChanges, OnDestroy {
   gap: 8px;
 }
 
+/* ── Inference Action Bar ── */
+.inference-action-bar {
+  padding: 10px 18px;
+  background: linear-gradient(135deg, rgba(245,158,11,0.08), rgba(249,115,22,0.08));
+  border-bottom: 1px solid rgba(245,158,11,0.25);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  animation: slideDown 0.25s ease;
+}
+
+.inference-action-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.inference-info-icon {
+  width: 16px;
+  height: 16px;
+  stroke: #f59e0b;
+  flex-shrink: 0;
+}
+
+.inference-action-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.start-inference-btn {
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  background: linear-gradient(135deg, #f59e0b, #f97316);
+  border: 1.5px solid #f59e0b;
+  border-radius: 6px;
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.start-inference-btn:hover:not(:disabled) {
+  box-shadow: 0 3px 10px rgba(245,158,11,0.35);
+  transform: translateY(-1px);
+}
+
+.start-inference-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.start-inference-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
 .cancel-btn {
   padding: 6px 14px;
   font-size: 12px;
@@ -1658,6 +1873,13 @@ export class HistoryComponent implements OnInit, OnChanges, OnDestroy {
   border-color: #ef4444;
 }
 
+/* Amber variant for inference mode */
+.checkbox--inference { border-color: var(--border-color); }
+.checkbox--inference.checked {
+  background: linear-gradient(135deg, #f59e0b, #f97316);
+  border-color: #f59e0b;
+}
+
 .checkbox svg {
   width: 12px;
   height: 12px;
@@ -1705,6 +1927,11 @@ export class HistoryComponent implements OnInit, OnChanges, OnDestroy {
 .file-row.delete-selected {
   background: linear-gradient(135deg, rgba(239,68,68,0.08), rgba(220,38,38,0.08));
   border-color: rgba(239,68,68,0.4);
+}
+
+.file-row.inference-selected {
+  background: linear-gradient(135deg, rgba(245,158,11,0.08), rgba(249,115,22,0.08));
+  border-color: rgba(245,158,11,0.4);
 }
 
 /* ═══════════════════════════════════════
@@ -2387,6 +2614,9 @@ export class HistoryComponent implements OnInit, OnChanges, OnDestroy {
 
 
 
+
+
+
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Observable } from 'rxjs';
@@ -2428,6 +2658,11 @@ export interface StopResponse {
   result: string;
 }
 
+export interface BatchProcessResponse {
+  status: string;
+  message?: string;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -2466,6 +2701,16 @@ export class HistoryService {
   stopFiles(fileIds: number[]): Observable<StopResponse> {
     const url = `${this.baseUrl}/files/stop`;
     return this.http.patch<StopResponse>(url, { file_ids: fileIds }, { headers: this.jsonHeaders });
+  }
+
+  /**
+   * Batch process multiple files (only when queued + running are empty)
+   * POST /batch_process  { file_ids: [1,2,3], model_name: "ABC" }
+   * Response: 200 on success
+   */
+  batchProcess(fileIds: number[], modelName: string): Observable<BatchProcessResponse> {
+    const url = `${this.baseUrl}/batch_process`;
+    return this.http.post<BatchProcessResponse>(url, { file_ids: fileIds, model_name: modelName }, { headers: this.jsonHeaders });
   }
 
   /**
