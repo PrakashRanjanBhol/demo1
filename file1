@@ -1,43 +1,98 @@
-generalSettingsApi.ts
+accessManagementApi.ts
 ---------------------
-
 
 import axiosInstance from './axiosInstance';
 
-export interface AdminSettings {
-  file_size_limit: number;
-  no_of_file_upload: number;
-  storage_limit: number;
-  default_model: string;
+export interface Member {
+  name: string;
+  allowed: boolean;
 }
 
-export interface AdminSettingsResponse {
+export interface Department {
+  dept_name: string;
+  members: Member[];
+  allowed: boolean;
+}
+
+export interface TeamAccessResponse {
   status: 'Success' | 'Error';
-  result: AdminSettings;
+  response: Department[];
 }
 
-export interface SaveAdminSettingsResponse {
+export interface UpdateTeamAccessRequest {
+  dept_name: string;
+  allowed: boolean;
+}
+
+export interface UpdateEmployeeAccessRequest {
+  name: string;
+  allowed: boolean;
+}
+
+export interface UpdateAccessResponse {
   status: 'Success' | 'Error';
-  result: string;
 }
 
-export interface ModelsResponse {
-  status: 'Success' | 'Error';
-  result: string[];
-}
+// Mock data
+const mockData: Department[] = [
+  {
+    dept_name: 'Engineering',
+    allowed: true,
+    members: [
+      { name: 'Alice Johnson', allowed: true },
+      { name: 'Bob Smith', allowed: true },
+      { name: 'Carol White', allowed: true },
+    ],
+  },
+  {
+    dept_name: 'Design',
+    allowed: false,
+    members: [
+      { name: 'David Brown', allowed: true },
+      { name: 'Eva Martinez', allowed: false },
+      { name: 'Frank Lee', allowed: false },
+    ],
+  },
+  {
+    dept_name: 'Marketing',
+    allowed: false,
+    members: [
+      { name: 'Grace Kim', allowed: false },
+      { name: 'Henry Wilson', allowed: true },
+    ],
+  },
+  {
+    dept_name: 'Finance',
+    allowed: true,
+    members: [
+      { name: 'Isla Davis', allowed: true },
+      { name: 'James Garcia', allowed: true },
+      { name: 'Karen Lee', allowed: true },
+    ],
+  },
+];
 
-export const fetchAdminSettingsApi = async (): Promise<AdminSettings> => {
-  const response = await axiosInstance.get<AdminSettingsResponse>('/auth/get_admin_settings');
-  return response.data.result;
+export const fetchTeamAccessApi = async (): Promise<Department[]> => {
+  // mock — replace with real call:
+  // const response = await axiosInstance.get<TeamAccessResponse>('/get_team_access');
+  // return response.data.response;
+  return new Promise((resolve) => setTimeout(() => resolve(mockData), 600));
 };
 
-export const saveAdminSettingsApi = async (payload: AdminSettings): Promise<void> => {
-  await axiosInstance.post<SaveAdminSettingsResponse>('/auth/save_admin_settings', payload);
+export const updateTeamAccessApi = async (
+  payload: UpdateTeamAccessRequest
+): Promise<void> => {
+  // mock — replace with real call:
+  // await axiosInstance.post<UpdateAccessResponse>('/update_team_access', payload);
+  return new Promise((resolve) => setTimeout(resolve, 300));
 };
 
-export const fetchModelsApi = async (): Promise<string[]> => {
-  const response = await axiosInstance.get<ModelsResponse>('/get_models');
-  return response.data.result;
+export const updateEmployeeAccessApi = async (
+  payload: UpdateEmployeeAccessRequest
+): Promise<void> => {
+  // mock — replace with real call:
+  // await axiosInstance.post<UpdateAccessResponse>('/update_employee_access', payload);
+  return new Promise((resolve) => setTimeout(resolve, 300));
 };
 
 
@@ -47,133 +102,141 @@ export const fetchModelsApi = async (): Promise<string[]> => {
 
 
 
-generalSettingsSlice.ts
------------------------
 
+
+
+
+
+accessManagementSlice.ts
+------------------------
 
 
 import { createAsyncThunk, createSlice, PayloadAction } from '@reduxjs/toolkit';
 import {
-  AdminSettings,
-  fetchAdminSettingsApi,
-  fetchModelsApi,
-  saveAdminSettingsApi,
-} from '../../api/generalSettingsApi';
+  Department,
+  fetchTeamAccessApi,
+  updateEmployeeAccessApi,
+  updateTeamAccessApi,
+} from '../../api/accessManagementApi';
 
-interface GeneralSettingsState {
-  settings: AdminSettings | null;
-  models: string[];
-  modelsLoading: boolean;
+interface AccessManagementState {
+  departments: Department[];
   loading: boolean;
-  saving: boolean;
   error: string | null;
-  saveError: string | null;
-  saveSuccess: boolean;
+  updatingTeam: string | null;
+  updatingEmployee: string | null;
 }
 
-const initialState: GeneralSettingsState = {
-  settings: null,
-  models: [],
-  modelsLoading: false,
+const initialState: AccessManagementState = {
+  departments: [],
   loading: false,
-  saving: false,
   error: null,
-  saveError: null,
-  saveSuccess: false,
+  updatingTeam: null,
+  updatingEmployee: null,
 };
 
-export const fetchAdminSettings = createAsyncThunk(
-  'generalSettings/fetch',
+export const fetchTeamAccess = createAsyncThunk(
+  'accessManagement/fetchTeamAccess',
   async (_, { rejectWithValue }) => {
     try {
-      return await fetchAdminSettingsApi();
+      return await fetchTeamAccessApi();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to fetch settings';
+      const message = err instanceof Error ? err.message : 'Failed to fetch team access';
       return rejectWithValue(message);
     }
   }
 );
 
-export const fetchModels = createAsyncThunk(
-  'generalSettings/fetchModels',
-  async (_, { rejectWithValue }) => {
+export const updateTeamAccess = createAsyncThunk(
+  'accessManagement/updateTeamAccess',
+  async (
+    payload: { dept_name: string; allowed: boolean },
+    { rejectWithValue }
+  ) => {
     try {
-      return await fetchModelsApi();
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to fetch models';
-      return rejectWithValue(message);
-    }
-  }
-);
-
-export const saveAdminSettings = createAsyncThunk(
-  'generalSettings/save',
-  async (payload: AdminSettings, { rejectWithValue }) => {
-    try {
-      await saveAdminSettingsApi(payload);
+      await updateTeamAccessApi(payload);
       return payload;
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to save settings';
+      const message = err instanceof Error ? err.message : 'Failed to update team access';
       return rejectWithValue(message);
     }
   }
 );
 
-const generalSettingsSlice = createSlice({
-  name: 'generalSettings',
+export const updateEmployeeAccess = createAsyncThunk(
+  'accessManagement/updateEmployeeAccess',
+  async (
+    payload: { name: string; allowed: boolean; dept_name: string },
+    { rejectWithValue }
+  ) => {
+    try {
+      await updateEmployeeAccessApi({ name: payload.name, allowed: payload.allowed });
+      return payload;
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to update employee access';
+      return rejectWithValue(message);
+    }
+  }
+);
+
+const accessManagementSlice = createSlice({
+  name: 'accessManagement',
   initialState,
-  reducers: {
-    clearSaveStatus(state) {
-      state.saveSuccess = false;
-      state.saveError = null;
-    },
-  },
+  reducers: {},
   extraReducers: (builder) => {
     builder
-      // fetch settings
-      .addCase(fetchAdminSettings.pending, (state) => {
+      // fetch
+      .addCase(fetchTeamAccess.pending, (state) => {
         state.loading = true;
         state.error = null;
       })
-      .addCase(fetchAdminSettings.fulfilled, (state, action: PayloadAction<AdminSettings>) => {
+      .addCase(fetchTeamAccess.fulfilled, (state, action: PayloadAction<Department[]>) => {
         state.loading = false;
-        state.settings = action.payload;
+        state.departments = action.payload;
       })
-      .addCase(fetchAdminSettings.rejected, (state, action) => {
+      .addCase(fetchTeamAccess.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as string;
       })
-      // fetch models
-      .addCase(fetchModels.pending, (state) => {
-        state.modelsLoading = true;
+      // update team
+      .addCase(updateTeamAccess.pending, (state, action) => {
+        state.updatingTeam = action.meta.arg.dept_name;
       })
-      .addCase(fetchModels.fulfilled, (state, action: PayloadAction<string[]>) => {
-        state.modelsLoading = false;
-        state.models = action.payload;
+      .addCase(updateTeamAccess.fulfilled, (state, action) => {
+        state.updatingTeam = null;
+        const { dept_name, allowed } = action.payload;
+        const dept = state.departments.find((d) => d.dept_name === dept_name);
+        if (dept) {
+          dept.allowed = allowed;
+          // if team allowed, set all members to true
+          if (allowed) {
+            dept.members = dept.members.map((m) => ({ ...m, allowed: true }));
+          }
+        }
       })
-      .addCase(fetchModels.rejected, (state) => {
-        state.modelsLoading = false;
+      .addCase(updateTeamAccess.rejected, (state) => {
+        state.updatingTeam = null;
       })
-      // save settings
-      .addCase(saveAdminSettings.pending, (state) => {
-        state.saving = true;
-        state.saveError = null;
-        state.saveSuccess = false;
+      // update employee
+      .addCase(updateEmployeeAccess.pending, (state, action) => {
+        state.updatingEmployee = action.meta.arg.name;
       })
-      .addCase(saveAdminSettings.fulfilled, (state, action: PayloadAction<AdminSettings>) => {
-        state.saving = false;
-        state.saveSuccess = true;
-        state.settings = action.payload;
+      .addCase(updateEmployeeAccess.fulfilled, (state, action) => {
+        state.updatingEmployee = null;
+        const { name, allowed, dept_name } = action.payload;
+        const dept = state.departments.find((d) => d.dept_name === dept_name);
+        if (dept) {
+          const member = dept.members.find((m) => m.name === name);
+          if (member) member.allowed = allowed;
+        }
       })
-      .addCase(saveAdminSettings.rejected, (state, action) => {
-        state.saving = false;
-        state.saveError = action.payload as string;
+      .addCase(updateEmployeeAccess.rejected, (state) => {
+        state.updatingEmployee = null;
       });
   },
 });
 
-export const { clearSaveStatus } = generalSettingsSlice.actions;
-export default generalSettingsSlice.reducer;
+export default accessManagementSlice.reducer;
 
 
 
@@ -185,10 +248,54 @@ export default generalSettingsSlice.reducer;
 
 
 
-"defaultModel": {
-  "label": "Default Model",
-  "placeholder": "Select a model",
-  "hint": "Applied to all new sessions"
+
+
+
+
+store.ts
+--------
+
+import { configureStore } from '@reduxjs/toolkit';
+import roleReducer from './slices/roleSlice';
+import generalSettingsReducer from './slices/generalSettingsSlice';
+import accessManagementReducer from './slices/accessManagementSlice';
+
+export const store = configureStore({
+  reducer: {
+    roles: roleReducer,
+    generalSettings: generalSettingsReducer,
+    accessManagement: accessManagementReducer,
+  },
+});
+
+export type RootState = ReturnType<typeof store.getState>;
+export type AppDispatch = typeof store.dispatch;
+
+
+
+
+
+
+
+
+
+
+"accessManagement": {
+  "title": "Access Management",
+  "description": "Manage access and permissions for your entire team.",
+  "teamsColumn": "Teams",
+  "membersColumn": "Members",
+  "selectTeam": "Select a team to manage members",
+  "noMembers": "No members in this team",
+  "allowed": "Allowed",
+  "revoked": "Revoked",
+  "teamAccessHint": "Enabling team access grants access to all members",
+  "memberAccessHint": "Available only when team access is revoked",
+  "status": {
+    "loading": "Loading access data...",
+    "error": "Failed to load access data.",
+    "retry": "Retry"
+  }
 }
 
 
@@ -196,10 +303,26 @@ export default generalSettingsSlice.reducer;
 
 
 
-"defaultModel": {
-  "label": "기본 모델",
-  "placeholder": "모델 선택",
-  "hint": "모든 새 세션에 적용됩니다"
+
+
+
+
+"accessManagement": {
+  "title": "액세스 관리",
+  "description": "전체 팀의 액세스 및 권한을 관리합니다.",
+  "teamsColumn": "팀",
+  "membersColumn": "멤버",
+  "selectTeam": "팀을 선택하여 멤버를 관리하세요",
+  "noMembers": "이 팀에 멤버가 없습니다",
+  "allowed": "허용",
+  "revoked": "차단",
+  "teamAccessHint": "팀 액세스를 허용하면 모든 멤버에게 액세스가 부여됩니다",
+  "memberAccessHint": "팀 액세스가 차단된 경우에만 사용 가능합니다",
+  "status": {
+    "loading": "액세스 데이터 불러오는 중...",
+    "error": "액세스 데이터를 불러오지 못했습니다.",
+    "retry": "재시도"
+  }
 }
 
 
@@ -212,355 +335,798 @@ export default generalSettingsSlice.reducer;
 
 
 
-GeneralSettings.tsx
--------------------
+
+
+AccessManagement.module.scss
+----------------------------
+
+
+
+:global(:root) {
+  --am-bg: #ffffff;
+  --am-bg2: #f5f4ff;
+  --am-s2: #f7f6ff;
+  --am-s3: #eeecff;
+  --am-border: rgba(79, 70, 229, 0.11);
+  --am-border-h: rgba(79, 70, 229, 0.24);
+  --am-text: #0f0c1d;
+  --am-text2: #3d3656;
+  --am-text3: #7a738f;
+  --am-text4: #b0abc4;
+  --am-sp: 0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.05), 0 8px 32px rgba(79,70,229,0.08);
+  --am-sh: 0 2px 6px rgba(0,0,0,0.07), 0 10px 32px rgba(79,70,229,0.13);
+  --am-accent: #4f46e5;
+  --am-accent-light: #eef2ff;
+  --am-grad: linear-gradient(135deg, #7c3aed 0%, #4f46e5 35%, #2563eb 65%, #0ea5e9 100%);
+  --am-success-bg: #f0fdf4;
+  --am-success-color: #16a34a;
+  --am-success-border: rgba(22, 163, 74, 0.2);
+  --am-error-bg: #fef2f2;
+  --am-error-color: #dc2626;
+  --am-error-border: #fecaca;
+  --am-selected-bg: #eef2ff;
+  --am-selected-border: rgba(79, 70, 229, 0.3);
+}
+
+:global([data-theme='dark']) {
+  --am-bg: #121214;
+  --am-bg2: #111113;
+  --am-s2: #18171f;
+  --am-s3: #1f1e2a;
+  --am-border: rgba(124, 58, 237, 0.13);
+  --am-border-h: rgba(124, 58, 237, 0.30);
+  --am-text: #f2eeff;
+  --am-text2: #c4bbdd;
+  --am-text3: #7b6f9a;
+  --am-text4: #6b6484;
+  --am-sp: 0 1px 0 rgba(124,58,237,0.09) inset, 0 8px 36px rgba(0,0,0,0.55);
+  --am-sh: 0 1px 0 rgba(124,58,237,0.16) inset, 0 16px 52px rgba(0,0,0,0.70);
+  --am-accent: #a78bfa;
+  --am-accent-light: rgba(124, 58, 237, 0.14);
+  --am-grad: linear-gradient(135deg, #7c3aed 0%, #4f46e5 35%, #2563eb 65%, #0ea5e9 100%);
+  --am-success-bg: rgba(22, 163, 74, 0.10);
+  --am-success-color: #4ade80;
+  --am-success-border: rgba(74, 222, 128, 0.2);
+  --am-error-bg: rgba(220, 38, 38, 0.10);
+  --am-error-color: #f87171;
+  --am-error-border: rgba(248, 113, 113, 0.3);
+  --am-selected-bg: rgba(124, 58, 237, 0.14);
+  --am-selected-border: rgba(124, 58, 237, 0.35);
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── LAYOUT ── */
+.container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  height: 100%;
+  min-height: 0;
+  animation: fadeUp 0.35s ease both;
+}
+
+/* ── PANEL ── */
+.panel {
+  display: flex;
+  flex-direction: column;
+  background: var(--am-bg);
+  border: 1px solid var(--am-border);
+  border-radius: 14px;
+  box-shadow: var(--am-sp);
+  overflow: hidden;
+  transition: box-shadow 0.25s, border-color 0.25s;
+  position: relative;
+  min-height: 0;
+
+  &:hover {
+    box-shadow: var(--am-sh);
+    border-color: var(--am-border-h);
+  }
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(124, 58, 237, 0.18) 15%,
+      rgba(79,  70, 229, 0.42) 50%,
+      rgba(14, 165, 233, 0.18) 85%,
+      transparent 100%
+    );
+    pointer-events: none;
+  }
+}
+
+/* ── PANEL HEADER ── */
+.panelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px 13px;
+  border-bottom: 1px solid var(--am-border);
+  flex-shrink: 0;
+}
+
+.panelTitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--am-accent);
+}
+
+.panelDot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--am-accent);
+  box-shadow: 0 0 6px rgba(79, 70, 229, 0.5);
+}
+
+.panelCount {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--am-text4);
+  background: var(--am-s2);
+  border: 1px solid var(--am-border);
+  border-radius: 999px;
+  padding: 2px 9px;
+}
+
+/* ── LIST ── */
+.list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  &::-webkit-scrollbar { width: 3px; }
+  &::-webkit-scrollbar-thumb {
+    background: rgba(124, 58, 237, 0.18);
+    border-radius: 2px;
+  }
+}
+
+/* ── TEAM ROW ── */
+.teamRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+  background: transparent;
+
+  &:hover {
+    background: var(--am-s2);
+    border-color: var(--am-border);
+  }
+
+  &.selected {
+    background: var(--am-selected-bg);
+    border-color: var(--am-selected-border);
+    box-shadow: 0 2px 8px rgba(79, 70, 229, 0.10);
+  }
+}
+
+.teamIcon {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: var(--am-grad);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.25);
+
+  svg {
+    width: 15px;
+    height: 15px;
+    color: #fff;
+  }
+}
+
+.teamInfo {
+  flex: 1;
+  min-width: 0;
+
+  .teamName {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--am-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .teamMeta {
+    font-size: 0.6875rem;
+    color: var(--am-text3);
+    margin-top: 1px;
+  }
+}
+
+.teamActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* ── MEMBER ROW ── */
+.memberRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  transition: background 0.15s ease;
+
+  &:hover {
+    background: var(--am-s2);
+  }
+
+  &.disabled {
+    opacity: 0.45;
+    pointer-events: none;
+  }
+}
+
+.avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--am-grad);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 2px var(--am-bg), 0 0 0 3.5px rgba(79, 70, 229, 0.25);
+}
+
+.memberInfo {
+  flex: 1;
+  min-width: 0;
+
+  .memberName {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--am-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+/* ── TOGGLE ── */
+.toggleWrapper {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+}
+
+.toggleLabel {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  min-width: 42px;
+  text-align: right;
+
+  &.on  { color: var(--am-success-color); }
+  &.off { color: var(--am-error-color); }
+}
+
+.toggle {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
+
+  input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+    position: absolute;
+  }
+
+  .track {
+    position: absolute;
+    inset: 0;
+    border-radius: 999px;
+    background: var(--am-error-bg);
+    border: 1px solid var(--am-error-border);
+    transition: background 0.2s ease, border-color 0.2s ease;
+    cursor: pointer;
+
+    &::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--am-error-color);
+      transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), background 0.2s ease;
+    }
+  }
+
+  input:checked + .track {
+    background: var(--am-success-bg);
+    border-color: var(--am-success-border);
+
+    &::after {
+      transform: translateX(16px);
+      background: var(--am-success-color);
+    }
+  }
+
+  input:disabled + .track {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+/* ── SPINNER ── */
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--am-accent-light);
+  border-top-color: var(--am-accent);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── EMPTY STATE ── */
+.emptyState {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 32px 20px;
+  text-align: center;
+
+  .emptyIcon {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: var(--am-s3);
+    border: 1px solid var(--am-border-h);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 4px;
+
+    svg {
+      width: 20px;
+      height: 20px;
+      color: var(--am-accent);
+      opacity: 0.7;
+    }
+  }
+
+  .emptyText {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--am-text2);
+  }
+
+  .emptySubText {
+    font-size: 0.71875rem;
+    color: var(--am-text4);
+    max-width: 180px;
+    line-height: 1.6;
+  }
+}
+
+/* ── HINT BANNER ── */
+.hintBanner {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  margin: 8px 8px 0;
+  border-radius: 8px;
+  background: var(--am-accent-light);
+  border: 1px solid var(--am-border-h);
+  font-size: 0.6875rem;
+  color: var(--am-accent);
+  flex-shrink: 0;
+
+  svg {
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
+  }
+}
+
+/* ── SKELETON ── */
+.skeletonRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  border-radius: 10px;
+}
+
+%shimmerBase {
+  border-radius: 5px;
+  background: linear-gradient(
+    90deg,
+    var(--am-s2) 25%,
+    var(--am-border) 50%,
+    var(--am-s2) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+.skeletonAvatar {
+  @extend %shimmerBase;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  flex-shrink: 0;
+}
+
+.skeletonLine {
+  @extend %shimmerBase;
+  height: 11px;
+  flex: 1;
+  border-radius: 4px;
+}
+
+.skeletonToggle {
+  @extend %shimmerBase;
+  width: 36px;
+  height: 20px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ── ERROR STATE ── */
+.errorState {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 40px 20px;
+
+  p {
+    margin: 0;
+    font-size: 0.8125rem;
+    color: var(--am-error-color);
+  }
+}
+
+.retryBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 16px;
+  border-radius: 999px;
+  background: var(--am-grad);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 500;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(79, 70, 229, 0.38);
+  transition: all 0.18s;
+
+  &:hover {
+    box-shadow: 0 6px 22px rgba(79, 70, 229, 0.50);
+    transform: translateY(-1px);
+    filter: brightness(1.07);
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+AccessManagement.tsx
+--------------------
+
+
 
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useDispatch, useSelector } from 'react-redux';
+import { Department } from '../api/accessManagementApi';
 import type { AppDispatch, RootState } from '../store';
 import {
-  clearSaveStatus,
-  fetchAdminSettings,
-  fetchModels,
-  saveAdminSettings,
-} from '../store/slices/generalSettingsSlice';
-import styles from './GeneralSettings.module.scss';
+  fetchTeamAccess,
+  updateEmployeeAccess,
+  updateTeamAccess,
+} from '../store/slices/accessManagementSlice';
+import styles from './AccessManagement.module.scss';
 import pageStyles from './PageShell.module.scss';
 
-const MIN_FILE_SIZE = 1;
-const MAX_FILE_SIZE = 25;
-const MIN_FILE_COUNT = 1;
-const MAX_FILE_COUNT = 20;
-const MIN_STORAGE = 1;
-const MAX_STORAGE = 5;
-
-interface FormValues {
-  file_size_limit: string;
-  no_of_file_upload: string;
-  storage_limit: string;
-  default_model: string;
+function getInitials(name: string): string {
+  return name
+    .split(' ')
+    .map((n) => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
 }
 
-interface FormErrors {
-  file_size_limit?: string;
-  no_of_file_upload?: string;
-  storage_limit?: string;
-  default_model?: string;
+function SkeletonList({ rows = 4 }: { rows?: number }) {
+  return (
+    <>
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className={styles.skeletonRow}>
+          <div className={styles.skeletonAvatar} />
+          <div className={styles.skeletonLine} />
+          <div className={styles.skeletonToggle} />
+        </div>
+      ))}
+    </>
+  );
 }
 
-export default function GeneralSettings() {
+export default function AccessManagement() {
   const { t } = useTranslation();
   const dispatch = useDispatch<AppDispatch>();
-  const { settings, loading, saving, error, saveSuccess, saveError, models, modelsLoading } =
-    useSelector((state: RootState) => state.generalSettings);
+  const { departments, loading, error, updatingTeam, updatingEmployee } = useSelector(
+    (state: RootState) => state.accessManagement
+  );
 
-  const [form, setForm] = useState<FormValues>({
-    file_size_limit: '',
-    no_of_file_upload: '',
-    storage_limit: '',
-    default_model: '',
-  });
-  const [errors, setErrors] = useState<FormErrors>({});
-
-  const isDirty =
-    settings !== null &&
-    (Number(form.file_size_limit) !== settings.file_size_limit ||
-      Number(form.no_of_file_upload) !== settings.no_of_file_upload ||
-      Number(form.storage_limit) !== settings.storage_limit ||
-      form.default_model !== settings.default_model);
+  const [selectedDept, setSelectedDept] = useState<Department | null>(null);
 
   useEffect(() => {
-    dispatch(fetchAdminSettings());
-    dispatch(fetchModels());
+    dispatch(fetchTeamAccess());
   }, [dispatch]);
 
+  // keep selectedDept in sync with store updates
   useEffect(() => {
-    if (settings) {
-      setForm({
-        file_size_limit: String(settings.file_size_limit),
-        no_of_file_upload: String(settings.no_of_file_upload),
-        storage_limit: String(settings.storage_limit),
-        default_model: settings.default_model ?? '',
-      });
+    if (selectedDept) {
+      const updated = departments.find((d) => d.dept_name === selectedDept.dept_name);
+      if (updated) setSelectedDept(updated);
     }
-  }, [settings]);
+  }, [departments]);
 
+  // auto-select first dept once loaded
   useEffect(() => {
-    if (saveSuccess || saveError) {
-      const timer = setTimeout(() => dispatch(clearSaveStatus()), 3000);
-      return () => clearTimeout(timer);
+    if (departments.length > 0 && !selectedDept) {
+      setSelectedDept(departments[0]);
     }
-  }, [saveSuccess, saveError, dispatch]);
+  }, [departments]);
 
-  const validate = (): boolean => {
-    const newErrors: FormErrors = {};
-    const fileSize = Number(form.file_size_limit);
-    const fileCount = Number(form.no_of_file_upload);
-    const storageLimit = Number(form.storage_limit);
-
-    if (!form.file_size_limit || isNaN(fileSize) || fileSize < MIN_FILE_SIZE || fileSize > MAX_FILE_SIZE) {
-      newErrors.file_size_limit = t('settings.generalSettings.fileSizeLimit.error', {
-        min: MIN_FILE_SIZE, max: MAX_FILE_SIZE,
-      });
-    }
-    if (!form.no_of_file_upload || isNaN(fileCount) || fileCount < MIN_FILE_COUNT || fileCount > MAX_FILE_COUNT) {
-      newErrors.no_of_file_upload = t('settings.generalSettings.noOfFileUpload.error', {
-        min: MIN_FILE_COUNT, max: MAX_FILE_COUNT,
-      });
-    }
-    if (!form.storage_limit || isNaN(storageLimit) || storageLimit < MIN_STORAGE || storageLimit > MAX_STORAGE) {
-      newErrors.storage_limit = t('settings.generalSettings.storageLimit.error', {
-        min: MIN_STORAGE, max: MAX_STORAGE,
-      });
-    }
-    if (!form.default_model) {
-      newErrors.default_model = t('settings.generalSettings.defaultModel.error');
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+  const handleTeamToggle = (dept: Department) => {
+    dispatch(updateTeamAccess({ dept_name: dept.dept_name, allowed: !dept.allowed }));
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
-    setErrors((prev) => ({ ...prev, [name]: undefined }));
-    dispatch(clearSaveStatus());
+  const handleMemberToggle = (deptName: string, memberName: string, current: boolean) => {
+    dispatch(updateEmployeeAccess({ name: memberName, allowed: !current, dept_name: deptName }));
   };
-
-  const handleSave = () => {
-    if (!validate()) return;
-    dispatch(
-      saveAdminSettings({
-        file_size_limit: Number(form.file_size_limit),
-        no_of_file_upload: Number(form.no_of_file_upload),
-        storage_limit: Number(form.storage_limit),
-        default_model: form.default_model,
-      })
-    );
-  };
-
-  if (loading) {
-    return (
-      <div className={pageStyles.page}>
-        <div className={pageStyles.pageHeader}>
-          <h1 className={pageStyles.title}>{t('settings.generalSettings.title')}</h1>
-          <p className={pageStyles.description}>{t('settings.generalSettings.description')}</p>
-        </div>
-        <div className={pageStyles.pageContent}>
-          <div className={styles.skeletonCard}>
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className={styles.skeletonField}>
-                <div className={styles.skeletonLabel} />
-                <div className={styles.skeletonInput} />
-              </div>
-            ))}
-            <div className={styles.skeletonBtn} />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className={pageStyles.page}>
-        <div className={pageStyles.pageHeader}>
-          <h1 className={pageStyles.title}>{t('settings.generalSettings.title')}</h1>
-          <p className={pageStyles.description}>{t('settings.generalSettings.description')}</p>
-        </div>
-        <div className={pageStyles.pageContent}>
-          <div className={styles.formCard}>
-            <p className={styles.saveErrMsg}>{t('settings.generalSettings.status.error')}</p>
-            <button className={styles.saveBtn} onClick={() => dispatch(fetchAdminSettings())}>
-              {t('settings.generalSettings.status.retry')}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className={pageStyles.page}>
       <div className={pageStyles.pageHeader}>
-        <h1 className={pageStyles.title}>{t('settings.generalSettings.title')}</h1>
-        <p className={pageStyles.description}>{t('settings.generalSettings.description')}</p>
+        <h1 className={pageStyles.title}>{t('settings.accessManagement.title')}</h1>
+        <p className={pageStyles.description}>{t('settings.accessManagement.description')}</p>
       </div>
+
       <div className={pageStyles.pageContent}>
-        <div className={styles.formCard}>
+        <div className={styles.container}>
 
-          {/* File Size Limit */}
-          <div className={styles.fieldGroup}>
-            <div className={styles.labelRow}>
-              <label className={styles.label}>
-                {t('settings.generalSettings.fileSizeLimit.label')}
-              </label>
-              <span className={styles.hint}>
-                {t('settings.generalSettings.fileSizeLimit.hint', { min: MIN_FILE_SIZE, max: MAX_FILE_SIZE })}
+          {/* ── LEFT: TEAMS ── */}
+          <div className={styles.panel}>
+            <div className={styles.panelHeader}>
+              <span className={styles.panelTitle}>
+                <span className={styles.panelDot} />
+                {t('settings.accessManagement.teamsColumn')}
               </span>
+              {!loading && (
+                <span className={styles.panelCount}>{departments.length}</span>
+              )}
             </div>
-            <div className={`${styles.inputWrapper} ${errors.file_size_limit ? styles.error : ''}`}>
-              <input
-                className={styles.input}
-                type="number"
-                name="file_size_limit"
-                min={MIN_FILE_SIZE}
-                max={MAX_FILE_SIZE}
-                value={form.file_size_limit}
-                onChange={handleChange}
-                placeholder={t('settings.generalSettings.fileSizeLimit.placeholder')}
-              />
-              <span className={styles.unit}>
-                {t('settings.generalSettings.fileSizeLimit.unit')}
-              </span>
-            </div>
-            {errors.file_size_limit && (
-              <span className={styles.errorText}>{errors.file_size_limit}</span>
-            )}
-          </div>
 
-          {/* Number of File Uploads */}
-          <div className={styles.fieldGroup}>
-            <div className={styles.labelRow}>
-              <label className={styles.label}>
-                {t('settings.generalSettings.noOfFileUpload.label')}
-              </label>
-              <span className={styles.hint}>
-                {t('settings.generalSettings.noOfFileUpload.hint', { min: MIN_FILE_COUNT, max: MAX_FILE_COUNT })}
-              </span>
-            </div>
-            <div className={`${styles.inputWrapper} ${errors.no_of_file_upload ? styles.error : ''}`}>
-              <input
-                className={styles.input}
-                type="number"
-                name="no_of_file_upload"
-                min={MIN_FILE_COUNT}
-                max={MAX_FILE_COUNT}
-                value={form.no_of_file_upload}
-                onChange={handleChange}
-                placeholder={t('settings.generalSettings.noOfFileUpload.placeholder')}
-              />
-            </div>
-            {errors.no_of_file_upload && (
-              <span className={styles.errorText}>{errors.no_of_file_upload}</span>
-            )}
-          </div>
-
-          {/* Storage Limit */}
-          <div className={styles.fieldGroup}>
-            <div className={styles.labelRow}>
-              <label className={styles.label}>
-                {t('settings.generalSettings.storageLimit.label')}
-              </label>
-              <span className={styles.hint}>
-                {t('settings.generalSettings.storageLimit.hint', { min: MIN_STORAGE, max: MAX_STORAGE })}
-              </span>
-            </div>
-            <div className={`${styles.inputWrapper} ${errors.storage_limit ? styles.error : ''}`}>
-              <input
-                className={styles.input}
-                type="number"
-                name="storage_limit"
-                min={MIN_STORAGE}
-                max={MAX_STORAGE}
-                value={form.storage_limit}
-                onChange={handleChange}
-                placeholder={t('settings.generalSettings.storageLimit.placeholder')}
-              />
-              <span className={styles.unit}>
-                {t('settings.generalSettings.storageLimit.unit')}
-              </span>
-            </div>
-            {errors.storage_limit && (
-              <span className={styles.errorText}>{errors.storage_limit}</span>
-            )}
-          </div>
-
-          {/* Default Model */}
-          <div className={styles.fieldGroup}>
-            <div className={styles.labelRow}>
-              <label className={styles.label}>
-                {t('settings.generalSettings.defaultModel.label')}
-              </label>
-              <span className={styles.hint}>
-                {t('settings.generalSettings.defaultModel.hint')}
-              </span>
-            </div>
-            <div className={`${styles.selectWrapper} ${errors.default_model ? styles.error : ''}`}>
-              {modelsLoading ? (
-                <div className={styles.selectSkeleton} />
+            <div className={styles.list}>
+              {loading ? (
+                <SkeletonList rows={4} />
+              ) : error ? (
+                <div className={styles.errorState}>
+                  <p>{t('settings.accessManagement.status.error')}</p>
+                  <button className={styles.retryBtn} onClick={() => dispatch(fetchTeamAccess())}>
+                    {t('settings.accessManagement.status.retry')}
+                  </button>
+                </div>
               ) : (
-                <>
-                  <select
-                    className={styles.select}
-                    name="default_model"
-                    value={form.default_model}
-                    onChange={handleChange}
+                departments.map((dept) => (
+                  <div
+                    key={dept.dept_name}
+                    className={`${styles.teamRow} ${selectedDept?.dept_name === dept.dept_name ? styles.selected : ''}`}
+                    onClick={() => setSelectedDept(dept)}
                   >
-                    <option value="" disabled>
-                      {t('settings.generalSettings.defaultModel.placeholder')}
-                    </option>
-                    {models.map((model) => (
-                      <option key={model} value={model}>
-                        {model}
-                      </option>
-                    ))}
-                  </select>
-                  <span className={styles.selectIcon}>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="6 9 12 15 18 9" />
-                    </svg>
-                  </span>
-                </>
+                    <div className={styles.teamIcon}>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                        <circle cx="9" cy="7" r="4" />
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                      </svg>
+                    </div>
+
+                    <div className={styles.teamInfo}>
+                      <div className={styles.teamName}>{dept.dept_name}</div>
+                      <div className={styles.teamMeta}>
+                        {dept.members.length} member{dept.members.length !== 1 ? 's' : ''}
+                        {' · '}
+                        {dept.members.filter((m) => m.allowed).length} allowed
+                      </div>
+                    </div>
+
+                    <div className={styles.teamActions}>
+                      {updatingTeam === dept.dept_name ? (
+                        <div className={styles.spinner} />
+                      ) : (
+                        <label
+                          className={styles.toggle}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={dept.allowed}
+                            onChange={() => handleTeamToggle(dept)}
+                          />
+                          <span className={styles.track} />
+                        </label>
+                      )}
+                      <span className={`${styles.toggleLabel} ${dept.allowed ? styles.on : styles.off}`}>
+                        {dept.allowed
+                          ? t('settings.accessManagement.allowed')
+                          : t('settings.accessManagement.revoked')}
+                      </span>
+                    </div>
+                  </div>
+                ))
               )}
             </div>
-            {errors.default_model && (
-              <span className={styles.errorText}>{errors.default_model}</span>
-            )}
           </div>
 
-          <div className={styles.divider} />
-
-          {/* Footer */}
-          <div className={styles.footer}>
-            <button
-              className={styles.saveBtn}
-              onClick={handleSave}
-              disabled={saving || !isDirty}
-            >
-              {saving ? (
-                <>
-                  <span className={styles.spinner} />
-                  {t('settings.generalSettings.saving')}
-                </>
-              ) : (
-                <>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-                    <polyline points="17 21 17 13 7 13 7 21" />
-                    <polyline points="7 3 7 8 15 8" />
-                  </svg>
-                  {t('settings.generalSettings.saveButton')}
-                </>
+          {/* ── RIGHT: MEMBERS ── */}
+          <div className={styles.panel}>
+            <div className={styles.panelHeader}>
+              <span className={styles.panelTitle}>
+                <span className={styles.panelDot} />
+                {selectedDept ? selectedDept.dept_name : t('settings.accessManagement.membersColumn')}
+              </span>
+              {selectedDept && (
+                <span className={styles.panelCount}>{selectedDept.members.length}</span>
               )}
-            </button>
+            </div>
 
-            {saveSuccess && (
-              <span className={styles.successMsg}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="20 6 9 17 4 12" />
+            {selectedDept && selectedDept.allowed && (
+              <div className={styles.hintBanner}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
                 </svg>
-                {t('settings.generalSettings.status.saveSuccess')}
-              </span>
+                {t('settings.accessManagement.memberAccessHint')}
+              </div>
             )}
 
-            {saveError && (
-              <span className={styles.saveErrMsg}>
-                {t('settings.generalSettings.status.saveError')}
-              </span>
-            )}
+            <div className={styles.list}>
+              {loading ? (
+                <SkeletonList rows={4} />
+              ) : !selectedDept ? (
+                <div className={styles.emptyState}>
+                  <div className={styles.emptyIcon}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                      <circle cx="9" cy="7" r="4" />
+                    </svg>
+                  </div>
+                  <div className={styles.emptyText}>
+                    {t('settings.accessManagement.selectTeam')}
+                  </div>
+                  <div className={styles.emptySubText}>
+                    Click on a team from the left panel to manage its members
+                  </div>
+                </div>
+              ) : selectedDept.members.length === 0 ? (
+                <div className={styles.emptyState}>
+                  <div className={styles.emptyIcon}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10" />
+                      <line x1="8" y1="12" x2="16" y2="12" />
+                    </svg>
+                  </div>
+                  <div className={styles.emptyText}>
+                    {t('settings.accessManagement.noMembers')}
+                  </div>
+                </div>
+              ) : (
+                selectedDept.members.map((member) => {
+                  const isTeamAllowed = selectedDept.allowed;
+                  const isUpdating = updatingEmployee === member.name;
+
+                  return (
+                    <div
+                      key={member.name}
+                      className={`${styles.memberRow} ${isTeamAllowed ? styles.disabled : ''}`}
+                    >
+                      <div className={styles.avatar}>
+                        {getInitials(member.name)}
+                      </div>
+
+                      <div className={styles.memberInfo}>
+                        <div className={styles.memberName}>{member.name}</div>
+                      </div>
+
+                      <div className={styles.teamActions}>
+                        {isUpdating ? (
+                          <div className={styles.spinner} />
+                        ) : (
+                          <label className={styles.toggle}>
+                            <input
+                              type="checkbox"
+                              checked={member.allowed}
+                              disabled={isTeamAllowed}
+                              onChange={() =>
+                                handleMemberToggle(selectedDept.dept_name, member.name, member.allowed)
+                              }
+                            />
+                            <span className={styles.track} />
+                          </label>
+                        )}
+                        <span className={`${styles.toggleLabel} ${member.allowed ? styles.on : styles.off}`}>
+                          {member.allowed
+                            ? t('settings.accessManagement.allowed')
+                            : t('settings.accessManagement.revoked')}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
 
         </div>
@@ -574,91 +1140,6 @@ export default function GeneralSettings() {
 
 
 
-// add to :global(:root)
---gs-select-bg: #f7f6ff;
---gs-select-border: rgba(79, 70, 229, 0.11);
---gs-select-color: #0f0c1d;
-
-// add to :global([data-theme='dark'])
---gs-select-bg: #18171f;
---gs-select-border: rgba(124, 58, 237, 0.20);
---gs-select-color: #f2eeff;
-
-
-
-
-
-.selectWrapper {
-  position: relative;
-  display: flex;
-  align-items: center;
-  border: 1px solid var(--gs-border);
-  border-radius: 11px;
-  background: var(--gs-select-bg);
-  overflow: hidden;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-
-  &:focus-within {
-    border-color: transparent;
-    box-shadow:
-      0 0 0 1.5px var(--gs-accent),
-      0 0 0 4px rgba(79, 70, 229, 0.08);
-  }
-
-  &.error {
-    border-color: transparent;
-    box-shadow:
-      0 0 0 1.5px var(--gs-error-color),
-      0 0 0 4px var(--gs-error-bg);
-  }
-}
-
-.select {
-  flex: 1;
-  border: none;
-  outline: none;
-  padding: 10px 36px 10px 13px;
-  font-size: 0.8125rem;
-  font-family: 'DM Sans', system-ui, sans-serif;
-  color: var(--gs-select-color);
-  background: transparent;
-  cursor: pointer;
-  appearance: none;
-  -webkit-appearance: none;
-
-  option {
-    background: var(--gs-bg);
-    color: var(--gs-text);
-  }
-}
-
-.selectIcon {
-  position: absolute;
-  right: 11px;
-  pointer-events: none;
-  color: var(--gs-accent);
-  display: flex;
-  align-items: center;
-
-  svg {
-    width: 14px;
-    height: 14px;
-  }
-}
-
-.selectSkeleton {
-  height: 40px;
-  width: 100%;
-  border-radius: 11px;
-  background: linear-gradient(
-    90deg,
-    var(--gs-s2) 25%,
-    var(--gs-border) 50%,
-    var(--gs-s2) 75%
-  );
-  background-size: 200% 100%;
-  animation: shimmer 1.4s ease-in-out infinite;
-}
 
 
 
@@ -668,21 +1149,37 @@ export default function GeneralSettings() {
 
 
 
-"defaultModel": {
-  "label": "Default Model",
-  "placeholder": "Select a model",
-  "hint": "Applied to all new sessions",
-  "error": "Please select a default model."
-}
+
+
+import AccessManagement from './pages/AccessManagement';
+
+// inside routes:
+<Route path="access-management" element={<AccessManagement />} />
 
 
 
 
 
+SettingsLayout.tsx
+------------------
 
-"defaultModel": {
-  "label": "기본 모델",
-  "placeholder": "모델 선택",
-  "hint": "모든 새 세션에 적용됩니다",
-  "error": "기본 모델을 선택해 주세요."
-}
+{ label: t('settings.nav.accessManagement'), path: 'access-management' },
+
+
+
+
+
+"accessManagement": "Access Management"
+
+"accessManagement": "액세스 관리"
+
+
+
+SettingsLayout.tsx
+------------------
+
+// Access Management icon
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+</svg>
