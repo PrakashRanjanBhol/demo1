@@ -1,1405 +1,688 @@
-/* ═══════════════════════════════════════
-   Host & Panel
-═══════════════════════════════════════ */
-:host {
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
+generalSettingsApi.ts
+---------------------
+
+
+import axiosInstance from './axiosInstance';
+
+export interface AdminSettings {
+  file_size_limit: number;
+  no_of_file_upload: number;
+  storage_limit: number;
+  default_model: string;
 }
 
-.panel {
-  flex: 1;
-  background-color: var(--bg-color);
-  border: 1px solid var(--border-color);
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-  border-radius: 8px;
-  overflow: hidden;
-  height: 100%;
+export interface AdminSettingsResponse {
+  status: 'Success' | 'Error';
+  result: AdminSettings;
 }
 
-/* ═══════════════════════════════════════
-   Header
-═══════════════════════════════════════ */
-.panel-header {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  padding: 14px 18px;
-  border-bottom: 1px solid var(--border-color);
-  flex-shrink: 0;
-  background: linear-gradient(135deg, var(--primary-gradient-light-start), var(--primary-gradient-light-end));
-  backdrop-filter: blur(10px);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+export interface SaveAdminSettingsResponse {
+  status: 'Success' | 'Error';
+  result: string;
 }
 
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  flex: 1;
+export interface ModelsResponse {
+  status: 'Success' | 'Error';
+  result: string[];
 }
 
-.panel-title {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--text-color);
-  margin: 0;
-  flex-shrink: 0;
-  padding-left: 14px;
+export const fetchAdminSettingsApi = async (): Promise<AdminSettings> => {
+  const response = await axiosInstance.get<AdminSettingsResponse>('/auth/get_admin_settings');
+  return response.data.result;
+};
+
+export const saveAdminSettingsApi = async (payload: AdminSettings): Promise<void> => {
+  await axiosInstance.post<SaveAdminSettingsResponse>('/auth/save_admin_settings', payload);
+};
+
+export const fetchModelsApi = async (): Promise<string[]> => {
+  const response = await axiosInstance.get<ModelsResponse>('/get_models');
+  return response.data.result;
+};
+
+
+
+
+
+
+
+
+generalSettingsSlice.ts
+-----------------------
+
+
+
+import { createAsyncThunk, createSlice, PayloadAction } from '@reduxjs/toolkit';
+import {
+  AdminSettings,
+  fetchAdminSettingsApi,
+  fetchModelsApi,
+  saveAdminSettingsApi,
+} from '../../api/generalSettingsApi';
+
+interface GeneralSettingsState {
+  settings: AdminSettings | null;
+  models: string[];
+  modelsLoading: boolean;
+  loading: boolean;
+  saving: boolean;
+  error: string | null;
+  saveError: string | null;
+  saveSuccess: boolean;
+}
+
+const initialState: GeneralSettingsState = {
+  settings: null,
+  models: [],
+  modelsLoading: false,
+  loading: false,
+  saving: false,
+  error: null,
+  saveError: null,
+  saveSuccess: false,
+};
+
+export const fetchAdminSettings = createAsyncThunk(
+  'generalSettings/fetch',
+  async (_, { rejectWithValue }) => {
+    try {
+      return await fetchAdminSettingsApi();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to fetch settings';
+      return rejectWithValue(message);
+    }
+  }
+);
+
+export const fetchModels = createAsyncThunk(
+  'generalSettings/fetchModels',
+  async (_, { rejectWithValue }) => {
+    try {
+      return await fetchModelsApi();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to fetch models';
+      return rejectWithValue(message);
+    }
+  }
+);
+
+export const saveAdminSettings = createAsyncThunk(
+  'generalSettings/save',
+  async (payload: AdminSettings, { rejectWithValue }) => {
+    try {
+      await saveAdminSettingsApi(payload);
+      return payload;
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to save settings';
+      return rejectWithValue(message);
+    }
+  }
+);
+
+const generalSettingsSlice = createSlice({
+  name: 'generalSettings',
+  initialState,
+  reducers: {
+    clearSaveStatus(state) {
+      state.saveSuccess = false;
+      state.saveError = null;
+    },
+  },
+  extraReducers: (builder) => {
+    builder
+      // fetch settings
+      .addCase(fetchAdminSettings.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchAdminSettings.fulfilled, (state, action: PayloadAction<AdminSettings>) => {
+        state.loading = false;
+        state.settings = action.payload;
+      })
+      .addCase(fetchAdminSettings.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      })
+      // fetch models
+      .addCase(fetchModels.pending, (state) => {
+        state.modelsLoading = true;
+      })
+      .addCase(fetchModels.fulfilled, (state, action: PayloadAction<string[]>) => {
+        state.modelsLoading = false;
+        state.models = action.payload;
+      })
+      .addCase(fetchModels.rejected, (state) => {
+        state.modelsLoading = false;
+      })
+      // save settings
+      .addCase(saveAdminSettings.pending, (state) => {
+        state.saving = true;
+        state.saveError = null;
+        state.saveSuccess = false;
+      })
+      .addCase(saveAdminSettings.fulfilled, (state, action: PayloadAction<AdminSettings>) => {
+        state.saving = false;
+        state.saveSuccess = true;
+        state.settings = action.payload;
+      })
+      .addCase(saveAdminSettings.rejected, (state, action) => {
+        state.saving = false;
+        state.saveError = action.payload as string;
+      });
+  },
+});
+
+export const { clearSaveStatus } = generalSettingsSlice.actions;
+export default generalSettingsSlice.reducer;
+
+
+
+
+
+
+
+
+
+
+
+"defaultModel": {
+  "label": "Default Model",
+  "placeholder": "Select a model",
+  "hint": "Applied to all new sessions"
+}
+
+
+
+
+
+
+"defaultModel": {
+  "label": "기본 모델",
+  "placeholder": "모델 선택",
+  "hint": "모든 새 세션에 적용됩니다"
+}
+
+
+
+
+
+
+
+
+
+
+
+GeneralSettings.tsx
+-------------------
+
+import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useDispatch, useSelector } from 'react-redux';
+import type { AppDispatch, RootState } from '../store';
+import {
+  clearSaveStatus,
+  fetchAdminSettings,
+  fetchModels,
+  saveAdminSettings,
+} from '../store/slices/generalSettingsSlice';
+import styles from './GeneralSettings.module.scss';
+import pageStyles from './PageShell.module.scss';
+
+const MIN_FILE_SIZE = 1;
+const MAX_FILE_SIZE = 25;
+const MIN_FILE_COUNT = 1;
+const MAX_FILE_COUNT = 20;
+const MIN_STORAGE = 1;
+const MAX_STORAGE = 5;
+
+interface FormValues {
+  file_size_limit: string;
+  no_of_file_upload: string;
+  storage_limit: string;
+  default_model: string;
+}
+
+interface FormErrors {
+  file_size_limit?: string;
+  no_of_file_upload?: string;
+  storage_limit?: string;
+  default_model?: string;
+}
+
+export default function GeneralSettings() {
+  const { t } = useTranslation();
+  const dispatch = useDispatch<AppDispatch>();
+  const { settings, loading, saving, error, saveSuccess, saveError, models, modelsLoading } =
+    useSelector((state: RootState) => state.generalSettings);
+
+  const [form, setForm] = useState<FormValues>({
+    file_size_limit: '',
+    no_of_file_upload: '',
+    storage_limit: '',
+    default_model: '',
+  });
+  const [errors, setErrors] = useState<FormErrors>({});
+
+  const isDirty =
+    settings !== null &&
+    (Number(form.file_size_limit) !== settings.file_size_limit ||
+      Number(form.no_of_file_upload) !== settings.no_of_file_upload ||
+      Number(form.storage_limit) !== settings.storage_limit ||
+      form.default_model !== settings.default_model);
+
+  useEffect(() => {
+    dispatch(fetchAdminSettings());
+    dispatch(fetchModels());
+  }, [dispatch]);
+
+  useEffect(() => {
+    if (settings) {
+      setForm({
+        file_size_limit: String(settings.file_size_limit),
+        no_of_file_upload: String(settings.no_of_file_upload),
+        storage_limit: String(settings.storage_limit),
+        default_model: settings.default_model ?? '',
+      });
+    }
+  }, [settings]);
+
+  useEffect(() => {
+    if (saveSuccess || saveError) {
+      const timer = setTimeout(() => dispatch(clearSaveStatus()), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [saveSuccess, saveError, dispatch]);
+
+  const validate = (): boolean => {
+    const newErrors: FormErrors = {};
+    const fileSize = Number(form.file_size_limit);
+    const fileCount = Number(form.no_of_file_upload);
+    const storageLimit = Number(form.storage_limit);
+
+    if (!form.file_size_limit || isNaN(fileSize) || fileSize < MIN_FILE_SIZE || fileSize > MAX_FILE_SIZE) {
+      newErrors.file_size_limit = t('settings.generalSettings.fileSizeLimit.error', {
+        min: MIN_FILE_SIZE, max: MAX_FILE_SIZE,
+      });
+    }
+    if (!form.no_of_file_upload || isNaN(fileCount) || fileCount < MIN_FILE_COUNT || fileCount > MAX_FILE_COUNT) {
+      newErrors.no_of_file_upload = t('settings.generalSettings.noOfFileUpload.error', {
+        min: MIN_FILE_COUNT, max: MAX_FILE_COUNT,
+      });
+    }
+    if (!form.storage_limit || isNaN(storageLimit) || storageLimit < MIN_STORAGE || storageLimit > MAX_STORAGE) {
+      newErrors.storage_limit = t('settings.generalSettings.storageLimit.error', {
+        min: MIN_STORAGE, max: MAX_STORAGE,
+      });
+    }
+    if (!form.default_model) {
+      newErrors.default_model = t('settings.generalSettings.defaultModel.error');
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
+    setErrors((prev) => ({ ...prev, [name]: undefined }));
+    dispatch(clearSaveStatus());
+  };
+
+  const handleSave = () => {
+    if (!validate()) return;
+    dispatch(
+      saveAdminSettings({
+        file_size_limit: Number(form.file_size_limit),
+        no_of_file_upload: Number(form.no_of_file_upload),
+        storage_limit: Number(form.storage_limit),
+        default_model: form.default_model,
+      })
+    );
+  };
+
+  if (loading) {
+    return (
+      <div className={pageStyles.page}>
+        <div className={pageStyles.pageHeader}>
+          <h1 className={pageStyles.title}>{t('settings.generalSettings.title')}</h1>
+          <p className={pageStyles.description}>{t('settings.generalSettings.description')}</p>
+        </div>
+        <div className={pageStyles.pageContent}>
+          <div className={styles.skeletonCard}>
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className={styles.skeletonField}>
+                <div className={styles.skeletonLabel} />
+                <div className={styles.skeletonInput} />
+              </div>
+            ))}
+            <div className={styles.skeletonBtn} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className={pageStyles.page}>
+        <div className={pageStyles.pageHeader}>
+          <h1 className={pageStyles.title}>{t('settings.generalSettings.title')}</h1>
+          <p className={pageStyles.description}>{t('settings.generalSettings.description')}</p>
+        </div>
+        <div className={pageStyles.pageContent}>
+          <div className={styles.formCard}>
+            <p className={styles.saveErrMsg}>{t('settings.generalSettings.status.error')}</p>
+            <button className={styles.saveBtn} onClick={() => dispatch(fetchAdminSettings())}>
+              {t('settings.generalSettings.status.retry')}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={pageStyles.page}>
+      <div className={pageStyles.pageHeader}>
+        <h1 className={pageStyles.title}>{t('settings.generalSettings.title')}</h1>
+        <p className={pageStyles.description}>{t('settings.generalSettings.description')}</p>
+      </div>
+      <div className={pageStyles.pageContent}>
+        <div className={styles.formCard}>
+
+          {/* File Size Limit */}
+          <div className={styles.fieldGroup}>
+            <div className={styles.labelRow}>
+              <label className={styles.label}>
+                {t('settings.generalSettings.fileSizeLimit.label')}
+              </label>
+              <span className={styles.hint}>
+                {t('settings.generalSettings.fileSizeLimit.hint', { min: MIN_FILE_SIZE, max: MAX_FILE_SIZE })}
+              </span>
+            </div>
+            <div className={`${styles.inputWrapper} ${errors.file_size_limit ? styles.error : ''}`}>
+              <input
+                className={styles.input}
+                type="number"
+                name="file_size_limit"
+                min={MIN_FILE_SIZE}
+                max={MAX_FILE_SIZE}
+                value={form.file_size_limit}
+                onChange={handleChange}
+                placeholder={t('settings.generalSettings.fileSizeLimit.placeholder')}
+              />
+              <span className={styles.unit}>
+                {t('settings.generalSettings.fileSizeLimit.unit')}
+              </span>
+            </div>
+            {errors.file_size_limit && (
+              <span className={styles.errorText}>{errors.file_size_limit}</span>
+            )}
+          </div>
+
+          {/* Number of File Uploads */}
+          <div className={styles.fieldGroup}>
+            <div className={styles.labelRow}>
+              <label className={styles.label}>
+                {t('settings.generalSettings.noOfFileUpload.label')}
+              </label>
+              <span className={styles.hint}>
+                {t('settings.generalSettings.noOfFileUpload.hint', { min: MIN_FILE_COUNT, max: MAX_FILE_COUNT })}
+              </span>
+            </div>
+            <div className={`${styles.inputWrapper} ${errors.no_of_file_upload ? styles.error : ''}`}>
+              <input
+                className={styles.input}
+                type="number"
+                name="no_of_file_upload"
+                min={MIN_FILE_COUNT}
+                max={MAX_FILE_COUNT}
+                value={form.no_of_file_upload}
+                onChange={handleChange}
+                placeholder={t('settings.generalSettings.noOfFileUpload.placeholder')}
+              />
+            </div>
+            {errors.no_of_file_upload && (
+              <span className={styles.errorText}>{errors.no_of_file_upload}</span>
+            )}
+          </div>
+
+          {/* Storage Limit */}
+          <div className={styles.fieldGroup}>
+            <div className={styles.labelRow}>
+              <label className={styles.label}>
+                {t('settings.generalSettings.storageLimit.label')}
+              </label>
+              <span className={styles.hint}>
+                {t('settings.generalSettings.storageLimit.hint', { min: MIN_STORAGE, max: MAX_STORAGE })}
+              </span>
+            </div>
+            <div className={`${styles.inputWrapper} ${errors.storage_limit ? styles.error : ''}`}>
+              <input
+                className={styles.input}
+                type="number"
+                name="storage_limit"
+                min={MIN_STORAGE}
+                max={MAX_STORAGE}
+                value={form.storage_limit}
+                onChange={handleChange}
+                placeholder={t('settings.generalSettings.storageLimit.placeholder')}
+              />
+              <span className={styles.unit}>
+                {t('settings.generalSettings.storageLimit.unit')}
+              </span>
+            </div>
+            {errors.storage_limit && (
+              <span className={styles.errorText}>{errors.storage_limit}</span>
+            )}
+          </div>
+
+          {/* Default Model */}
+          <div className={styles.fieldGroup}>
+            <div className={styles.labelRow}>
+              <label className={styles.label}>
+                {t('settings.generalSettings.defaultModel.label')}
+              </label>
+              <span className={styles.hint}>
+                {t('settings.generalSettings.defaultModel.hint')}
+              </span>
+            </div>
+            <div className={`${styles.selectWrapper} ${errors.default_model ? styles.error : ''}`}>
+              {modelsLoading ? (
+                <div className={styles.selectSkeleton} />
+              ) : (
+                <>
+                  <select
+                    className={styles.select}
+                    name="default_model"
+                    value={form.default_model}
+                    onChange={handleChange}
+                  >
+                    <option value="" disabled>
+                      {t('settings.generalSettings.defaultModel.placeholder')}
+                    </option>
+                    {models.map((model) => (
+                      <option key={model} value={model}>
+                        {model}
+                      </option>
+                    ))}
+                  </select>
+                  <span className={styles.selectIcon}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </span>
+                </>
+              )}
+            </div>
+            {errors.default_model && (
+              <span className={styles.errorText}>{errors.default_model}</span>
+            )}
+          </div>
+
+          <div className={styles.divider} />
+
+          {/* Footer */}
+          <div className={styles.footer}>
+            <button
+              className={styles.saveBtn}
+              onClick={handleSave}
+              disabled={saving || !isDirty}
+            >
+              {saving ? (
+                <>
+                  <span className={styles.spinner} />
+                  {t('settings.generalSettings.saving')}
+                </>
+              ) : (
+                <>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                    <polyline points="17 21 17 13 7 13 7 21" />
+                    <polyline points="7 3 7 8 15 8" />
+                  </svg>
+                  {t('settings.generalSettings.saveButton')}
+                </>
+              )}
+            </button>
+
+            {saveSuccess && (
+              <span className={styles.successMsg}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                {t('settings.generalSettings.status.saveSuccess')}
+              </span>
+            )}
+
+            {saveError && (
+              <span className={styles.saveErrMsg}>
+                {t('settings.generalSettings.status.saveError')}
+              </span>
+            )}
+          </div>
+
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+
+
+
+
+// add to :global(:root)
+--gs-select-bg: #f7f6ff;
+--gs-select-border: rgba(79, 70, 229, 0.11);
+--gs-select-color: #0f0c1d;
+
+// add to :global([data-theme='dark'])
+--gs-select-bg: #18171f;
+--gs-select-border: rgba(124, 58, 237, 0.20);
+--gs-select-color: #f2eeff;
+
+
+
+
+
+.selectWrapper {
   position: relative;
-}
-
-.panel-title::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 3px;
-  height: 16px;
-  background: var(--primary-gradient);
-  border-radius: 2px;
-}
-
-.date-range {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  background: linear-gradient(135deg, var(--primary-gradient-light-start), var(--primary-gradient-light-end));
-  border: 1px solid var(--primary-border-color);
-  border-radius: 20px;
-  min-width: 0;
+  border: 1px solid var(--gs-border);
+  border-radius: 11px;
+  background: var(--gs-select-bg);
   overflow: hidden;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+
+  &:focus-within {
+    border-color: transparent;
+    box-shadow:
+      0 0 0 1.5px var(--gs-accent),
+      0 0 0 4px rgba(79, 70, 229, 0.08);
+  }
+
+  &.error {
+    border-color: transparent;
+    box-shadow:
+      0 0 0 1.5px var(--gs-error-color),
+      0 0 0 4px var(--gs-error-bg);
+  }
 }
 
-.date-icon, .arrow-icon {
-  flex-shrink: 0;
-}
-
-.date-icon {
-  width: 13px;
-  height: 13px;
-  stroke: var(--primary-color);
-}
-
-.arrow-icon {
-  width: 11px;
-  height: 11px;
-  stroke: var(--primary-color);
-  opacity: 0.5;
-}
-
-.date-text {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-color);
-  white-space: nowrap;
-}
-
-.header-actions {
-  display: flex;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.icon-btn {
-  width: 30px;
-  height: 30px;
-  background: linear-gradient(135deg, var(--primary-gradient-light-start), var(--primary-gradient-light-end));
-  border: 1.5px solid var(--primary-border-color);
-  border-radius: 7px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.icon-btn svg {
-  width: 15px;
-  height: 15px;
-  stroke: var(--primary-color);
-}
-
-.icon-btn:hover {
-  background: linear-gradient(135deg, var(--primary-gradient-medium-start), var(--primary-gradient-medium-end));
-  border-color: var(--primary-color);
-  box-shadow: 0 2px 6px var(--primary-shadow-light);
-}
-
-.icon-btn.active {
-  background: var(--primary-gradient);
-  border-color: var(--primary-color);
-}
-
-.icon-btn.active svg { stroke: white; }
-
-.icon-btn--danger:hover { border-color: #ef4444; }
-.icon-btn--danger.active { background: linear-gradient(135deg, #ef4444, #dc2626); border-color: #ef4444; }
-
-.icon-btn--inference:hover { border-color: #EF9F27; }
-.icon-btn--inference.active { background: linear-gradient(135deg, #f59e0b, #f97316); border-color: #f59e0b; }
-.icon-btn--inference.active svg { stroke: white; }
-
-.icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-
-/* ═══════════════════════════════════════
-   Filter Section
-═══════════════════════════════════════ */
-.filter-section {
-  background: linear-gradient(135deg, var(--primary-gradient-lighter-start), var(--primary-gradient-lighter-end));
-  border-bottom: 1px solid var(--border-color);
-  padding: 14px 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  animation: slideDown 0.25s ease;
-}
-
-.filter-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.filter-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-color);
-  opacity: 0.6;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.date-filter {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.date-input-wrapper {
-  position: relative;
+.select {
   flex: 1;
-  min-width: 130px;
-}
-
-.date-input {
-  width: 100%;
-  padding: 8px 10px 8px 32px;
-  background: var(--bg-color);
-  border: 1.5px solid var(--border-color);
-  border-radius: 7px;
-  font-size: 13px;
-  color: var(--text-color);
-  transition: border-color 0.2s;
-  box-sizing: border-box;
-}
-
-.date-input:focus {
+  border: none;
   outline: none;
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px var(--primary-focus-shadow);
+  padding: 10px 36px 10px 13px;
+  font-size: 0.8125rem;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  color: var(--gs-select-color);
+  background: transparent;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+
+  option {
+    background: var(--gs-bg);
+    color: var(--gs-text);
+  }
 }
 
-.date-separator {
-  font-size: 13px;
-  color: var(--text-color);
-  opacity: 0.5;
-}
-
-.input-icon {
+.selectIcon {
   position: absolute;
-  left: 9px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 14px;
-  height: 14px;
-  stroke: var(--primary-color);
-  opacity: 0.5;
+  right: 11px;
   pointer-events: none;
-}
-
-.refresh-btn {
-  width: 36px;
-  height: 36px;
-  background: var(--primary-gradient);
-  border: none;
-  border-radius: 7px;
+  color: var(--gs-accent);
   display: flex;
   align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  flex-shrink: 0;
+
+  svg {
+    width: 14px;
+    height: 14px;
+  }
 }
 
-.refresh-btn:hover:not(:disabled) {
-  box-shadow: 0 3px 10px var(--primary-shadow);
-  transform: translateY(-1px);
-}
-
-.refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-.refresh-btn svg {
-  width: 18px;
-  height: 18px;
-  stroke: white;
-}
-
-.search-input-wrapper {
-  position: relative;
-}
-
-.search-input {
+.selectSkeleton {
+  height: 40px;
   width: 100%;
-  padding: 8px 36px 8px 32px;
-  background: var(--bg-color);
-  border: 1.5px solid var(--border-color);
-  border-radius: 7px;
-  font-size: 13px;
-  color: var(--text-color);
-  transition: border-color 0.2s;
-  box-sizing: border-box;
-}
-
-.search-input:focus {
-  outline: none;
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px var(--primary-focus-shadow);
-}
-
-.search-input::placeholder { color: var(--text-color); opacity: 0.4; }
-
-.clear-search-btn {
-  position: absolute;
-  right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 22px;
-  height: 22px;
-  background: transparent;
-  border: none;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-}
-
-.clear-search-btn svg {
-  width: 13px;
-  height: 13px;
-  stroke: var(--text-color);
-  opacity: 0.5;
-}
-
-/* ═══════════════════════════════════════
-   Live Poll Bar
-═══════════════════════════════════════ */
-.poll-bar {
-  padding: 7px 18px;
-  background: rgba(55, 138, 221, 0.08);
-  border-bottom: 1px solid rgba(55, 138, 221, 0.2);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-.pulse-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #185FA5;
-  flex-shrink: 0;
-  animation: pulse 1.4s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50%       { opacity: 0.4; transform: scale(0.75); }
-}
-
-.poll-text {
-  font-size: 11px;
-  color: #0C447C;
-}
-
-.poll-text strong { font-weight: 700; }
-.poll-detail { opacity: 0.8; }
-
-/* ═══════════════════════════════════════
-   Delete Action Bar
-═══════════════════════════════════════ */
-.delete-action-bar {
-  padding: 10px 18px;
-  background: linear-gradient(135deg, rgba(239, 68, 68, 0.08), rgba(220, 38, 38, 0.08));
-  border-bottom: 1px solid rgba(239, 68, 68, 0.2);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-shrink: 0;
-  animation: slideDown 0.25s ease;
-}
-
-.delete-action-info {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-color);
-}
-
-.delete-action-buttons {
-  display: flex;
-  gap: 8px;
-}
-
-/* ── Inference Action Bar ── */
-.inference-action-bar {
-  padding: 10px 18px;
-  background: linear-gradient(135deg, rgba(245,158,11,0.08), rgba(249,115,22,0.08));
-  border-bottom: 1px solid rgba(245,158,11,0.25);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-shrink: 0;
-  animation: slideDown 0.25s ease;
-}
-
-.inference-action-info {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-color);
-}
-
-.inference-info-icon {
-  width: 16px;
-  height: 16px;
-  stroke: #f59e0b;
-  flex-shrink: 0;
-}
-
-.inference-action-buttons {
-  display: flex;
-  gap: 8px;
-}
-
-.start-inference-btn {
-  padding: 6px 14px;
-  font-size: 13px;
-  font-weight: 600;
-  background: linear-gradient(135deg, #f59e0b, #f97316);
-  border: 1.5px solid #f59e0b;
-  border-radius: 6px;
-  color: white;
-  cursor: pointer;
-  transition: all 0.2s;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.start-inference-btn:hover:not(:disabled) {
-  box-shadow: 0 3px 10px rgba(245,158,11,0.35);
-  transform: translateY(-1px);
-}
-
-.start-inference-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-.start-inference-btn svg {
-  width: 14px;
-  height: 14px;
-}
-
-.cancel-btn {
-  padding: 6px 14px;
-  font-size: 13px;
-  font-weight: 600;
-  background: transparent;
-  border: 1.5px solid var(--border-color);
-  border-radius: 6px;
-  color: var(--text-color);
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.cancel-btn:hover { background: rgba(107,114,128,0.08); border-color: #6b7280; }
-
-.confirm-delete-btn {
-  padding: 6px 14px;
-  font-size: 13px;
-  font-weight: 600;
-  background: linear-gradient(135deg, #ef4444, #dc2626);
-  border: 1.5px solid #ef4444;
-  border-radius: 6px;
-  color: white;
-  cursor: pointer;
-  transition: all 0.2s;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.confirm-delete-btn:hover:not(:disabled) {
-  box-shadow: 0 3px 10px rgba(239,68,68,0.35);
-  transform: translateY(-1px);
-}
-
-.confirm-delete-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-.confirm-delete-btn svg {
-  width: 14px;
-  height: 14px;
-}
-
-/* ═══════════════════════════════════════
-   Panel Content
-═══════════════════════════════════════ */
-.panel-content {
-  flex: 1;
-  padding: 14px 18px;
-  overflow-y: auto;
-  overflow-x: hidden;
-  min-height: 420px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.panel-content::-webkit-scrollbar { width: 5px; }
-.panel-content::-webkit-scrollbar-track { background: var(--scrollbar-track-bg); border-radius: 3px; }
-.panel-content::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb-bg); border-radius: 3px; }
-.panel-content::-webkit-scrollbar-thumb:hover { background: var(--primary-color); }
-
-/* ═══════════════════════════════════════
-   Section Blocks
-═══════════════════════════════════════ */
-.section-block {
-  background: var(--bg-color);
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  overflow: hidden;
-  transition: border-color 0.2s;
-  flex-shrink: 0;
-}
-
-.section-block--running  { border-left: 3px solid #378ADD; }
-.section-block--queued   { border-left: 3px solid #EF9F27; }
-.section-block--pending  { border-left: 3px solid #888780; }
-.section-block--completed{ border-left: 3px solid #639922; }
-
-.section-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  cursor: pointer;
-  transition: background 0.15s;
-  user-select: none;
-}
-
-.section-header:hover {
-  background: linear-gradient(135deg, var(--primary-gradient-lighter-start), var(--primary-gradient-lighter-end));
-}
-
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.status-dot--running   { background: #378ADD; animation: pulse 1.4s ease-in-out infinite; }
-.status-dot--queued    { background: #EF9F27; }
-.status-dot--pending   { background: #888780; }
-.status-dot--completed { background: #639922; }
-
-.section-label {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--text-color);
-  flex: 1;
-}
-
-.section-count {
-  font-size: 11px;
-  color: var(--text-color);
-  opacity: 0.6;
-  background: linear-gradient(135deg, var(--primary-gradient-lighter-start), var(--primary-gradient-lighter-end));
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  padding: 2px 8px;
-}
-
-.select-all-wrap {
-  width: 22px;
-  height: 22px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.chevron-btn {
-  width: 22px;
-  height: 22px;
-  background: transparent;
-  border: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: transform 0.2s;
-}
-
-.chevron-btn svg {
-  width: 15px;
-  height: 15px;
-  stroke: var(--text-color);
-  opacity: 0.5;
-  transition: transform 0.25s ease;
-}
-
-.chevron-btn.collapsed svg { transform: rotate(-90deg); }
-
-.section-body {
-  padding: 0 10px 10px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  animation: slideDown 0.2s ease;
-  max-height: 280px;
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-
-.section-body::-webkit-scrollbar { width: 4px; }
-.section-body::-webkit-scrollbar-track { background: transparent; border-radius: 2px; }
-.section-body::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb-bg); border-radius: 2px; }
-.section-body::-webkit-scrollbar-thumb:hover { background: var(--primary-color); }
-
-/* ═══════════════════════════════════════
-   Checkbox
-═══════════════════════════════════════ */
-.checkbox {
-  width: 18px;
-  height: 18px;
-  border: 2px solid var(--border-color);
-  border-radius: 4px;
-  background: var(--bg-color);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
-  cursor: pointer;
-}
-
-.checkbox.checked {
-  background: linear-gradient(135deg, #ef4444, #dc2626);
-  border-color: #ef4444;
-}
-
-/* Amber variant for inference mode */
-.checkbox--inference { border-color: var(--border-color); }
-.checkbox--inference.checked {
-  background: linear-gradient(135deg, #f59e0b, #f97316);
-  border-color: #f59e0b;
-}
-
-.checkbox svg {
-  width: 12px;
-  height: 12px;
-  stroke: white;
-}
-
-/* ═══════════════════════════════════════
-   File Row
-═══════════════════════════════════════ */
-.file-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 12px;
-  background: var(--bg-color);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.18s ease;
-  position: relative;
-}
-
-.file-row:hover {
-  border-color: var(--primary-color);
-  box-shadow: 0 2px 8px var(--primary-shadow-lighter);
-}
-
-.file-row.selected {
-  background: linear-gradient(135deg, var(--primary-gradient-light-start), var(--primary-gradient-light-end));
-  border-color: var(--primary-color);
-  box-shadow: 0 2px 10px var(--primary-shadow-light);
-}
-
-.file-row.selected::before {
-  content: '';
-  position: absolute;
-  left: -1px;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  background: var(--primary-gradient);
-  border-radius: 8px 0 0 8px;
-}
-
-.file-row.delete-selected {
-  background: linear-gradient(135deg, rgba(239,68,68,0.08), rgba(220,38,38,0.08));
-  border-color: rgba(239,68,68,0.4);
-}
-
-.file-row.inference-selected {
-  background: linear-gradient(135deg, rgba(245,158,11,0.08), rgba(249,115,22,0.08));
-  border-color: rgba(245,158,11,0.4);
-}
-
-/* ═══════════════════════════════════════
-   File Icon
-═══════════════════════════════════════ */
-.file-icon {
-  width: 34px;
-  height: 34px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  transition: all 0.2s;
-}
-
-.file-icon svg {
-  width: 16px;
-  height: 16px;
-}
-
-.file-icon--running   { background: rgba(55,138,221,0.12);  border: 1px solid rgba(55,138,221,0.25); }
-.file-icon--running svg { stroke: #185FA5; }
-
-.file-icon--queued    { background: rgba(239,159,39,0.12); border: 1px solid rgba(239,159,39,0.25); }
-.file-icon--queued svg { stroke: #854F0B; }
-
-.file-icon--pending   { background: rgba(136,135,128,0.1);  border: 1px solid rgba(136,135,128,0.2); }
-.file-icon--pending svg { stroke: #5F5E5A; }
-
-.file-icon--completed { background: rgba(99,153,34,0.1);   border: 1px solid rgba(99,153,34,0.2); }
-.file-icon--completed svg { stroke: #3B6D11; }
-
-.file-row.selected .file-icon {
-  background: var(--primary-gradient);
-  border-color: var(--primary-color);
-}
-
-.file-row.selected .file-icon svg { stroke: white; }
-
-/* ═══════════════════════════════════════
-   File Info
-═══════════════════════════════════════ */
-.file-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.file-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-color);
-  margin: 0 0 3px 0;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-  overflow: hidden;
-}
-
-.file-id {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--primary-color);
-  background: linear-gradient(135deg, var(--primary-gradient-medium-start), var(--primary-gradient-medium-end));
-  padding: 1px 6px;
-  border-radius: 5px;
-  border: 1px solid var(--primary-border-color);
-  flex-shrink: 0;
-}
-
-.file-row.selected .file-id {
-  background: var(--primary-gradient);
-  color: white;
-  border-color: var(--primary-color);
-}
-
-.file-name-text {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex: 1;
-  min-width: 0;
-}
-
-.file-date {
-  font-size: 12px;
-  color: var(--text-color);
-  opacity: 0.55;
-  margin: 0;
-}
-
-/* ═══════════════════════════════════════
-   Progress Bar
-═══════════════════════════════════════ */
-.progress-wrap {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin-top: 5px;
-}
-
-.progress-track {
-  flex: 1;
-  height: 4px;
-  background: rgba(55,138,221,0.15);
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.progress-fill {
-  height: 100%;
-  border-radius: 2px;
-  transition: width 0.4s ease;
-}
-
-.progress-fill--running { background: linear-gradient(90deg, #185FA5, #378ADD); }
-
-.progress-pct {
-  font-size: 10px;
-  font-weight: 700;
-  color: #185FA5;
-  flex-shrink: 0;
-  min-width: 26px;
-  text-align: right;
-}
-
-/* ═══════════════════════════════════════
-   File Actions
-═══════════════════════════════════════ */
-.file-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-/* Badges */
-/* Badge color variables — light mode defaults */
-:host {
-  --badge-running-bg:     rgba(55, 138, 221, 0.12);
-  --badge-running-color:  #0C447C;
-  --badge-running-border: rgba(55, 138, 221, 0.3);
-
-  --badge-queued-bg:      rgba(239, 159, 39, 0.12);
-  --badge-queued-color:   #633806;
-  --badge-queued-border:  rgba(239, 159, 39, 0.3);
-
-  --badge-pending-bg:     rgba(136, 135, 128, 0.1);
-  --badge-pending-color:  #444441;
-  --badge-pending-border: rgba(136, 135, 128, 0.25);
-
-  --badge-completed-bg:     rgba(99, 153, 34, 0.1);
-  --badge-completed-color:  #27500A;
-  --badge-completed-border: rgba(99, 153, 34, 0.25);
-}
-
-/* Dark mode overrides */
-:host-context(.dark),
-:host-context([data-theme="dark"]),
-:host-context(body.dark-mode) {
-  --badge-running-bg:     rgba(55, 138, 221, 0.2);
-  --badge-running-color:  #93c5fd;
-  --badge-running-border: rgba(55, 138, 221, 0.4);
-
-  --badge-queued-bg:      rgba(239, 159, 39, 0.2);
-  --badge-queued-color:   #fcd34d;
-  --badge-queued-border:  rgba(239, 159, 39, 0.4);
-
-  --badge-pending-bg:     rgba(136, 135, 128, 0.2);
-  --badge-pending-color:  #d1d0cc;
-  --badge-pending-border: rgba(136, 135, 128, 0.4);
-
-  --badge-completed-bg:     rgba(99, 153, 34, 0.2);
-  --badge-completed-color:  #86efac;
-  --badge-completed-border: rgba(99, 153, 34, 0.4);
-}
-
-.badge {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 10px;
-  white-space: nowrap;
-}
-
-.badge--running   { background: var(--badge-running-bg);   color: var(--badge-running-color);   border: 1px solid var(--badge-running-border); }
-.badge--queued    { background: var(--badge-queued-bg);    color: var(--badge-queued-color);    border: 1px solid var(--badge-queued-border); }
-.badge--pending   { background: var(--badge-pending-bg);   color: var(--badge-pending-color);   border: 1px solid var(--badge-pending-border); }
-.badge--completed { background: var(--badge-completed-bg); color: var(--badge-completed-color); border: 1px solid var(--badge-completed-border); }
-
-/* Stop button (queued) */
-.stop-btn {
-  width: 24px;
-  height: 24px;
-  border-radius: 5px;
-  border: 1px solid rgba(239,159,39,0.4);
-  background: rgba(239,159,39,0.1);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.stop-btn:hover {
-  background: rgba(239,159,39,0.2);
-  border-color: #EF9F27;
-  box-shadow: 0 2px 6px rgba(239,159,39,0.2);
-}
-
-.stop-btn svg {
-  width: 10px;
-  height: 10px;
-  fill: #854F0B;
-}
-
-/* Add / View buttons */
-.add-btn, .view-btn {
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
-  border: 1.5px solid var(--primary-border-color);
-  background: linear-gradient(135deg, var(--primary-gradient-light-start), var(--primary-gradient-light-end));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.add-btn svg, .view-btn svg {
-  width: 13px;
-  height: 13px;
-  stroke: var(--primary-color);
-  transition: stroke 0.2s;
-}
-
-.add-btn:hover:not(:disabled), .view-btn:hover:not(:disabled) {
-  background: var(--primary-gradient);
-  border-color: var(--primary-color);
-  box-shadow: 0 2px 8px var(--primary-shadow);
-  transform: translateX(-1px);
-}
-
-.add-btn:hover:not(:disabled) svg, .view-btn:hover:not(:disabled) svg { stroke: white; }
-
-.add-btn.added {
-  background: linear-gradient(135deg, rgba(34,197,94,0.12), rgba(74,222,128,0.12));
-  border-color: rgba(34,197,94,0.4);
-}
-
-.add-btn.added svg { stroke: #15803d; }
-
-.add-btn.added:hover:not(:disabled) {
-  background: linear-gradient(135deg, #22c55e, #4ade80);
-  border-color: #22c55e;
-}
-
-.add-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-
-/* Delete checkbox in row */
-.delete-checkbox {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-/* ═══════════════════════════════════════
-   Skeleton Loader
-═══════════════════════════════════════ */
-.skeleton-header {
-  height: 36px;
-  background: linear-gradient(90deg, var(--primary-gradient-light-start) 0%, var(--primary-gradient-medium-start) 50%, var(--primary-gradient-light-start) 100%);
+  border-radius: 11px;
+  background: linear-gradient(
+    90deg,
+    var(--gs-s2) 25%,
+    var(--gs-border) 50%,
+    var(--gs-s2) 75%
+  );
   background-size: 200% 100%;
-  border-radius: 10px 10px 0 0;
-  animation: shimmer 1.5s infinite;
-  margin-bottom: 8px;
+  animation: shimmer 1.4s ease-in-out infinite;
 }
 
-.skeleton-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 12px;
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  margin-bottom: 6px;
+
+
+
+
+
+
+
+
+"defaultModel": {
+  "label": "Default Model",
+  "placeholder": "Select a model",
+  "hint": "Applied to all new sessions",
+  "error": "Please select a default model."
 }
 
-.skeleton-icon {
-  width: 34px;
-  height: 34px;
-  border-radius: 8px;
-  background: linear-gradient(90deg, var(--primary-gradient-light-start) 0%, var(--primary-gradient-medium-start) 50%, var(--primary-gradient-light-start) 100%);
-  background-size: 200% 100%;
-  animation: shimmer 1.5s infinite;
-  flex-shrink: 0;
-}
 
-.skeleton-details { flex: 1; display: flex; flex-direction: column; gap: 6px; }
 
-.skeleton-name {
-  height: 13px;
-  width: 65%;
-  background: linear-gradient(90deg, var(--primary-gradient-light-start) 0%, var(--primary-gradient-medium-start) 50%, var(--primary-gradient-light-start) 100%);
-  background-size: 200% 100%;
-  border-radius: 4px;
-  animation: shimmer 1.5s infinite;
-}
 
-.skeleton-date {
-  height: 10px;
-  width: 45%;
-  background: linear-gradient(90deg, var(--primary-gradient-lighter-start) 0%, var(--primary-gradient-light-start) 50%, var(--primary-gradient-lighter-start) 100%);
-  background-size: 200% 100%;
-  border-radius: 4px;
-  animation: shimmer 1.5s infinite 0.2s;
-}
 
-.skeleton-badge {
-  width: 60px;
-  height: 20px;
-  border-radius: 10px;
-  background: linear-gradient(90deg, var(--primary-gradient-light-start) 0%, var(--primary-gradient-medium-start) 50%, var(--primary-gradient-light-start) 100%);
-  background-size: 200% 100%;
-  animation: shimmer 1.5s infinite;
-  flex-shrink: 0;
-}
 
-@keyframes shimmer {
-  0%   { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-
-/* ═══════════════════════════════════════
-   No Results
-═══════════════════════════════════════ */
-.no-results {
-  padding: 18px;
-  text-align: center;
-}
-
-.no-results p {
-  font-size: 12px;
-  color: var(--text-color);
-  opacity: 0.5;
-  margin: 0;
-}
-
-/* ═══════════════════════════════════════
-   Empty State
-═══════════════════════════════════════ */
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 24px 0;
-  animation: fadeIn 0.4s ease;
-}
-
-.empty-icon {
-  width: 48px;
-  height: 48px;
-  background: linear-gradient(135deg, var(--primary-gradient-light-start), var(--primary-gradient-light-end));
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 12px;
-}
-
-.empty-icon svg {
-  width: 26px;
-  height: 26px;
-  stroke: var(--primary-color);
-}
-
-.empty-title {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--text-color);
-  margin: 0 0 4px 0;
-}
-
-.empty-desc {
-  font-size: 13px;
-  color: var(--text-color);
-  opacity: 0.6;
-  margin: 0 0 28px 0;
-  text-align: center;
-}
-
-.guide-steps {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.guide-step {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  padding: 10px 12px;
-  background: var(--bg-color);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  transition: all 0.2s;
-  animation: slideDown 0.25s ease;
-}
-
-.guide-step:hover {
-  border-color: var(--primary-color);
-  transform: translateX(3px);
-}
-
-.step-num {
-  width: 26px;
-  height: 26px;
-  background: var(--primary-gradient);
-  color: white;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  font-weight: 700;
-  flex-shrink: 0;
-}
-
-.step-title {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--text-color);
-  margin: 0 0 2px 0;
-}
-
-.step-desc {
-  font-size: 13px;
-  color: var(--text-color);
-  opacity: 0.7;
-  margin: 0;
-  line-height: 1.5;
-}
-
-.step-desc strong { color: var(--primary-color); font-weight: 600; }
-
-.view-more-btn {
-  width: 100%;
-  padding: 10px;
-  background: linear-gradient(135deg, var(--primary-gradient-light-start), var(--primary-gradient-light-end));
-  border: 1.5px solid var(--primary-border-color);
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-color);
-  cursor: pointer;
-  transition: all 0.2s;
-  margin-top: 4px;
-}
-
-.view-more-btn:hover {
-  background: linear-gradient(135deg, var(--primary-gradient-medium-start), var(--primary-gradient-medium-end));
-  border-color: var(--primary-color);
-}
-
-/* ═══════════════════════════════════════
-   Delete Confirmation Modal
-═══════════════════════════════════════ */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  backdrop-filter: blur(3px);
-  animation: fadeIn 0.2s ease;
-}
-
-.modal {
-  background: var(--bg-color);
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  box-shadow: 0 16px 48px rgba(0,0,0,0.25);
-  max-width: 440px;
-  width: 90%;
-  animation: modalIn 0.25s ease;
-}
-
-@keyframes modalIn {
-  from { opacity: 0; transform: translateY(-16px) scale(0.97); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-.modal-header {
-  padding: 20px 20px 14px 20px;
-  border-bottom: 1px solid var(--border-color);
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  position: relative;
-}
-
-.modal-icon {
-  width: 42px;
-  height: 42px;
-  background: rgba(239,68,68,0.1);
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.modal-icon svg {
-  width: 24px;
-  height: 24px;
-  stroke: #ef4444;
-}
-
-.modal-title {
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--text-color);
-  margin: 0;
-  flex: 1;
-}
-
-.modal-close {
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  width: 28px;
-  height: 28px;
-  background: transparent;
-  border: none;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.modal-close:hover:not(:disabled) { background: rgba(239,68,68,0.1); }
-.modal-close:disabled { opacity: 0.4; cursor: not-allowed; }
-.modal-close svg { width: 16px; height: 16px; stroke: var(--text-color); opacity: 0.6; }
-
-.modal-body { padding: 20px; }
-
-.modal-msg {
-  font-size: 14px;
-  color: var(--text-color);
-  margin: 0 0 10px 0;
-  line-height: 1.6;
-}
-
-.modal-msg strong { color: #ef4444; }
-
-.modal-warning {
-  font-size: 13px;
-  color: var(--text-color);
-  opacity: 0.65;
-  margin: 0;
-  padding: 10px 12px;
-  background: rgba(239,68,68,0.04);
-  border-left: 3px solid #ef4444;
-  border-radius: 4px;
-  line-height: 1.5;
-}
-
-.modal-footer {
-  padding: 14px 20px 20px 20px;
-  display: flex;
-  gap: 10px;
-  justify-content: flex-end;
-}
-
-/* ═══════════════════════════════════════
-   Row Animations
-═══════════════════════════════════════ */
-.file-row.adding-animation,
-.file-row.removing-animation,
-.file-row.success-animation,
-.file-row.failure-animation,
-.file-row.new-item-animation {
-  position: relative;
-  overflow: hidden;
-}
-
-.file-row.adding-animation::after,
-.file-row.removing-animation::after,
-.file-row.success-animation::after,
-.file-row.failure-animation::after,
-.file-row.new-item-animation::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 8px;
-  pointer-events: none;
-  z-index: 1;
-}
-
-/* Plus clicked → sweep flows right to left */
-.file-row.adding-animation::after {
-  background: linear-gradient(90deg, transparent 0%, var(--primary-glow-medium) 40%, var(--primary-glow-strong) 50%, var(--primary-glow-medium) 60%, transparent 100%);
-  animation: sweepRightToLeft 0.7s ease-out;
-}
-
-/* Minus clicked → sweep flows left to right */
-.file-row.removing-animation::after {
-  background: linear-gradient(90deg, transparent 0%, rgba(239,68,68,0.25) 40%, rgba(239,68,68,0.4) 50%, rgba(239,68,68,0.25) 60%, transparent 100%);
-  animation: sweepLeftToRight 0.7s ease-out;
-}
-
-.file-row.success-animation::after {
-  background: linear-gradient(90deg, transparent 0%, rgba(34,197,94,0.25) 40%, rgba(74,222,128,0.4) 50%, rgba(34,197,94,0.25) 60%, transparent 100%);
-  animation: sweepRightToLeft 0.8s ease-out;
-}
-
-.file-row.failure-animation::after {
-  background: linear-gradient(90deg, transparent 0%, rgba(239,68,68,0.3) 40%, rgba(239,68,68,0.45) 50%, rgba(239,68,68,0.3) 60%, transparent 100%);
-  animation: sweepLeftToRight 0.8s ease-out;
-}
-
-.file-row > * { position: relative; z-index: 2; }
-
-/* Right to left: enters from right, exits to left */
-@keyframes sweepRightToLeft {
-  from { transform: translateX(100%); opacity: 0; }
-  50%  { opacity: 1; }
-  to   { transform: translateX(-100%); opacity: 0; }
-}
-
-/* Left to right: enters from left, exits to right */
-@keyframes sweepLeftToRight {
-  from { transform: translateX(-100%); opacity: 0; }
-  50%  { opacity: 1; }
-  to   { transform: translateX(100%); opacity: 0; }
-}
-
-.file-row.new-item-animation {
-  animation: newItem 0.5s ease-out;
-}
-
-@keyframes newItem {
-  from { transform: translateY(-10px); opacity: 0; }
-  to   { transform: translateY(0); opacity: 1; }
-}
-
-/* ═══════════════════════════════════════
-   Shared Animations
-═══════════════════════════════════════ */
-@keyframes slideDown {
-  from { opacity: 0; transform: translateY(-8px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-
-.spinning {
-  animation: spin 0.9s linear infinite;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
-}
-
-/* ═══════════════════════════════════════
-   Responsive ≤ 1400px
-═══════════════════════════════════════ */
-@media screen and (max-width: 1400px) {
-  .panel-header  { padding: 12px 14px; }
-  .panel-content { padding: 12px 14px; gap: 8px; min-height: 360px; }
-  .filter-section { padding: 12px 14px; }
-  .poll-bar { padding: 6px 14px; }
-  .delete-action-bar { padding: 8px 14px; }
-
-  .panel-title { font-size: 14px; padding-left: 12px; }
-  .panel-title::before { height: 14px; }
-
-  .date-text { font-size: 10px; }
-  .date-icon { width: 12px; height: 12px; }
-  .arrow-icon { width: 10px; height: 10px; }
-
-  .icon-btn { width: 27px; height: 27px; }
-  .icon-btn svg { width: 13px; height: 13px; }
-
-  .section-header { padding: 8px 12px; }
-  .section-label  { font-size: 12px; }
-  .section-count  { font-size: 11px; }
-
-  .section-body { max-height: 220px; }
-
-  .file-row   { padding: 8px 10px; gap: 8px; }
-  .file-icon  { width: 30px; height: 30px; }
-  .file-icon svg { width: 14px; height: 14px; }
-
-  .file-name  { font-size: 12px; }
-  .file-id    { font-size: 11px; }
-  .file-date  { font-size: 11px; }
-
-  .badge { font-size: 10px; padding: 2px 6px; }
-  .stop-btn { width: 22px; height: 22px; }
-  .add-btn, .view-btn { width: 24px; height: 24px; }
-  .add-btn svg, .view-btn svg { width: 11px; height: 11px; }
-
-  .progress-pct { font-size: 10px; }
-
-  .cancel-btn, .confirm-delete-btn, .start-inference-btn { font-size: 12px; }
-
-  .modal { max-width: 90%; }
-  .modal-title { font-size: 16px; }
-  .modal-msg { font-size: 13px; }
-  .modal-warning { font-size: 12px; }
-  .modal-footer { flex-direction: column; }
-  .modal-cancel-btn, .modal-confirm-btn { width: 100%; justify-content: center; }
-
-  .step-title { font-size: 13px; }
-  .step-desc  { font-size: 12px; }
-  .view-more-btn { font-size: 12px; }
+"defaultModel": {
+  "label": "기본 모델",
+  "placeholder": "모델 선택",
+  "hint": "모든 새 세션에 적용됩니다",
+  "error": "기본 모델을 선택해 주세요."
 }
