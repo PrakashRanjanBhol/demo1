@@ -1,162 +1,551 @@
-accessManagementSlice.ts
-------------------------
-
-import { createAsyncThunk, createSlice, PayloadAction } from '@reduxjs/toolkit';
+import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useDispatch, useSelector } from 'react-redux';
+import { Department } from '../api/accessManagementApi';
+import type { AppDispatch, RootState } from '../store';
 import {
-  Department,
-  UpdateEmployeeAccessRequest,
-  UpdateTeamAccessRequest,
-  fetchTeamAccessApi,
-  updateEmployeeAccessApi,
-  updateTeamAccessApi,
-} from '../../api/accessManagementApi';
+  fetchTeamAccess,
+  updateEmployeeAccess,
+  updateTeamAccess,
+} from '../store/slices/accessManagementSlice';
+import styles from './AccessManagement.module.scss';
+import pageStyles from './PageShell.module.scss';
 
-interface AccessManagementState {
-  departments: Department[];
-  loading: boolean;
-  error: string | null;
-  updatingTeams: string[];      // track dept names being updated
-  updatingEmployees: string[];  // track usernames being updated
+function getInitials(name: string): string {
+  return name.split('.').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
 }
 
-const initialState: AccessManagementState = {
-  departments: [],
-  loading: false,
-  error: null,
-  updatingTeams: [],
-  updatingEmployees: [],
-};
+function SkeletonList({ rows = 4 }: { rows?: number }) {
+  return (
+    <>
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className={styles.skeletonRow}>
+          <div className={styles.skeletonAvatar} />
+          <div className={styles.skeletonLine} />
+          <div className={styles.skeletonToggle} />
+        </div>
+      ))}
+    </>
+  );
+}
 
-export const fetchTeamAccess = createAsyncThunk(
-  'accessManagement/fetchTeamAccess',
-  async (_, { rejectWithValue }) => {
-    try {
-      return await fetchTeamAccessApi();
-    } catch (err: unknown) {
-      return rejectWithValue(err instanceof Error ? err.message : 'Failed to fetch');
+interface CheckboxProps {
+  checked: boolean;
+  indeterminate?: boolean;
+  onChange: () => void;
+}
+
+function Checkbox({ checked, indeterminate, onChange }: CheckboxProps) {
+  return (
+    <div
+      className={`${styles.checkbox} ${checked ? styles.checked : ''} ${indeterminate ? styles.indeterminate : ''}`}
+      onClick={(e) => { e.stopPropagation(); onChange(); }}
+    >
+      {indeterminate && !checked ? (
+        <svg viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <line x1="2" y1="5" x2="8" y2="5" />
+        </svg>
+      ) : checked ? (
+        <svg viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="1.5 5 4 7.5 8.5 2" />
+        </svg>
+      ) : null}
+    </div>
+  );
+}
+
+export default function AccessManagement() {
+  const { t } = useTranslation();
+  const dispatch = useDispatch<AppDispatch>();
+  const { departments, loading, error, updatingTeams, updatingEmployees } = useSelector(
+    (state: RootState) => state.accessManagement
+  );
+
+  const [selectedDept, setSelectedDept] = useState<Department | null>(null);
+  const [deptSearch, setDeptSearch] = useState('');
+  const [memberSearch, setMemberSearch] = useState('');
+  const [deptBulkMode, setDeptBulkMode] = useState(false);
+  const [memberBulkMode, setMemberBulkMode] = useState(false);
+  const [selectedDepts, setSelectedDepts] = useState<Set<string>>(new Set());
+  const [selectedMembers, setSelectedMembers] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    dispatch(fetchTeamAccess());
+  }, [dispatch]);
+
+  // sync selectedDept with store updates
+  useEffect(() => {
+    if (selectedDept) {
+      const updated = departments.find((d) => d.department_name === selectedDept.department_name);
+      if (updated) setSelectedDept(updated);
     }
-  }
-);
+  }, [departments]);
 
-export const updateTeamAccess = createAsyncThunk(
-  'accessManagement/updateTeamAccess',
-  async (payload: UpdateTeamAccessRequest[], { rejectWithValue, dispatch }) => {
-    try {
-      await updateTeamAccessApi(payload);
-      dispatch(fetchTeamAccess()); // re-fetch after team update
-      return payload;
-    } catch (err: unknown) {
-      return rejectWithValue(err instanceof Error ? err.message : 'Failed to update team access');
+  // auto-select first dept once loaded
+  useEffect(() => {
+    if (departments.length > 0 && !selectedDept) {
+      setSelectedDept(departments[0]);
     }
-  }
-);
+  }, [departments]);
 
-export const updateEmployeeAccess = createAsyncThunk(
-  'accessManagement/updateEmployeeAccess',
-  async (
-    payload: { updates: UpdateEmployeeAccessRequest[]; dept_name: string },
-    { rejectWithValue }
-  ) => {
-    try {
-      await updateEmployeeAccessApi(payload.updates);
-      return payload; // no fetch — update store directly
-    } catch (err: unknown) {
-      return rejectWithValue(err instanceof Error ? err.message : 'Failed to update employee access');
+  const filteredDepts = useMemo(() =>
+    departments.filter((d) =>
+      d.department_name.toLowerCase().includes(deptSearch.toLowerCase())
+    ), [departments, deptSearch]);
+
+  const filteredMembers = useMemo(() =>
+    (selectedDept?.members ?? []).filter((m) =>
+      m.username.toLowerCase().includes(memberSearch.toLowerCase())
+    ), [selectedDept, memberSearch]);
+
+  const handleTeamToggle = (dept: Department, e: React.MouseEvent) => {
+    e.stopPropagation();
+    dispatch(updateTeamAccess([{ department_name: dept.department_name, is_allowed: !dept.is_allowed }]));
+  };
+
+  const handleMemberToggle = (username: string, current: boolean) => {
+    if (!selectedDept) return;
+    dispatch(updateEmployeeAccess({
+      updates: [{ username, is_allowed: !current }],
+      dept_name: selectedDept.department_name,
+    }));
+  };
+
+  const toggleDeptSelect = (name: string) => {
+    setSelectedDepts((prev) => {
+      const next = new Set(prev);
+      next.has(name) ? next.delete(name) : next.add(name);
+      return next;
+    });
+  };
+
+  const toggleAllDepts = () => {
+    if (selectedDepts.size === filteredDepts.length) {
+      setSelectedDepts(new Set());
+    } else {
+      setSelectedDepts(new Set(filteredDepts.map((d) => d.department_name)));
     }
-  }
-);
+  };
 
-const accessManagementSlice = createSlice({
-  name: 'accessManagement',
-  initialState,
-  reducers: {},
-  extraReducers: (builder) => {
-    builder
-      // fetch
-      .addCase(fetchTeamAccess.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
-      .addCase(fetchTeamAccess.fulfilled, (state, action: PayloadAction<Department[]>) => {
-        state.loading = false;
-        state.departments = action.payload;
-      })
-      .addCase(fetchTeamAccess.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string;
-      })
+  const handleBulkDeptAction = (is_allowed: boolean) => {
+    const updates = Array.from(selectedDepts).map((department_name) => ({
+      department_name,
+      is_allowed,
+    }));
+    dispatch(updateTeamAccess(updates));
+    setSelectedDepts(new Set());
+    setDeptBulkMode(false);
+  };
 
-      // update team — track exact dept names
-      .addCase(updateTeamAccess.pending, (state, action) => {
-        state.updatingTeams = action.meta.arg.map((d) => d.department_name);
-      })
-      .addCase(updateTeamAccess.fulfilled, (state) => {
-        state.updatingTeams = [];
-      })
-      .addCase(updateTeamAccess.rejected, (state) => {
-        state.updatingTeams = [];
-      })
+  const toggleMemberSelect = (username: string) => {
+    setSelectedMembers((prev) => {
+      const next = new Set(prev);
+      next.has(username) ? next.delete(username) : next.add(username);
+      return next;
+    });
+  };
 
-      // update employee — track exact usernames, update store directly
-      .addCase(updateEmployeeAccess.pending, (state, action) => {
-        state.updatingEmployees = action.meta.arg.updates.map((u) => u.username);
-      })
-      .addCase(updateEmployeeAccess.fulfilled, (state, action) => {
-        state.updatingEmployees = [];
-        const { updates, dept_name } = action.payload;
-        const dept = state.departments.find((d) => d.department_name === dept_name);
-        if (dept) {
-          updates.forEach(({ username, is_allowed }) => {
-            const member = dept.members.find((m) => m.username === username);
-            if (member) member.is_allowed = is_allowed;
-          });
-        }
-      })
-      .addCase(updateEmployeeAccess.rejected, (state) => {
-        state.updatingEmployees = [];
-      });
-  },
-});
+  const toggleAllMembers = () => {
+    const eligible = filteredMembers.filter(() => !selectedDept?.is_allowed);
+    if (selectedMembers.size === eligible.length) {
+      setSelectedMembers(new Set());
+    } else {
+      setSelectedMembers(new Set(eligible.map((m) => m.username)));
+    }
+  };
 
-export default accessManagementSlice.reducer;
+  const handleBulkMemberAction = (is_allowed: boolean) => {
+    if (!selectedDept) return;
+    const updates = Array.from(selectedMembers).map((username) => ({ username, is_allowed }));
+    dispatch(updateEmployeeAccess({ updates, dept_name: selectedDept.department_name }));
+    setSelectedMembers(new Set());
+    setMemberBulkMode(false);
+  };
 
+  const deptAllSelected = selectedDepts.size === filteredDepts.length && filteredDepts.length > 0;
+  const deptIndeterminate = selectedDepts.size > 0 && !deptAllSelected;
+  const memberEligible = filteredMembers.filter(() => !selectedDept?.is_allowed);
+  const memberAllSelected = selectedMembers.size === memberEligible.length && memberEligible.length > 0;
+  const memberIndeterminate = selectedMembers.size > 0 && !memberAllSelected;
 
+  return (
+    <div className={pageStyles.page}>
+      <div className={pageStyles.pageHeader}>
+        <h1 className={pageStyles.title}>{t('settings.accessManagement.title')}</h1>
+        <p className={pageStyles.description}>{t('settings.accessManagement.description')}</p>
+      </div>
 
+      <div className={pageStyles.pageContent}>
+        <div className={styles.container}>
 
+          {/* ── LEFT: TEAMS ── */}
+          <div className={styles.panel}>
+            <div className={styles.panelHeader}>
+              <span className={styles.panelTitle}>
+                <span className={styles.panelDot} />
+                {t('settings.accessManagement.teamsColumn')}
+              </span>
+              {!loading && (
+                <span className={styles.panelCount}>{departments.length}</span>
+              )}
+              <button
+                className={`${styles.bulkBtn} ${deptBulkMode ? styles.active : ''}`}
+                title="Bulk select teams"
+                onClick={() => {
+                  setDeptBulkMode((v) => !v);
+                  setSelectedDepts(new Set());
+                }}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="5" width="4" height="4" rx="1" />
+                  <rect x="3" y="11" width="4" height="4" rx="1" />
+                  <rect x="3" y="17" width="4" height="4" rx="1" />
+                  <line x1="11" y1="7" x2="21" y2="7" />
+                  <line x1="11" y1="13" x2="21" y2="13" />
+                  <line x1="11" y1="19" x2="21" y2="19" />
+                </svg>
+              </button>
+            </div>
 
+            {/* dept search */}
+            <div className={styles.searchBox}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input
+                placeholder="Search teams..."
+                value={deptSearch}
+                onChange={(e) => setDeptSearch(e.target.value)}
+              />
+            </div>
 
+            {/* dept bulk select bar */}
+            {deptBulkMode && (
+              <div className={styles.bulkBar}>
+                <label className={styles.bulkBarCheck}>
+                  <Checkbox
+                    checked={deptAllSelected}
+                    indeterminate={deptIndeterminate}
+                    onChange={toggleAllDepts}
+                  />
+                  Select all
+                </label>
+                {selectedDepts.size > 0 && (
+                  <span className={styles.bulkCount}>{selectedDepts.size} selected</span>
+                )}
+              </div>
+            )}
 
+            <div className={styles.list}>
+              {loading ? (
+                <SkeletonList rows={4} />
+              ) : error ? (
+                <div className={styles.errorState}>
+                  <p>{t('settings.accessManagement.status.error')}</p>
+                  <button
+                    className={styles.retryBtn}
+                    onClick={() => dispatch(fetchTeamAccess())}
+                  >
+                    {t('settings.accessManagement.status.retry')}
+                  </button>
+                </div>
+              ) : filteredDepts.length === 0 ? (
+                <div className={styles.emptyState}>
+                  <div className={styles.emptyIcon}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                      <circle cx="11" cy="11" r="8" />
+                      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                    </svg>
+                  </div>
+                  <div className={styles.emptyText}>No teams found</div>
+                </div>
+              ) : (
+                filteredDepts.map((dept) => (
+                  <div
+                    key={dept.department_name}
+                    className={`${styles.teamRow} ${selectedDept?.department_name === dept.department_name ? styles.selected : ''}`}
+                    onClick={() => setSelectedDept(dept)}
+                  >
+                    {deptBulkMode && (
+                      <Checkbox
+                        checked={selectedDepts.has(dept.department_name)}
+                        onChange={() => toggleDeptSelect(dept.department_name)}
+                      />
+                    )}
 
+                    <div className={styles.teamIcon}>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                        <circle cx="9" cy="7" r="4" />
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                      </svg>
+                    </div>
 
+                    <div className={styles.teamInfo}>
+                      <div className={styles.teamName}>{dept.department_name}</div>
+                      <div className={styles.teamMeta}>
+                        {dept.members.length} member{dept.members.length !== 1 ? 's' : ''}
+                        {' · '}
+                        {dept.members.filter((m) => m.is_allowed).length} allowed
+                      </div>
+                    </div>
 
-AccessManagement.tsx
---------------------
+                    <div className={styles.rowRight}>
+                      {updatingTeams.includes(dept.department_name) ? (
+                        <div className={styles.spinner} />
+                      ) : (
+                        <label
+                          className={styles.toggle}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={dept.is_allowed}
+                            onChange={(e) => handleTeamToggle(dept, e as unknown as React.MouseEvent)}
+                          />
+                          <span className={styles.track} />
+                        </label>
+                      )}
+                      <span className={`${styles.toggleLabel} ${dept.is_allowed ? styles.on : styles.off}`}>
+                        {dept.is_allowed
+                          ? t('settings.accessManagement.allowed')
+                          : t('settings.accessManagement.revoked')}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
 
+            {/* dept bulk footer */}
+            {deptBulkMode && selectedDepts.size > 0 && (
+              <div className={styles.panelFooter}>
+                <span className={styles.footerInfo}>
+                  {selectedDepts.size} team{selectedDepts.size !== 1 ? 's' : ''} selected
+                </span>
+                <div className={styles.footerActions}>
+                  <button
+                    className={`${styles.footerBtn} ${styles.allow}`}
+                    disabled={updatingTeams.length > 0}
+                    onClick={() => handleBulkDeptAction(true)}
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                    Allow All
+                  </button>
+                  <button
+                    className={`${styles.footerBtn} ${styles.revoke}`}
+                    disabled={updatingTeams.length > 0}
+                    onClick={() => handleBulkDeptAction(false)}
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                    Revoke All
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
 
-// in member row — only show spinner for THIS member
-{updatingEmployees.includes(member.username) ? (
-  <div className={styles.spinner} />
-) : (
-  <label className={styles.toggle}>
-    <input
-      type="checkbox"
-      checked={member.is_allowed}
-      disabled={isTeamAllowed}
-      onChange={() => handleMemberToggle(member.username, member.is_allowed)}
-    />
-    <span className={styles.track} />
-  </label>
-)}
+          {/* ── RIGHT: MEMBERS ── */}
+          <div className={styles.panel}>
+            <div className={styles.panelHeader}>
+              <span className={styles.panelTitle}>
+                <span className={styles.panelDot} />
+                {selectedDept
+                  ? selectedDept.department_name
+                  : t('settings.accessManagement.membersColumn')}
+              </span>
+              {selectedDept && (
+                <span className={styles.panelCount}>{selectedDept.members.length}</span>
+              )}
+              {selectedDept && (
+                <button
+                  className={`${styles.bulkBtn} ${memberBulkMode ? styles.active : ''}`}
+                  title="Bulk select members"
+                  disabled={selectedDept.is_allowed}
+                  onClick={() => {
+                    setMemberBulkMode((v) => !v);
+                    setSelectedMembers(new Set());
+                  }}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="5" width="4" height="4" rx="1" />
+                    <rect x="3" y="11" width="4" height="4" rx="1" />
+                    <rect x="3" y="17" width="4" height="4" rx="1" />
+                    <line x1="11" y1="7" x2="21" y2="7" />
+                    <line x1="11" y1="13" x2="21" y2="13" />
+                    <line x1="11" y1="19" x2="21" y2="19" />
+                  </svg>
+                </button>
+              )}
+            </div>
 
+            {/* hint when team is fully allowed */}
+            {selectedDept?.is_allowed && (
+              <div className={styles.hintBanner}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+                {t('settings.accessManagement.memberAccessHint')}
+              </div>
+            )}
 
+            {/* member search */}
+            {selectedDept && (
+              <div className={styles.searchBox}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input
+                  placeholder="Search members..."
+                  value={memberSearch}
+                  onChange={(e) => setMemberSearch(e.target.value)}
+                />
+              </div>
+            )}
 
+            {/* member bulk select bar */}
+            {memberBulkMode && !selectedDept?.is_allowed && (
+              <div className={styles.bulkBar}>
+                <label className={styles.bulkBarCheck}>
+                  <Checkbox
+                    checked={memberAllSelected}
+                    indeterminate={memberIndeterminate}
+                    onChange={toggleAllMembers}
+                  />
+                  Select all
+                </label>
+                {selectedMembers.size > 0 && (
+                  <span className={styles.bulkCount}>{selectedMembers.size} selected</span>
+                )}
+              </div>
+            )}
 
+            <div className={styles.list}>
+              {loading ? (
+                <SkeletonList rows={4} />
+              ) : !selectedDept ? (
+                <div className={styles.emptyState}>
+                  <div className={styles.emptyIcon}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                      <circle cx="9" cy="7" r="4" />
+                    </svg>
+                  </div>
+                  <div className={styles.emptyText}>
+                    {t('settings.accessManagement.selectTeam')}
+                  </div>
+                  <div className={styles.emptySubText}>
+                    Click a team on the left to manage its members
+                  </div>
+                </div>
+              ) : filteredMembers.length === 0 ? (
+                <div className={styles.emptyState}>
+                  <div className={styles.emptyIcon}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                      <circle cx="12" cy="12" r="10" />
+                      <line x1="8" y1="12" x2="16" y2="12" />
+                    </svg>
+                  </div>
+                  <div className={styles.emptyText}>No members found</div>
+                </div>
+              ) : (
+                filteredMembers.map((member) => {
+                  const isTeamAllowed = selectedDept.is_allowed;
+                  const isUpdatingThis = updatingEmployees.includes(member.username);
 
+                  return (
+                    <div
+                      key={member.username}
+                      className={`${styles.memberRow} ${isTeamAllowed ? styles.dimmed : ''}`}
+                    >
+                      {memberBulkMode && !isTeamAllowed && (
+                        <Checkbox
+                          checked={selectedMembers.has(member.username)}
+                          onChange={() => toggleMemberSelect(member.username)}
+                        />
+                      )}
 
-const { departments, loading, error, updatingTeams, updatingEmployees } = useSelector(
-  (state: RootState) => state.accessManagement
-);
+                      <div className={styles.avatar}>
+                        {getInitials(member.username)}
+                      </div>
 
+                      <div className={styles.memberInfo}>
+                        <div className={styles.memberName}>{member.username}</div>
+                      </div>
 
+                      <div className={styles.rowRight}>
+                        {isUpdatingThis ? (
+                          <div className={styles.spinner} />
+                        ) : (
+                          <label className={styles.toggle}>
+                            <input
+                              type="checkbox"
+                              checked={member.is_allowed}
+                              disabled={isTeamAllowed}
+                              onChange={() =>
+                                handleMemberToggle(member.username, member.is_allowed)
+                              }
+                            />
+                            <span className={styles.track} />
+                          </label>
+                        )}
+                        <span className={`${styles.toggleLabel} ${member.is_allowed ? styles.on : styles.off}`}>
+                          {member.is_allowed
+                            ? t('settings.accessManagement.allowed')
+                            : t('settings.accessManagement.revoked')}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
 
+            {/* member bulk footer */}
+            {memberBulkMode && selectedMembers.size > 0 && !selectedDept?.is_allowed && (
+              <div className={styles.panelFooter}>
+                <span className={styles.footerInfo}>
+                  {selectedMembers.size} member{selectedMembers.size !== 1 ? 's' : ''} selected
+                </span>
+                <div className={styles.footerActions}>
+                  <button
+                    className={`${styles.footerBtn} ${styles.allow}`}
+                    disabled={updatingEmployees.length > 0}
+                    onClick={() => handleBulkMemberAction(true)}
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                    Allow
+                  </button>
+                  <button
+                    className={`${styles.footerBtn} ${styles.revoke}`}
+                    disabled={updatingEmployees.length > 0}
+                    onClick={() => handleBulkMemberAction(false)}
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                    Revoke
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
 
+        </div>
+      </div>
+    </div>
+  );
+}
