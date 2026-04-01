@@ -1,98 +1,101 @@
 accessManagementApi.ts
----------------------
+----------------------
 
 import axiosInstance from './axiosInstance';
 
 export interface Member {
-  name: string;
-  allowed: boolean;
+  username: string;
+  is_allowed: boolean;
 }
 
 export interface Department {
-  dept_name: string;
+  department_name: string;
   members: Member[];
-  allowed: boolean;
+  is_allowed: boolean;
 }
 
 export interface TeamAccessResponse {
   status: 'Success' | 'Error';
-  response: Department[];
+  result: Department[];
 }
 
 export interface UpdateTeamAccessRequest {
-  dept_name: string;
-  allowed: boolean;
+  department_name: string;
+  is_allowed: boolean;
 }
 
 export interface UpdateEmployeeAccessRequest {
-  name: string;
-  allowed: boolean;
+  username: string;
+  is_allowed: boolean;
 }
 
 export interface UpdateAccessResponse {
   status: 'Success' | 'Error';
 }
 
-// Mock data
 const mockData: Department[] = [
   {
-    dept_name: 'Engineering',
-    allowed: true,
+    department_name: 'Engineering',
+    is_allowed: true,
     members: [
-      { name: 'Alice Johnson', allowed: true },
-      { name: 'Bob Smith', allowed: true },
-      { name: 'Carol White', allowed: true },
+      { username: 'alice.johnson', is_allowed: true },
+      { username: 'bob.smith', is_allowed: true },
+      { username: 'carol.white', is_allowed: true },
     ],
   },
   {
-    dept_name: 'Design',
-    allowed: false,
+    department_name: 'Design',
+    is_allowed: false,
     members: [
-      { name: 'David Brown', allowed: true },
-      { name: 'Eva Martinez', allowed: false },
-      { name: 'Frank Lee', allowed: false },
+      { username: 'david.brown', is_allowed: true },
+      { username: 'eva.martinez', is_allowed: false },
+      { username: 'frank.lee', is_allowed: false },
     ],
   },
   {
-    dept_name: 'Marketing',
-    allowed: false,
+    department_name: 'Marketing',
+    is_allowed: false,
     members: [
-      { name: 'Grace Kim', allowed: false },
-      { name: 'Henry Wilson', allowed: true },
+      { username: 'grace.kim', is_allowed: false },
+      { username: 'henry.wilson', is_allowed: true },
+      { username: 'isla.davis', is_allowed: false },
     ],
   },
   {
-    dept_name: 'Finance',
-    allowed: true,
+    department_name: 'Finance',
+    is_allowed: true,
     members: [
-      { name: 'Isla Davis', allowed: true },
-      { name: 'James Garcia', allowed: true },
-      { name: 'Karen Lee', allowed: true },
+      { username: 'james.garcia', is_allowed: true },
+      { username: 'karen.lee', is_allowed: true },
+    ],
+  },
+  {
+    department_name: 'HR',
+    is_allowed: false,
+    members: [
+      { username: 'liam.jones', is_allowed: false },
+      { username: 'mia.clark', is_allowed: true },
+      { username: 'noah.hall', is_allowed: false },
     ],
   },
 ];
 
 export const fetchTeamAccessApi = async (): Promise<Department[]> => {
-  // mock — replace with real call:
-  // const response = await axiosInstance.get<TeamAccessResponse>('/get_team_access');
-  // return response.data.response;
   return new Promise((resolve) => setTimeout(() => resolve(mockData), 600));
 };
 
 export const updateTeamAccessApi = async (
-  payload: UpdateTeamAccessRequest
+  payload: UpdateTeamAccessRequest[]
 ): Promise<void> => {
-  // mock — replace with real call:
-  // await axiosInstance.post<UpdateAccessResponse>('/update_team_access', payload);
-  return new Promise((resolve) => setTimeout(resolve, 300));
+  // await axiosInstance.put('/auth/update_dept_access', payload);
+  return new Promise((resolve) => setTimeout(resolve, 350));
 };
 
 export const updateEmployeeAccessApi = async (
-  payload: UpdateEmployeeAccessRequest
+  payload: UpdateEmployeeAccessRequest[]
 ): Promise<void> => {
-  // mock — replace with real call:
-  // await axiosInstance.post<UpdateAccessResponse>('/update_employee_access', payload);
-  return new Promise((resolve) => setTimeout(resolve, 300));
+  // await axiosInstance.put('/auth/update_user_access', payload);
+  return new Promise((resolve) => setTimeout(resolve, 350));
 };
 
 
@@ -114,6 +117,8 @@ accessManagementSlice.ts
 import { createAsyncThunk, createSlice, PayloadAction } from '@reduxjs/toolkit';
 import {
   Department,
+  UpdateEmployeeAccessRequest,
+  UpdateTeamAccessRequest,
   fetchTeamAccessApi,
   updateEmployeeAccessApi,
   updateTeamAccessApi,
@@ -123,16 +128,16 @@ interface AccessManagementState {
   departments: Department[];
   loading: boolean;
   error: string | null;
-  updatingTeam: string | null;
-  updatingEmployee: string | null;
+  updatingTeams: boolean;
+  updatingEmployees: boolean;
 }
 
 const initialState: AccessManagementState = {
   departments: [],
   loading: false,
   error: null,
-  updatingTeam: null,
-  updatingEmployee: null,
+  updatingTeams: false,
+  updatingEmployees: false,
 };
 
 export const fetchTeamAccess = createAsyncThunk(
@@ -141,24 +146,20 @@ export const fetchTeamAccess = createAsyncThunk(
     try {
       return await fetchTeamAccessApi();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to fetch team access';
-      return rejectWithValue(message);
+      return rejectWithValue(err instanceof Error ? err.message : 'Failed to fetch');
     }
   }
 );
 
 export const updateTeamAccess = createAsyncThunk(
   'accessManagement/updateTeamAccess',
-  async (
-    payload: { dept_name: string; allowed: boolean },
-    { rejectWithValue }
-  ) => {
+  async (payload: UpdateTeamAccessRequest[], { rejectWithValue, dispatch }) => {
     try {
       await updateTeamAccessApi(payload);
+      dispatch(fetchTeamAccess());
       return payload;
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to update team access';
-      return rejectWithValue(message);
+      return rejectWithValue(err instanceof Error ? err.message : 'Failed to update team access');
     }
   }
 );
@@ -166,15 +167,15 @@ export const updateTeamAccess = createAsyncThunk(
 export const updateEmployeeAccess = createAsyncThunk(
   'accessManagement/updateEmployeeAccess',
   async (
-    payload: { name: string; allowed: boolean; dept_name: string },
-    { rejectWithValue }
+    payload: { updates: UpdateEmployeeAccessRequest[]; dept_name: string },
+    { rejectWithValue, dispatch }
   ) => {
     try {
-      await updateEmployeeAccessApi({ name: payload.name, allowed: payload.allowed });
+      await updateEmployeeAccessApi(payload.updates);
+      dispatch(fetchTeamAccess());
       return payload;
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to update employee access';
-      return rejectWithValue(message);
+      return rejectWithValue(err instanceof Error ? err.message : 'Failed to update employee access');
     }
   }
 );
@@ -185,7 +186,6 @@ const accessManagementSlice = createSlice({
   reducers: {},
   extraReducers: (builder) => {
     builder
-      // fetch
       .addCase(fetchTeamAccess.pending, (state) => {
         state.loading = true;
         state.error = null;
@@ -198,40 +198,23 @@ const accessManagementSlice = createSlice({
         state.loading = false;
         state.error = action.payload as string;
       })
-      // update team
-      .addCase(updateTeamAccess.pending, (state, action) => {
-        state.updatingTeam = action.meta.arg.dept_name;
+      .addCase(updateTeamAccess.pending, (state) => {
+        state.updatingTeams = true;
       })
-      .addCase(updateTeamAccess.fulfilled, (state, action) => {
-        state.updatingTeam = null;
-        const { dept_name, allowed } = action.payload;
-        const dept = state.departments.find((d) => d.dept_name === dept_name);
-        if (dept) {
-          dept.allowed = allowed;
-          // if team allowed, set all members to true
-          if (allowed) {
-            dept.members = dept.members.map((m) => ({ ...m, allowed: true }));
-          }
-        }
+      .addCase(updateTeamAccess.fulfilled, (state) => {
+        state.updatingTeams = false;
       })
       .addCase(updateTeamAccess.rejected, (state) => {
-        state.updatingTeam = null;
+        state.updatingTeams = false;
       })
-      // update employee
-      .addCase(updateEmployeeAccess.pending, (state, action) => {
-        state.updatingEmployee = action.meta.arg.name;
+      .addCase(updateEmployeeAccess.pending, (state) => {
+        state.updatingEmployees = true;
       })
-      .addCase(updateEmployeeAccess.fulfilled, (state, action) => {
-        state.updatingEmployee = null;
-        const { name, allowed, dept_name } = action.payload;
-        const dept = state.departments.find((d) => d.dept_name === dept_name);
-        if (dept) {
-          const member = dept.members.find((m) => m.name === name);
-          if (member) member.allowed = allowed;
-        }
+      .addCase(updateEmployeeAccess.fulfilled, (state) => {
+        state.updatingEmployees = false;
       })
       .addCase(updateEmployeeAccess.rejected, (state) => {
-        state.updatingEmployee = null;
+        state.updatingEmployees = false;
       });
   },
 });
@@ -250,101 +233,15 @@ export default accessManagementSlice.reducer;
 
 
 
-
-
-store.ts
---------
-
-import { configureStore } from '@reduxjs/toolkit';
-import roleReducer from './slices/roleSlice';
-import generalSettingsReducer from './slices/generalSettingsSlice';
-import accessManagementReducer from './slices/accessManagementSlice';
-
-export const store = configureStore({
-  reducer: {
-    roles: roleReducer,
-    generalSettings: generalSettingsReducer,
-    accessManagement: accessManagementReducer,
-  },
-});
-
-export type RootState = ReturnType<typeof store.getState>;
-export type AppDispatch = typeof store.dispatch;
-
-
-
-
-
-
-
-
-
-
-"accessManagement": {
-  "title": "Access Management",
-  "description": "Manage access and permissions for your entire team.",
-  "teamsColumn": "Teams",
-  "membersColumn": "Members",
-  "selectTeam": "Select a team to manage members",
-  "noMembers": "No members in this team",
-  "allowed": "Allowed",
-  "revoked": "Revoked",
-  "teamAccessHint": "Enabling team access grants access to all members",
-  "memberAccessHint": "Available only when team access is revoked",
-  "status": {
-    "loading": "Loading access data...",
-    "error": "Failed to load access data.",
-    "retry": "Retry"
-  }
-}
-
-
-
-
-
-
-
-
-
-
-"accessManagement": {
-  "title": "액세스 관리",
-  "description": "전체 팀의 액세스 및 권한을 관리합니다.",
-  "teamsColumn": "팀",
-  "membersColumn": "멤버",
-  "selectTeam": "팀을 선택하여 멤버를 관리하세요",
-  "noMembers": "이 팀에 멤버가 없습니다",
-  "allowed": "허용",
-  "revoked": "차단",
-  "teamAccessHint": "팀 액세스를 허용하면 모든 멤버에게 액세스가 부여됩니다",
-  "memberAccessHint": "팀 액세스가 차단된 경우에만 사용 가능합니다",
-  "status": {
-    "loading": "액세스 데이터 불러오는 중...",
-    "error": "액세스 데이터를 불러오지 못했습니다.",
-    "retry": "재시도"
-  }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
 AccessManagement.module.scss
 ----------------------------
 
 
 
+
+
 :global(:root) {
   --am-bg: #ffffff;
-  --am-bg2: #f5f4ff;
   --am-s2: #f7f6ff;
   --am-s3: #eeecff;
   --am-border: rgba(79, 70, 229, 0.11);
@@ -366,11 +263,11 @@ AccessManagement.module.scss
   --am-error-border: #fecaca;
   --am-selected-bg: #eef2ff;
   --am-selected-border: rgba(79, 70, 229, 0.3);
+  --am-checkbox-bg: #ffffff;
 }
 
 :global([data-theme='dark']) {
   --am-bg: #121214;
-  --am-bg2: #111113;
   --am-s2: #18171f;
   --am-s3: #1f1e2a;
   --am-border: rgba(124, 58, 237, 0.13);
@@ -392,6 +289,7 @@ AccessManagement.module.scss
   --am-error-border: rgba(248, 113, 113, 0.3);
   --am-selected-bg: rgba(124, 58, 237, 0.14);
   --am-selected-border: rgba(124, 58, 237, 0.35);
+  --am-checkbox-bg: #1f1e2a;
 }
 
 @keyframes fadeUp {
@@ -404,11 +302,18 @@ AccessManagement.module.scss
   100% { background-position: -200% 0; }
 }
 
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 /* ── LAYOUT ── */
 .container {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px;
+  gap: 14px;
   height: 100%;
   min-height: 0;
   animation: fadeUp 0.35s ease both;
@@ -432,7 +337,7 @@ AccessManagement.module.scss
     border-color: var(--am-border-h);
   }
 
-  &::after {
+  &::before {
     content: '';
     position: absolute;
     top: 0; left: 0; right: 0;
@@ -446,6 +351,7 @@ AccessManagement.module.scss
       transparent 100%
     );
     pointer-events: none;
+    z-index: 1;
   }
 }
 
@@ -453,8 +359,8 @@ AccessManagement.module.scss
 .panelHeader {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 14px 18px 13px;
+  gap: 8px;
+  padding: 12px 14px 11px;
   border-bottom: 1px solid var(--am-border);
   flex-shrink: 0;
 }
@@ -462,12 +368,13 @@ AccessManagement.module.scss
 .panelTitle {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   font-size: 0.6875rem;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--am-accent);
+  flex: 1;
 }
 
 .panelDot {
@@ -488,14 +395,152 @@ AccessManagement.module.scss
   padding: 2px 9px;
 }
 
+.bulkBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  border: 1px solid var(--am-border);
+  background: transparent;
+  color: var(--am-text3);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+
+  svg { width: 13px; height: 13px; }
+
+  &:hover {
+    background: var(--am-accent-light);
+    border-color: var(--am-border-h);
+    color: var(--am-accent);
+  }
+
+  &.active {
+    background: var(--am-accent-light);
+    border-color: var(--am-border-h);
+    color: var(--am-accent);
+  }
+}
+
+/* ── SEARCH BOX ── */
+.searchBox {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 8px 10px 0;
+  padding: 7px 11px;
+  border-radius: 9px;
+  background: var(--am-s2);
+  border: 1px solid var(--am-border);
+  flex-shrink: 0;
+  transition: border-color 0.18s, box-shadow 0.18s, background 0.18s;
+
+  &:focus-within {
+    background: var(--am-bg);
+    border-color: rgba(79, 70, 229, 0.4);
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.08);
+  }
+
+  svg {
+    width: 13px;
+    height: 13px;
+    color: var(--am-text4);
+    flex-shrink: 0;
+    transition: color 0.18s;
+  }
+
+  &:focus-within svg { color: var(--am-accent); }
+
+  input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    outline: none;
+    font-size: 0.78125rem;
+    font-family: 'DM Sans', system-ui, sans-serif;
+    color: var(--am-text);
+
+    &::placeholder { color: var(--am-text4); }
+  }
+}
+
+/* ── BULK SELECT BAR ── */
+.bulkBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 10px 0;
+  padding: 7px 12px;
+  border-radius: 9px;
+  background: var(--am-accent-light);
+  border: 1px solid var(--am-border-h);
+  flex-shrink: 0;
+  animation: slideIn 0.2s ease both;
+}
+
+.bulkBarCheck {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--am-accent);
+  user-select: none;
+}
+
+.checkbox {
+  width: 15px;
+  height: 15px;
+  border-radius: 4px;
+  border: 1.5px solid var(--am-border-h);
+  background: var(--am-checkbox-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: all 0.15s ease;
+
+  &.checked {
+    background: var(--am-accent);
+    border-color: var(--am-accent);
+
+    svg { display: block; }
+  }
+
+  &.indeterminate {
+    background: var(--am-accent);
+    border-color: var(--am-accent);
+
+    svg { display: block; }
+  }
+
+  svg {
+    width: 9px;
+    height: 9px;
+    display: none;
+    color: #fff;
+  }
+}
+
+.bulkCount {
+  font-size: 0.6875rem;
+  color: var(--am-accent);
+  font-weight: 600;
+}
+
 /* ── LIST ── */
 .list {
   flex: 1;
   overflow-y: auto;
-  padding: 8px;
+  padding: 8px 8px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 
   &::-webkit-scrollbar { width: 3px; }
   &::-webkit-scrollbar-thumb {
@@ -508,42 +553,35 @@ AccessManagement.module.scss
 .teamRow {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 11px 14px;
+  gap: 10px;
+  padding: 10px 12px;
   border-radius: 10px;
   cursor: pointer;
   border: 1px solid transparent;
-  transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+  transition: background 0.15s ease, border-color 0.15s ease;
   background: transparent;
 
-  &:hover {
-    background: var(--am-s2);
-    border-color: var(--am-border);
-  }
+  &:hover { background: var(--am-s2); border-color: var(--am-border); }
 
   &.selected {
     background: var(--am-selected-bg);
     border-color: var(--am-selected-border);
-    box-shadow: 0 2px 8px rgba(79, 70, 229, 0.10);
+    box-shadow: 0 2px 8px rgba(79, 70, 229, 0.08);
   }
 }
 
 .teamIcon {
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
   border-radius: 9px;
   background: var(--am-grad);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.25);
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.22);
 
-  svg {
-    width: 15px;
-    height: 15px;
-    color: #fff;
-  }
+  svg { width: 14px; height: 14px; color: #fff; }
 }
 
 .teamInfo {
@@ -551,7 +589,7 @@ AccessManagement.module.scss
   min-width: 0;
 
   .teamName {
-    font-size: 0.8125rem;
+    font-size: 0.8rem;
     font-weight: 600;
     color: var(--am-text);
     white-space: nowrap;
@@ -566,10 +604,10 @@ AccessManagement.module.scss
   }
 }
 
-.teamActions {
+.rowRight {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   flex-shrink: 0;
 }
 
@@ -577,35 +615,33 @@ AccessManagement.module.scss
 .memberRow {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
+  gap: 10px;
+  padding: 9px 12px;
   border-radius: 10px;
   border: 1px solid transparent;
-  transition: background 0.15s ease;
+  transition: background 0.15s ease, opacity 0.15s ease;
 
-  &:hover {
-    background: var(--am-s2);
-  }
+  &:hover { background: var(--am-s2); }
 
-  &.disabled {
+  &.dimmed {
     opacity: 0.45;
     pointer-events: none;
   }
 }
 
 .avatar {
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   background: var(--am-grad);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.6875rem;
+  font-size: 0.625rem;
   font-weight: 700;
   color: #fff;
   flex-shrink: 0;
-  box-shadow: 0 0 0 2px var(--am-bg), 0 0 0 3.5px rgba(79, 70, 229, 0.25);
+  box-shadow: 0 0 0 2px var(--am-bg), 0 0 0 3px rgba(79, 70, 229, 0.22);
 }
 
 .memberInfo {
@@ -613,7 +649,7 @@ AccessManagement.module.scss
   min-width: 0;
 
   .memberName {
-    font-size: 0.8125rem;
+    font-size: 0.78125rem;
     font-weight: 500;
     color: var(--am-text);
     white-space: nowrap;
@@ -623,17 +659,10 @@ AccessManagement.module.scss
 }
 
 /* ── TOGGLE ── */
-.toggleWrapper {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  flex-shrink: 0;
-}
-
 .toggleLabel {
-  font-size: 0.6875rem;
+  font-size: 0.625rem;
   font-weight: 600;
-  min-width: 42px;
+  min-width: 38px;
   text-align: right;
 
   &.on  { color: var(--am-success-color); }
@@ -642,16 +671,11 @@ AccessManagement.module.scss
 
 .toggle {
   position: relative;
-  width: 36px;
-  height: 20px;
+  width: 34px;
+  height: 19px;
   flex-shrink: 0;
 
-  input {
-    opacity: 0;
-    width: 0;
-    height: 0;
-    position: absolute;
-  }
+  input { opacity: 0; width: 0; height: 0; position: absolute; }
 
   .track {
     position: absolute;
@@ -665,10 +689,8 @@ AccessManagement.module.scss
     &::after {
       content: '';
       position: absolute;
-      top: 2px;
-      left: 2px;
-      width: 14px;
-      height: 14px;
+      top: 2px; left: 2px;
+      width: 13px; height: 13px;
       border-radius: 50%;
       background: var(--am-error-color);
       transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), background 0.2s ease;
@@ -680,21 +702,21 @@ AccessManagement.module.scss
     border-color: var(--am-success-border);
 
     &::after {
-      transform: translateX(16px);
+      transform: translateX(15px);
       background: var(--am-success-color);
     }
   }
 
   input:disabled + .track {
-    opacity: 0.5;
+    opacity: 0.45;
     cursor: not-allowed;
   }
 }
 
 /* ── SPINNER ── */
 .spinner {
-  width: 16px;
-  height: 16px;
+  width: 15px;
+  height: 15px;
   border: 2px solid var(--am-accent-light);
   border-top-color: var(--am-accent);
   border-radius: 50%;
@@ -702,7 +724,84 @@ AccessManagement.module.scss
   flex-shrink: 0;
 }
 
-@keyframes spin { to { transform: rotate(360deg); } }
+/* ── PANEL FOOTER (bulk actions) ── */
+.panelFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-top: 1px solid var(--am-border);
+  background: var(--am-s2);
+  flex-shrink: 0;
+  gap: 8px;
+  animation: slideIn 0.2s ease both;
+}
+
+.footerInfo {
+  font-size: 0.6875rem;
+  color: var(--am-text3);
+  font-weight: 500;
+}
+
+.footerActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.footerBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 0.71875rem;
+  font-weight: 600;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  cursor: pointer;
+  border: none;
+  transition: all 0.15s ease;
+
+  &.allow {
+    background: var(--am-success-bg);
+    color: var(--am-success-color);
+    border: 1px solid var(--am-success-border);
+
+    &:hover { filter: brightness(0.94); }
+  }
+
+  &.revoke {
+    background: var(--am-error-bg);
+    color: var(--am-error-color);
+    border: 1px solid var(--am-error-border);
+
+    &:hover { filter: brightness(0.94); }
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  svg { width: 11px; height: 11px; }
+}
+
+/* ── HINT BANNER ── */
+.hintBanner {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 12px;
+  margin: 6px 8px 0;
+  border-radius: 8px;
+  background: var(--am-accent-light);
+  border: 1px solid var(--am-border-h);
+  font-size: 0.6875rem;
+  color: var(--am-accent);
+  flex-shrink: 0;
+
+  svg { width: 11px; height: 11px; flex-shrink: 0; }
+}
 
 /* ── EMPTY STATE ── */
 .emptyState {
@@ -711,106 +810,56 @@ AccessManagement.module.scss
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 8px;
   padding: 32px 20px;
   text-align: center;
 
   .emptyIcon {
-    width: 44px;
-    height: 44px;
-    border-radius: 12px;
+    width: 40px;
+    height: 40px;
+    border-radius: 11px;
     background: var(--am-s3);
     border: 1px solid var(--am-border-h);
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-bottom: 4px;
+    margin-bottom: 2px;
 
-    svg {
-      width: 20px;
-      height: 20px;
-      color: var(--am-accent);
-      opacity: 0.7;
-    }
+    svg { width: 18px; height: 18px; color: var(--am-accent); opacity: 0.7; }
   }
 
-  .emptyText {
-    font-size: 0.8125rem;
-    font-weight: 600;
-    color: var(--am-text2);
-  }
-
-  .emptySubText {
-    font-size: 0.71875rem;
-    color: var(--am-text4);
-    max-width: 180px;
-    line-height: 1.6;
-  }
-}
-
-/* ── HINT BANNER ── */
-.hintBanner {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 8px 14px;
-  margin: 8px 8px 0;
-  border-radius: 8px;
-  background: var(--am-accent-light);
-  border: 1px solid var(--am-border-h);
-  font-size: 0.6875rem;
-  color: var(--am-accent);
-  flex-shrink: 0;
-
-  svg {
-    width: 12px;
-    height: 12px;
-    flex-shrink: 0;
-  }
+  .emptyText { font-size: 0.78125rem; font-weight: 600; color: var(--am-text2); }
+  .emptySubText { font-size: 0.6875rem; color: var(--am-text4); max-width: 170px; line-height: 1.6; }
 }
 
 /* ── SKELETON ── */
 .skeletonRow {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 11px 14px;
+  gap: 10px;
+  padding: 10px 12px;
   border-radius: 10px;
 }
 
-%shimmerBase {
-  border-radius: 5px;
-  background: linear-gradient(
-    90deg,
-    var(--am-s2) 25%,
-    var(--am-border) 50%,
-    var(--am-s2) 75%
-  );
+.skeletonAvatar {
+  width: 32px; height: 32px; border-radius: 9px; flex-shrink: 0;
+  background: linear-gradient(90deg, var(--am-s2) 25%, var(--am-border) 50%, var(--am-s2) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.4s ease-in-out infinite;
 }
 
-.skeletonAvatar {
-  @extend %shimmerBase;
-  width: 34px;
-  height: 34px;
-  border-radius: 9px;
-  flex-shrink: 0;
-}
-
 .skeletonLine {
-  @extend %shimmerBase;
-  height: 11px;
-  flex: 1;
-  border-radius: 4px;
+  flex: 1; height: 11px; border-radius: 4px;
+  background: linear-gradient(90deg, var(--am-s2) 25%, var(--am-border) 50%, var(--am-s2) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
 }
 
 .skeletonToggle {
-  @extend %shimmerBase;
-  width: 36px;
-  height: 20px;
-  border-radius: 999px;
-  flex-shrink: 0;
+  width: 34px; height: 19px; border-radius: 999px; flex-shrink: 0;
+  background: linear-gradient(90deg, var(--am-s2) 25%, var(--am-border) 50%, var(--am-s2) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
 }
 
 /* ── ERROR STATE ── */
@@ -823,11 +872,7 @@ AccessManagement.module.scss
   gap: 12px;
   padding: 40px 20px;
 
-  p {
-    margin: 0;
-    font-size: 0.8125rem;
-    color: var(--am-error-color);
-  }
+  p { margin: 0; font-size: 0.8125rem; color: var(--am-error-color); }
 }
 
 .retryBtn {
@@ -864,15 +909,11 @@ AccessManagement.module.scss
 
 
 
-
-
-
 AccessManagement.tsx
 --------------------
 
 
-
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useDispatch, useSelector } from 'react-redux';
 import { Department } from '../api/accessManagementApi';
@@ -886,12 +927,7 @@ import styles from './AccessManagement.module.scss';
 import pageStyles from './PageShell.module.scss';
 
 function getInitials(name: string): string {
-  return name
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2);
+  return name.split('.').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
 }
 
 function SkeletonList({ rows = 4 }: { rows?: number }) {
@@ -908,41 +944,146 @@ function SkeletonList({ rows = 4 }: { rows?: number }) {
   );
 }
 
+interface CheckboxProps {
+  checked: boolean;
+  indeterminate?: boolean;
+  onChange: () => void;
+}
+
+function Checkbox({ checked, indeterminate, onChange }: CheckboxProps) {
+  return (
+    <div
+      className={`${styles.checkbox} ${checked ? styles.checked : ''} ${indeterminate ? styles.indeterminate : ''}`}
+      onClick={(e) => { e.stopPropagation(); onChange(); }}
+    >
+      {indeterminate && !checked ? (
+        <svg viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <line x1="2" y1="5" x2="8" y2="5" />
+        </svg>
+      ) : checked ? (
+        <svg viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="1.5 5 4 7.5 8.5 2" />
+        </svg>
+      ) : null}
+    </div>
+  );
+}
+
 export default function AccessManagement() {
   const { t } = useTranslation();
   const dispatch = useDispatch<AppDispatch>();
-  const { departments, loading, error, updatingTeam, updatingEmployee } = useSelector(
+  const { departments, loading, error, updatingTeams, updatingEmployees } = useSelector(
     (state: RootState) => state.accessManagement
   );
 
   const [selectedDept, setSelectedDept] = useState<Department | null>(null);
+  const [deptSearch, setDeptSearch] = useState('');
+  const [memberSearch, setMemberSearch] = useState('');
 
-  useEffect(() => {
-    dispatch(fetchTeamAccess());
-  }, [dispatch]);
+  // bulk mode
+  const [deptBulkMode, setDeptBulkMode] = useState(false);
+  const [memberBulkMode, setMemberBulkMode] = useState(false);
+  const [selectedDepts, setSelectedDepts] = useState<Set<string>>(new Set());
+  const [selectedMembers, setSelectedMembers] = useState<Set<string>>(new Set());
 
-  // keep selectedDept in sync with store updates
+  useEffect(() => { dispatch(fetchTeamAccess()); }, [dispatch]);
+
+  // sync selectedDept with store
   useEffect(() => {
     if (selectedDept) {
-      const updated = departments.find((d) => d.dept_name === selectedDept.dept_name);
+      const updated = departments.find((d) => d.department_name === selectedDept.department_name);
       if (updated) setSelectedDept(updated);
     }
   }, [departments]);
 
-  // auto-select first dept once loaded
+  // auto-select first dept
   useEffect(() => {
     if (departments.length > 0 && !selectedDept) {
       setSelectedDept(departments[0]);
     }
   }, [departments]);
 
-  const handleTeamToggle = (dept: Department) => {
-    dispatch(updateTeamAccess({ dept_name: dept.dept_name, allowed: !dept.allowed }));
+  // filtered lists
+  const filteredDepts = useMemo(() =>
+    departments.filter((d) =>
+      d.department_name.toLowerCase().includes(deptSearch.toLowerCase())
+    ), [departments, deptSearch]);
+
+  const filteredMembers = useMemo(() =>
+    (selectedDept?.members ?? []).filter((m) =>
+      m.username.toLowerCase().includes(memberSearch.toLowerCase())
+    ), [selectedDept, memberSearch]);
+
+  // single team toggle
+  const handleTeamToggle = (dept: Department, e: React.MouseEvent) => {
+    e.stopPropagation();
+    dispatch(updateTeamAccess([{ department_name: dept.department_name, is_allowed: !dept.is_allowed }]));
   };
 
-  const handleMemberToggle = (deptName: string, memberName: string, current: boolean) => {
-    dispatch(updateEmployeeAccess({ name: memberName, allowed: !current, dept_name: deptName }));
+  // single member toggle
+  const handleMemberToggle = (username: string, current: boolean) => {
+    if (!selectedDept) return;
+    dispatch(updateEmployeeAccess({
+      updates: [{ username, is_allowed: !current }],
+      dept_name: selectedDept.department_name,
+    }));
   };
+
+  // bulk dept selection
+  const toggleDeptSelect = (name: string) => {
+    setSelectedDepts((prev) => {
+      const next = new Set(prev);
+      next.has(name) ? next.delete(name) : next.add(name);
+      return next;
+    });
+  };
+
+  const toggleAllDepts = () => {
+    if (selectedDepts.size === filteredDepts.length) {
+      setSelectedDepts(new Set());
+    } else {
+      setSelectedDepts(new Set(filteredDepts.map((d) => d.department_name)));
+    }
+  };
+
+  const handleBulkDeptAction = (is_allowed: boolean) => {
+    const updates = Array.from(selectedDepts).map((department_name) => ({ department_name, is_allowed }));
+    dispatch(updateTeamAccess(updates));
+    setSelectedDepts(new Set());
+    setDeptBulkMode(false);
+  };
+
+  // bulk member selection
+  const toggleMemberSelect = (username: string) => {
+    setSelectedMembers((prev) => {
+      const next = new Set(prev);
+      next.has(username) ? next.delete(username) : next.add(username);
+      return next;
+    });
+  };
+
+  const toggleAllMembers = () => {
+    const eligible = filteredMembers.filter(() => !selectedDept?.is_allowed);
+    if (selectedMembers.size === eligible.length) {
+      setSelectedMembers(new Set());
+    } else {
+      setSelectedMembers(new Set(eligible.map((m) => m.username)));
+    }
+  };
+
+  const handleBulkMemberAction = (is_allowed: boolean) => {
+    if (!selectedDept) return;
+    const updates = Array.from(selectedMembers).map((username) => ({ username, is_allowed }));
+    dispatch(updateEmployeeAccess({ updates, dept_name: selectedDept.department_name }));
+    setSelectedMembers(new Set());
+    setMemberBulkMode(false);
+  };
+
+  const deptAllSelected = selectedDepts.size === filteredDepts.length && filteredDepts.length > 0;
+  const deptIndeterminate = selectedDepts.size > 0 && !deptAllSelected;
+  const memberEligible = filteredMembers.filter(() => !selectedDept?.is_allowed);
+  const memberAllSelected = selectedMembers.size === memberEligible.length && memberEligible.length > 0;
+  const memberIndeterminate = selectedMembers.size > 0 && !memberAllSelected;
 
   return (
     <div className={pageStyles.page}>
@@ -961,10 +1102,54 @@ export default function AccessManagement() {
                 <span className={styles.panelDot} />
                 {t('settings.accessManagement.teamsColumn')}
               </span>
-              {!loading && (
-                <span className={styles.panelCount}>{departments.length}</span>
-              )}
+              {!loading && <span className={styles.panelCount}>{departments.length}</span>}
+              <button
+                className={`${styles.bulkBtn} ${deptBulkMode ? styles.active : ''}`}
+                title="Bulk select"
+                onClick={() => {
+                  setDeptBulkMode((v) => !v);
+                  setSelectedDepts(new Set());
+                }}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="5" width="4" height="4" rx="1" />
+                  <rect x="3" y="11" width="4" height="4" rx="1" />
+                  <rect x="3" y="17" width="4" height="4" rx="1" />
+                  <line x1="11" y1="7" x2="21" y2="7" />
+                  <line x1="11" y1="13" x2="21" y2="13" />
+                  <line x1="11" y1="19" x2="21" y2="19" />
+                </svg>
+              </button>
             </div>
+
+            {/* search */}
+            <div className={styles.searchBox}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input
+                placeholder="Search teams..."
+                value={deptSearch}
+                onChange={(e) => setDeptSearch(e.target.value)}
+              />
+            </div>
+
+            {/* bulk select bar */}
+            {deptBulkMode && (
+              <div className={styles.bulkBar}>
+                <label className={styles.bulkBarCheck}>
+                  <Checkbox
+                    checked={deptAllSelected}
+                    indeterminate={deptIndeterminate}
+                    onChange={toggleAllDepts}
+                  />
+                  Select all
+                </label>
+                {selectedDepts.size > 0 && (
+                  <span className={styles.bulkCount}>{selectedDepts.size} selected</span>
+                )}
+              </div>
+            )}
 
             <div className={styles.list}>
               {loading ? (
@@ -976,13 +1161,27 @@ export default function AccessManagement() {
                     {t('settings.accessManagement.status.retry')}
                   </button>
                 </div>
+              ) : filteredDepts.length === 0 ? (
+                <div className={styles.emptyState}>
+                  <div className={styles.emptyIcon}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+                  </div>
+                  <div className={styles.emptyText}>No teams found</div>
+                </div>
               ) : (
-                departments.map((dept) => (
+                filteredDepts.map((dept) => (
                   <div
-                    key={dept.dept_name}
-                    className={`${styles.teamRow} ${selectedDept?.dept_name === dept.dept_name ? styles.selected : ''}`}
+                    key={dept.department_name}
+                    className={`${styles.teamRow} ${selectedDept?.department_name === dept.department_name ? styles.selected : ''}`}
                     onClick={() => setSelectedDept(dept)}
                   >
+                    {deptBulkMode && (
+                      <Checkbox
+                        checked={selectedDepts.has(dept.department_name)}
+                        onChange={() => toggleDeptSelect(dept.department_name)}
+                      />
+                    )}
+
                     <div className={styles.teamIcon}>
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
@@ -993,32 +1192,29 @@ export default function AccessManagement() {
                     </div>
 
                     <div className={styles.teamInfo}>
-                      <div className={styles.teamName}>{dept.dept_name}</div>
+                      <div className={styles.teamName}>{dept.department_name}</div>
                       <div className={styles.teamMeta}>
                         {dept.members.length} member{dept.members.length !== 1 ? 's' : ''}
                         {' · '}
-                        {dept.members.filter((m) => m.allowed).length} allowed
+                        {dept.members.filter((m) => m.is_allowed).length} allowed
                       </div>
                     </div>
 
-                    <div className={styles.teamActions}>
-                      {updatingTeam === dept.dept_name ? (
+                    <div className={styles.rowRight}>
+                      {updatingTeams ? (
                         <div className={styles.spinner} />
                       ) : (
-                        <label
-                          className={styles.toggle}
-                          onClick={(e) => e.stopPropagation()}
-                        >
+                        <label className={styles.toggle} onClick={(e) => e.stopPropagation()}>
                           <input
                             type="checkbox"
-                            checked={dept.allowed}
-                            onChange={() => handleTeamToggle(dept)}
+                            checked={dept.is_allowed}
+                            onChange={(e) => handleTeamToggle(dept, e as unknown as React.MouseEvent)}
                           />
                           <span className={styles.track} />
                         </label>
                       )}
-                      <span className={`${styles.toggleLabel} ${dept.allowed ? styles.on : styles.off}`}>
-                        {dept.allowed
+                      <span className={`${styles.toggleLabel} ${dept.is_allowed ? styles.on : styles.off}`}>
+                        {dept.is_allowed
                           ? t('settings.accessManagement.allowed')
                           : t('settings.accessManagement.revoked')}
                       </span>
@@ -1027,6 +1223,35 @@ export default function AccessManagement() {
                 ))
               )}
             </div>
+
+            {/* bulk footer */}
+            {deptBulkMode && selectedDepts.size > 0 && (
+              <div className={styles.panelFooter}>
+                <span className={styles.footerInfo}>{selectedDepts.size} team{selectedDepts.size !== 1 ? 's' : ''} selected</span>
+                <div className={styles.footerActions}>
+                  <button
+                    className={`${styles.footerBtn} ${styles.allow}`}
+                    disabled={updatingTeams}
+                    onClick={() => handleBulkDeptAction(true)}
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                    Allow All
+                  </button>
+                  <button
+                    className={`${styles.footerBtn} ${styles.revoke}`}
+                    disabled={updatingTeams}
+                    onClick={() => handleBulkDeptAction(false)}
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                    Revoke All
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* ── RIGHT: MEMBERS ── */}
@@ -1034,14 +1259,33 @@ export default function AccessManagement() {
             <div className={styles.panelHeader}>
               <span className={styles.panelTitle}>
                 <span className={styles.panelDot} />
-                {selectedDept ? selectedDept.dept_name : t('settings.accessManagement.membersColumn')}
+                {selectedDept ? selectedDept.department_name : t('settings.accessManagement.membersColumn')}
               </span>
+              {selectedDept && <span className={styles.panelCount}>{selectedDept.members.length}</span>}
               {selectedDept && (
-                <span className={styles.panelCount}>{selectedDept.members.length}</span>
+                <button
+                  className={`${styles.bulkBtn} ${memberBulkMode ? styles.active : ''}`}
+                  title="Bulk select members"
+                  disabled={selectedDept.is_allowed}
+                  onClick={() => {
+                    setMemberBulkMode((v) => !v);
+                    setSelectedMembers(new Set());
+                  }}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="5" width="4" height="4" rx="1" />
+                    <rect x="3" y="11" width="4" height="4" rx="1" />
+                    <rect x="3" y="17" width="4" height="4" rx="1" />
+                    <line x1="11" y1="7" x2="21" y2="7" />
+                    <line x1="11" y1="13" x2="21" y2="13" />
+                    <line x1="11" y1="19" x2="21" y2="19" />
+                  </svg>
+                </button>
               )}
             </div>
 
-            {selectedDept && selectedDept.allowed && (
+            {/* hint when team is allowed */}
+            {selectedDept?.is_allowed && (
               <div className={styles.hintBanner}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="10" />
@@ -1049,6 +1293,37 @@ export default function AccessManagement() {
                   <line x1="12" y1="16" x2="12.01" y2="16" />
                 </svg>
                 {t('settings.accessManagement.memberAccessHint')}
+              </div>
+            )}
+
+            {/* search */}
+            {selectedDept && (
+              <div className={styles.searchBox}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input
+                  placeholder="Search members..."
+                  value={memberSearch}
+                  onChange={(e) => setMemberSearch(e.target.value)}
+                />
+              </div>
+            )}
+
+            {/* bulk select bar */}
+            {memberBulkMode && !selectedDept?.is_allowed && (
+              <div className={styles.bulkBar}>
+                <label className={styles.bulkBarCheck}>
+                  <Checkbox
+                    checked={memberAllSelected}
+                    indeterminate={memberIndeterminate}
+                    onChange={toggleAllMembers}
+                  />
+                  Select all
+                </label>
+                {selectedMembers.size > 0 && (
+                  <span className={styles.bulkCount}>{selectedMembers.size} selected</span>
+                )}
               </div>
             )}
 
@@ -1063,61 +1338,55 @@ export default function AccessManagement() {
                       <circle cx="9" cy="7" r="4" />
                     </svg>
                   </div>
-                  <div className={styles.emptyText}>
-                    {t('settings.accessManagement.selectTeam')}
-                  </div>
-                  <div className={styles.emptySubText}>
-                    Click on a team from the left panel to manage its members
-                  </div>
+                  <div className={styles.emptyText}>{t('settings.accessManagement.selectTeam')}</div>
+                  <div className={styles.emptySubText}>Click a team on the left to manage its members</div>
                 </div>
-              ) : selectedDept.members.length === 0 ? (
+              ) : filteredMembers.length === 0 ? (
                 <div className={styles.emptyState}>
                   <div className={styles.emptyIcon}>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="12" r="10" />
-                      <line x1="8" y1="12" x2="16" y2="12" />
-                    </svg>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="10" /><line x1="8" y1="12" x2="16" y2="12" /></svg>
                   </div>
-                  <div className={styles.emptyText}>
-                    {t('settings.accessManagement.noMembers')}
-                  </div>
+                  <div className={styles.emptyText}>No members found</div>
                 </div>
               ) : (
-                selectedDept.members.map((member) => {
-                  const isTeamAllowed = selectedDept.allowed;
-                  const isUpdating = updatingEmployee === member.name;
+                filteredMembers.map((member) => {
+                  const isTeamAllowed = selectedDept.is_allowed;
+                  const isUpdating = updatingEmployees;
 
                   return (
                     <div
-                      key={member.name}
-                      className={`${styles.memberRow} ${isTeamAllowed ? styles.disabled : ''}`}
+                      key={member.username}
+                      className={`${styles.memberRow} ${isTeamAllowed ? styles.dimmed : ''}`}
                     >
-                      <div className={styles.avatar}>
-                        {getInitials(member.name)}
-                      </div>
+                      {memberBulkMode && !isTeamAllowed && (
+                        <Checkbox
+                          checked={selectedMembers.has(member.username)}
+                          onChange={() => toggleMemberSelect(member.username)}
+                        />
+                      )}
+
+                      <div className={styles.avatar}>{getInitials(member.username)}</div>
 
                       <div className={styles.memberInfo}>
-                        <div className={styles.memberName}>{member.name}</div>
+                        <div className={styles.memberName}>{member.username}</div>
                       </div>
 
-                      <div className={styles.teamActions}>
-                        {isUpdating ? (
+                      <div className={styles.rowRight}>
+                        {isUpdating && selectedMembers.has(member.username) ? (
                           <div className={styles.spinner} />
                         ) : (
                           <label className={styles.toggle}>
                             <input
                               type="checkbox"
-                              checked={member.allowed}
+                              checked={member.is_allowed}
                               disabled={isTeamAllowed}
-                              onChange={() =>
-                                handleMemberToggle(selectedDept.dept_name, member.name, member.allowed)
-                              }
+                              onChange={() => handleMemberToggle(member.username, member.is_allowed)}
                             />
                             <span className={styles.track} />
                           </label>
                         )}
-                        <span className={`${styles.toggleLabel} ${member.allowed ? styles.on : styles.off}`}>
-                          {member.allowed
+                        <span className={`${styles.toggleLabel} ${member.is_allowed ? styles.on : styles.off}`}>
+                          {member.is_allowed
                             ? t('settings.accessManagement.allowed')
                             : t('settings.accessManagement.revoked')}
                         </span>
@@ -1127,6 +1396,35 @@ export default function AccessManagement() {
                 })
               )}
             </div>
+
+            {/* bulk footer */}
+            {memberBulkMode && selectedMembers.size > 0 && !selectedDept?.is_allowed && (
+              <div className={styles.panelFooter}>
+                <span className={styles.footerInfo}>{selectedMembers.size} member{selectedMembers.size !== 1 ? 's' : ''} selected</span>
+                <div className={styles.footerActions}>
+                  <button
+                    className={`${styles.footerBtn} ${styles.allow}`}
+                    disabled={updatingEmployees}
+                    onClick={() => handleBulkMemberAction(true)}
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                    Allow
+                  </button>
+                  <button
+                    className={`${styles.footerBtn} ${styles.revoke}`}
+                    disabled={updatingEmployees}
+                    onClick={() => handleBulkMemberAction(false)}
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                    Revoke
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
         </div>
@@ -1134,52 +1432,3 @@ export default function AccessManagement() {
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-import AccessManagement from './pages/AccessManagement';
-
-// inside routes:
-<Route path="access-management" element={<AccessManagement />} />
-
-
-
-
-
-SettingsLayout.tsx
-------------------
-
-{ label: t('settings.nav.accessManagement'), path: 'access-management' },
-
-
-
-
-
-"accessManagement": "Access Management"
-
-"accessManagement": "액세스 관리"
-
-
-
-SettingsLayout.tsx
-------------------
-
-// Access Management icon
-<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-</svg>
