@@ -1,10 +1,16 @@
+AccessManagement.tsx
+--------------------
+
+
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useDispatch, useSelector } from 'react-redux';
 import { Department } from '../api/accessManagementApi';
 import type { AppDispatch, RootState } from '../store';
 import {
-  fetchTeamAccess,
+  fetchDeptAccessList,
+  fetchUserAccessList,
+  setSelectedDeptId,
   updateEmployeeAccess,
   updateTeamAccess,
 } from '../store/slices/accessManagementSlice';
@@ -57,11 +63,18 @@ function Checkbox({ checked, indeterminate, onChange }: CheckboxProps) {
 export default function AccessManagement() {
   const { t } = useTranslation();
   const dispatch = useDispatch<AppDispatch>();
-  const { departments, loading, error, updatingTeams, updatingEmployees } = useSelector(
-    (state: RootState) => state.accessManagement
-  );
+  const {
+    departments,
+    members,
+    selectedDeptId,
+    deptLoading,
+    memberLoading,
+    deptError,
+    memberError,
+    updatingTeams,
+    updatingEmployees,
+  } = useSelector((state: RootState) => state.accessManagement);
 
-  const [selectedDept, setSelectedDept] = useState<Department | null>(null);
   const [deptSearch, setDeptSearch] = useState('');
   const [memberSearch, setMemberSearch] = useState('');
   const [deptBulkMode, setDeptBulkMode] = useState(false);
@@ -69,24 +82,24 @@ export default function AccessManagement() {
   const [selectedDepts, setSelectedDepts] = useState<Set<string>>(new Set());
   const [selectedMembers, setSelectedMembers] = useState<Set<string>>(new Set());
 
+  // initial load
   useEffect(() => {
-    dispatch(fetchTeamAccess());
+    dispatch(fetchDeptAccessList());
   }, [dispatch]);
 
-  // sync selectedDept with store updates
+  // auto-select first dept on load
   useEffect(() => {
-    if (selectedDept) {
-      const updated = departments.find((d) => d.department_name === selectedDept.department_name);
-      if (updated) setSelectedDept(updated);
+    if (departments.length > 0 && selectedDeptId === null) {
+      const first = departments[0];
+      dispatch(setSelectedDeptId(first.department_id));
+      dispatch(fetchUserAccessList(first.department_id));
     }
   }, [departments]);
 
-  // auto-select first dept once loaded
-  useEffect(() => {
-    if (departments.length > 0 && !selectedDept) {
-      setSelectedDept(departments[0]);
-    }
-  }, [departments]);
+  const selectedDept = useMemo(
+    () => departments.find((d) => d.department_id === selectedDeptId) ?? null,
+    [departments, selectedDeptId]
+  );
 
   const filteredDepts = useMemo(() =>
     departments.filter((d) =>
@@ -94,9 +107,17 @@ export default function AccessManagement() {
     ), [departments, deptSearch]);
 
   const filteredMembers = useMemo(() =>
-    (selectedDept?.members ?? []).filter((m) =>
+    members.filter((m) =>
       m.username.toLowerCase().includes(memberSearch.toLowerCase())
-    ), [selectedDept, memberSearch]);
+    ), [members, memberSearch]);
+
+  const handleDeptClick = (dept: Department) => {
+    dispatch(setSelectedDeptId(dept.department_id));
+    dispatch(fetchUserAccessList(dept.department_id));
+    setMemberSearch('');
+    setMemberBulkMode(false);
+    setSelectedMembers(new Set());
+  };
 
   const handleTeamToggle = (dept: Department, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -104,13 +125,12 @@ export default function AccessManagement() {
   };
 
   const handleMemberToggle = (username: string, current: boolean) => {
-    if (!selectedDept) return;
     dispatch(updateEmployeeAccess({
       updates: [{ username, is_allowed: !current }],
-      dept_name: selectedDept.department_name,
     }));
   };
 
+  // bulk dept
   const toggleDeptSelect = (name: string) => {
     setSelectedDepts((prev) => {
       const next = new Set(prev);
@@ -137,6 +157,7 @@ export default function AccessManagement() {
     setDeptBulkMode(false);
   };
 
+  // bulk members
   const toggleMemberSelect = (username: string) => {
     setSelectedMembers((prev) => {
       const next = new Set(prev);
@@ -146,26 +167,23 @@ export default function AccessManagement() {
   };
 
   const toggleAllMembers = () => {
-    const eligible = filteredMembers.filter(() => !selectedDept?.is_allowed);
-    if (selectedMembers.size === eligible.length) {
+    if (selectedMembers.size === filteredMembers.length) {
       setSelectedMembers(new Set());
     } else {
-      setSelectedMembers(new Set(eligible.map((m) => m.username)));
+      setSelectedMembers(new Set(filteredMembers.map((m) => m.username)));
     }
   };
 
   const handleBulkMemberAction = (is_allowed: boolean) => {
-    if (!selectedDept) return;
     const updates = Array.from(selectedMembers).map((username) => ({ username, is_allowed }));
-    dispatch(updateEmployeeAccess({ updates, dept_name: selectedDept.department_name }));
+    dispatch(updateEmployeeAccess({ updates }));
     setSelectedMembers(new Set());
     setMemberBulkMode(false);
   };
 
   const deptAllSelected = selectedDepts.size === filteredDepts.length && filteredDepts.length > 0;
   const deptIndeterminate = selectedDepts.size > 0 && !deptAllSelected;
-  const memberEligible = filteredMembers.filter(() => !selectedDept?.is_allowed);
-  const memberAllSelected = selectedMembers.size === memberEligible.length && memberEligible.length > 0;
+  const memberAllSelected = selectedMembers.size === filteredMembers.length && filteredMembers.length > 0;
   const memberIndeterminate = selectedMembers.size > 0 && !memberAllSelected;
 
   return (
@@ -178,14 +196,14 @@ export default function AccessManagement() {
       <div className={pageStyles.pageContent}>
         <div className={styles.container}>
 
-          {/* ── LEFT: TEAMS ── */}
+          {/* ── LEFT: DEPARTMENTS ── */}
           <div className={styles.panel}>
             <div className={styles.panelHeader}>
               <span className={styles.panelTitle}>
                 <span className={styles.panelDot} />
                 {t('settings.accessManagement.teamsColumn')}
               </span>
-              {!loading && (
+              {!deptLoading && (
                 <span className={styles.panelCount}>{departments.length}</span>
               )}
               <button
@@ -207,20 +225,18 @@ export default function AccessManagement() {
               </button>
             </div>
 
-            {/* dept search */}
             <div className={styles.searchBox}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="11" cy="11" r="8" />
                 <line x1="21" y1="21" x2="16.65" y2="16.65" />
               </svg>
               <input
-                placeholder="Search teams..."
+                placeholder="Search departments..."
                 value={deptSearch}
                 onChange={(e) => setDeptSearch(e.target.value)}
               />
             </div>
 
-            {/* dept bulk select bar */}
             {deptBulkMode && (
               <div className={styles.bulkBar}>
                 <label className={styles.bulkBarCheck}>
@@ -238,14 +254,14 @@ export default function AccessManagement() {
             )}
 
             <div className={styles.list}>
-              {loading ? (
-                <SkeletonList rows={4} />
-              ) : error ? (
+              {deptLoading ? (
+                <SkeletonList rows={5} />
+              ) : deptError ? (
                 <div className={styles.errorState}>
                   <p>{t('settings.accessManagement.status.error')}</p>
                   <button
                     className={styles.retryBtn}
-                    onClick={() => dispatch(fetchTeamAccess())}
+                    onClick={() => dispatch(fetchDeptAccessList())}
                   >
                     {t('settings.accessManagement.status.retry')}
                   </button>
@@ -258,14 +274,14 @@ export default function AccessManagement() {
                       <line x1="21" y1="21" x2="16.65" y2="16.65" />
                     </svg>
                   </div>
-                  <div className={styles.emptyText}>No teams found</div>
+                  <div className={styles.emptyText}>No departments found</div>
                 </div>
               ) : (
                 filteredDepts.map((dept) => (
                   <div
-                    key={dept.department_name}
-                    className={`${styles.teamRow} ${selectedDept?.department_name === dept.department_name ? styles.selected : ''}`}
-                    onClick={() => setSelectedDept(dept)}
+                    key={dept.department_id}
+                    className={`${styles.teamRow} ${selectedDeptId === dept.department_id ? styles.selected : ''}`}
+                    onClick={() => handleDeptClick(dept)}
                   >
                     {deptBulkMode && (
                       <Checkbox
@@ -286,9 +302,9 @@ export default function AccessManagement() {
                     <div className={styles.teamInfo}>
                       <div className={styles.teamName}>{dept.department_name}</div>
                       <div className={styles.teamMeta}>
-                        {dept.members.length} member{dept.members.length !== 1 ? 's' : ''}
-                        {' · '}
-                        {dept.members.filter((m) => m.is_allowed).length} allowed
+                        {dept.is_allowed
+                          ? t('settings.accessManagement.allowed')
+                          : t('settings.accessManagement.revoked')}
                       </div>
                     </div>
 
@@ -319,11 +335,10 @@ export default function AccessManagement() {
               )}
             </div>
 
-            {/* dept bulk footer */}
             {deptBulkMode && selectedDepts.size > 0 && (
               <div className={styles.panelFooter}>
                 <span className={styles.footerInfo}>
-                  {selectedDepts.size} team{selectedDepts.size !== 1 ? 's' : ''} selected
+                  {selectedDepts.size} dept{selectedDepts.size !== 1 ? 's' : ''} selected
                 </span>
                 <div className={styles.footerActions}>
                   <button
@@ -361,8 +376,8 @@ export default function AccessManagement() {
                   ? selectedDept.department_name
                   : t('settings.accessManagement.membersColumn')}
               </span>
-              {selectedDept && (
-                <span className={styles.panelCount}>{selectedDept.members.length}</span>
+              {selectedDept && !memberLoading && (
+                <span className={styles.panelCount}>{members.length}</span>
               )}
               {selectedDept && (
                 <button
@@ -386,7 +401,6 @@ export default function AccessManagement() {
               )}
             </div>
 
-            {/* hint when team is fully allowed */}
             {selectedDept?.is_allowed && (
               <div className={styles.hintBanner}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -398,7 +412,6 @@ export default function AccessManagement() {
               </div>
             )}
 
-            {/* member search */}
             {selectedDept && (
               <div className={styles.searchBox}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -413,7 +426,6 @@ export default function AccessManagement() {
               </div>
             )}
 
-            {/* member bulk select bar */}
             {memberBulkMode && !selectedDept?.is_allowed && (
               <div className={styles.bulkBar}>
                 <label className={styles.bulkBarCheck}>
@@ -431,9 +443,7 @@ export default function AccessManagement() {
             )}
 
             <div className={styles.list}>
-              {loading ? (
-                <SkeletonList rows={4} />
-              ) : !selectedDept ? (
+              {!selectedDept ? (
                 <div className={styles.emptyState}>
                   <div className={styles.emptyIcon}>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -445,8 +455,20 @@ export default function AccessManagement() {
                     {t('settings.accessManagement.selectTeam')}
                   </div>
                   <div className={styles.emptySubText}>
-                    Click a team on the left to manage its members
+                    Click a department on the left to manage its members
                   </div>
+                </div>
+              ) : memberLoading ? (
+                <SkeletonList rows={4} />
+              ) : memberError ? (
+                <div className={styles.errorState}>
+                  <p>{memberError}</p>
+                  <button
+                    className={styles.retryBtn}
+                    onClick={() => dispatch(fetchUserAccessList(selectedDept.department_id))}
+                  >
+                    {t('settings.accessManagement.status.retry')}
+                  </button>
                 </div>
               ) : filteredMembers.length === 0 ? (
                 <div className={styles.emptyState}>
@@ -465,7 +487,7 @@ export default function AccessManagement() {
 
                   return (
                     <div
-                      key={member.username}
+                      key={member.user_id}
                       className={`${styles.memberRow} ${isTeamAllowed ? styles.dimmed : ''}`}
                     >
                       {memberBulkMode && !isTeamAllowed && (
@@ -511,7 +533,6 @@ export default function AccessManagement() {
               )}
             </div>
 
-            {/* member bulk footer */}
             {memberBulkMode && selectedMembers.size > 0 && !selectedDept?.is_allowed && (
               <div className={styles.panelFooter}>
                 <span className={styles.footerInfo}>
@@ -549,3 +570,297 @@ export default function AccessManagement() {
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+accessManagementSlice.ts
+------------------------
+
+import { createAsyncThunk, createSlice, PayloadAction } from '@reduxjs/toolkit';
+import {
+  Department,
+  Member,
+  UpdateEmployeeAccessRequest,
+  UpdateTeamAccessRequest,
+  fetchDeptAccessListApi,
+  fetchUserAccessListApi,
+  updateEmployeeAccessApi,
+  updateTeamAccessApi,
+} from '../../api/accessManagementApi';
+
+interface AccessManagementState {
+  departments: Department[];
+  members: Member[];
+  selectedDeptId: number | null;
+  deptLoading: boolean;
+  memberLoading: boolean;
+  deptError: string | null;
+  memberError: string | null;
+  updatingTeams: string[];
+  updatingEmployees: string[];
+}
+
+const initialState: AccessManagementState = {
+  departments: [],
+  members: [],
+  selectedDeptId: null,
+  deptLoading: false,
+  memberLoading: false,
+  deptError: null,
+  memberError: null,
+  updatingTeams: [],
+  updatingEmployees: [],
+};
+
+export const fetchDeptAccessList = createAsyncThunk(
+  'accessManagement/fetchDeptAccessList',
+  async (_, { rejectWithValue }) => {
+    try {
+      return await fetchDeptAccessListApi();
+    } catch (err: unknown) {
+      return rejectWithValue(err instanceof Error ? err.message : 'Failed to fetch departments');
+    }
+  }
+);
+
+export const fetchUserAccessList = createAsyncThunk(
+  'accessManagement/fetchUserAccessList',
+  async (department_id: number, { rejectWithValue }) => {
+    try {
+      return await fetchUserAccessListApi(department_id);
+    } catch (err: unknown) {
+      return rejectWithValue(err instanceof Error ? err.message : 'Failed to fetch members');
+    }
+  }
+);
+
+export const updateTeamAccess = createAsyncThunk(
+  'accessManagement/updateTeamAccess',
+  async (
+    payload: UpdateTeamAccessRequest[],
+    { rejectWithValue, dispatch, getState }
+  ) => {
+    try {
+      await updateTeamAccessApi(payload);
+      // update dept is_allowed in store directly
+      // then re-fetch members for currently selected dept
+      const state = (getState() as { accessManagement: AccessManagementState }).accessManagement;
+      if (state.selectedDeptId !== null) {
+        dispatch(fetchUserAccessList(state.selectedDeptId));
+      }
+      return payload;
+    } catch (err: unknown) {
+      return rejectWithValue(err instanceof Error ? err.message : 'Failed to update team access');
+    }
+  }
+);
+
+export const updateEmployeeAccess = createAsyncThunk(
+  'accessManagement/updateEmployeeAccess',
+  async (
+    payload: { updates: UpdateEmployeeAccessRequest[] },
+    { rejectWithValue }
+  ) => {
+    try {
+      await updateEmployeeAccessApi(payload.updates);
+      return payload.updates;
+    } catch (err: unknown) {
+      return rejectWithValue(err instanceof Error ? err.message : 'Failed to update employee access');
+    }
+  }
+);
+
+const accessManagementSlice = createSlice({
+  name: 'accessManagement',
+  initialState,
+  reducers: {
+    setSelectedDeptId(state, action: PayloadAction<number>) {
+      state.selectedDeptId = action.payload;
+    },
+  },
+  extraReducers: (builder) => {
+    builder
+      // fetch depts
+      .addCase(fetchDeptAccessList.pending, (state) => {
+        state.deptLoading = true;
+        state.deptError = null;
+      })
+      .addCase(fetchDeptAccessList.fulfilled, (state, action: PayloadAction<Department[]>) => {
+        state.deptLoading = false;
+        state.departments = action.payload;
+      })
+      .addCase(fetchDeptAccessList.rejected, (state, action) => {
+        state.deptLoading = false;
+        state.deptError = action.payload as string;
+      })
+
+      // fetch members
+      .addCase(fetchUserAccessList.pending, (state) => {
+        state.memberLoading = true;
+        state.memberError = null;
+      })
+      .addCase(fetchUserAccessList.fulfilled, (state, action: PayloadAction<Member[]>) => {
+        state.memberLoading = false;
+        state.members = action.payload;
+      })
+      .addCase(fetchUserAccessList.rejected, (state, action) => {
+        state.memberLoading = false;
+        state.memberError = action.payload as string;
+      })
+
+      // update team — update store directly + fetch members
+      .addCase(updateTeamAccess.pending, (state, action) => {
+        state.updatingTeams = action.meta.arg.map((d) => d.department_name);
+      })
+      .addCase(updateTeamAccess.fulfilled, (state, action) => {
+        state.updatingTeams = [];
+        action.payload.forEach(({ department_name, is_allowed }) => {
+          const dept = state.departments.find((d) => d.department_name === department_name);
+          if (dept) dept.is_allowed = is_allowed;
+        });
+      })
+      .addCase(updateTeamAccess.rejected, (state) => {
+        state.updatingTeams = [];
+      })
+
+      // update employees — update store directly
+      .addCase(updateEmployeeAccess.pending, (state, action) => {
+        state.updatingEmployees = action.meta.arg.updates.map((u) => u.username);
+      })
+      .addCase(updateEmployeeAccess.fulfilled, (state, action) => {
+        state.updatingEmployees = [];
+        action.payload.forEach(({ username, is_allowed }) => {
+          const member = state.members.find((m) => m.username === username);
+          if (member) member.is_allowed = is_allowed;
+        });
+      })
+      .addCase(updateEmployeeAccess.rejected, (state) => {
+        state.updatingEmployees = [];
+      });
+  },
+});
+
+export const { setSelectedDeptId } = accessManagementSlice.actions;
+export default accessManagementSlice.reducer;
+
+
+
+
+
+
+
+
+
+
+accessManagementApi.ts
+----------------------
+
+import axiosInstance from './axiosInstance';
+
+export interface Department {
+  department_id: number;
+  department_name: string;
+  is_allowed: boolean;
+}
+
+export interface Member {
+  user_id: number;
+  username: string;
+  is_allowed: boolean;
+}
+
+export interface DeptAccessResponse {
+  status: 'Success' | 'Error';
+  result: Department[];
+}
+
+export interface UserAccessResponse {
+  status: 'Success' | 'Error';
+  result: Member[];
+}
+
+export interface UpdateTeamAccessRequest {
+  department_name: string;
+  is_allowed: boolean;
+}
+
+export interface UpdateEmployeeAccessRequest {
+  username: string;
+  is_allowed: boolean;
+}
+
+export interface UpdateAccessResponse {
+  status: 'Success' | 'Error';
+}
+
+// ── mock data ──
+const mockDepts: Department[] = [
+  { department_id: 1, department_name: 'Engineering', is_allowed: true },
+  { department_id: 2, department_name: 'Design', is_allowed: false },
+  { department_id: 3, department_name: 'Marketing', is_allowed: false },
+  { department_id: 4, department_name: 'Finance', is_allowed: true },
+  { department_id: 5, department_name: 'HR', is_allowed: false },
+];
+
+const mockMembers: Record<number, Member[]> = {
+  1: [
+    { user_id: 1, username: 'alice.johnson', is_allowed: true },
+    { user_id: 2, username: 'bob.smith', is_allowed: true },
+    { user_id: 3, username: 'carol.white', is_allowed: true },
+  ],
+  2: [
+    { user_id: 4, username: 'david.brown', is_allowed: true },
+    { user_id: 5, username: 'eva.martinez', is_allowed: false },
+    { user_id: 6, username: 'frank.lee', is_allowed: false },
+  ],
+  3: [
+    { user_id: 7, username: 'grace.kim', is_allowed: false },
+    { user_id: 8, username: 'henry.wilson', is_allowed: true },
+    { user_id: 9, username: 'isla.davis', is_allowed: false },
+  ],
+  4: [
+    { user_id: 10, username: 'james.garcia', is_allowed: true },
+    { user_id: 11, username: 'karen.lee', is_allowed: true },
+  ],
+  5: [
+    { user_id: 12, username: 'liam.jones', is_allowed: false },
+    { user_id: 13, username: 'mia.clark', is_allowed: true },
+    { user_id: 14, username: 'noah.hall', is_allowed: false },
+  ],
+};
+
+export const fetchDeptAccessListApi = async (): Promise<Department[]> => {
+  // return (await axiosInstance.get<DeptAccessResponse>('/auth/get_dept_access_list')).data.result;
+  return new Promise((resolve) => setTimeout(() => resolve(mockDepts), 600));
+};
+
+export const fetchUserAccessListApi = async (department_id: number): Promise<Member[]> => {
+  // return (await axiosInstance.get<UserAccessResponse>(`/auth/get_user_access_list/${department_id}`)).data.result;
+  return new Promise((resolve) =>
+    setTimeout(() => resolve(mockMembers[department_id] ?? []), 400)
+  );
+};
+
+export const updateTeamAccessApi = async (
+  payload: UpdateTeamAccessRequest[]
+): Promise<void> => {
+  // await axiosInstance.put('/auth/update_dept_access', payload);
+  return new Promise((resolve) => setTimeout(resolve, 350));
+};
+
+export const updateEmployeeAccessApi = async (
+  payload: UpdateEmployeeAccessRequest[]
+): Promise<void> => {
+  // await axiosInstance.put('/auth/update_user_access', payload);
+  return new Promise((resolve) => setTimeout(resolve, 350));
+};
