@@ -1,797 +1,753 @@
-accessManagementApi.ts
-----------------------
+en.json
+-------
 
-export interface UpdateTeamAccessRequest {
-  department_id: number;
-  is_allowed: boolean;
-}
-
-export interface UpdateEmployeeAccessRequest {
-  user_id: number;
-  is_allowed: boolean;
-}
-
-export const updateTeamAccessApi = async (
-  payload: UpdateTeamAccessRequest[]
-): Promise<void> => {
-  // await axiosInstance.put('/auth/update_dept_access', payload);
-  return new Promise((resolve) => setTimeout(resolve, 350));
-};
-
-export const updateEmployeeAccessApi = async (
-  payload: UpdateEmployeeAccessRequest[]
-): Promise<void> => {
-  // await axiosInstance.put('/auth/update_user_access', payload);
-  return new Promise((resolve) => setTimeout(resolve, 350));
-};
-
-
-
-
-
-
-
-
-accessManagementSlice.ts
------------------------
-
-
-
-import { createAsyncThunk, createSlice, PayloadAction } from '@reduxjs/toolkit';
-import {
-  Department,
-  Member,
-  UpdateEmployeeAccessRequest,
-  UpdateTeamAccessRequest,
-  fetchDeptAccessListApi,
-  fetchUserAccessListApi,
-  updateEmployeeAccessApi,
-  updateTeamAccessApi,
-} from '../../api/accessManagementApi';
-
-interface AccessManagementState {
-  departments: Department[];
-  members: Member[];
-  selectedDeptId: number | null;
-  deptLoading: boolean;
-  memberLoading: boolean;
-  deptError: string | null;
-  memberError: string | null;
-  updatingTeams: number[];      // department_id[]
-  updatingEmployees: number[];  // user_id[]
-}
-
-const initialState: AccessManagementState = {
-  departments: [],
-  members: [],
-  selectedDeptId: null,
-  deptLoading: false,
-  memberLoading: false,
-  deptError: null,
-  memberError: null,
-  updatingTeams: [],
-  updatingEmployees: [],
-};
-
-export const fetchDeptAccessList = createAsyncThunk(
-  'accessManagement/fetchDeptAccessList',
-  async (_, { rejectWithValue }) => {
-    try {
-      return await fetchDeptAccessListApi();
-    } catch (err: unknown) {
-      return rejectWithValue(err instanceof Error ? err.message : 'Failed to fetch departments');
-    }
-  }
-);
-
-export const fetchUserAccessList = createAsyncThunk(
-  'accessManagement/fetchUserAccessList',
-  async (department_id: number, { rejectWithValue }) => {
-    try {
-      return await fetchUserAccessListApi(department_id);
-    } catch (err: unknown) {
-      return rejectWithValue(err instanceof Error ? err.message : 'Failed to fetch members');
-    }
-  }
-);
-
-export const updateTeamAccess = createAsyncThunk(
-  'accessManagement/updateTeamAccess',
-  async (
-    payload: UpdateTeamAccessRequest[],
-    { rejectWithValue, getState, dispatch }
-  ) => {
-    try {
-      await updateTeamAccessApi(payload);
-
-      // only re-fetch members if the selected dept was one of the updated depts
-      const state = (getState() as { accessManagement: AccessManagementState }).accessManagement;
-      const updatedIds = payload.map((p) => p.department_id);
-      if (
-        state.selectedDeptId !== null &&
-        updatedIds.includes(state.selectedDeptId)
-      ) {
-        dispatch(fetchUserAccessList(state.selectedDeptId));
-      }
-
-      return payload;
-    } catch (err: unknown) {
-      return rejectWithValue(err instanceof Error ? err.message : 'Failed to update team access');
-    }
-  }
-);
-
-export const updateEmployeeAccess = createAsyncThunk(
-  'accessManagement/updateEmployeeAccess',
-  async (
-    payload: { updates: UpdateEmployeeAccessRequest[] },
-    { rejectWithValue }
-  ) => {
-    try {
-      await updateEmployeeAccessApi(payload.updates);
-      return payload.updates;
-    } catch (err: unknown) {
-      return rejectWithValue(err instanceof Error ? err.message : 'Failed to update employee access');
-    }
-  }
-);
-
-const accessManagementSlice = createSlice({
-  name: 'accessManagement',
-  initialState,
-  reducers: {
-    setSelectedDeptId(state, action: PayloadAction<number>) {
-      state.selectedDeptId = action.payload;
-    },
+"resetPassword": {
+  "title": "Reset Password",
+  "description": "Update your account password securely.",
+  "username": {
+    "label": "Username",
+    "hint": "Your username cannot be changed"
   },
-  extraReducers: (builder) => {
-    builder
-      // fetch depts
-      .addCase(fetchDeptAccessList.pending, (state) => {
-        state.deptLoading = true;
-        state.deptError = null;
-      })
-      .addCase(fetchDeptAccessList.fulfilled, (state, action: PayloadAction<Department[]>) => {
-        state.deptLoading = false;
-        state.departments = action.payload;
-      })
-      .addCase(fetchDeptAccessList.rejected, (state, action) => {
-        state.deptLoading = false;
-        state.deptError = action.payload as string;
-      })
-
-      // fetch members
-      .addCase(fetchUserAccessList.pending, (state) => {
-        state.memberLoading = true;
-        state.memberError = null;
-      })
-      .addCase(fetchUserAccessList.fulfilled, (state, action: PayloadAction<Member[]>) => {
-        state.memberLoading = false;
-        state.members = action.payload;
-      })
-      .addCase(fetchUserAccessList.rejected, (state, action) => {
-        state.memberLoading = false;
-        state.memberError = action.payload as string;
-      })
-
-      // update team — patch store directly, conditionally fetch members
-      .addCase(updateTeamAccess.pending, (state, action) => {
-        state.updatingTeams = action.meta.arg.map((d) => d.department_id);
-      })
-      .addCase(updateTeamAccess.fulfilled, (state, action) => {
-        state.updatingTeams = [];
-        action.payload.forEach(({ department_id, is_allowed }) => {
-          const dept = state.departments.find((d) => d.department_id === department_id);
-          if (dept) dept.is_allowed = is_allowed;
-        });
-      })
-      .addCase(updateTeamAccess.rejected, (state) => {
-        state.updatingTeams = [];
-      })
-
-      // update employees — patch store directly
-      .addCase(updateEmployeeAccess.pending, (state, action) => {
-        state.updatingEmployees = action.meta.arg.updates.map((u) => u.user_id);
-      })
-      .addCase(updateEmployeeAccess.fulfilled, (state, action) => {
-        state.updatingEmployees = [];
-        action.payload.forEach(({ user_id, is_allowed }) => {
-          const member = state.members.find((m) => m.user_id === user_id);
-          if (member) member.is_allowed = is_allowed;
-        });
-      })
-      .addCase(updateEmployeeAccess.rejected, (state) => {
-        state.updatingEmployees = [];
-      });
+  "password": {
+    "label": "New Password",
+    "placeholder": "Enter new password",
+    "hint": "Min 8 characters",
+    "error": "Password must be at least 8 characters."
   },
-});
-
-export const { setSelectedDeptId } = accessManagementSlice.actions;
-export default accessManagementSlice.reducer;
-
-
-
-
-
-
-
-
-
-
+  "confirmPassword": {
+    "label": "Confirm Password",
+    "placeholder": "Re-enter new password",
+    "error": "Passwords do not match."
+  },
+  "submitButton": "Reset Password",
+  "submitting": "Resetting...",
+  "status": {
+    "success": "Password reset successfully.",
+    "error": "Failed to reset password. Please try again."
+  }
+}
 
 
-import { useEffect, useMemo, useState } from 'react';
+
+
+
+
+
+ko.json
+-------
+
+"resetPassword": {
+  "title": "비밀번호 재설정",
+  "description": "계정 비밀번호를 안전하게 업데이트합니다.",
+  "username": {
+    "label": "사용자 이름",
+    "hint": "사용자 이름은 변경할 수 없습니다"
+  },
+  "password": {
+    "label": "새 비밀번호",
+    "placeholder": "새 비밀번호 입력",
+    "hint": "최소 8자 이상",
+    "error": "비밀번호는 최소 8자 이상이어야 합니다."
+  },
+  "confirmPassword": {
+    "label": "비밀번호 확인",
+    "placeholder": "새 비밀번호 재입력",
+    "error": "비밀번호가 일치하지 않습니다."
+  },
+  "submitButton": "비밀번호 재설정",
+  "submitting": "재설정 중...",
+  "status": {
+    "success": "비밀번호가 성공적으로 재설정되었습니다.",
+    "error": "비밀번호 재설정에 실패했습니다. 다시 시도해주세요."
+  }
+}
+
+
+
+
+
+
+
+
+
+resetPasswordApi.ts
+-------------------
+
+import axiosInstance from './axiosInstance';
+
+export interface ResetPasswordRequest {
+  username: string;
+  password: string;
+}
+
+export interface ResetPasswordResponse {
+  status: 'Success' | 'Error';
+}
+
+export const resetPasswordApi = async (payload: ResetPasswordRequest): Promise<void> => {
+  await axiosInstance.post<ResetPasswordResponse>('/auth/update_password', payload);
+};
+
+
+
+
+
+ResetPassword.module.scss
+-------------------------
+
+:global(:root) {
+  --rp-bg: #ffffff;
+  --rp-s2: #f7f6ff;
+  --rp-s3: #eeecff;
+  --rp-border: rgba(79, 70, 229, 0.11);
+  --rp-border-h: rgba(79, 70, 229, 0.24);
+  --rp-text: #0f0c1d;
+  --rp-text2: #3d3656;
+  --rp-text3: #7a738f;
+  --rp-text4: #b0abc4;
+  --rp-sp: 0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.05), 0 8px 32px rgba(79,70,229,0.08);
+  --rp-sh: 0 2px 6px rgba(0,0,0,0.07), 0 10px 32px rgba(79,70,229,0.13);
+  --rp-accent: #4f46e5;
+  --rp-accent-light: #eef2ff;
+  --rp-grad: linear-gradient(135deg, #7c3aed 0%, #4f46e5 35%, #2563eb 65%, #0ea5e9 100%);
+  --rp-grad-btn: linear-gradient(135deg, #7c3aed 0%, #4f46e5 50%, #2563eb 100%);
+  --rp-shadow-btn: 0 4px 16px rgba(79, 70, 229, 0.38);
+  --rp-shadow-btn-h: 0 6px 22px rgba(79, 70, 229, 0.50);
+  --rp-success-bg: #f0fdf4;
+  --rp-success-color: #16a34a;
+  --rp-success-border: rgba(22, 163, 74, 0.2);
+  --rp-error-bg: #fef2f2;
+  --rp-error-color: #dc2626;
+  --rp-error-border: #fecaca;
+  --rp-readonly-bg: #f5f4ff;
+}
+
+:global([data-theme='dark']) {
+  --rp-bg: #121214;
+  --rp-s2: #18171f;
+  --rp-s3: #1f1e2a;
+  --rp-border: rgba(124, 58, 237, 0.13);
+  --rp-border-h: rgba(124, 58, 237, 0.30);
+  --rp-text: #f2eeff;
+  --rp-text2: #c4bbdd;
+  --rp-text3: #7b6f9a;
+  --rp-text4: #6b6484;
+  --rp-sp: 0 1px 0 rgba(124,58,237,0.09) inset, 0 8px 36px rgba(0,0,0,0.55);
+  --rp-sh: 0 1px 0 rgba(124,58,237,0.16) inset, 0 16px 52px rgba(0,0,0,0.70);
+  --rp-accent: #a78bfa;
+  --rp-accent-light: rgba(124, 58, 237, 0.14);
+  --rp-grad: linear-gradient(135deg, #7c3aed 0%, #4f46e5 35%, #2563eb 65%, #0ea5e9 100%);
+  --rp-grad-btn: linear-gradient(135deg, #7c3aed 0%, #4f46e5 50%, #2563eb 100%);
+  --rp-shadow-btn: 0 4px 16px rgba(79, 70, 229, 0.38);
+  --rp-shadow-btn-h: 0 6px 22px rgba(79, 70, 229, 0.50);
+  --rp-success-bg: rgba(22, 163, 74, 0.10);
+  --rp-success-color: #4ade80;
+  --rp-success-border: rgba(74, 222, 128, 0.2);
+  --rp-error-bg: rgba(220, 38, 38, 0.10);
+  --rp-error-color: #f87171;
+  --rp-error-border: rgba(248, 113, 113, 0.3);
+  --rp-readonly-bg: #1f1e2a;
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.formCard {
+  background: var(--rp-bg);
+  border: 1px solid var(--rp-border);
+  border-radius: 16px;
+  padding: 28px;
+  box-shadow: var(--rp-sp);
+  max-width: 500px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  transition: box-shadow 0.25s, border-color 0.25s;
+  animation: fadeUp 0.4s ease both;
+  position: relative;
+  margin-top: 4px;
+
+  &:hover {
+    box-shadow: var(--rp-sh);
+    border-color: var(--rp-border-h);
+  }
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    border-radius: 16px 16px 0 0;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(124, 58, 237, 0.18) 15%,
+      rgba(79, 70, 229, 0.42) 50%,
+      rgba(14, 165, 233, 0.18) 85%,
+      transparent 100%
+    );
+    pointer-events: none;
+  }
+}
+
+.fieldGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.labelRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--rp-text);
+  letter-spacing: -0.01em;
+}
+
+.hint {
+  font-size: 0.6875rem;
+  color: var(--rp-text4);
+  background: var(--rp-s2);
+  border: 1px solid var(--rp-border);
+  border-radius: 999px;
+  padding: 2px 9px;
+}
+
+.inputWrapper {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--rp-border);
+  border-radius: 11px;
+  background: var(--rp-s2);
+  overflow: hidden;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+
+  &:focus-within {
+    background: var(--rp-bg);
+    border-color: transparent;
+    box-shadow:
+      0 0 0 1.5px var(--rp-accent),
+      0 0 0 4px var(--rp-accent-light);
+  }
+
+  &.error {
+    border-color: transparent;
+    box-shadow:
+      0 0 0 1.5px var(--rp-error-color),
+      0 0 0 4px var(--rp-error-bg);
+  }
+
+  &.readonly {
+    background: var(--rp-readonly-bg);
+    cursor: not-allowed;
+
+    &:focus-within {
+      border-color: var(--rp-border);
+      box-shadow: none;
+      background: var(--rp-readonly-bg);
+    }
+  }
+}
+
+.input {
+  flex: 1;
+  border: none;
+  outline: none;
+  padding: 10px 13px;
+  font-size: 0.8125rem;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  color: var(--rp-text);
+  background: transparent;
+
+  &::placeholder { color: var(--rp-text4); }
+
+  &:read-only {
+    color: var(--rp-text3);
+    cursor: not-allowed;
+  }
+}
+
+.inputIcon {
+  padding: 0 12px 0 0;
+  color: var(--rp-text4);
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+
+  svg { width: 15px; height: 15px; }
+}
+
+.readonlyBadge {
+  display: flex;
+  align-items: center;
+  padding: 0 12px 0 0;
+  color: var(--rp-text4);
+  flex-shrink: 0;
+
+  svg { width: 13px; height: 13px; }
+}
+
+.eyeBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: none;
+  background: transparent;
+  color: var(--rp-text4);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.15s ease;
+
+  &:hover { color: var(--rp-accent); }
+
+  svg { width: 15px; height: 15px; }
+}
+
+.errorText {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.6875rem;
+  color: var(--rp-error-color);
+
+  &::before { content: '⚠'; font-size: 0.625rem; }
+}
+
+.strengthBar {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.strengthTrack {
+  display: flex;
+  gap: 4px;
+}
+
+.strengthSegment {
+  flex: 1;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--rp-border);
+  transition: background 0.25s ease;
+
+  &.weak   { background: #dc2626; }
+  &.fair   { background: #f59e0b; }
+  &.good   { background: #3b82f6; }
+  &.strong { background: #16a34a; }
+}
+
+.strengthLabel {
+  font-size: 0.625rem;
+  font-weight: 600;
+  color: var(--rp-text4);
+
+  &.weak   { color: #dc2626; }
+  &.fair   { color: #f59e0b; }
+  &.good   { color: #3b82f6; }
+  &.strong { color: #16a34a; }
+}
+
+.divider {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--rp-border) 20%,
+    var(--rp-border) 80%,
+    transparent
+  );
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.submitBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 20px;
+  border-radius: 999px;
+  border: none;
+  background: var(--rp-grad-btn);
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 500;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  cursor: pointer;
+  box-shadow: var(--rp-shadow-btn);
+  transition: all 0.18s;
+
+  &:hover:not(:disabled) {
+    box-shadow: var(--rp-shadow-btn-h);
+    transform: translateY(-1px);
+    filter: brightness(1.07);
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: var(--rp-shadow-btn);
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    box-shadow: none;
+    transform: none;
+    filter: none;
+  }
+
+  svg { width: 13px; height: 13px; }
+}
+
+.successMsg {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.71875rem;
+  color: var(--rp-success-color);
+  font-weight: 500;
+  background: var(--rp-success-bg);
+  border: 1px solid var(--rp-success-border);
+  border-radius: 999px;
+  padding: 5px 12px;
+
+  svg { width: 12px; height: 12px; }
+}
+
+.errorMsg {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.71875rem;
+  color: var(--rp-error-color);
+  background: var(--rp-error-bg);
+  border: 1px solid var(--rp-error-border);
+  border-radius: 999px;
+  padding: 5px 12px;
+}
+
+.spinner {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@media (min-width: 1400px) {
+  .formCard { max-width: 580px; padding: 36px; gap: 26px; }
+  .label { font-size: 0.875rem; }
+  .input { font-size: 0.875rem; padding: 11px 15px; }
+  .submitBtn { font-size: 0.8125rem; padding: 9px 22px; }
+}
+
+
+
+
+
+
+ResetPassword.tsx
+-----------------
+
+
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useDispatch, useSelector } from 'react-redux';
-import { Department } from '../api/accessManagementApi';
-import type { AppDispatch, RootState } from '../store';
-import {
-  fetchDeptAccessList,
-  fetchUserAccessList,
-  setSelectedDeptId,
-  updateEmployeeAccess,
-  updateTeamAccess,
-} from '../store/slices/accessManagementSlice';
-import styles from './AccessManagement.module.scss';
+import { useSelector } from 'react-redux';
+import { resetPasswordApi } from '../api/resetPasswordApi';
+import type { RootState } from '../store';
+import styles from './ResetPassword.module.scss';
 import pageStyles from './PageShell.module.scss';
 
-function getInitials(name: string): string {
-  return name.split('.').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
+interface FormValues {
+  password: string;
+  confirmPassword: string;
 }
 
-function SkeletonList({ rows = 4 }: { rows?: number }) {
-  return (
-    <>
-      {Array.from({ length: rows }).map((_, i) => (
-        <div key={i} className={styles.skeletonRow}>
-          <div className={styles.skeletonAvatar} />
-          <div className={styles.skeletonLine} />
-          <div className={styles.skeletonToggle} />
-        </div>
-      ))}
-    </>
-  );
+interface FormErrors {
+  password?: string;
+  confirmPassword?: string;
 }
 
-interface CheckboxProps {
-  checked: boolean;
-  indeterminate?: boolean;
-  onChange: () => void;
+type Strength = 'weak' | 'fair' | 'good' | 'strong';
+
+function getStrength(password: string): { level: Strength; score: number } {
+  let score = 0;
+  if (password.length >= 8)  score++;
+  if (password.length >= 12) score++;
+  if (/[A-Z]/.test(password) && /[a-z]/.test(password)) score++;
+  if (/\d/.test(password)) score++;
+  if (/[^A-Za-z0-9]/.test(password)) score++;
+
+  if (score <= 1) return { level: 'weak',   score: 1 };
+  if (score === 2) return { level: 'fair',   score: 2 };
+  if (score === 3) return { level: 'good',   score: 3 };
+  return              { level: 'strong', score: 4 };
 }
 
-function Checkbox({ checked, indeterminate, onChange }: CheckboxProps) {
-  return (
-    <div
-      className={`${styles.checkbox} ${checked ? styles.checked : ''} ${indeterminate ? styles.indeterminate : ''}`}
-      onClick={(e) => { e.stopPropagation(); onChange(); }}
-    >
-      {indeterminate && !checked ? (
-        <svg viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-          <line x1="2" y1="5" x2="8" y2="5" />
-        </svg>
-      ) : checked ? (
-        <svg viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-          <polyline points="1.5 5 4 7.5 8.5 2" />
-        </svg>
-      ) : null}
-    </div>
-  );
-}
+const STRENGTH_LABELS: Record<Strength, string> = {
+  weak:   'Weak',
+  fair:   'Fair',
+  good:   'Good',
+  strong: 'Strong',
+};
 
-export default function AccessManagement() {
+export default function ResetPassword() {
   const { t } = useTranslation();
-  const dispatch = useDispatch<AppDispatch>();
-  const {
-    departments,
-    members,
-    selectedDeptId,
-    deptLoading,
-    memberLoading,
-    deptError,
-    memberError,
-    updatingTeams,
-    updatingEmployees,
-  } = useSelector((state: RootState) => state.accessManagement);
 
-  const [deptSearch, setDeptSearch] = useState('');
-  const [memberSearch, setMemberSearch] = useState('');
-  const [deptBulkMode, setDeptBulkMode] = useState(false);
-  const [memberBulkMode, setMemberBulkMode] = useState(false);
-  const [selectedDepts, setSelectedDepts] = useState<Set<number>>(new Set());
-  const [selectedMembers, setSelectedMembers] = useState<Set<number>>(new Set());
+  // get username from existing userDetails reducer
+  const username = useSelector((state: RootState) => state.userDetails?.username ?? '');
 
-  // initial load
+  const [form, setForm] = useState<FormValues>({ password: '', confirmPassword: '' });
+  const [errors, setErrors] = useState<FormErrors>({});
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
+
+  const strength = form.password ? getStrength(form.password) : null;
+
+  // auto-clear status after 3s
   useEffect(() => {
-    dispatch(fetchDeptAccessList());
-  }, [dispatch]);
-
-  // auto-select first dept once loaded
-  useEffect(() => {
-    if (departments.length > 0 && selectedDeptId === null) {
-      const first = departments[0];
-      dispatch(setSelectedDeptId(first.department_id));
-      dispatch(fetchUserAccessList(first.department_id));
+    if (success || apiError) {
+      const timer = setTimeout(() => {
+        setSuccess(false);
+        setApiError(null);
+      }, 3000);
+      return () => clearTimeout(timer);
     }
-  }, [departments]);
+  }, [success, apiError]);
 
-  const selectedDept = useMemo(
-    () => departments.find((d) => d.department_id === selectedDeptId) ?? null,
-    [departments, selectedDeptId]
-  );
-
-  const filteredDepts = useMemo(() =>
-    departments.filter((d) =>
-      d.department_name.toLowerCase().includes(deptSearch.toLowerCase())
-    ), [departments, deptSearch]);
-
-  const filteredMembers = useMemo(() =>
-    members.filter((m) =>
-      m.username.toLowerCase().includes(memberSearch.toLowerCase())
-    ), [members, memberSearch]);
-
-  const handleDeptClick = (dept: Department) => {
-    if (dept.department_id === selectedDeptId) return;
-    dispatch(setSelectedDeptId(dept.department_id));
-    dispatch(fetchUserAccessList(dept.department_id));
-    setMemberSearch('');
-    setMemberBulkMode(false);
-    setSelectedMembers(new Set());
+  const validate = (): boolean => {
+    const newErrors: FormErrors = {};
+    if (!form.password || form.password.length < 8) {
+      newErrors.password = t('settings.resetPassword.password.error');
+    }
+    if (!form.confirmPassword || form.confirmPassword !== form.password) {
+      newErrors.confirmPassword = t('settings.resetPassword.confirmPassword.error');
+    }
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
-  const handleTeamToggle = (dept: Department, e: React.MouseEvent) => {
-    e.stopPropagation();
-    dispatch(updateTeamAccess([{
-      department_id: dept.department_id,
-      is_allowed: !dept.is_allowed,
-    }]));
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
+    setErrors((prev) => ({ ...prev, [name]: undefined }));
+    setSuccess(false);
+    setApiError(null);
   };
 
-  const handleMemberToggle = (user_id: number, current: boolean) => {
-    dispatch(updateEmployeeAccess({
-      updates: [{ user_id, is_allowed: !current }],
-    }));
-  };
-
-  // ── dept bulk ──
-  const toggleDeptSelect = (department_id: number) => {
-    setSelectedDepts((prev) => {
-      const next = new Set(prev);
-      next.has(department_id) ? next.delete(department_id) : next.add(department_id);
-      return next;
-    });
-  };
-
-  const toggleAllDepts = () => {
-    if (selectedDepts.size === filteredDepts.length) {
-      setSelectedDepts(new Set());
-    } else {
-      setSelectedDepts(new Set(filteredDepts.map((d) => d.department_id)));
+  const handleSubmit = async () => {
+    if (!validate()) return;
+    setSubmitting(true);
+    try {
+      await resetPasswordApi({ username, password: form.password });
+      setSuccess(true);
+      setForm({ password: '', confirmPassword: '' });
+    } catch {
+      setApiError(t('settings.resetPassword.status.error'));
+    } finally {
+      setSubmitting(false);
     }
   };
-
-  const handleBulkDeptAction = (is_allowed: boolean) => {
-    const updates = filteredDepts
-      .filter((d) => selectedDepts.has(d.department_id))
-      .map((d) => ({ department_id: d.department_id, is_allowed }));
-    dispatch(updateTeamAccess(updates));
-    setSelectedDepts(new Set());
-    setDeptBulkMode(false);
-  };
-
-  // ── member bulk ──
-  const toggleMemberSelect = (user_id: number) => {
-    setSelectedMembers((prev) => {
-      const next = new Set(prev);
-      next.has(user_id) ? next.delete(user_id) : next.add(user_id);
-      return next;
-    });
-  };
-
-  const toggleAllMembers = () => {
-    if (selectedMembers.size === filteredMembers.length) {
-      setSelectedMembers(new Set());
-    } else {
-      setSelectedMembers(new Set(filteredMembers.map((m) => m.user_id)));
-    }
-  };
-
-  const handleBulkMemberAction = (is_allowed: boolean) => {
-    const updates = filteredMembers
-      .filter((m) => selectedMembers.has(m.user_id))
-      .map((m) => ({ user_id: m.user_id, is_allowed }));
-    dispatch(updateEmployeeAccess({ updates }));
-    setSelectedMembers(new Set());
-    setMemberBulkMode(false);
-  };
-
-  const deptAllSelected = selectedDepts.size === filteredDepts.length && filteredDepts.length > 0;
-  const deptIndeterminate = selectedDepts.size > 0 && !deptAllSelected;
-  const memberAllSelected = selectedMembers.size === filteredMembers.length && filteredMembers.length > 0;
-  const memberIndeterminate = selectedMembers.size > 0 && !memberAllSelected;
 
   return (
     <div className={pageStyles.page}>
       <div className={pageStyles.pageHeader}>
-        <h1 className={pageStyles.title}>{t('settings.accessManagement.title')}</h1>
-        <p className={pageStyles.description}>{t('settings.accessManagement.description')}</p>
+        <h1 className={pageStyles.title}>{t('settings.resetPassword.title')}</h1>
+        <p className={pageStyles.description}>{t('settings.resetPassword.description')}</p>
       </div>
 
       <div className={pageStyles.pageContent}>
-        <div className={styles.container}>
+        <div className={styles.formCard}>
 
-          {/* ── LEFT: DEPARTMENTS ── */}
-          <div className={styles.panel}>
-            <div className={styles.panelHeader}>
-              <span className={styles.panelTitle}>
-                <span className={styles.panelDot} />
-                {t('settings.accessManagement.teamsColumn')}
+          {/* Username — readonly */}
+          <div className={styles.fieldGroup}>
+            <div className={styles.labelRow}>
+              <label className={styles.label}>
+                {t('settings.resetPassword.username.label')}
+              </label>
+              <span className={styles.hint}>
+                {t('settings.resetPassword.username.hint')}
               </span>
-              {!deptLoading && (
-                <span className={styles.panelCount}>{departments.length}</span>
-              )}
-              <button
-                className={`${styles.bulkBtn} ${deptBulkMode ? styles.active : ''}`}
-                title="Bulk select departments"
-                onClick={() => {
-                  setDeptBulkMode((v) => !v);
-                  setSelectedDepts(new Set());
-                }}
-              >
+            </div>
+            <div className={`${styles.inputWrapper} ${styles.readonly}`}>
+              <input
+                className={styles.input}
+                type="text"
+                value={username}
+                readOnly
+              />
+              <span className={styles.readonlyBadge}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="5" width="4" height="4" rx="1" />
-                  <rect x="3" y="11" width="4" height="4" rx="1" />
-                  <rect x="3" y="17" width="4" height="4" rx="1" />
-                  <line x1="11" y1="7" x2="21" y2="7" />
-                  <line x1="11" y1="13" x2="21" y2="13" />
-                  <line x1="11" y1="19" x2="21" y2="19" />
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                 </svg>
+              </span>
+            </div>
+          </div>
+
+          {/* New Password */}
+          <div className={styles.fieldGroup}>
+            <div className={styles.labelRow}>
+              <label className={styles.label}>
+                {t('settings.resetPassword.password.label')}
+              </label>
+              <span className={styles.hint}>
+                {t('settings.resetPassword.password.hint')}
+              </span>
+            </div>
+            <div className={`${styles.inputWrapper} ${errors.password ? styles.error : ''}`}>
+              <input
+                className={styles.input}
+                type={showPassword ? 'text' : 'password'}
+                name="password"
+                value={form.password}
+                onChange={handleChange}
+                placeholder={t('settings.resetPassword.password.placeholder')}
+              />
+              <button
+                type="button"
+                className={styles.eyeBtn}
+                onClick={() => setShowPassword((v) => !v)}
+              >
+                {showPassword ? (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+                    <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+                    <line x1="1" y1="1" x2="23" y2="23" />
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                )}
               </button>
             </div>
 
-            {/* dept search */}
-            <div className={styles.searchBox}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="11" cy="11" r="8" />
-                <line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
-              <input
-                placeholder="Search departments..."
-                value={deptSearch}
-                onChange={(e) => setDeptSearch(e.target.value)}
-              />
-            </div>
-
-            {/* dept bulk bar */}
-            {deptBulkMode && (
-              <div className={styles.bulkBar}>
-                <label className={styles.bulkBarCheck}>
-                  <Checkbox
-                    checked={deptAllSelected}
-                    indeterminate={deptIndeterminate}
-                    onChange={toggleAllDepts}
-                  />
-                  Select all
-                </label>
-                {selectedDepts.size > 0 && (
-                  <span className={styles.bulkCount}>{selectedDepts.size} selected</span>
-                )}
+            {/* strength bar */}
+            {form.password && strength && (
+              <div className={styles.strengthBar}>
+                <div className={styles.strengthTrack}>
+                  {[1, 2, 3, 4].map((seg) => (
+                    <div
+                      key={seg}
+                      className={`${styles.strengthSegment} ${seg <= strength.score ? styles[strength.level] : ''}`}
+                    />
+                  ))}
+                </div>
+                <span className={`${styles.strengthLabel} ${styles[strength.level]}`}>
+                  {STRENGTH_LABELS[strength.level]}
+                </span>
               </div>
             )}
 
-            <div className={styles.list}>
-              {deptLoading ? (
-                <SkeletonList rows={5} />
-              ) : deptError ? (
-                <div className={styles.errorState}>
-                  <p>{t('settings.accessManagement.status.error')}</p>
-                  <button
-                    className={styles.retryBtn}
-                    onClick={() => dispatch(fetchDeptAccessList())}
-                  >
-                    {t('settings.accessManagement.status.retry')}
-                  </button>
-                </div>
-              ) : filteredDepts.length === 0 ? (
-                <div className={styles.emptyState}>
-                  <div className={styles.emptyIcon}>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                      <circle cx="11" cy="11" r="8" />
-                      <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                    </svg>
-                  </div>
-                  <div className={styles.emptyText}>No departments found</div>
-                </div>
-              ) : (
-                filteredDepts.map((dept) => (
-                  <div
-                    key={dept.department_id}
-                    className={`${styles.teamRow} ${selectedDeptId === dept.department_id ? styles.selected : ''}`}
-                    onClick={() => handleDeptClick(dept)}
-                  >
-                    {deptBulkMode && (
-                      <Checkbox
-                        checked={selectedDepts.has(dept.department_id)}
-                        onChange={() => toggleDeptSelect(dept.department_id)}
-                      />
-                    )}
-
-                    <div className={styles.teamIcon}>
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                        <circle cx="9" cy="7" r="4" />
-                        <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-                        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                      </svg>
-                    </div>
-
-                    <div className={styles.teamInfo}>
-                      <div className={styles.teamName}>{dept.department_name}</div>
-                      <div className={styles.teamMeta}>
-                        {dept.is_allowed
-                          ? t('settings.accessManagement.allowed')
-                          : t('settings.accessManagement.revoked')}
-                      </div>
-                    </div>
-
-                    <div className={styles.rowRight}>
-                      {updatingTeams.includes(dept.department_id) ? (
-                        <div className={styles.spinner} />
-                      ) : (
-                        <label
-                          className={styles.toggle}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={dept.is_allowed}
-                            onChange={(e) => handleTeamToggle(dept, e as unknown as React.MouseEvent)}
-                          />
-                          <span className={styles.track} />
-                        </label>
-                      )}
-                      <span className={`${styles.toggleLabel} ${dept.is_allowed ? styles.on : styles.off}`}>
-                        {dept.is_allowed
-                          ? t('settings.accessManagement.allowed')
-                          : t('settings.accessManagement.revoked')}
-                      </span>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-
-            {/* dept bulk footer */}
-            {deptBulkMode && selectedDepts.size > 0 && (
-              <div className={styles.panelFooter}>
-                <span className={styles.footerInfo}>
-                  {selectedDepts.size} dept{selectedDepts.size !== 1 ? 's' : ''} selected
-                </span>
-                <div className={styles.footerActions}>
-                  <button
-                    className={`${styles.footerBtn} ${styles.allow}`}
-                    disabled={updatingTeams.length > 0}
-                    onClick={() => handleBulkDeptAction(true)}
-                  >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                    Allow All
-                  </button>
-                  <button
-                    className={`${styles.footerBtn} ${styles.revoke}`}
-                    disabled={updatingTeams.length > 0}
-                    onClick={() => handleBulkDeptAction(false)}
-                  >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="18" y1="6" x2="6" y2="18" />
-                      <line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                    Revoke All
-                  </button>
-                </div>
-              </div>
+            {errors.password && (
+              <span className={styles.errorText}>{errors.password}</span>
             )}
           </div>
 
-          {/* ── RIGHT: MEMBERS ── */}
-          <div className={styles.panel}>
-            <div className={styles.panelHeader}>
-              <span className={styles.panelTitle}>
-                <span className={styles.panelDot} />
-                {selectedDept
-                  ? selectedDept.department_name
-                  : t('settings.accessManagement.membersColumn')}
-              </span>
-              {selectedDept && !memberLoading && (
-                <span className={styles.panelCount}>{members.length}</span>
-              )}
-              {selectedDept && (
-                <button
-                  className={`${styles.bulkBtn} ${memberBulkMode ? styles.active : ''}`}
-                  title="Bulk select members"
-                  disabled={selectedDept.is_allowed}
-                  onClick={() => {
-                    setMemberBulkMode((v) => !v);
-                    setSelectedMembers(new Set());
-                  }}
-                >
+          {/* Confirm Password */}
+          <div className={styles.fieldGroup}>
+            <div className={styles.labelRow}>
+              <label className={styles.label}>
+                {t('settings.resetPassword.confirmPassword.label')}
+              </label>
+            </div>
+            <div className={`${styles.inputWrapper} ${errors.confirmPassword ? styles.error : ''}`}>
+              <input
+                className={styles.input}
+                type={showConfirm ? 'text' : 'password'}
+                name="confirmPassword"
+                value={form.confirmPassword}
+                onChange={handleChange}
+                placeholder={t('settings.resetPassword.confirmPassword.placeholder')}
+              />
+              <button
+                type="button"
+                className={styles.eyeBtn}
+                onClick={() => setShowConfirm((v) => !v)}
+              >
+                {showConfirm ? (
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="3" y="5" width="4" height="4" rx="1" />
-                    <rect x="3" y="11" width="4" height="4" rx="1" />
-                    <rect x="3" y="17" width="4" height="4" rx="1" />
-                    <line x1="11" y1="7" x2="21" y2="7" />
-                    <line x1="11" y1="13" x2="21" y2="13" />
-                    <line x1="11" y1="19" x2="21" y2="19" />
+                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+                    <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+                    <line x1="1" y1="1" x2="23" y2="23" />
                   </svg>
-                </button>
-              )}
-            </div>
-
-            {/* hint when team is fully allowed */}
-            {selectedDept?.is_allowed && (
-              <div className={styles.hintBanner}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="10" />
-                  <line x1="12" y1="8" x2="12" y2="12" />
-                  <line x1="12" y1="16" x2="12.01" y2="16" />
-                </svg>
-                {t('settings.accessManagement.memberAccessHint')}
-              </div>
-            )}
-
-            {/* member search */}
-            {selectedDept && (
-              <div className={styles.searchBox}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="11" cy="11" r="8" />
-                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                </svg>
-                <input
-                  placeholder="Search members..."
-                  value={memberSearch}
-                  onChange={(e) => setMemberSearch(e.target.value)}
-                />
-              </div>
-            )}
-
-            {/* member bulk bar */}
-            {memberBulkMode && !selectedDept?.is_allowed && (
-              <div className={styles.bulkBar}>
-                <label className={styles.bulkBarCheck}>
-                  <Checkbox
-                    checked={memberAllSelected}
-                    indeterminate={memberIndeterminate}
-                    onChange={toggleAllMembers}
-                  />
-                  Select all
-                </label>
-                {selectedMembers.size > 0 && (
-                  <span className={styles.bulkCount}>{selectedMembers.size} selected</span>
+                ) : (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
                 )}
-              </div>
+              </button>
+            </div>
+            {errors.confirmPassword && (
+              <span className={styles.errorText}>{errors.confirmPassword}</span>
+            )}
+          </div>
+
+          <div className={styles.divider} />
+
+          {/* Footer */}
+          <div className={styles.footer}>
+            <button
+              className={styles.submitBtn}
+              onClick={handleSubmit}
+              disabled={submitting || !form.password || !form.confirmPassword}
+            >
+              {submitting ? (
+                <>
+                  <span className={styles.spinner} />
+                  {t('settings.resetPassword.submitting')}
+                </>
+              ) : (
+                <>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                  </svg>
+                  {t('settings.resetPassword.submitButton')}
+                </>
+              )}
+            </button>
+
+            {success && (
+              <span className={styles.successMsg}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                {t('settings.resetPassword.status.success')}
+              </span>
             )}
 
-            <div className={styles.list}>
-              {!selectedDept ? (
-                <div className={styles.emptyState}>
-                  <div className={styles.emptyIcon}>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                      <circle cx="9" cy="7" r="4" />
-                    </svg>
-                  </div>
-                  <div className={styles.emptyText}>
-                    {t('settings.accessManagement.selectTeam')}
-                  </div>
-                  <div className={styles.emptySubText}>
-                    Click a department on the left to manage its members
-                  </div>
-                </div>
-              ) : memberLoading ? (
-                <SkeletonList rows={4} />
-              ) : memberError ? (
-                <div className={styles.errorState}>
-                  <p>{memberError}</p>
-                  <button
-                    className={styles.retryBtn}
-                    onClick={() => dispatch(fetchUserAccessList(selectedDept.department_id))}
-                  >
-                    {t('settings.accessManagement.status.retry')}
-                  </button>
-                </div>
-              ) : filteredMembers.length === 0 ? (
-                <div className={styles.emptyState}>
-                  <div className={styles.emptyIcon}>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                      <circle cx="12" cy="12" r="10" />
-                      <line x1="8" y1="12" x2="16" y2="12" />
-                    </svg>
-                  </div>
-                  <div className={styles.emptyText}>No members found</div>
-                </div>
-              ) : (
-                filteredMembers.map((member) => {
-                  const isTeamAllowed = selectedDept.is_allowed;
-                  const isUpdatingThis = updatingEmployees.includes(member.user_id);
-
-                  return (
-                    <div
-                      key={member.user_id}
-                      className={`${styles.memberRow} ${isTeamAllowed ? styles.dimmed : ''}`}
-                    >
-                      {memberBulkMode && !isTeamAllowed && (
-                        <Checkbox
-                          checked={selectedMembers.has(member.user_id)}
-                          onChange={() => toggleMemberSelect(member.user_id)}
-                        />
-                      )}
-
-                      <div className={styles.avatar}>
-                        {getInitials(member.username)}
-                      </div>
-
-                      <div className={styles.memberInfo}>
-                        <div className={styles.memberName}>{member.username}</div>
-                      </div>
-
-                      <div className={styles.rowRight}>
-                        {isUpdatingThis ? (
-                          <div className={styles.spinner} />
-                        ) : (
-                          <label className={styles.toggle}>
-                            <input
-                              type="checkbox"
-                              checked={member.is_allowed}
-                              disabled={isTeamAllowed}
-                              onChange={() =>
-                                handleMemberToggle(member.user_id, member.is_allowed)
-                              }
-                            />
-                            <span className={styles.track} />
-                          </label>
-                        )}
-                        <span className={`${styles.toggleLabel} ${member.is_allowed ? styles.on : styles.off}`}>
-                          {member.is_allowed
-                            ? t('settings.accessManagement.allowed')
-                            : t('settings.accessManagement.revoked')}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-
-            {/* member bulk footer */}
-            {memberBulkMode && selectedMembers.size > 0 && !selectedDept?.is_allowed && (
-              <div className={styles.panelFooter}>
-                <span className={styles.footerInfo}>
-                  {selectedMembers.size} member{selectedMembers.size !== 1 ? 's' : ''} selected
-                </span>
-                <div className={styles.footerActions}>
-                  <button
-                    className={`${styles.footerBtn} ${styles.allow}`}
-                    disabled={updatingEmployees.length > 0}
-                    onClick={() => handleBulkMemberAction(true)}
-                  >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                    Allow
-                  </button>
-                  <button
-                    className={`${styles.footerBtn} ${styles.revoke}`}
-                    disabled={updatingEmployees.length > 0}
-                    onClick={() => handleBulkMemberAction(false)}
-                  >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="18" y1="6" x2="6" y2="18" />
-                      <line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                    Revoke
-                  </button>
-                </div>
-              </div>
+            {apiError && (
+              <span className={styles.errorMsg}>{apiError}</span>
             )}
           </div>
 
@@ -800,4 +756,35 @@ export default function AccessManagement() {
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+SettingsLayout.tsx
+------------------
+
+// tabs array
+{ label: t('settings.nav.resetPassword'), path: 'reset-password' },
+
+// icons array — lock icon
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+</svg>
+
+
+
+"resetPassword": "Reset Password"
+
+"resetPassword": "비밀번호 재설정"
+
+import ResetPassword from './pages/ResetPassword';
+
+// inside settings children:
+<Route path="reset-password" element={<ResetPassword />} />
 
