@@ -1,26 +1,137 @@
-stopQueuedFile(itemId: string, event: Event): void {
-  event.stopPropagation();
-  this.historyService.stopFiles([Number(itemId)]).subscribe({
-    next: (res) => {
-      if (res.status === 'success') {
-        const item = this.historyItems.find(i => i.id === itemId);
-        if (item) item.status = 'pending';
-      }
-    },
-    error: (err) => {
-      console.error('Stop file error:', err);
-      if (err.status === 403) {
-        const item = this.historyItems.find(i => i.id === itemId);
-        if (item) item.status = 'running';
-        this.sectionExpanded['running'] = true;
-        alert(
-          'This file has already started running and can no longer be stopped. ' +
-          'It has been moved to the Running section.'
-        );
-        this.fetchAll(true);
-      } else {
-        alert('Failed to stop the file. Please try again.');
-      }
-    }
-  });
+/* ═══════════════════════════════════════
+   Section Block borders
+═══════════════════════════════════════ */
+.section-block--running   { border-left: 3px solid #7F77DD; }
+.section-block--queued    { border-left: 3px solid #EF9F27; }
+.section-block--pending   { border-left: 3px solid #1D9E75; }
+.section-block--completed { border-left: 3px solid #639922; }
+
+/* ═══════════════════════════════════════
+   Status Dots
+═══════════════════════════════════════ */
+.status-dot--running {
+  background: #7F77DD;
+  box-shadow: 0 0 0 3px rgba(127, 119, 221, 0.25);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+.status-dot--queued    { background: #EF9F27; }
+.status-dot--pending   { background: #1D9E75; }
+.status-dot--completed { background: #639922; }
+
+/* ═══════════════════════════════════════
+   Badges
+═══════════════════════════════════════ */
+.badge--running {
+  background: #EEEDFE;
+  color: #3C3489;
+  border: 1px solid rgba(127, 119, 221, 0.4);
+}
+.badge--queued {
+  background: #FAEEDA;
+  color: #633806;
+  border: 1px solid rgba(186, 117, 23, 0.4);
+}
+.badge--pending {
+  background: #E1F5EE;
+  color: #085041;
+  border: 1px solid rgba(29, 158, 117, 0.4);
+}
+.badge--completed {
+  background: #EAF3DE;
+  color: #27500A;
+  border: 1px solid rgba(99, 153, 34, 0.4);
+}
+
+/* ═══════════════════════════════════════
+   File Icons
+═══════════════════════════════════════ */
+.file-icon--running {
+  background: #EEEDFE;
+  border: 1px solid rgba(127, 119, 221, 0.3);
+}
+.file-icon--running svg { stroke: #534AB7; }
+
+.file-icon--queued {
+  background: #FAEEDA;
+  border: 1px solid rgba(186, 117, 23, 0.3);
+}
+.file-icon--queued svg { stroke: #854F0B; }
+
+.file-icon--pending {
+  background: #E1F5EE;
+  border: 1px solid rgba(29, 158, 117, 0.3);
+}
+.file-icon--pending svg { stroke: #0F6E56; }
+
+.file-icon--completed {
+  background: #EAF3DE;
+  border: 1px solid rgba(99, 153, 34, 0.3);
+}
+.file-icon--completed svg { stroke: #3B6D11; }
+
+/* ═══════════════════════════════════════
+   Dark Mode Overrides
+═══════════════════════════════════════ */
+:host-context(.dark),
+:host-context([data-theme="dark"]),
+:host-context(body.dark-mode) {
+
+  /* Badges */
+  .badge--running   { background: rgba(127,119,221,0.2); color: #AFA9EC; border-color: rgba(127,119,221,0.4); }
+  .badge--queued    { background: rgba(239,159,39,0.2);  color: #FAC775; border-color: rgba(239,159,39,0.4); }
+  .badge--pending   { background: rgba(29,158,117,0.2);  color: #5DCAA5; border-color: rgba(29,158,117,0.4); }
+  .badge--completed { background: rgba(99,153,34,0.2);   color: #97C459; border-color: rgba(99,153,34,0.4); }
+
+  /* File Icons */
+  .file-icon--running  { background: rgba(127,119,221,0.15); border-color: rgba(127,119,221,0.35); }
+  .file-icon--running svg { stroke: #AFA9EC; }
+
+  .file-icon--queued   { background: rgba(239,159,39,0.15);  border-color: rgba(239,159,39,0.35); }
+  .file-icon--queued svg { stroke: #FAC775; }
+
+  .file-icon--pending  { background: rgba(29,158,117,0.15);  border-color: rgba(29,158,117,0.35); }
+  .file-icon--pending svg { stroke: #5DCAA5; }
+
+  .file-icon--completed { background: rgba(99,153,34,0.15);  border-color: rgba(99,153,34,0.35); }
+  .file-icon--completed svg { stroke: #97C459; }
+
+  /* Status dots */
+  .status-dot--running  { background: #AFA9EC; box-shadow: 0 0 0 3px rgba(175,169,236,0.2); }
+  .status-dot--queued   { background: #FAC775; }
+  .status-dot--pending  { background: #5DCAA5; }
+  .status-dot--completed{ background: #97C459; }
+}
+
+
+
+
+
+
+
+
+
+
+
+.poll-bar {
+  background: rgba(127, 119, 221, 0.08);
+  border-bottom: 1px solid rgba(127, 119, 221, 0.2);
+}
+.pulse-dot  { background: #7F77DD; }
+.poll-text  { color: #3C3489; }
+.poll-text strong { color: #26215C; }
+
+.progress-fill--running { background: linear-gradient(90deg, #534AB7, #7F77DD, #AFA9EC); }
+.progress-pct { color: #534AB7; }
+.progress-track { background: rgba(127, 119, 221, 0.15); }
+
+/* Poll bar dark mode */
+:host-context(.dark),
+:host-context([data-theme="dark"]),
+:host-context(body.dark-mode) {
+  .poll-bar       { background: rgba(127,119,221,0.15); border-bottom-color: rgba(127,119,221,0.3); }
+  .pulse-dot      { background: #AFA9EC; }
+  .poll-text      { color: #AFA9EC; }
+  .poll-text strong { color: #CECBF6; }
+  .progress-pct   { color: #AFA9EC; }
+  .progress-track { background: rgba(127,119,221,0.2); }
 }
