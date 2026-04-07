@@ -1,39 +1,23 @@
-Architecture Overview
-This is a client-orchestrated, sequential processing architecture built in Angular, where the UI layer acts as the primary workflow coordinator rather than delegating batch orchestration to the backend.
-
-Structural Layout — Three-Tab Presentation Layer
-The UI is divided into three functionally distinct sections, each representing a different stage of the content processing lifecycle:
-Upload & Generate Tab is the entry point where users introduce VTT/SRT files into the system and trigger immediate inference. History Tab serves as the control plane for revisiting, reconfiguring, and re-running inference on previously uploaded files. Workspace Tab is the read-only output surface where completed results — summaries, keywords, and assessment questions — are surfaced for consumption.
-
-Core Architectural Patterns
-1. Client-Orchestrated Sequential File Upload
-Rather than sending a batch payload to the backend, the Angular layer owns the upload queue and enforces a strict sequential processing discipline:
-[File Queue: F1, F2, F3]
-      │
-      ▼
-  Upload F1 ──► Backend API
-      │              │
-      │         (processing)
-      │              │
-      ◄──────── Response OK
-      │
-  Upload F2 ──► Backend API
-      │
-     ...
-This is a promise-chaining / observable-pipeline pattern — each upload is only triggered after the previous one resolves successfully. In Angular, this is typically implemented using RxJS concatMap, which naturally serialises emissions from a file array into sequential HTTP calls, as opposed to mergeMap which would parallelise them.
-The rationale for this design is usually to avoid backend resource contention, respect rate limits, or maintain ordering guarantees — especially important when downstream processing (e.g. AI inference) is compute-heavy.
-2. Single vs. Multi-File Inference Branching (History Tab)
-The History Tab introduces a conditional dispatch pattern:
-User Selection
-      │
-      ├─── Single File ──► Single Inference API Call
-      │                         │
-      │                    (one payload, one response)
-      │
-      └─── Multiple Files ──► Multi-File Inference API Call
-                                    │
-                               (batch payload or
-                                parallel dispatch)
-The UI branches into two distinct API invocation strategies based on selection cardinality. This keeps the backend contracts clean — a single-file endpoint can be optimised for low-latency response, while the multi-file endpoint can be designed for throughput or async handling.
-3. Optional Prompt Overrides (History Tab)
-The History Tab supports parameterised re-inference — users can optionally override the Summary Prompt and Assessment Question Prompt before triggering generation. This means the API call carries a payload that conditionally includes prompt overrides, and the backend falls back to defaults when they are absent. This is a partial configuration injection pattern.
+stopQueuedFile(itemId: string, event: Event): void {
+  event.stopPropagation();
+  this.historyService.stopFiles([Number(itemId)]).subscribe({
+    next: (res) => {
+      if (res.status === 'success') {
+        const item = this.historyItems.find(i => i.id === itemId);
+        if (item) item.status = 'pending';
+      }
+    },
+    error: (err) => {
+      console.error('Stop file error:', err);
+      if (err.status === 403) {
+        alert(
+          'This file can no longer be stopped — it has already moved to Running. ' +
+          'The list will refresh automatically to show the latest status.'
+        );
+        this.fetchAll(true);
+      } else {
+        alert('Failed to stop the file. Please try again.');
+      }
+    }
+  });
+}
