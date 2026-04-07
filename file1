@@ -1,874 +1,130 @@
-import {
-  Component, EventEmitter, Output, Input,
-  OnInit, OnChanges, SimpleChanges, OnDestroy
-} from '@angular/core';
-import { HistoryService, FileItem } from './history.service';
-import { UploadGenerateService } from './upload-generate.service';
-import { Subscription, interval, forkJoin, of } from 'rxjs';
-import { switchMap, catchError } from 'rxjs/operators';
-
-export type FileStatus = 'running' | 'queued' | 'pending' | 'completed';
-
-export interface HistoryItem {
-  id: string;
-  name: string;
-  displayDate: string;
-  date: Date;
-  status: FileStatus;
-  progress: number;
-  summary_prompt: string | null;
-  faq_prompt: string | null;
+/* ═══════════════════════════════════════
+   Empty State — Section Separator
+═══════════════════════════════════════ */
+.section-separator {
+  position: relative;
+  width: 100%;
+  max-width: 650px;
+  margin: 0 auto 32px auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-export interface HistoryItemSelect {
-  id: string;
-  name: string;
-  displayDate: string;
-  date: Date;
-  summary_prompt: string | null;
-  faq_prompt: string | null;
+.separator-line {
+  position: absolute;
+  width: 100%;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--border-color) 20%,
+    var(--border-color) 80%,
+    transparent 100%
+  );
 }
 
-interface RemoveGenerateFile {
-  id: number;
-  name: string;
+.separator-icon {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  background: var(--bg-color);
+  border: 1.5px solid var(--border-color);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
 }
 
-interface NewUploadFile {
-  id: number;
-  original_name: string;
-  created_at: string;
-  summary_prompt: string | null;
-  faq_prompt: string | null;
+.separator-icon svg {
+  width: 16px;
+  height: 16px;
+  stroke: var(--primary-color);
 }
 
-interface ProcessStatus {
-  id: number | null;
-  isProcessing: boolean;
+/* ═══════════════════════════════════════
+   Empty State — Guide Title
+═══════════════════════════════════════ */
+.user-guide-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-color);
+  margin: 0 0 20px 0;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
 }
 
-interface GenerationStatus {
-  id: number;
-  status: 'Success' | 'Failure';
-  summary_prompt?: string;
-  faq_prompt?: string;
+.guide-title-icon {
+  width: 20px;
+  height: 20px;
+  stroke: var(--primary-color);
+  flex-shrink: 0;
 }
 
-const POLL_INTERVAL_MS = 10_000;
-
-@Component({
-  selector: 'app-history',
-  templateUrl: './history.component.html',
-  styleUrls: ['./history.component.css']
-})
-export class HistoryComponent implements OnInit, OnChanges, OnDestroy {
-
-  /* ── Inputs from parent ── */
-  @Input() removeGenerateFile: RemoveGenerateFile | null = null;
-  @Input() generationStatus: GenerationStatus | null = null;
-  @Input() newUploadFile: NewUploadFile | null = null;
-  @Input() processStatus: ProcessStatus | null = null;
-  @Input() isFileUploading: boolean = false;
-
-  /* ── Outputs ── */
-  @Output() onItemSelect = new EventEmitter<HistoryItemSelect>();
-  @Output() onItemDeselect = new EventEmitter<null>();
-  @Output() onAddToContentGeneration = new EventEmitter<HistoryItem>();
-  @Output() onRemoveFromContentGeneration = new EventEmitter<string>();
-
-  /* ── Display state ── */
-  historyItems: HistoryItem[] = [];
-  isLoading = false;
-  isRefreshing = false;
-  errorMessage = '';
-
-  selectedHistoryItem: HistoryItem | null = null;
-  addedToGenerationId: string | null = null;
-
-  /* ── Section collapse state ── */
-  sectionExpanded: Record<FileStatus, boolean> = {
-    running: true,
-    queued: true,
-    pending: true,
-    completed: true
-  };
-
-  /* ── Filter / search ── */
-  isFilterVisible = false;
-  filterFromDate = '';
-  filterToDate = '';
-  searchText = '';
-  startDate = '';
-  endDate = '';
-
-  /* ── Delete mode ── */
-  isDeleteMode = false;
-  isProcessingDelete = false;
-  isDeleteConfirmationVisible = false;
-  selectedDeleteItems = new Set<string>();
-
-  /* ── Inference mode (only available when queued=[] and running=[]) ── */
-  isInferenceMode = false;
-  isSubmittingBatch = false;
-  isProcessingInference = false;
-  selectedInferenceItems = new Set<string>();
-  inferenceModelName = 'ABC';
-
-  /* ── Export mode ── */
-  isExportMode = false;
-  isExporting = false;
-  selectedExportItems = new Set<string>();
-
-  /* ── Poll state ── */
-  pollCountdown = POLL_INTERVAL_MS / 1000;
-  private pollSubscription: Subscription | null = null;
-  private countdownSubscription: Subscription | null = null;
-
-  /* ── Empty state guide ── */
-  showAllSteps = false;
-  allSteps = [
-    { num: 1, title: 'Upload file', desc: 'Upload a <strong>.VTT</strong> or <strong>.SRT</strong> file in the Upload & Generate section.' },
-    { num: 2, title: 'File appears in history', desc: 'On successful upload the file appears here under <strong>Pending</strong>.' },
-    { num: 3, title: 'Start inference', desc: 'Click the <strong>+</strong> icon to add the file to the Generate component, then start inference.' },
-    { num: 4, title: 'File moves to Queued', desc: 'Once inference is triggered the file enters the <strong>Queued</strong> section.' },
-    { num: 5, title: 'File starts Running', desc: 'When the server picks it up the file moves to <strong>Running</strong> with a live progress bar.' },
-    { num: 6, title: 'View results', desc: 'After completion the file moves to <strong>Completed</strong> where you can view and export results.' },
-  ];
-
-  constructor(
-    private historyService: HistoryService,
-    private uploadGenerateService: UploadGenerateService
-  ) {}
-
-  /* ═══════════════════════════════════════════
-     Lifecycle
-  ═══════════════════════════════════════════ */
-
-  ngOnInit(): void {
-    this.initializeDateRange();
-    this.fetchAll();
-  }
-
-  ngOnChanges(changes: SimpleChanges): void {
-    if (changes['removeGenerateFile']?.currentValue) {
-      this.handleRemoveFromParent(changes['removeGenerateFile'].currentValue);
-    }
-    if (changes['generationStatus']?.currentValue) {
-      this.handleGenerationStatusChange(changes['generationStatus'].currentValue);
-    }
-    if (changes['newUploadFile']?.currentValue) {
-      this.handleNewFileUpload(changes['newUploadFile'].currentValue);
-    }
-    if (changes['processStatus']?.currentValue) {
-      this.handleProcessStatusChange(changes['processStatus'].currentValue);
-    }
-  }
-
-  ngOnDestroy(): void {
-    this.stopPolling();
-  }
-
-  /* ═══════════════════════════════════════════
-     Computed getters
-  ═══════════════════════════════════════════ */
-
-  get runningFiles(): HistoryItem[] {
-    return this.applySearch(this.historyItems.filter(i => i.status === 'running'));
-  }
-
-  get queuedFiles(): HistoryItem[] {
-    return this.applySearch(this.historyItems.filter(i => i.status === 'queued'));
-  }
-
-  get pendingFiles(): HistoryItem[] {
-    return this.applySearch(this.historyItems.filter(i => i.status === 'pending'));
-  }
-
-  get completedFiles(): HistoryItem[] {
-    return this.applySearch(this.historyItems.filter(i => i.status === 'completed'));
-  }
-
-  get hasAnyFiles(): boolean {
-    return this.historyItems.length > 0;
-  }
-
-  get isLivePolling(): boolean {
-    return this.pollSubscription !== null;
-  }
-
-  get liveFileCount(): string {
-    const r = this.historyItems.filter(i => i.status === 'running').length;
-    const q = this.historyItems.filter(i => i.status === 'queued').length;
-    const parts: string[] = [];
-    if (r) parts.push(`${r} running`);
-    if (q) parts.push(`${q} queued`);
-    return parts.join(', ');
-  }
-
-  /** Inference mode is only available when server has no active work */
-  get canUseInferenceMode(): boolean {
-    return (
-      this.historyItems.filter(i => i.status === 'running').length === 0 &&
-      this.historyItems.filter(i => i.status === 'queued').length === 0 &&
-      this.hasAnyFiles
-    );
-  }
-
-  get inferenceSelectionCount(): number {
-    return this.selectedInferenceItems.size;
-  }
-
-  get exportSelectionCount(): number {
-    return this.selectedExportItems.size;
-  }
-
-  /** True whenever any operation is in progress — disables all header icons and + / - buttons */
-  get isActionsDisabled(): boolean {
-    return (
-      this.isSubmittingBatch ||   // batch inference API call in flight
-      this.isProcessingInference || // inference polling is running (queued/running files exist)
-      this.isExporting ||           // export API call in flight
-      this.isProcessingDelete ||    // delete API call in flight
-      this.isFileUploading          // parent is uploading a file
-    );
-  }
-
-  /* ═══════════════════════════════════════════
-     Data fetching
-  ═══════════════════════════════════════════ */
-
-  private fetchAll(isRefresh = false): void {
-    if (isRefresh) {
-      this.isRefreshing = true;
-    } else {
-      this.isLoading = true;
-    }
-
-    const today = new Date();
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(today.getDate() - 30);
-
-    const start = this.filterFromDate || this.formatDateForApi(thirtyDaysAgo);
-    const end = this.filterToDate || this.formatDateForApi(today);
-
-    this.historyService.getFilesByDateRange(start, end).subscribe({
-      next: (response) => {
-        if (response.status === 'success' && response.data) {
-          this.mergeResponseIntoItems(response.data);
-        }
-        this.isLoading = false;
-        this.isRefreshing = false;
-        this.updatePollingState();
-      },
-      error: (err) => {
-        console.error('Error fetching history:', err);
-        this.errorMessage = 'Failed to load history. Please try again.';
-        this.isLoading = false;
-        this.isRefreshing = false;
-      }
-    });
-  }
-
-  private mergeResponseIntoItems(data: any): void {
-    const buildItem = (file: FileItem, status: FileStatus): HistoryItem => ({
-      id: file.id.toString(),
-      name: file.original_name,
-      displayDate: `Created on ${file.inserted_at}`,
-      date: new Date(file.inserted_at),
-      status,
-      progress: 0,
-      summary_prompt: file.summary_prompt,
-      faq_prompt: file.faq_prompt
-    });
-
-    const newItems: HistoryItem[] = [
-      ...(data.running  || []).map((f: FileItem) => buildItem(f, 'running')),
-      ...(data.queued   || []).map((f: FileItem) => buildItem(f, 'queued')),
-      ...(data.pending  || []).map((f: FileItem) => buildItem(f, 'pending')),
-      ...(data.completed|| []).map((f: FileItem) => buildItem(f, 'completed')),
-    ];
-
-    // Preserve progress values for running items across refreshes
-    newItems.forEach(newItem => {
-      const existing = this.historyItems.find(i => i.id === newItem.id);
-      if (existing && newItem.status === 'running') {
-        newItem.progress = existing.progress;
-      }
-    });
-
-    this.historyItems = newItems;
-  }
-
-  /* ═══════════════════════════════════════════
-     Polling
-  ═══════════════════════════════════════════ */
-
-  private updatePollingState(): void {
-    const hasActiveFiles =
-      this.historyItems.some(i => i.status === 'running') ||
-      this.historyItems.some(i => i.status === 'queued');
-
-    if (hasActiveFiles && !this.pollSubscription) {
-      this.startPolling();
-    } else if (!hasActiveFiles && this.pollSubscription) {
-      this.stopPolling();
-    }
-  }
-
-  private startPolling(): void {
-    this.pollCountdown = POLL_INTERVAL_MS / 1000;
-    this.isProcessingInference = true;
-    this.startCountdown();
-
-    this.pollSubscription = interval(POLL_INTERVAL_MS).pipe(
-      switchMap(() => {
-        const runningIds = this.historyItems
-          .filter(i => i.status === 'running')
-          .map(i => Number(i.id));
-
-        if (runningIds.length === 0) {
-          return of(null);
-        }
-        return this.historyService.getFilesProgress(runningIds).pipe(
-          catchError(err => {
-            console.error('Progress poll error:', err);
-            return of(null);
-          })
-        );
-      })
-    ).subscribe(progressResponse => {
-      // Step 1: apply progress updates
-      if (progressResponse && progressResponse.status === 'Success') {
-        Object.entries(progressResponse.result).forEach(([id, pct]) => {
-          const item = this.historyItems.find(i => i.id === id);
-          if (item) item.progress = pct as number;
-        });
-      }
-
-      // Step 2: re-fetch full list to re-bucket files
-      this.fetchAll(true);
-
-      // Step 3: reset countdown
-      this.pollCountdown = POLL_INTERVAL_MS / 1000;
-    });
-  }
-
-  private startCountdown(): void {
-    this.stopCountdown();
-    this.countdownSubscription = interval(1000).subscribe(() => {
-      if (this.pollCountdown > 0) {
-        this.pollCountdown--;
-      }
-    });
-  }
-
-  private stopCountdown(): void {
-    this.countdownSubscription?.unsubscribe();
-    this.countdownSubscription = null;
-  }
-
-  private stopPolling(): void {
-    this.pollSubscription?.unsubscribe();
-    this.pollSubscription = null;
-    this.isProcessingInference = false;
-    this.stopCountdown();
-
-    // Re-emit the selected item so the parent gets fresh data after processing
-    if (this.selectedHistoryItem) {
-      const fresh = this.historyItems.find(i => i.id === this.selectedHistoryItem!.id);
-      const itemToEmit = fresh ?? this.selectedHistoryItem;
-      this.onItemSelect.emit({
-        id: itemToEmit.id,
-        name: itemToEmit.name,
-        displayDate: itemToEmit.displayDate,
-        date: itemToEmit.date,
-        summary_prompt: itemToEmit.summary_prompt,
-        faq_prompt: itemToEmit.faq_prompt
-      });
-    }
-  }
-
-  /* ═══════════════════════════════════════════
-     Date filter
-  ═══════════════════════════════════════════ */
-
-  toggleFilter(): void {
-    this.isFilterVisible = !this.isFilterVisible;
-    if (this.isFilterVisible && !this.filterFromDate && !this.filterToDate) {
-      const today = new Date();
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(today.getDate() - 30);
-      this.filterFromDate = this.formatDateForInput(thirtyDaysAgo);
-      this.filterToDate = this.formatDateForInput(today);
-    }
-  }
-
-  applyDateFilter(): void {
-    if (!this.filterFromDate || !this.filterToDate) return;
-    const from = new Date(this.filterFromDate);
-    const to = new Date(this.filterToDate);
-    if (from > to) return;
-
-    this.startDate = this.formatDateForDisplay(from);
-    this.endDate = this.formatDateForDisplay(to);
-    this.fetchAll(true);
-  }
-
-  onSearchChange(): void { /* filtering is reactive via getters */ }
-  clearSearch(): void { this.searchText = ''; }
-
-  /* ═══════════════════════════════════════════
-     Stop queued files
-  ═══════════════════════════════════════════ */
-
-  stopQueuedFile(itemId: string, event: Event): void {
-    event.stopPropagation();
-    this.historyService.stopFiles([Number(itemId)]).subscribe({
-      next: (res) => {
-        if (res.status === 'success') {
-          // Optimistically remove from queued; next poll will confirm
-          const item = this.historyItems.find(i => i.id === itemId);
-          if (item) item.status = 'pending';
-        }
-      },
-      error: (err) => console.error('Stop file error:', err)
-    });
-  }
-
-  /* ═══════════════════════════════════════════
-     Section collapse
-  ═══════════════════════════════════════════ */
-
-  toggleSection(status: FileStatus): void {
-    this.sectionExpanded[status] = !this.sectionExpanded[status];
-  }
-
-  /* ═══════════════════════════════════════════
-     Item selection & add to generation
-  ═══════════════════════════════════════════ */
-
-  onHistoryItemClick(itemId: string): void {
-    if (this.isDeleteMode) {
-      this.toggleDeleteSelection(itemId);
-      return;
-    }
-    if (this.isInferenceMode) {
-      const event = new Event('click');
-      this.toggleInferenceSelection(itemId, event);
-      return;
-    }
-    if (this.isExportMode) {
-      const event = new Event('click');
-      this.toggleExportSelection(itemId, event);
-      return;
-    }
-    const item = this.historyItems.find(i => i.id === itemId);
-    if (item) {
-      this.selectedHistoryItem = item;
-      this.onItemSelect.emit({
-        id: item.id,
-        name: item.name,
-        displayDate: item.displayDate,
-        date: item.date,
-        summary_prompt: item.summary_prompt,
-        faq_prompt: item.faq_prompt
-      });
-    }
-  }
-
-  onAddToGeneration(event: Event, item: HistoryItem): void {
-    event.stopPropagation();
-    if (this.isActionsDisabled) return;
-
-    const btn = (event.currentTarget as HTMLElement);
-    const row = btn.closest('.file-row') as HTMLElement;
-
-    if (this.addedToGenerationId === item.id) {
-      this.animateRow(row, 'removing-animation');
-      this.addedToGenerationId = null;
-      this.onRemoveFromContentGeneration.emit(item.id);
-    } else {
-      this.animateRow(row, 'adding-animation');
-      this.addedToGenerationId = item.id;
-      this.onAddToContentGeneration.emit(item);
-    }
-  }
-
-  isAddedToGeneration(itemId: string): boolean {
-    return this.addedToGenerationId === itemId;
-  }
-
-  /* ═══════════════════════════════════════════
-     Inference mode
-  ═══════════════════════════════════════════ */
-
-  toggleInferenceMode(): void {
-    if (!this.canUseInferenceMode || this.isActionsDisabled) return;
-    this.isInferenceMode = !this.isInferenceMode;
-    if (!this.isInferenceMode) {
-      this.selectedInferenceItems.clear();
-    }
-    if (this.isInferenceMode) {
-      this.isDeleteMode = false;
-      this.selectedDeleteItems.clear();
-      this.isExportMode = false;
-      this.selectedExportItems.clear();
-    }
-  }
-
-  toggleInferenceSelection(itemId: string, event: Event): void {
-    event.stopPropagation();
-    if (this.selectedInferenceItems.has(itemId)) {
-      this.selectedInferenceItems.delete(itemId);
-    } else {
-      this.selectedInferenceItems.add(itemId);
-    }
-  }
-
-  isSelectedForInference(itemId: string): boolean {
-    return this.selectedInferenceItems.has(itemId);
-  }
-
-  toggleSelectAllInference(status: FileStatus): void {
-    const items = this.getItemsByStatus(status);
-    const allSelected = items.every(i => this.selectedInferenceItems.has(i.id));
-    if (allSelected) {
-      items.forEach(i => this.selectedInferenceItems.delete(i.id));
-    } else {
-      items.forEach(i => this.selectedInferenceItems.add(i.id));
-    }
-  }
-
-  areAllSelectedForInference(status: FileStatus): boolean {
-    const items = this.getItemsByStatus(status);
-    return items.length > 0 && items.every(i => this.selectedInferenceItems.has(i.id));
-  }
-
-  cancelInference(): void {
-    this.selectedInferenceItems.clear();
-    this.isInferenceMode = false;
-  }
-
-  startBatchInference(): void {
-    if (this.selectedInferenceItems.size === 0) return;
-    this.isSubmittingBatch = true;
-
-    const fileIds = Array.from(this.selectedInferenceItems).map(Number);
-
-    this.historyService.batchProcess(fileIds, this.inferenceModelName).subscribe({
-      next: (res) => {
-        this.isSubmittingBatch = false;
-        this.isInferenceMode = false;
-        this.selectedInferenceItems.clear();
-        this.fetchAll(true);
-      },
-      error: (err) => {
-        console.error('Batch process error:', err);
-        this.isSubmittingBatch = false;
-        alert('Failed to start batch inference. Please try again.');
-      }
-    });
-  }
-
-  /* ═══════════════════════════════════════════
-     Export mode
-  ═══════════════════════════════════════════ */
-
-  toggleExportMode(): void {
-    if (this.isActionsDisabled) return;
-    this.isExportMode = !this.isExportMode;
-    if (!this.isExportMode) this.selectedExportItems.clear();
-    if (this.isExportMode) {
-      this.isDeleteMode = false;
-      this.selectedDeleteItems.clear();
-      this.isInferenceMode = false;
-      this.selectedInferenceItems.clear();
-    }
-  }
-
-  toggleExportSelection(itemId: string, event: Event): void {
-    event.stopPropagation();
-    if (this.selectedExportItems.has(itemId)) {
-      this.selectedExportItems.delete(itemId);
-    } else {
-      this.selectedExportItems.add(itemId);
-    }
-  }
-
-  isSelectedForExport(itemId: string): boolean {
-    return this.selectedExportItems.has(itemId);
-  }
-
-  toggleSelectAllExport(status: FileStatus): void {
-    const items = this.getItemsByStatus(status);
-    const allSelected = items.every(i => this.selectedExportItems.has(i.id));
-    if (allSelected) {
-      items.forEach(i => this.selectedExportItems.delete(i.id));
-    } else {
-      items.forEach(i => this.selectedExportItems.add(i.id));
-    }
-  }
-
-  areAllSelectedForExport(status: FileStatus): boolean {
-    const items = this.getItemsByStatus(status);
-    return items.length > 0 && items.every(i => this.selectedExportItems.has(i.id));
-  }
-
-  cancelExport(): void {
-    this.selectedExportItems.clear();
-    this.isExportMode = false;
-  }
-
-  startExport(): void {
-    if (this.selectedExportItems.size === 0) return;
-    this.isExporting = true;
-
-    const fileIds = Array.from(this.selectedExportItems).map(Number);
-
-    this.historyService.exportFiles(fileIds).subscribe({
-      next: (blob: Blob) => {
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `export_${new Date().toISOString().slice(0, 10)}.zip`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
-
-        this.isExporting = false;
-        this.isExportMode = false;
-        this.selectedExportItems.clear();
-      },
-      error: (err) => {
-        console.error('Export error:', err);
-        this.isExporting = false;
-        alert('Failed to export files. Please try again.');
-      }
-    });
-  }
-
-  /* ═══════════════════════════════════════════
-     Delete mode
-  ═══════════════════════════════════════════ */
-
-  toggleDeleteMode(): void {
-    if (this.isActionsDisabled) return;
-    this.isDeleteMode = !this.isDeleteMode;
-    if (!this.isDeleteMode) this.selectedDeleteItems.clear();
-    if (this.isDeleteMode) {
-      this.isInferenceMode = false;
-      this.selectedInferenceItems.clear();
-      this.isExportMode = false;
-      this.selectedExportItems.clear();
-    }
-  }
-
-  toggleDeleteSelection(itemId: string): void {
-    if (this.selectedDeleteItems.has(itemId)) {
-      this.selectedDeleteItems.delete(itemId);
-    } else {
-      this.selectedDeleteItems.add(itemId);
-    }
-  }
-
-  isSelectedForDelete(itemId: string): boolean {
-    return this.selectedDeleteItems.has(itemId);
-  }
-
-  toggleSelectAll(status: FileStatus): void {
-    const items = this.getItemsByStatus(status);
-    const allSelected = items.every(i => this.selectedDeleteItems.has(i.id));
-    if (allSelected) {
-      items.forEach(i => this.selectedDeleteItems.delete(i.id));
-    } else {
-      items.forEach(i => this.selectedDeleteItems.add(i.id));
-    }
-  }
-
-  areAllSelected(status: FileStatus): boolean {
-    const items = this.getItemsByStatus(status);
-    return items.length > 0 && items.every(i => this.selectedDeleteItems.has(i.id));
-  }
-
-  showDeleteConfirmation(): void {
-    if (this.selectedDeleteItems.size === 0) return;
-    this.isDeleteConfirmationVisible = true;
-  }
-
-  closeDeleteConfirmation(): void {
-    if (!this.isProcessingDelete) this.isDeleteConfirmationVisible = false;
-  }
-
-  cancelMultipleDelete(): void {
-    this.selectedDeleteItems.clear();
-    this.isDeleteMode = false;
-  }
-
-  confirmMultipleDelete(): void {
-    this.isDeleteConfirmationVisible = false;
-    this.isProcessingDelete = true;
-    const ids = Array.from(this.selectedDeleteItems).map(Number);
-
-    this.historyService.deleteFiles(ids).subscribe({
-      next: (res) => {
-        if (res.status === 'success') {
-          this.historyItems = this.historyItems.filter(i => !ids.includes(Number(i.id)));
-
-          // If the currently selected item was deleted, deselect and notify parent
-          if (this.selectedHistoryItem && ids.includes(Number(this.selectedHistoryItem.id))) {
-            this.selectedHistoryItem = null;
-            this.onItemDeselect.emit(null);
-          }
-
-          if (this.addedToGenerationId && ids.includes(Number(this.addedToGenerationId))) {
-            this.addedToGenerationId = null;
-          }
-        }
-        this.selectedDeleteItems.clear();
-        this.isProcessingDelete = false;
-        this.isDeleteMode = false;
-      },
-      error: (err) => {
-        console.error('Delete error:', err);
-        this.isProcessingDelete = false;
-        this.isDeleteConfirmationVisible = false;
-      }
-    });
-  }
-
-  /* ═══════════════════════════════════════════
-     Input change handlers
-  ═══════════════════════════════════════════ */
-
-  private handleNewFileUpload(newFile: NewUploadFile): void {
-    if (this.historyItems.find(i => i.id === newFile.id.toString())) return;
-
-    const newItem: HistoryItem = {
-      id: newFile.id.toString(),
-      name: newFile.original_name,
-      displayDate: `Created on ${newFile.created_at}`,
-      date: new Date(newFile.created_at),
-      status: 'pending',
-      progress: 0,
-      summary_prompt: newFile.summary_prompt,
-      faq_prompt: newFile.faq_prompt
-    };
-
-    this.historyItems.unshift(newItem);
-    this.sectionExpanded['pending'] = true;
-
-    setTimeout(() => {
-      const el = document.querySelector(`.file-row[data-item-id="${newFile.id}"]`) as HTMLElement;
-      el?.classList.add('new-item-animation');
-      el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      setTimeout(() => el?.classList.remove('new-item-animation'), 800);
-    }, 100);
-  }
-
-  private handleGenerationStatusChange(statusUpdate: GenerationStatus): void {
-    const item = this.historyItems.find(i => i.id === statusUpdate.id.toString());
-    if (!item) return;
-
-    if (statusUpdate.summary_prompt !== undefined) item.summary_prompt = statusUpdate.summary_prompt;
-    if (statusUpdate.faq_prompt !== undefined) item.faq_prompt = statusUpdate.faq_prompt;
-
-    if (statusUpdate.status === 'Success') {
-      item.status = 'completed';
-      item.progress = 100;
-      this.sectionExpanded['completed'] = true;
-      if (this.addedToGenerationId === item.id) this.addedToGenerationId = null;
-      this.animateItemById(item.id, 'success-animation');
-      this.updatePollingState();
-    } else if (statusUpdate.status === 'Failure') {
-      item.status = 'pending';
-      item.progress = 0;
-      this.sectionExpanded['pending'] = true;
-      if (this.addedToGenerationId === item.id) this.addedToGenerationId = null;
-      this.animateItemById(item.id, 'failure-animation');
-      this.updatePollingState();
-    }
-  }
-
-  private handleRemoveFromParent(fileToRemove: RemoveGenerateFile): void {
-    const itemId = fileToRemove.id.toString();
-    if (this.addedToGenerationId === itemId) {
-      this.addedToGenerationId = null;
-    }
-  }
-
-  private handleProcessStatusChange(status: ProcessStatus): void {
-    if (status.id !== null && status.isProcessing) {
-      // An external process has started for this file — immediately fetch
-      // the latest file list so it appears in running/queued, then
-      // updatePollingState() inside fetchAll will auto-start the 10s poll.
-      this.fetchAll(true);
-    } else if (!status.isProcessing) {
-      // Processing stopped externally — re-fetch once to sync final state.
-      // If running/queued arrays become empty, updatePollingState() will
-      // automatically stop polling.
-      this.fetchAll(true);
-    }
-  }
-
-  /* ═══════════════════════════════════════════
-     Helpers
-  ═══════════════════════════════════════════ */
-
-  toggleShowAllSteps(): void {
-    this.showAllSteps = !this.showAllSteps;
-  }
-
-  clearSelection(): void { this.selectedHistoryItem = null; }
-  clearAddedToGeneration(): void { this.addedToGenerationId = null; }
-
-  getItemsByStatus(status: FileStatus): HistoryItem[] {
-    switch (status) {
-      case 'running':   return this.runningFiles;
-      case 'queued':    return this.queuedFiles;
-      case 'pending':   return this.pendingFiles;
-      case 'completed': return this.completedFiles;
-    }
-  }
-
-  private applySearch(items: HistoryItem[]): HistoryItem[] {
-    if (!this.searchText.trim()) return items;
-    const term = this.searchText.toLowerCase().trim();
-    return items.filter(i =>
-      i.name.toLowerCase().includes(term) || i.id.toLowerCase().includes(term)
-    );
-  }
-
-  private animateRow(el: HTMLElement | null, cls: string): void {
-    if (!el) return;
-    el.classList.add(cls);
-    setTimeout(() => el.classList.remove(cls), 800);
-  }
-
-  private animateItemById(id: string, cls: string): void {
-    setTimeout(() => {
-      const el = document.querySelector(`.file-row[data-item-id="${id}"]`) as HTMLElement;
-      this.animateRow(el, cls);
-    }, 100);
-  }
-
-  private initializeDateRange(): void {
-    const today = new Date();
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(today.getDate() - 30);
-    this.startDate = this.formatDateForDisplay(thirtyDaysAgo);
-    this.endDate = this.formatDateForDisplay(today);
-  }
-
-  private formatDateForDisplay(date: Date): string {
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  }
-
-  private formatDateForApi(date: Date): string {
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-  }
-
-  private formatDateForInput(date: Date): string {
-    return this.formatDateForApi(date);
-  }
+/* ═══════════════════════════════════════
+   Responsive — Empty State extras ≤ 1400px
+═══════════════════════════════════════ */
+@media screen and (max-width: 1400px) {
+  .section-separator { margin-bottom: 28px; }
+  .separator-icon { width: 28px; height: 28px; }
+  .separator-icon svg { width: 14px; height: 14px; }
+  .user-guide-title { font-size: 15px; margin-bottom: 16px; gap: 8px; }
+  .guide-title-icon { width: 18px; height: 18px; }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="empty-state" *ngIf="!isLoading && !hasAnyFiles">
+  <div class="empty-icon">
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z" />
+    </svg>
+  </div>
+  <h3 class="empty-title">No History Available</h3>
+  <p class="empty-desc">Get started by uploading your first file and generating content</p>
+
+  <!-- Separator with + icon -->
+  <div class="section-separator">
+    <div class="separator-line"></div>
+    <div class="separator-icon">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+      </svg>
+    </div>
+  </div>
+
+  <!-- Guide title -->
+  <h4 class="user-guide-title">
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="guide-title-icon">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+    How History Works
+  </h4>
+
+  <!-- Steps -->
+  <div class="guide-steps">
+    <div class="guide-step" *ngFor="let step of (showAllSteps ? allSteps : allSteps.slice(0,4))">
+      <div class="step-num">{{ step.num }}</div>
+      <div>
+        <p class="step-title">{{ step.title }}</p>
+        <p class="step-desc" [innerHTML]="step.desc"></p>
+      </div>
+    </div>
+    <button class="view-more-btn" (click)="toggleShowAllSteps()">
+      {{ showAllSteps ? 'Show less' : 'View +2 more steps' }}
+    </button>
+  </div>
+</div>
