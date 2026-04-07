@@ -1,52 +1,36 @@
-<button class="view-more-btn" (click)="toggleShowAllSteps()">
-  <span *ngIf="!showAllSteps">
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-      <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-    </svg>
-    View +2 more steps
-  </span>
-  <span *ngIf="showAllSteps">
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-      <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 12h-15" />
-    </svg>
-    Show less
-  </span>
-</button>
+confirmMultipleDelete(): void {
+  this.isProcessingDelete = true;
+  const ids = Array.from(this.selectedDeleteItems).map(Number);
 
+  this.historyService.deleteFiles(ids).subscribe({
+    next: (res) => {
+      if (res.status === 'success') {
+        this.historyItems = this.historyItems.filter(i => !ids.includes(Number(i.id)));
 
+        if (this.selectedHistoryItem && ids.includes(Number(this.selectedHistoryItem.id))) {
+          this.selectedHistoryItem = null;
+          this.onItemDeselect.emit(null);
+        }
 
+        if (this.addedToGenerationId && ids.includes(Number(this.addedToGenerationId))) {
+          this.addedToGenerationId = null;
+        }
 
-
-.view-more-btn {
-  width: 100%;
-  padding: 10px;
-  background: linear-gradient(135deg, var(--primary-gradient-light-start), var(--primary-gradient-light-end));
-  border: 1.5px solid var(--primary-border-color);
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-color);
-  cursor: pointer;
-  transition: all 0.2s;
-  margin-top: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.view-more-btn span {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.view-more-btn svg {
-  width: 14px;
-  height: 14px;
-  stroke: var(--primary-color);
-}
-
-.view-more-btn:hover {
-  background: linear-gradient(135deg, var(--primary-gradient-medium-start), var(--primary-gradient-medium-end));
-  border-color: var(--primary-color);
+        this.selectedDeleteItems.clear();
+        this.isProcessingDelete = false;
+        this.isDeleteConfirmationVisible = false;  // ← closes only on success ✅
+        this.isDeleteMode = false;
+      } else {
+        this.isProcessingDelete = false;
+        this.isDeleteConfirmationVisible = false;
+        alert('Failed to delete files. Please try again.');
+      }
+    },
+    error: (err) => {
+      console.error('Delete error:', err);
+      this.isProcessingDelete = false;
+      this.isDeleteConfirmationVisible = false;
+      alert('Failed to delete files. Please try again.');  // ← error alert ✅
+    }
+  });
 }
