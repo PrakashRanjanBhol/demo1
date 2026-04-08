@@ -1,260 +1,32 @@
-const [activeView, setActiveView] = useState<'upload' | 'youtube' | 'website'>('upload');
-const [urlInput, setUrlInput] = useState('');
-
-
-<div className={styles.modelContent}>
-  {activeView === 'upload' ? (
-    <>
-      <div
-        className={`${styles.dropZone} ${isDragging ? styles.dragging : ''}`}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-        onClick={() => fileInputRef.current?.click()}>
-        <IconUploadCloud size={32} className={styles.cloudIcon} />
-        <p className={styles.dropTitle}>{t(`actions.drag_drop`)}</p>
-        <p className={styles.dropSubtitle}>
-          {ALLOWED_EXTENSIONS.map((item) => item.toUpperCase()).join(', ')} {`up to ${MAX_FILE_EACH_FILE} MB`}
-        </p>
-      </div>
-
-      {errorMessage && (
-        <div className={`mt-3 ${styles.uploadErrorMsg}`}>
-          <span>{errorMessage}</span>
-          <button onClick={() => setErrorMessage(null)} className={styles.dismissErrorBtn}>
-            <IconX size={14} />
-          </button>
-        </div>
-      )}
-
-      <div className={styles.modalDivider}>
-        <span>or add from</span>
-      </div>
-
-      <div className={styles.alternativeSourceGrid}>
-        <button className={styles.altSourceBtn} onClick={() => { setActiveView('youtube'); setErrorMessage(null); }}>
-          <IconYoutube size={20} className={`${styles.altIcon} ${styles.youtube}`} />
-          <span>Youtube URL</span>
-        </button>
-        <button className={styles.altSourceBtn} onClick={() => { setActiveView('website'); setErrorMessage(null); }}>
-          <IconWorld size={20} className={`${styles.altIcon} ${styles.website}`} />
-          <span>Website URL</span>
-        </button>
-      </div>
-    </>
-  ) : (
-    <>
-      <div className={styles.urlViewHeader}>
-        <button className={styles.backBtn} onClick={() => { setActiveView('upload'); setUrlInput(''); setErrorMessage(null); }}>
-          <IconArrowLeft size={18} />
-        </button>
-        <h3 className={styles.urlViewTitle}>
-          {activeView === 'youtube' ? 'YouTube URL' : 'Website URL'}
-        </h3>
-      </div>
-
-      <p className={styles.urlViewSubtitle}>
-        {activeView === 'youtube'
-          ? 'Only the text transcript from the YouTube video will be imported. Only public videos are supported.'
-          : 'Only the visible text on the website will be imported. Paid articles are not supported.'}
-      </p>
-
-      <textarea
-        className={styles.urlTextarea}
-        placeholder={activeView === 'youtube' ? 'Paste YouTube URL' : 'Paste website URL'}
-        value={urlInput}
-        onChange={(e) => setUrlInput(e.target.value)}
-      />
-
-      {errorMessage && (
-        <div className={`mt-3 ${styles.uploadErrorMsg}`}>
-          <span>{errorMessage}</span>
-          <button onClick={() => setErrorMessage(null)} className={styles.dismissErrorBtn}>
-            <IconX size={14} />
-          </button>
-        </div>
-      )}
-
-      <div className={styles.urlInsertRow}>
-        <button
-          className={styles.insertBtn}
-          disabled={!urlInput.trim()}
-          onClick={handleUrlInsert}>
-          Insert
-        </button>
-      </div>
-    </>
-  )}
+<div className={styles.alternativeSourceGrid}>
+    <button
+        className={styles.altSourceBtn}
+        onClick={() => { setActiveView('youtube'); setErrorMessage(null); }}>
+        <IconYoutube
+            size={20}
+            className={`${styles.altIcon} ${styles.youtube}`} />
+        <span>Youtube URL</span>
+    </button>
+    <button
+        className={styles.altSourceBtn}
+        onClick={() => { setActiveView('website'); setErrorMessage(null); }}>
+        <IconLink
+            size={20}
+            className={`${styles.altIcon} ${styles.website}`} />
+        <span>Website URL</span>
+    </button>
+    <button className={styles.altSourceBtn}>
+        <IconText
+            size={20}
+            className={`${styles.altIcon} ${styles.text}`} />
+        <span>Text Content</span>
+    </button>
 </div>
 
 
 
-
-
-
-
-
-
-
-
-const handleUrlInsert = () => {
-    const trimmedUrl = urlInput.trim();
-    if (!trimmedUrl) return;
-
-    const stateId = uuidv4();
-    const isYoutube = activeView === 'youtube';
-
-    const newSource: EmbeddingFile = {
-        state_id: stateId,
-        file_job_id: '',
-        file_name: trimmedUrl,
-        file_size: 0,
-        file_type: isYoutube ? 'youtube' : 'website',
-        originalFile: null,
-        status: 'UPLOADING',
-        progress: 0,
-        isSelected: false,
-        job_type: 'document_embedding',
-    };
-
-    const updatedSources: EmbeddingFile[] = [...sources, newSource];
-    setSources(updatedSources);
-    setMainSources(updatedSources);
-    dispatchEvent(setRagFiles(updatedSources.map((item) => ({
-        ...item, originalFile: {}
-    }))));
-
-    uploadFile(stateId, null, trimmedUrl, activeView);
-    setIsModalOpen(false);
-};
-
-
-
-
-
-
-
-
-
-
-
-
-
-const uploadFile = async (
-    currentId: string,
-    file: File | null,
-    url?: string,
-    type: 'upload' | 'youtube' | 'website' = 'upload'
-) => {
-    const formData = new FormData();
-    formData.append('state_id', currentId);
-
-    if (type === 'upload' && file) {
-        formData.append('file', file);
-        formData.append('id', '1');
-    } else if (type === 'youtube' && url) {
-        formData.append('url', url);
-        formData.append('id', '2');
-    } else if (type === 'website' && url) {
-        formData.append('url', url);
-        formData.append('id', '3');
-    }
-
-    // your API call here e.g:
-    // await axios.post('/api/upload', formData);
-};
-
-
-
-
-
-
-newSources.forEach((f) => uploadFile(f.state_id, f.originalFile, undefined, 'upload'));
-
-
-.urlViewHeader {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 1rem;
-}
-
-.backBtn {
-    background: none;
-    border: none;
-    cursor: pointer;
-    color: #6b7280;
-    padding: 4px;
-    display: flex;
-    align-items: center;
-    border-radius: 4px;
-
-    &:hover {
-        background-color: #f3f4f6;
-        color: #111827;
-    }
-}
-
-.urlViewTitle {
-    margin: 0;
-    font-size: 1rem;
-    font-weight: 600;
-    color: #111827;
-}
-
-.urlViewSubtitle {
-    font-size: 0.85rem;
-    color: #6b7280;
-    margin: 0 0 1rem 0;
-    line-height: 1.5;
-}
-
-.urlTextarea {
-    width: 100%;
-    min-height: 140px;
-    border: 1px solid #d1d5db;
-    border-radius: 8px;
-    padding: 12px;
-    font-size: 0.9rem;
-    color: #111827;
-    resize: vertical;
-    box-sizing: border-box;
-    font-family: inherit;
-    outline: none;
-    transition: border-color 0.2s ease;
-
-    &::placeholder {
-        color: #9ca3af;
-    }
-
-    &:focus {
-        border-color: #3b82f6;
-    }
-}
-
-.urlInsertRow {
-    display: flex;
-    justify-content: flex-end;
-    margin-top: 1rem;
-}
-
-.insertBtn {
-    background-color: #3b82f6;
-    color: white;
-    border: none;
-    border-radius: 8px;
-    padding: 0.5rem 1.25rem;
-    font-size: 0.9rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background-color 0.2s ease;
-
-    &:hover:not(:disabled) {
-        background-color: #2563eb;
-    }
-
-    &:disabled {
-        background-color: #93c5fd;
-        cursor: not-allowed;
-    }
+.altIcon {
+    &.youtube { color: #ff0000; }
+    &.website { color: #3b82f6; }
+    &.text    { color: #8b5cf6; }
 }
