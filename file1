@@ -1,32 +1,375 @@
-<div className={styles.alternativeSourceGrid}>
-    <button
-        className={styles.altSourceBtn}
-        onClick={() => { setActiveView('youtube'); setErrorMessage(null); }}>
-        <IconYoutube
-            size={20}
-            className={`${styles.altIcon} ${styles.youtube}`} />
-        <span>Youtube URL</span>
-    </button>
-    <button
-        className={styles.altSourceBtn}
-        onClick={() => { setActiveView('website'); setErrorMessage(null); }}>
-        <IconLink
-            size={20}
-            className={`${styles.altIcon} ${styles.website}`} />
-        <span>Website URL</span>
-    </button>
-    <button className={styles.altSourceBtn}>
-        <IconText
-            size={20}
-            className={`${styles.altIcon} ${styles.text}`} />
-        <span>Text Content</span>
-    </button>
+const TYPE_CONFIG = {
+    upload:  { key: 'file', id: '1' },
+    youtube: { key: 'url',  id: '2' },
+    website: { key: 'url',  id: '3' },
+} as const;
+
+const [isDragging, setIsDragging] = useState(false);
+const [activeView, setActiveView] = useState<'upload' | 'youtube' | 'website' | 'text'>('upload');
+const [urlInput, setUrlInput] = useState('');
+
+const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(true);
+}
+
+const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+        setIsDragging(false);
+    }
+}
+
+const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files) {
+        processFiles(e.dataTransfer.files);
+    }
+}
+
+const processFiles = (files: FileList | File[]) => {
+    const fileArray = Array.from(files);
+
+    const allowedFiles = fileArray.filter(file => {
+        const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+        return ALLOWED_EXTENSIONS.includes(ext);
+    });
+
+    if (MAX_FILES_TO_UPLOAD && allowedFiles.length > MAX_FILES_TO_UPLOAD) {
+        setErrorMessage(`You can only upload up to ${MAX_FILES_TO_UPLOAD} files at a time.`);
+        return;
+    }
+
+    let validFiles = allowedFiles;
+    if (MAX_FILE_EACH_FILE) {
+        const maxSize = MAX_FILE_EACH_FILE * 1024 * 1024;
+        validFiles = allowedFiles.filter(file => file.size <= maxSize);
+    }
+
+    const hasInvalid = fileArray.length !== allowedFiles.length;
+    const hasTooLarge = allowedFiles.length !== validFiles.length;
+
+    let errors: string[] = [];
+
+    const newSources: EmbeddingFile[] = validFiles.map(file => ({
+        state_id: uuidv4(),
+        file_job_id: '',
+        file_name: file.name,
+        file_size: file.size,
+        file_type: file.type,
+        originalFile: file,
+        status: 'UPLOADING',
+        progress: 0,
+        isSelected: false,
+        job_type: 'document_embedding',
+    }));
+
+    const DISK_AVAILABLE = DISK_TOTAL - DISK_OCCUPIED;
+    const uploadedBatchSize = newSources.reduce((sum, file) => sum + file.file_size, 0);
+
+    if (uploadedBatchSize > DISK_AVAILABLE) {
+        setErrorMessage(`Not enough disk space. Available: ${(DISK_AVAILABLE / (1024 * 1024)).toFixed(2)} MB`);
+        return;
+    }
+
+    if (hasInvalid) {
+        errors.push(`Some files have invalid formats and were skipped. Allowed: ${ALLOWED_EXTENSIONS.join(', ')}`);
+    }
+
+    if (hasTooLarge) {
+        errors.push(`Some files exceed the size limit of ${MAX_FILE_EACH_FILE} MB and were skipped.`);
+    }
+
+    setErrorMessage(errors.length > 0 ? errors.join('\n') : null);
+
+    if (validFiles.length === 0) return;
+
+    const updatedSources: EmbeddingFile[] = [...sources, ...newSources];
+    setSources(updatedSources);
+    setMainSources(updatedSources);
+    dispatchEvent(setRagFiles(updatedSources.map((item) => ({
+        ...item, originalFile: {}
+    }))));
+
+    newSources.forEach((f) => uploadFile(f.state_id, f.originalFile, undefined, 'upload'));
+
+    setIsModalOpen(false);
+}
+
+const handleUrlInsert = () => {
+    const trimmedUrl = urlInput.trim();
+    if (!trimmedUrl) return;
+
+    const stateId = uuidv4();
+
+    const newSource: EmbeddingFile = {
+        state_id: stateId,
+        file_job_id: '',
+        file_name: trimmedUrl,
+        file_size: 0,
+        file_type: activeView,
+        originalFile: null,
+        status: 'UPLOADING',
+        progress: 0,
+        isSelected: false,
+        job_type: 'document_embedding',
+    };
+
+    const updatedSources: EmbeddingFile[] = [...sources, newSource];
+    setSources(updatedSources);
+    setMainSources(updatedSources);
+    dispatchEvent(setRagFiles(updatedSources.map((item) => ({
+        ...item, originalFile: {}
+    }))));
+
+    uploadFile(stateId, null, trimmedUrl, activeView as 'youtube' | 'website');
+    setIsModalOpen(false);
+}
+
+const uploadFile = async (
+    currentId: string,
+    file: File | null,
+    url?: string,
+    type: 'upload' | 'youtube' | 'website' = 'upload'
+) => {
+    const formData = new FormData();
+    formData.append('state_id', currentId);
+
+    const payload = type === 'upload' ? file : url;
+    const { key, id } = TYPE_CONFIG[type];
+
+    if (payload) {
+        formData.append(key, payload);
+        formData.append('id', id);
+    }
+
+    const fileTobeUploaded: Partial<EmbeddingFile> = {
+        file_name: type === 'upload' ? file?.name ?? '' : url ?? '',
+        file_size: type === 'upload' ? file?.size ?? 0 : 0,
+        state_id: currentId,
+        file_job_id: '',
+        isSelected: false,
+    }
+
+    try {
+        await http.post('/doc/upload_doc', formData, {
+            onUploadProgress: (progressEvent) => {
+                const percentCompleted = Math.round(
+                    (progressEvent.loaded / progressEvent.total) * 100,
+                );
+                updateFileState({ ...fileTobeUploaded, progress: percentCompleted });
+            },
+        });
+
+        updateFileState({ ...fileTobeUploaded, progress: 100, status: 'STARTED' });
+    } catch (error: any) {
+        updateFileState({ ...fileTobeUploaded, progress: 0, status: 'FAILURE' });
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+<div className={styles.modalContent}>
+    {activeView === 'upload' ? (
+        <>
+            <div
+                className={`${styles.dropZone} ${isDragging ? styles.dragging : ''}`}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                onClick={() => fileInputRef.current?.click()}>
+                <IconUploadCloud size={32} className={styles.cloudIcon} />
+                <p className={styles.dropTitle}>{t(`actions.drag_drop`)}</p>
+                <p className={styles.dropSubtitle}>
+                    {ALLOWED_EXTENSIONS.map((item) => item.toUpperCase()).join(', ')} {`up to ${MAX_FILE_EACH_FILE} MB`}
+                </p>
+            </div>
+
+            {errorMessage && (
+                <div className={`mt-3 ${styles.uploadErrorMsg}`}>
+                    <span>{errorMessage}</span>
+                    <button onClick={() => setErrorMessage(null)} className={styles.dismissErrorBtn}>
+                        <IconX size={14} />
+                    </button>
+                </div>
+            )}
+
+            <div className={styles.modalDivider}>
+                <span>or add from</span>
+            </div>
+
+            <div className={styles.alternativeSourceGrid}>
+                <button
+                    className={styles.altSourceBtn}
+                    onClick={() => { setActiveView('youtube'); setErrorMessage(null); }}>
+                    <IconYoutube size={20} className={`${styles.altIcon} ${styles.youtube}`} />
+                    <span>Youtube URL</span>
+                </button>
+                <button
+                    className={styles.altSourceBtn}
+                    onClick={() => { setActiveView('website'); setErrorMessage(null); }}>
+                    <IconLink size={20} className={`${styles.altIcon} ${styles.website}`} />
+                    <span>Website URL</span>
+                </button>
+                <button className={styles.altSourceBtn}>
+                    <IconText size={20} className={`${styles.altIcon} ${styles.text}`} />
+                    <span>Text Content</span>
+                </button>
+            </div>
+        </>
+    ) : (
+        <>
+            <div className={styles.urlViewHeader}>
+                <button
+                    className={styles.backBtn}
+                    onClick={() => { setActiveView('upload'); setUrlInput(''); setErrorMessage(null); }}>
+                    <IconArrowLeft size={18} />
+                </button>
+                <h3 className={styles.urlViewTitle}>
+                    {activeView === 'youtube' ? 'YouTube URL' : 'Website URL'}
+                </h3>
+            </div>
+
+            <p className={styles.urlViewSubtitle}>
+                {activeView === 'youtube'
+                    ? 'Only the text transcript from the YouTube video will be imported. Only public videos are supported.'
+                    : 'Only the visible text on the website will be imported. Paid articles are not supported.'}
+            </p>
+
+            <textarea
+                className={styles.urlTextarea}
+                placeholder={activeView === 'youtube' ? 'Paste YouTube URL' : 'Paste website URL'}
+                value={urlInput}
+                onChange={(e) => setUrlInput(e.target.value)}
+            />
+
+            {errorMessage && (
+                <div className={`mt-3 ${styles.uploadErrorMsg}`}>
+                    <span>{errorMessage}</span>
+                    <button onClick={() => setErrorMessage(null)} className={styles.dismissErrorBtn}>
+                        <IconX size={14} />
+                    </button>
+                </div>
+            )}
+
+            <div className={styles.urlInsertRow}>
+                <button
+                    className={styles.insertBtn}
+                    disabled={!urlInput.trim()}
+                    onClick={handleUrlInsert}>
+                    Insert
+                </button>
+            </div>
+        </>
+    )}
 </div>
 
 
 
-.altIcon {
-    &.youtube { color: #ff0000; }
-    &.website { color: #3b82f6; }
-    &.text    { color: #8b5cf6; }
+
+
+
+
+
+
+
+
+
+
+
+.urlViewHeader {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 1rem;
+}
+
+.backBtn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #6b7280;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    border-radius: 4px;
+
+    &:hover {
+        background-color: #f3f4f6;
+        color: #111827;
+    }
+}
+
+.urlViewTitle {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #111827;
+}
+
+.urlViewSubtitle {
+    font-size: 0.85rem;
+    color: #6b7280;
+    margin: 0 0 1rem 0;
+    line-height: 1.5;
+}
+
+.urlTextarea {
+    width: 100%;
+    min-height: 140px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 0.9rem;
+    color: #111827;
+    resize: vertical;
+    box-sizing: border-box;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.2s ease;
+
+    &::placeholder {
+        color: #9ca3af;
+    }
+
+    &:focus {
+        border-color: #3b82f6;
+    }
+}
+
+.urlInsertRow {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 1rem;
+}
+
+.insertBtn {
+    background-color: #3b82f6;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 0.5rem 1.25rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+
+    &:hover:not(:disabled) {
+        background-color: #2563eb;
+    }
+
+    &:disabled {
+        background-color: #93c5fd;
+        cursor: not-allowed;
+    }
 }
