@@ -1,107 +1,455 @@
-const YOUTUBE_URL_PATTERNS = [
-    /^https?:\/\/(www\.)?youtube\.com\/watch\?v=[\w-]+/,
-    /^https?:\/\/(www\.)?youtube\.com\/shorts\/[\w-]+/,
-    /^https?:\/\/youtu\.be\/[\w-]+/,
-    /^https?:\/\/(www\.)?youtube\.com\/embed\/[\w-]+/,
-    /^https?:\/\/(www\.)?youtube\.com\/live\/[\w-]+/,
-];
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Working Days Calculator</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-const WEBSITE_URL_PATTERNS = [
-    /^https?:\/\/(www\.)?[\w-]+(\.[\w-]+)+([\/\w\-._~:?#[\]@!$&'()*+,;=%]*)?$/,
-];
+  :root {
+    --bg: #0d0f12;
+    --surface: #141619;
+    --surface-2: #1c1f24;
+    --border: #2a2d34;
+    --accent: #c8ff00;
+    --accent-dim: rgba(200,255,0,0.1);
+    --accent-glow: rgba(200,255,0,0.25);
+    --text: #f0f0ec;
+    --muted: #6b7280;
+    --danger: #ff5f57;
+    --mono: 'DM Mono', monospace;
+    --display: 'Syne', sans-serif;
+  }
 
-const validateUrl = (url: string, type: 'youtube' | 'website'): boolean => {
-    const trimmed = url.trim();
+  html, body {
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--display);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1rem;
+  }
 
-    if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
-        return false;
+  body::before {
+    content: '';
+    position: fixed;
+    top: -30%;
+    left: -10%;
+    width: 60%;
+    height: 60%;
+    background: radial-gradient(ellipse, rgba(200,255,0,0.04) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 3rem 3rem 2.5rem;
+    width: 100%;
+    max-width: 480px;
+    position: relative;
+    overflow: hidden;
+    animation: fadeUp 0.5s ease both;
+  }
+
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    opacity: 0.8;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .header { margin-bottom: 2.5rem; }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .eyebrow::before {
+    content: '';
+    display: inline-block;
+    width: 6px; height: 6px;
+    background: var(--accent);
+    border-radius: 50%;
+  }
+
+  h1 {
+    font-size: 26px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    color: var(--text);
+  }
+
+  .sub {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 6px;
+    font-family: var(--mono);
+  }
+
+  .fields { display: flex; flex-direction: column; gap: 1.25rem; margin-bottom: 1.5rem; }
+
+  .field label {
+    display: block;
+    font-size: 11px;
+    font-family: var(--mono);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+
+  .input-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
+  .input-wrap .icon {
+    position: absolute;
+    left: 14px;
+    color: var(--muted);
+    font-size: 14px;
+    pointer-events: none;
+  }
+
+  input[type="text"] {
+    width: 100%;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 13px 14px 13px 40px;
+    font-family: var(--mono);
+    font-size: 15px;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    letter-spacing: 0.04em;
+  }
+
+  input[type="text"]::placeholder { color: var(--muted); }
+
+  input[type="text"]:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+  }
+
+  input[type="text"].error {
+    border-color: var(--danger);
+    box-shadow: 0 0 0 3px rgba(255,95,87,0.2);
+  }
+
+  .btn {
+    width: 100%;
+    padding: 14px;
+    background: var(--accent);
+    color: #0d0f12;
+    font-family: var(--display);
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s, background 0.15s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .btn:hover {
+    box-shadow: 0 0 20px var(--accent-glow);
+    transform: translateY(-1px);
+  }
+
+  .btn:active { transform: scale(0.98); }
+
+  .btn::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(255,255,255,0.12);
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .btn:hover::after { opacity: 1; }
+
+  .error-msg {
+    display: none;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--danger);
+    margin-top: 1rem;
+    padding: 10px 14px;
+    background: rgba(255,95,87,0.08);
+    border: 1px solid rgba(255,95,87,0.2);
+    border-radius: 8px;
+    animation: shake 0.3s ease;
+  }
+
+  @keyframes shake {
+    0%,100% { transform: translateX(0); }
+    25% { transform: translateX(-6px); }
+    75% { transform: translateX(6px); }
+  }
+
+  .result {
+    display: none;
+    margin-top: 1.5rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 1.5rem;
+    animation: fadeIn 0.3s ease;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: scale(0.98); }
+    to   { opacity: 1; transform: scale(1); }
+  }
+
+  .result-main {
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+    margin-bottom: 1.25rem;
+  }
+
+  .result-num {
+    font-size: 64px;
+    font-weight: 800;
+    line-height: 1;
+    color: var(--accent);
+    letter-spacing: -0.04em;
+  }
+
+  .result-text {
+    padding-bottom: 8px;
+  }
+
+  .result-text .label {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: 0.02em;
+  }
+
+  .result-text .sublabel {
+    font-size: 11px;
+    color: var(--muted);
+    font-family: var(--mono);
+    margin-top: 2px;
+  }
+
+  .divider {
+    height: 1px;
+    background: var(--border);
+    margin-bottom: 1.25rem;
+  }
+
+  .stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+  }
+
+  .stat {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    text-align: center;
+  }
+
+  .stat .val {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text);
+    font-family: var(--mono);
+  }
+
+  .stat .key {
+    font-size: 10px;
+    font-family: var(--mono);
+    color: var(--muted);
+    margin-top: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    line-height: 1.4;
+  }
+
+  .footer-note {
+    margin-top: 2rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .dot {
+    width: 5px; height: 5px;
+    background: var(--accent);
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="header">
+    <div class="eyebrow">India / IST</div>
+    <h1>Working Days<br>Calculator</h1>
+    <p class="sub">Excludes Saturdays &amp; Sundays</p>
+  </div>
+
+  <div class="fields">
+    <div class="field">
+      <label>Start Date</label>
+      <div class="input-wrap">
+        <span class="icon">▶</span>
+        <input type="text" id="startDate" placeholder="DD-MM-YYYY" maxlength="10" />
+      </div>
+    </div>
+    <div class="field">
+      <label>End Date</label>
+      <div class="input-wrap">
+        <span class="icon">◼</span>
+        <input type="text" id="endDate" placeholder="DD-MM-YYYY" maxlength="10" />
+      </div>
+    </div>
+  </div>
+
+  <button class="btn" onclick="calculate()">Calculate →</button>
+
+  <div class="error-msg" id="errMsg"></div>
+
+  <div class="result" id="result">
+    <div class="result-main">
+      <div class="result-num" id="resultNum">0</div>
+      <div class="result-text">
+        <div class="label">Working Days</div>
+        <div class="sublabel">weekends excluded</div>
+      </div>
+    </div>
+    <div class="divider"></div>
+    <div class="stats">
+      <div class="stat">
+        <div class="val" id="bkTotal">0</div>
+        <div class="key">Total Days</div>
+      </div>
+      <div class="stat">
+        <div class="val" id="bkSat">0</div>
+        <div class="key">Sats Skipped</div>
+      </div>
+      <div class="stat">
+        <div class="val" id="bkSun">0</div>
+        <div class="key">Suns Skipped</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer-note">
+    <span class="dot"></span>
+    Start date not counted. Days between start &amp; end are evaluated.
+  </div>
+</div>
+
+<script>
+  const sI = document.getElementById('startDate');
+  const eI = document.getElementById('endDate');
+
+  function autoFormat(inp) {
+    inp.addEventListener('input', function () {
+      let v = this.value.replace(/[^0-9]/g, '');
+      if (v.length >= 3) v = v.slice(0,2) + '-' + v.slice(2);
+      if (v.length >= 6) v = v.slice(0,5) + '-' + v.slice(5);
+      this.value = v.slice(0, 10);
+    });
+  }
+
+  autoFormat(sI); autoFormat(eI);
+
+  function parseDate(str) {
+    const p = str.trim().split('-');
+    if (p.length !== 3) return null;
+    const [d, m, y] = p.map(Number);
+    if (!d || !m || !y || y < 1000) return null;
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return null;
+    return dt;
+  }
+
+  function getDow(utcDate) {
+    return new Date(utcDate.getTime() + 5.5 * 3600000).getUTCDay();
+  }
+
+  function setErr(msg) {
+    const el = document.getElementById('errMsg');
+    el.textContent = msg; el.style.display = 'block';
+    document.getElementById('result').style.display = 'none';
+    [sI, eI].forEach(i => i.classList.remove('error'));
+    if (msg.toLowerCase().includes('start')) sI.classList.add('error');
+    else if (msg.toLowerCase().includes('end')) eI.classList.add('error');
+  }
+
+  function calculate() {
+    const errEl = document.getElementById('errMsg');
+    const resEl = document.getElementById('result');
+    errEl.style.display = 'none';
+    resEl.style.display = 'none';
+    sI.classList.remove('error'); eI.classList.remove('error');
+
+    const start = parseDate(sI.value);
+    const end   = parseDate(eI.value);
+
+    if (!start) return setErr('Invalid start date — use DD-MM-YYYY');
+    if (!end)   return setErr('Invalid end date — use DD-MM-YYYY');
+    if (end < start) return setErr('End date must be on or after start date');
+
+    const msDay = 86400000;
+    const total = Math.round((end - start) / msDay);
+    let work = 0, sat = 0, sun = 0;
+
+    for (let i = 1; i <= total; i++) {
+      const dow = getDow(new Date(start.getTime() + i * msDay));
+      if (dow === 6) sat++;
+      else if (dow === 0) sun++;
+      else work++;
     }
 
-    const patterns = type === 'youtube' ? YOUTUBE_URL_PATTERNS : WEBSITE_URL_PATTERNS;
-    return patterns.some((pattern) => pattern.test(trimmed));
-};
+    document.getElementById('resultNum').textContent = work;
+    document.getElementById('bkTotal').textContent = total;
+    document.getElementById('bkSat').textContent = sat;
+    document.getElementById('bkSun').textContent = sun;
+    resEl.style.display = 'block';
+  }
 
-
-
-
-
-
-
-const handleUrlInsert = () => {
-    const trimmedUrl = urlInput.trim();
-    if (!trimmedUrl) return;
-
-    const type = activeView as 'youtube' | 'website';
-    if (!validateUrl(trimmedUrl, type)) {
-        setErrorMessage(
-            type === 'youtube'
-                ? t('sources.invalid_youtube_url')
-                : t('sources.invalid_website_url')
-        );
-        return;
-    }
-
-    const stateId = uuidv4();
-
-    const newSource: EmbeddingFile = {
-        state_id: stateId,
-        file_job_id: '',
-        file_name: trimmedUrl,
-        file_size: 0,
-        file_type: activeView,
-        originalFile: null,
-        status: 'UPLOADING',
-        progress: 0,
-        isSelected: false,
-        job_type: 'document_embedding',
-    };
-
-    const updatedSources: EmbeddingFile[] = [...sources, newSource];
-    setSources(updatedSources);
-    setMainSources(updatedSources);
-    dispatchEvent(setRagFiles(updatedSources.map((item) => ({
-        ...item, originalFile: {}
-    }))));
-
-    uploadFile(stateId, null, trimmedUrl, type);
-    handleCloseModal();
-};
-
-
-
-
-
-
-{
-    "sources": {
-        "invalid_youtube_url": "Please enter a valid YouTube URL (e.g. https://www.youtube.com/watch?v=...)",
-        "invalid_website_url": "Please enter a valid website URL starting with http:// or https://"
-    }
-}
-
-
-
-
-
-{
-    "sources": {
-        "invalid_youtube_url": "올바른 유튜브 URL을 입력하세요 (예: https://www.youtube.com/watch?v=...)",
-        "invalid_website_url": "http:// 또는 https://로 시작하는 올바른 웹사이트 URL을 입력하세요"
-    }
-}
-
-
-
-
-
-
-<button
-    className={styles.insertBtn}
-    disabled={!urlInput.trim() || (!urlInput.startsWith('http://') && !urlInput.startsWith('https://'))}
-    onClick={handleUrlInsert}>
-    {t('sources.insert')}
-</button>
-
-
-
-
+  sI.addEventListener('keydown', e => e.key === 'Enter' && calculate());
+  eI.addEventListener('keydown', e => e.key === 'Enter' && calculate());
+</script>
+</body>
+</html>
